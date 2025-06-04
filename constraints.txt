@@ -1,6 +1,4 @@
+# constraints.txt — pins langchain compatibility for stable deployment
+
 langchain==0.1.14
-langchain-openai==0.0.7
-openai==1.18.0
-fastapi==0.110.1
-uvicorn==0.29.0
-langgraph==0.0.25
+pydantic==2.7.1
