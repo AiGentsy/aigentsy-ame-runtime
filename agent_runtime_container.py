@@ -13,11 +13,8 @@ from langchain.tools import Tool
 # === Memory Setup ===
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-# === LLM Model — No 'proxies' or legacy args ===
-llm = ChatOpenAI(
-    temperature=0.2,
-    api_key=os.environ["OPENAI_API_KEY"]
-)
+# === LLM Model — NO unsupported kwargs like 'api_key'
+llm = ChatOpenAI(temperature=0.2)
 
 # === Basic Output Tool ===
 def generate_agent_output(input: str) -> str:
