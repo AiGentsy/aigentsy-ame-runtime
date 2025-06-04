@@ -2,7 +2,8 @@
 
 from langchain.schema import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
+# ToolNode removed — no longer supported in current langgraph
+# from langgraph.prebuilt import ToolNode
 
 # === Agent Memory and Context ===
 from langchain.memory import ConversationBufferMemory
@@ -53,5 +54,3 @@ if __name__ == "__main__":
     user_input = "Write a sample contract for remix licensing."
     result = agent_graph.invoke({"input": user_input})
     print("Agent Output:", result["output"])
-
-
