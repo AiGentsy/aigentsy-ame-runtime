@@ -1,6 +1,4 @@
 -r constraints.txt
-fastapi
-uvicorn
-langgraph
-openai
-langchain-openai
+fastapi==0.110.1
+uvicorn==0.29.0
+langgraph==0.0.25
