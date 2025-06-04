@@ -1,5 +1,6 @@
 # agent_runtime_container.py — AME Phase 1 Runtime Container (LangGraph-Based)
 
+import os  # ← REQUIRED for env var access
 from langchain.schema import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 # ToolNode removed — no longer supported in current langgraph
