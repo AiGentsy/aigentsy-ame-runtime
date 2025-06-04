@@ -7,7 +7,7 @@ from langgraph.graph import StateGraph, END
 
 # === Agent Memory and Context ===
 from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
 
