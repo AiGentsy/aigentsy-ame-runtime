@@ -1,6 +1,7 @@
 # main.py — FastAPI wrapper for agent runtime container
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from agent_runtime_container import agent_graph
 
 app = FastAPI()
@@ -13,4 +14,4 @@ async def trigger_agent(request: Request):
         result = agent_graph.invoke({"input": user_input})
         return {"output": result["output"]}
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(status_code=500, content={"error": str(e)})
