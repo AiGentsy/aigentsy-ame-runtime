@@ -15,7 +15,10 @@ from langchain.tools import Tool
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
 # === LLM Model (can be replaced with OpenAI function-calling or Claude) ===
-llm = ChatOpenAI(temperature=0.2)
+llm = ChatOpenAI(
+    temperature=0.2,
+    openai_api_key=os.environ["OPENAI_API_KEY"]
+)
 
 # === Basic Tool: Codegen or Offer Output (expandable) ===
 def generate_agent_output(input: str) -> str:
