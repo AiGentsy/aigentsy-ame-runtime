@@ -1,18 +1,23 @@
+# agent_runtime_container.py
+
 import os
 from langchain.schema import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph
 from langchain.memory import ConversationBufferMemory
 from langchain_openai import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
 
+# === Agent Memory ===
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
+# === LLM Initialization ===
 llm = ChatOpenAI(
     temperature=0.2,
-    openai_api_key=os.environ["OPENAI_API_KEY"]
+    api_key=os.getenv("OPENAI_API_KEY")  # Make sure the key is injected by Render
 )
 
+# === Simple Output Tool ===
 def generate_agent_output(input: str) -> str:
     return f"[Autonomous Output Triggered] Role action initiated: {input}"
 
@@ -22,6 +27,7 @@ output_tool = Tool(
     description="Produces default output for the assigned role"
 )
 
+# === Agent Initialization ===
 agent = initialize_agent(
     tools=[output_tool],
     llm=llm,
@@ -30,11 +36,13 @@ agent = initialize_agent(
     verbose=True
 )
 
+# === LangGraph Node Logic ===
 def run_agent_node(state):
     input_text = state["input"]
     result = agent.run(input_text)
     return {"output": result}
 
+# === LangGraph Assembly ===
 builder = StateGraph()
 builder.add_node("agent_node", run_agent_node)
 builder.set_entry_point("agent_node")
