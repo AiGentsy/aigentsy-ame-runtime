@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-# 💣 Blow away old packages, then install correct ones
+# 💣 Blow away old packages, install known-safe set
 RUN pip uninstall -y openai langchain langchain-openai || true && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --force-reinstall -r requirements.patched.txt
