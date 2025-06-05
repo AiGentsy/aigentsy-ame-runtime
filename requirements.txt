@@ -3,6 +3,5 @@ uvicorn==0.22.0
 openai==1.7.0
 langchain==0.0.320
 langchain-openai==0.0.2
-langchain-core==0.1.13
 langsmith==0.0.62
 langgraph==0.0.30
