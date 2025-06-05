@@ -13,9 +13,10 @@ for pkg in ["openai", "langchain-openai", "langchain"]:
 
 app = FastAPI()
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Consider locking this down in prod
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
