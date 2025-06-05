@@ -4,15 +4,16 @@ WORKDIR /app
 
 COPY . .
 
-# ✅ Force exact versions, bypassing pip resolver issues
+# ✅ Force exact versions — guaranteed clean combo
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
       langchain==0.1.13 \
-      langchain-openai==0.0.8 \
-      openai==1.25.0 \
+      langchain-openai==0.1.2 \
+      openai==1.30.1 \
       langgraph==0.0.40 \
       fastapi==0.110.0 \
-      uvicorn==0.29.0
+      uvicorn==0.29.0 \
+      pydantic==1.10.13
 
 EXPOSE 8000
 
