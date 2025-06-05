@@ -40,8 +40,3 @@ builder.add_node("agent_node", run_agent_node)
 builder.set_entry_point("agent_node")
 builder.set_finish_point("agent_node")
 agent_graph = builder.compile()
-
-if __name__ == "__main__":
-    user_input = "Write a sample contract for remix licensing."
-    result = agent_graph.invoke({"input": user_input})
-    print("Agent Output:", result["output"])
