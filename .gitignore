@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Virtual environments
+.env/
+.venv/
+venv/
+
+# Environment variables
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Docker
+*.tar
+*.bak
+
+# VSCode or JetBrains IDEs
+.vscode/
+.idea/
