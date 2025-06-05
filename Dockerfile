@@ -4,16 +4,10 @@ WORKDIR /app
 
 COPY . .
 
-# 🔒 FORCE install correct versions with no resolver fallback
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --force-reinstall \
-      langchain==0.1.13 \
-      langchain-openai==0.1.2 \
-      openai==1.30.1 \
-      langgraph==0.0.40 \
-      fastapi==0.110.0 \
-      uvicorn==0.29.0 \
-      pydantic==1.10.13
+# 💣 Blow away old packages, then install correct ones
+RUN pip uninstall -y openai langchain langchain-openai || true && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --force-reinstall -r requirements.patched.txt
 
 EXPOSE 8000
 
