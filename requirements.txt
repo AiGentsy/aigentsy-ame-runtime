@@ -3,6 +3,6 @@ uvicorn==0.22.0
 openai==1.11.1
 langchain==0.1.13
 langchain-openai==0.0.6
-langsmith==0.0.84
+langsmith==0.1.17
 langgraph==0.0.30
 pydantic==1.10.13
