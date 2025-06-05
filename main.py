@@ -2,6 +2,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from agent_runtime_container import agent_graph
 
+# 🔍 Version debug overlay
+import pkg_resources
+print(">> Installed Versions:")
+for pkg in ["openai", "langchain-openai", "langchain"]:
+    try:
+        print(f">> {pkg}=={pkg_resources.get_distribution(pkg).version}")
+    except Exception as e:
+        print(f">> {pkg} not found: {e}")
+
 app = FastAPI()
 
 app.add_middleware(
