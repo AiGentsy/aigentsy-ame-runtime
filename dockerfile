@@ -4,9 +4,9 @@ WORKDIR /app
 
 COPY . .
 
-# ✅ Enforce compatible versions
+# ✅ Force correct versions only — NO constraints file
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt -c constraints.txt
+    pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
 
