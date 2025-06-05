@@ -4,9 +4,9 @@ WORKDIR /app
 
 COPY . .
 
-# ✅ Force exact versions — guaranteed clean combo
+# 🔒 FORCE install correct versions with no resolver fallback
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
+    pip install --no-cache-dir --force-reinstall \
       langchain==0.1.13 \
       langchain-openai==0.1.2 \
       openai==1.30.1 \
