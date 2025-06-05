@@ -12,7 +12,7 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 # === LLM setup ===
 llm = ChatOpenAI(
     temperature=0.2,
-    api_key=os.environ["OPENAI_API_KEY"]
+    openai_api_key=os.environ["OPENAI_API_KEY"]
 )
 
 # === Tool definition ===
