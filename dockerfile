@@ -1,9 +1,10 @@
 FROM python:3.10-slim
 
 WORKDIR /app
+
 COPY . .
 
-# Blow away pip cache and force constraints lock
+# ✅ Enforce compatible versions
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
