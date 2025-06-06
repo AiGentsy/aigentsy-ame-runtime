@@ -9,10 +9,10 @@ from langchain.tools import Tool
 # === Agent Memory ===
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-# === LLM Initialization (uses Render's environment variable) ===
 llm = ChatOpenAI(
     temperature=0.2,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    model_name="gpt-3.5-turbo"
 )
 
 # === Simple Output Tool ===
