@@ -12,7 +12,7 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 # === LLM Initialization (uses Render's environment variable) ===
 llm = ChatOpenAI(
     temperature=0.2,
-    openai_api_key=os.getenv("OPENAI_API_KEY")  # ✅ pulled from Render’s environment settings
+    openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
 # === Simple Output Tool ===
