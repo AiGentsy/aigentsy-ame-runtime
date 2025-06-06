@@ -1,48 +1,39 @@
-
-import os
-from langgraph.graph import StateGraph
-from langchain.memory import ConversationBufferMemory
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import SystemMessage, HumanMessage
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
 
-# === Memory ===
-memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+import os
 
-# === Tool Definition ===
-def generate_agent_output(input: str) -> str:
-    return f"[Autonomous Output Triggered] Role action initiated: {input}"
+# Basic tool example (you can expand this with your real tools)
+def simple_tool(input_text: str) -> str:
+    return f"Echo: {input_text}"
 
-output_tool = Tool(
-    name="GenerateAgentOutput",
-    func=generate_agent_output,
-    description="Produces default output for the assigned role"
-)
+tools = [Tool(name="EchoTool", func=simple_tool, description="Echo back the input")]
 
-# === LLM Initialization ===
 llm = ChatOpenAI(
     temperature=0.2,
     openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# === Agent Initialization ===
 agent = initialize_agent(
-    tools=[output_tool],
-    llm=llm,
-    agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
-    memory=memory,
+    tools,
+    llm,
+    agent=AgentType.OPENAI_FUNCTIONS,
     verbose=True
 )
 
-# === LangGraph Assembly ===
-def run_agent_node(state):
-    input_text = state["input"]
-    result = agent.run(input_text)
-    return {"output": result}
+def run_agent(input_text: str) -> str:
+    return agent.run(input_text)
 
-builder = StateGraph()
-builder.add_node("agent_node", run_agent_node)
-builder.set_entry_point("agent_node")
-builder.set_finish_point("agent_node")
-agent_graph = builder.compile()
+def invoke(input):
+    return {"output": run_agent(input["input"])}
+
+# LangGraph wrapper
+graph = StateGraph()
+graph.add_node("agent", ToolNode(invoke))
+graph.set_entry_point("agent")
+graph.set_finish_point(END)
+agent_graph = graph.compile()
