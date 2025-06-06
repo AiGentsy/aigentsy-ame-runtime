@@ -1,5 +1,3 @@
-# main.py
-
 from fastapi import FastAPI, Request
 from agent_runtime_container import agent_graph
 
