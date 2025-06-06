@@ -9,3 +9,4 @@ async def invoke_agent(request: Request):
     user_input = data.get("input", "")
     result = agent_graph.invoke({"input": user_input})
     return {"output": result["output"]}
+
