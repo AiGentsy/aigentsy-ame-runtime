@@ -1,7 +1,7 @@
 fastapi==0.95.2
 uvicorn==0.22.0
-openai==1.6.1
+openai==1.10.0
 langchain==0.0.290
-langchain-openai==0.0.2
+langchain-openai==0.0.6
+langsmith==0.1.17
 langgraph==0.0.30
-langsmith==0.0.62
