@@ -1,3 +1,5 @@
+# agent_runtime_container.py
+
 import os
 from langchain.schema import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
@@ -9,9 +11,10 @@ from langchain.tools import Tool
 # === Agent Memory ===
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
+# === LLM Initialization (patched to avoid 'proxies' bug) ===
 llm = ChatOpenAI(
     temperature=0.2,
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    openai_api_key=os.getenv("OPENAI_API_KEY"),  # Make sure this is set in Render
     model_name="gpt-3.5-turbo"
 )
 
@@ -25,7 +28,7 @@ output_tool = Tool(
     description="Produces default output for the assigned role"
 )
 
-# === Agent Setup ===
+# === Agent Initialization ===
 agent = initialize_agent(
     tools=[output_tool],
     llm=llm,
@@ -34,7 +37,7 @@ agent = initialize_agent(
     verbose=True
 )
 
-# === LangGraph Runtime Node ===
+# === LangGraph Node Logic ===
 def run_agent_node(state):
     input_text = state["input"]
     result = agent.run(input_text)
