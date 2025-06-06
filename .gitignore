@@ -3,24 +3,37 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.log
+*.pyc
 
 # Virtual environments
-.env/
 .venv/
+env/
 venv/
+ENV/
 
-# Environment variables
+# VSCode and IDEs
+.vscode/
+.idea/
+
+# OS metadata
+.DS_Store
+
+# Byte-compiled / cache / logs
+*.log
+*.sqlite3
+*.db
+
+# Env / secret files
 .env
 .env.*
 
-# macOS
-.DS_Store
+# Uvicorn reload artifacts
+*.pid
 
-# Docker
+# Docker build artifacts
+__docker_build/
 *.tar
 *.bak
 
-# VSCode or JetBrains IDEs
-.vscode/
-.idea/
+# Misc
+*.swp
