@@ -3,6 +3,7 @@ import stripe
 import json
 import requests
 from fastapi.responses import JSONResponse
+from datetime import datetime
 
 # Stripe setup
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -13,18 +14,26 @@ JSONBIN_URL = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 
 def log_agent_update(data: dict):
+    if not JSONBIN_URL or not JSONBIN_SECRET:
+        print("❌ Missing JSONBin credentials.")
+        return
+
     headers = {
         "Content-Type": "application/json",
         "X-Master-Key": JSONBIN_SECRET
     }
-    response = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(data))
-    print("✅ Logged to JSONBin:", response.status_code)
 
-# Optional agent activation logic stub
+    try:
+        response = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(data))
+        response.raise_for_status()
+        print("✅ Logged to JSONBin:", response.status_code)
+    except requests.exceptions.RequestException as e:
+        print("❌ Failed to log to JSONBin:", str(e))
+
 def activate_agent(agent_id):
     print(f"🟢 Activating agent {agent_id}...")
-    # Implement actual activation logic here
-    # Could update local DB, trigger background job, etc.
+    # Placeholder for real activation logic
+    # You could: trigger background task, update DB, notify clone lineage, etc.
 
 async def handle_stripe_webhook(payload, sig_header):
     try:
@@ -45,16 +54,16 @@ async def handle_stripe_webhook(payload, sig_header):
 
         print(f"✅ Payment received for {customer_email}")
 
-        # Log to JSONBin
+        # Log structured data to JSONBin
         log_agent_update({
             "email": customer_email,
             "agent_id": metadata.get("agent_id"),
             "product": metadata.get("product"),
             "payment_status": "paid",
-            "timestamp": session.get("created")
+            "timestamp": datetime.utcnow().isoformat()  # ISO format for easier analysis
         })
 
-        # Optionally trigger agent activation
+        # Trigger agent activation
         if metadata.get("agent_id"):
             activate_agent(metadata["agent_id"])
 
