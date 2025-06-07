@@ -1,8 +1,6 @@
-langchain==0.0.290
-langchain-core==0.1.13
-langchain-openai==0.0.1
+langchain-core==0.1.33
+langchain-openai==0.0.2
 langgraph==0.0.30
-langsmith==0.0.83
 openai==1.7.0
 
 fastapi==0.110.0
