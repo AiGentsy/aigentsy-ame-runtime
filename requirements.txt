@@ -3,6 +3,7 @@ langchain-core==0.3.64
 langchain-openai==0.3.21
 langchain-community
 openai==1.68.2
+langgraph==0.0.30
 fastapi
 uvicorn
 requests
