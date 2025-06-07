@@ -1,5 +1,5 @@
 langchain==0.0.290
-langchain-core==0.1.13
+langchain-core==0.1.33
 langchain-openai==0.0.2
 langgraph==0.0.30
 openai==1.7.0
@@ -9,3 +9,4 @@ uvicorn==0.29.0
 requests==2.31.0
 python-dotenv==1.0.1
 pydantic>=2.0,<3.0
+langsmith==0.0.89
