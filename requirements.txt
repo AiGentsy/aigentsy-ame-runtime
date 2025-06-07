@@ -1,4 +1,8 @@
 langchain==0.3.25
 langchain-core==0.3.64
 langchain-openai==0.3.21
-openai==1.8.2
+openai==1.68.2
+fastapi
+uvicorn
+requests
+python-dotenv
