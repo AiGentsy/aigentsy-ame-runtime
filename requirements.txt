@@ -4,7 +4,7 @@ langchain-openai==0.3.21
 langchain-community==0.0.22
 langgraph==0.0.30
 
-openai==1.7.0
+openai==1.68.2
 
 fastapi==0.110.0
 uvicorn==0.29.0
