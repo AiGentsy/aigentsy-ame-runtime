@@ -7,5 +7,5 @@ app = FastAPI()
 async def invoke_agent(request: Request):
     data = await request.json()
     user_input = data.get("input", "")
-    result = agent_graph.invoke({"input": user_input})
+    result = await agent_graph.ainvoke({"input": user_input})
     return {"output": result["output"]}
