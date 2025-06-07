@@ -1,9 +1,9 @@
 langchain==0.1.16
-langchain-core==0.1.33
-langchain-openai==0.1.1
+langchain-core==0.1.42
+langchain-openai==0.1.7
 langgraph==0.0.30
 
-openai==1.7.0
+openai==1.23.6
 
 fastapi==0.110.0
 uvicorn==0.29.0
