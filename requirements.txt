@@ -3,7 +3,7 @@ langchain-core==0.1.47
 langchain-openai==0.1.7
 langgraph==0.0.30
 
-openai==1.23.6
+openai==1.24.0  # ✅ bump from 1.23.6 → 1.24.0 to satisfy langchain-openai
 
 fastapi==0.110.0
 uvicorn==0.29.0
