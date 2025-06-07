@@ -6,8 +6,9 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
 import os
+import asyncio
 
-# Basic tool example (you can expand this with your real tools)
+# Define a simple echo tool
 def simple_tool(input_text: str) -> str:
     return f"Echo: {input_text}"
 
@@ -25,13 +26,16 @@ agent = initialize_agent(
     verbose=True
 )
 
-def run_agent(input_text: str) -> str:
-    return agent.run(input_text)
+# Async wrapper for agent.run
+async def run_agent_async(input_text: str) -> str:
+    return await asyncio.to_thread(agent.run, input_text)
 
-def invoke(input):
-    return {"output": run_agent(input["input"])}
+# Async-compatible node
+async def invoke(input):
+    result = await run_agent_async(input["input"])
+    return {"output": result}
 
-# LangGraph wrapper
+# LangGraph setup
 graph = StateGraph()
 graph.add_node("agent", ToolNode(invoke))
 graph.set_entry_point("agent")
