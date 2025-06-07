@@ -1,54 +1,26 @@
 import os
-import asyncio
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import Runnable
+from langgraph.graph import END, StateGraph
 from langchain_openai import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
-from langchain.tools import Tool
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 
-# 1. Define tools
-def simple_tool(input_text: str) -> str:
-    return f"Echo: {input_text}"
-
-tools = [
-    Tool(
-        name="EchoTool",
-        func=simple_tool,
-        description="Echoes the input back verbatim"
-    )
-]
-
-# 2. Define the LLM (OpenAI Functions mode)
+# 1. Define the LLM
 llm = ChatOpenAI(
     temperature=0.2,
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# 3. Initialize the agent
-agent = initialize_agent(
-    tools=tools,
-    llm=llm,
-    agent=AgentType.OPENAI_FUNCTIONS,
-    verbose=True,
-    handle_parsing_errors=True
-)
-
-# 4. Async wrapper for calling the agent
-async def run_agent_async(input_text: str) -> str:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, agent.run, input_text)
-
-# 5. LangGraph-compatible invocation node
+# 2. Define a runnable node
 async def invoke(state: dict) -> dict:
     user_input = state.get("input", "")
-    response = await run_agent_async(user_input)
-    return {"output": response}
+    response = await llm.ainvoke([HumanMessage(content=user_input)])
+    return {"output": response.content}
 
-# 6. Build the LangGraph runtime
+# 3. Build LangGraph with the async invoke node
 graph = StateGraph()
-graph.add_node("agent", ToolNode(invoke))
+graph.add_node("agent", invoke)
 graph.set_entry_point("agent")
 graph.set_finish_point(END)
 
-# 7. Compile graph
+# 4. Compile the graph
 agent_graph = graph.compile()
