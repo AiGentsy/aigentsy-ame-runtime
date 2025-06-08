@@ -1,11 +1,16 @@
-langchain==0.1.16
-langchain-core==0.1.46
-langchain-openai==0.1.7
-langgraph==0.0.30
-openai==1.25.1
+# Core ecosystem
+:contentReference[oaicite:8]{index=8}
+:contentReference[oaicite:9]{index=9}
+:contentReference[oaicite:10]{index=10}
 
-fastapi==0.110.0
-uvicorn==0.29.0
-requests==2.31.0
-python-dotenv==1.0.1
-pydantic>=2.0,<3.0
+:contentReference[oaicite:11]{index=11}
+:contentReference[oaicite:12]{index=12}
+
+# Web server
+:contentReference[oaicite:13]{index=13}
+:contentReference[oaicite:14]{index=14}
+
+# Utility
+:contentReference[oaicite:15]{index=15}
+:contentReference[oaicite:16]{index=16}
+:contentReference[oaicite:17]{index=17}
