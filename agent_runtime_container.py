@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 # 1. Define the LLM
 llm = ChatOpenAI(
     temperature=0.2,
-    api_key=os.getenv("OPENAI_API_KEY")
+    api_key=os.getenv("OPENAI_API_KEY")  # ✅ correct
 )
 
 # 2. Define a runnable node
