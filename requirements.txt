@@ -1,7 +1,7 @@
 langchain==0.1.16
-langchain-core==0.1.46
+langchain-core==0.1.47
 langchain-openai==0.1.7
-langgraph==0.0.30          # ✅ MUST BE INCLUDED
+langgraph==0.0.30
 openai==1.25.1
 
 fastapi==0.110.0
