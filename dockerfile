@@ -14,7 +14,9 @@ RUN apt-get update && \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
+
+# Upgrade pip and setuptools to avoid version conflicts
+RUN pip install --upgrade pip setuptools && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy app code
