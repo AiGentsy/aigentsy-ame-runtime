@@ -1,16 +1,14 @@
 # Core ecosystem
-:contentReference[oaicite:8]{index=8}
-:contentReference[oaicite:9]{index=9}
-:contentReference[oaicite:10]{index=10}
-
-:contentReference[oaicite:11]{index=11}
-:contentReference[oaicite:12]{index=12}
+langchain==0.1.20
+langchain-core==0.1.52
+langchain-openai==0.0.6
+langgraph==0.0.30
+openai==1.30.1
 
 # Web server
-:contentReference[oaicite:13]{index=13}
-:contentReference[oaicite:14]{index=14}
+fastapi==0.111.0
+uvicorn==0.30.1
 
 # Utility
-:contentReference[oaicite:15]{index=15}
-:contentReference[oaicite:16]{index=16}
-:contentReference[oaicite:17]{index=17}
+python-dotenv==1.0.1
+requests==2.32.2
