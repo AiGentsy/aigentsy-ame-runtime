@@ -1,42 +1,42 @@
-# Python cache
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 *.pyc
 
-# Env files and secrets
+# Environment files and secrets
 .env
 .env.*
+*.sqlite3
+*.db
 
-# Local virtualenvs
+# Virtual environments
 .venv/
 env/
 venv/
 ENV/
 
-# IDEs and OS junk
+# IDE and editor junk
 .vscode/
 .idea/
 .DS_Store
 
-# Git and versioning
+# Git metadata
 .git
 .gitignore
 
-# Logs and runtime
+# Logs and runtime artifacts
 *.log
 *.pid
-*.sqlite3
-*.db
 
-# Docker artifacts
-__docker_build/
+# Docker artifacts and temp
+__docker_build__/
 *.tar
 *.bak
 *.swp
 
-# Node leftovers if present
+# JS/Node cruft (if frontend ever included)
 node_modules/
 dist/
 build/
