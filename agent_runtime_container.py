@@ -14,9 +14,9 @@ load_dotenv()
 
 # 1. Initialize LangChain LLM (OpenAI backend)
 llm = ChatOpenAI(
-    temperature=0.2,
-    model="gpt-3.5-turbo",
-    api_key=os.getenv("OPENAI_API_KEY")
+    model="gpt-4",
+    temperature=0.7,
+    openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
 # 2. Async node for LangGraph agent runtime
