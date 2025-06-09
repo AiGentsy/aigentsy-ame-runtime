@@ -4,10 +4,10 @@ python-dotenv==1.0.1
 
 langchain==0.1.20
 langchain-core==0.1.52
-langchain-openai==0.1.7         # ✅ this is the fix
 langchain-community==0.0.38
+langchain-openai==0.1.7         # ✅ includes fix for proxies bug
 langgraph==0.0.34
 
 openai==1.30.1
-tiktoken==0.6.0
+tiktoken==0.7.0                 # ✅ fix version mismatch
 pydantic==1.10.13
