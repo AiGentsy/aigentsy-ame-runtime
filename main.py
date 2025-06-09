@@ -35,3 +35,13 @@ async def invoke_agent(request: Request):
         return {"output": result.get("output", "No response")}
     except Exception as e:
         return {"error": str(e)}
+
+# Debug version check route
+@app.get("/debug-version")
+def debug_version():
+    import openai
+    import langchain_openai
+    return {
+        "openai_version": openai.__version__,
+        "langchain_openai_version": langchain_openai.__version__,
+    }
