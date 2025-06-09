@@ -1,11 +1,16 @@
+# Langchain ecosystem (fully compatible group)
 langchain==0.1.20
 langchain-core==0.1.52
-langchain-openai==0.1.4
+langchain-openai==0.0.6
 langgraph==0.0.30
 
-openai==1.25.0  # ✅ Update this line
+# OpenAI client (needs to support 'proxies' kwarg)
+openai==1.30.1  # ✅ works with langchain-openai 0.0.6
 
+# Web server
 fastapi==0.110.0
 uvicorn==0.29.0
+
+# Utility
 python-dotenv==1.0.1
 requests==2.31.0
