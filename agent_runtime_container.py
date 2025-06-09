@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, END
+from langgraph.graph.schema import StateSchema
 from langchain_openai import ChatOpenAI
 from functools import lru_cache
 
@@ -30,14 +31,19 @@ async def invoke(state: dict) -> dict:
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
-# 3. Reusable LangGraph builder with memoized cache
+# 3. Minimal state schema for LangGraph
+class AgentState(StateSchema):
+    input: str
+    output: str
+
+# 4. Reusable LangGraph builder with memoized cache
 @lru_cache
 def get_agent_graph() -> Runnable:
-    graph = StateGraph()
+    graph = StateGraph(AgentState)
     graph.add_node("agent", invoke)
     graph.set_entry_point("agent")
     graph.set_finish_point(END)
     return graph.compile()
 
-# 4. Compile once for fast import
+# 5. Compile once for fast import
 agent_graph = get_agent_graph()
