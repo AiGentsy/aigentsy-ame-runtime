@@ -1,9 +1,6 @@
-langchain==0.1.20
-langchain-openai==0.1.7
-langchain-core==0.1.52
-openai==1.27.0
-tiktoken>=0.7
-langgraph==0.0.34
-python-dotenv
-fastapi
-uvicorn
+langchain==0.1.13
+langchain-openai==0.0.8
+langchain-core==0.1.29
+openai==1.2.4
+langgraph==0.0.30
+tiktoken==0.6.0
