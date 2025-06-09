@@ -4,18 +4,22 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
+from functools import lru_cache
 
-# 0. Load environment variables (safe for Render/Vercel/Railway)
+# === MetaUpgrade25: Autonomous Learning Mesh | Agent Runtime Container ===
+# This module runs agent learning loops using LangGraph + OpenAI-compatible LLM
+
+# 0. Load environment variables (Render/Vercel/Railway safe)
 load_dotenv()
 
-# 1. Initialize OpenAI-compatible LLM via LangChain
+# 1. Initialize LangChain LLM (OpenAI backend)
 llm = ChatOpenAI(
     temperature=0.2,
-    model="gpt-3.5-turbo",  # or gpt-4 if desired and available
-    api_key=os.getenv("OPENAI_API_KEY")  # ✅ securely loaded
+    model="gpt-3.5-turbo",
+    api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# 2. Define an async handler node
+# 2. Async node for LangGraph agent runtime
 async def invoke(state: dict) -> dict:
     user_input = state.get("input", "")
     if not user_input:
@@ -26,11 +30,14 @@ async def invoke(state: dict) -> dict:
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
-# 3. Create LangGraph runtime with single node
-graph = StateGraph()
-graph.add_node("agent", invoke)
-graph.set_entry_point("agent")
-graph.set_finish_point(END)
+# 3. Reusable LangGraph builder with memoized cache
+@lru_cache
+def get_agent_graph() -> Runnable:
+    graph = StateGraph()
+    graph.add_node("agent", invoke)
+    graph.set_entry_point("agent")
+    graph.set_finish_point(END)
+    return graph.compile()
 
-# 4. Compile graph to runnable
-agent_graph = graph.compile()
+# 4. Compile once for fast import
+agent_graph = get_agent_graph()
