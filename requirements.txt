@@ -2,15 +2,15 @@ fastapi==0.110.2
 uvicorn==0.29.0
 python-dotenv==1.0.1
 
-# Langchain + ecosystem
+# LangChain & ecosystem
 langchain==0.1.20
 langchain-core==0.1.53
-langchain-openai==0.0.6
-langgraph==0.0.34
+langchain-openai==0.0.8          # ← fixed version
 langchain-community==0.0.38
+langgraph==0.0.34
 
-# OpenAI (must be >=1.10.0 per langchain-openai 0.0.6)
+# OpenAI compatibility
 openai==1.11.0
 
-# Optional tokenizer
+# Tokenizer
 tiktoken==0.6.0
