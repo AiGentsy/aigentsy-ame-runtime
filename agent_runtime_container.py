@@ -31,8 +31,9 @@ async def invoke(state: dict) -> dict:
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
-# 3. Minimal state schema for LangGraph
-class AgentState(StateSchema):
+from pydantic import BaseModel
+
+class AgentState(BaseModel):
     input: str
     output: str
 
