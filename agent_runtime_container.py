@@ -3,9 +3,9 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, END
-from langgraph.graph.schema import StateSchema
 from langchain_openai import ChatOpenAI
 from functools import lru_cache
+from pydantic import BaseModel
 
 # === MetaUpgrade25: Autonomous Learning Mesh | Agent Runtime Container ===
 # This module runs agent learning loops using LangGraph + OpenAI-compatible LLM
@@ -31,8 +31,7 @@ async def invoke(state: dict) -> dict:
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
-from pydantic import BaseModel
-
+# 3. Define LangGraph-compatible state using Pydantic
 class AgentState(BaseModel):
     input: str
     output: str
