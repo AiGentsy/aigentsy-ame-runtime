@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
 from functools import lru_cache
 from pydantic import BaseModel
+from typing import Optional
 
 # === MetaUpgrade25: Autonomous Learning Mesh | Agent Runtime Container ===
 # This module runs agent learning loops using LangGraph + OpenAI-compatible LLM
@@ -21,8 +22,8 @@ llm = ChatOpenAI(
 )
 
 # 2. Async node for LangGraph agent runtime
-async def invoke(state: dict) -> dict:
-    user_input = state.get("input", "")
+async def invoke(state: "AgentState") -> dict:
+    user_input = state.input or ""
     if not user_input:
         return {"output": "No input provided."}
     try:
@@ -32,8 +33,6 @@ async def invoke(state: dict) -> dict:
         return {"output": f"Agent error: {str(e)}"}
 
 # 3. Define LangGraph-compatible state using Pydantic
-from typing import Optional
-
 class AgentState(BaseModel):
     input: str
     output: Optional[str] = None
