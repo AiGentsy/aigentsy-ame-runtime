@@ -1,7 +1,7 @@
+openai==1.27.0
+langchain-openai==0.1.6
 langchain==0.1.13
 langchain-core==0.1.46
-langchain-openai==0.1.6
-openai==1.27.0
 pydantic==1.10.13
 langgraph==0.0.30
 tiktoken==0.5.2
