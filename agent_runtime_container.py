@@ -32,9 +32,11 @@ async def invoke(state: dict) -> dict:
         return {"output": f"Agent error: {str(e)}"}
 
 # 3. Define LangGraph-compatible state using Pydantic
+from typing import Optional
+
 class AgentState(BaseModel):
     input: str
-    output: str
+    output: Optional[str] = None
 
 # 4. Reusable LangGraph builder with memoized cache
 @lru_cache
