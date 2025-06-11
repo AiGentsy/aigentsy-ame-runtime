@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
 from functools import lru_cache
 from pydantic import BaseModel
@@ -42,7 +42,7 @@ def get_agent_graph() -> Runnable:
     graph = StateGraph(AgentState)
     graph.add_node("agent", invoke)
     graph.set_entry_point("agent")
-    graph.set_finish_point(END)
+    graph.set_finish_point("agent")  # ✅ FIXED: "END" cannot be a start node
     return graph.compile()
 
 # 5. Compile once for fast import
