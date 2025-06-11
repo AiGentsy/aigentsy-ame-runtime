@@ -17,7 +17,7 @@ load_dotenv()
 llm = ChatOpenAI(
     model="gpt-4",
     temperature=0.7,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
+    api_key=os.getenv("OPENAI_API_KEY")  # Correct key for langchain-openai 0.1.x
 )
 
 # 2. Async node for LangGraph agent runtime
