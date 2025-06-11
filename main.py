@@ -7,6 +7,7 @@ app = FastAPI()
 async def run_agent(request: Request):
     data = await request.json()
     user_input = data.get("input", "")
+    
     if not user_input:
         return {"error": "No input provided."}
     
