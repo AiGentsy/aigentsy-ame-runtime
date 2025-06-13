@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from venture_builder_agent import get_agent_graph
+
 agent_graph = get_agent_graph()
 
 app = FastAPI()
