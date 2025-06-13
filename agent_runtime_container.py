@@ -16,9 +16,10 @@ load_dotenv()
 
 # 1. Initialize LangChain LLM (OpenAI backend)
 llm = ChatOpenAI(
-    model="gpt-4",
+    model="openai/gpt-4o-2024-11-20",  # this model ID is OpenRouter's GPT-4o
     temperature=0.7,
-    api_key=os.getenv("OPENAI_API_KEY")  # Correct key for langchain-openai 0.1.x
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1"  # override base URL
 )
 
 # 2. Async node for LangGraph agent runtime
