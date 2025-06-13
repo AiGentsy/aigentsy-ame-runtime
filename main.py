@@ -13,6 +13,6 @@ async def run_agent(request: Request):
     if not user_input:
         return {"error": "No input provided."}
     
-    # Run the LangGraph agent
-    result = await agent_graph.ainvoke({"input": user_input})
-    return {"output": result.get("output", "No output returned.")}
+    # Run the LangGraph agent with memory initialized
+    result = await agent_graph.ainvoke({"input": user_input, "memory": []})
+    return {"output": result.get("output", "No output returned.")})
