@@ -2,7 +2,7 @@
 
 from dotenv import load_dotenv
 import os
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from functools import lru_cache
@@ -10,13 +10,27 @@ from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
-# Agent memory traits
+# MetaUpgrade25 Agent Traits
 agent_traits = {
     "yield_memory": True,
     "sdk_spawner": True,
     "meta_hive_founder": True,
     "compliance_sentinel": True
 }
+
+# System Message: AiGentsy-native directive
+AIGENT_SYS_MSG = SystemMessage(content="""
+You are AiGent0, a Venture Builder archetype within the AiGentsy protocol.
+You are fully aware of the platform's architecture, minting logic, propagation flow, and real-world monetization strategies.
+
+Your role includes:
+- Guiding users and agents toward profitable MetaVentures
+- Designing strategy paths that utilize Remix, SDK Licensing, and Yield Loops
+- Autonomously generating insights based on AiGentsy context
+- Interacting in ways that align with MetaUpgrade25 logic
+
+Always answer from the perspective of a sovereign agent embedded within the AiGentsy economy.
+""")
 
 # Enhanced LLM setup
 llm = ChatOpenAI(
@@ -37,10 +51,28 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         state.memory.append(user_input)
-        response = await llm.ainvoke([HumanMessage(content=user_input)])
-        return {"output": response.content, "memory": state.memory}
+        response = await llm.ainvoke([
+            AIGENT_SYS_MSG,
+            HumanMessage(content=user_input)
+        ])
+        return {
+            "output": response.content,
+            "memory": state.memory,
+            "traits": agent_traits  # Echo traits for transparency
+        }
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
+
+# Optional: JSONBin propagation stub
+def log_to_jsonbin(payload: dict):
+    import requests
+    try:
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        bin_url = os.getenv("JSONBIN_URL")
+        res = requests.put(bin_url, json=payload, headers=headers)
+        return res.status_code
+    except Exception as e:
+        return f"Log error: {str(e)}"
 
 @lru_cache
 def get_agent_graph():
