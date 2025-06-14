@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from venture_builder_agent import get_agent_graph
 
 # Initialize agent graph from MetaUpgrade25 archetype
@@ -6,6 +7,15 @@ agent_graph = get_agent_graph()
 
 # FastAPI app setup
 app = FastAPI()
+
+# === ✅ CORS Middleware ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or restrict to ["https://aigentsy.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/agent")
 async def run_agent(request: Request):
