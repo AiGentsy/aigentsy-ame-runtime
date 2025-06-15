@@ -22,5 +22,5 @@ COPY . .
 EXPOSE 8000
 
 # 7. Dynamic entrypoint for agent variant
-# Uses "main" as default if AGENT_ENTRYPOINT is not provided
-CMD ["sh", "-c", "uvicorn ${AGENT_ENTRYPOINT:-main}:app --host 0.0.0.0 --port 8000"]
+# ✅ Fix: Use full command inside single string for `sh -c` to interpret variables correctly
+CMD sh -c "uvicorn ${AGENT_ENTRYPOINT:-main}:app --host 0.0.0.0 --port 8000"
