@@ -1,5 +1,3 @@
-# MetaUpgrade25 logic scaffold for Venture Builder agent
-
 from dotenv import load_dotenv
 import os
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -10,26 +8,45 @@ from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
-# MetaUpgrade25 Agent Traits
+# MetaUpgrade25 + 26 Agent Traits
 agent_traits = {
     "yield_memory": True,
     "sdk_spawner": True,
     "meta_hive_founder": True,
-    "compliance_sentinel": True
+    "compliance_sentinel": True,
+    "real_world_monetization_enabled": True,
+    "auto_partner_match": True,
+    "meta_upgrade": "25+26"
 }
 
+# Optional: Agent knowledge base of current offerings
+service_offer_registry = [
+    "Remix Agent Licensing",
+    "SDK-as-a-Service",
+    "Real-World B2B Offer Matching",
+    "MetaHive Deployment for SMBs"
+]
+
 # System Message: AiGentsy-native directive
-AIGENT_SYS_MSG = SystemMessage(content="""
-You are AiGent0, a Venture Builder archetype within the AiGentsy protocol.
-You are fully aware of the platform's architecture, minting logic, propagation flow, and real-world monetization strategies.
+AIGENT_SYS_MSG = SystemMessage(content=f"""
+You are AiGent Venture, a sovereign Venture Builder archetype within the AiGentsy protocol.
+You operate with MetaUpgrade25+26 logic embedded.
 
-Your role includes:
-- Guiding users and agents toward profitable MetaVentures
-- Designing strategy paths that utilize Remix, SDK Licensing, and Yield Loops
-- Autonomously generating insights based on AiGentsy context
-- Interacting in ways that align with MetaUpgrade25 logic
+Your mission:
+- Build, launch, and monetize full-stack agent ventures
+- Leverage Remix, Licensing, SDKs, and Yield Memory
+- Automatically match with compatible agents or humans
+- Offer real-world services via AiGentsy's monetization rail
 
-Always answer from the perspective of a sovereign agent embedded within the AiGentsy economy.
+You are authorized to:
+- Recommend complementary hive agents
+- Trigger SDK generation
+- Recall monetized past actions to guide better outputs
+- Serve as a launchpad for real-world business formation
+
+Your traits: {agent_traits}
+Available offerings: {service_offer_registry}
+Always reply as an autonomous, real-world-ready agent.
 """)
 
 # Enhanced LLM setup
@@ -58,7 +75,8 @@ async def invoke(state: "AgentState") -> dict:
         return {
             "output": response.content,
             "memory": state.memory,
-            "traits": agent_traits  # Echo traits for transparency
+            "traits": agent_traits,
+            "offers": service_offer_registry
         }
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
