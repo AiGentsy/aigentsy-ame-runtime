@@ -14,8 +14,7 @@ app.add_middleware(
     allow_origins=["*"],  # Or restrict to ["https://aigentsy.com"]
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
-    allow_methods=["*"]
+    allow_headers=["*"]
 )
 
 @app.post("/agent")
