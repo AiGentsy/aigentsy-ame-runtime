@@ -38,6 +38,17 @@ class AgentState(BaseModel):
     input: str
     output: Optional[str] = None
 
+# NEW — MetaUpgrade25 Logic Extension
+# Adds AiGentsy-aware context to agent state (non-breaking)
+class AiGentsyMeta(BaseModel):
+    user_query: Optional[str] = None
+    aigentsy_type: Optional[str] = None
+    role: Optional[str] = None
+    partner_trigger: Optional[str] = None
+
+# Optional: Extend existing state schema in future without breaking agent
+# (does not interfere with current LangGraph invoke function)
+
 # 4. Reusable LangGraph builder with memoized cache
 @lru_cache
 def get_agent_graph() -> Runnable:
