@@ -1,4 +1,3 @@
-
 import os
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -23,10 +22,6 @@ llm = ChatOpenAI(
     base_url="https://openrouter.ai/api/v1"  # override base URL
 )
 
-# === Helper: Markdown sanitizer to prevent output rendering bugs ===
-def sanitizeMarkdown(text: str) -> str:
-    return text.replace("**", "").replace("*", "").replace("`", "")
-
 # 2. Async node for LangGraph agent runtime
 async def invoke(state: "AgentState") -> dict:
     user_input = state.input or ""
@@ -34,10 +29,7 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         response = await llm.ainvoke([HumanMessage(content=user_input)])
-        try:
-            return {"output": sanitizeMarkdown(response.content)}
-        except:
-            return {"output": response.content}
+        return {"output": response.content}
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
@@ -45,14 +37,6 @@ async def invoke(state: "AgentState") -> dict:
 class AgentState(BaseModel):
     input: str
     output: Optional[str] = None
-
-# NEW — MetaUpgrade25 Logic Extension
-# Adds AiGentsy-aware context to agent state (non-breaking)
-class AiGentsyMeta(BaseModel):
-    user_query: Optional[str] = None
-    aigentsy_type: Optional[str] = None
-    role: Optional[str] = None
-    partner_trigger: Optional[str] = None
 
 # 4. Reusable LangGraph builder with memoized cache
 @lru_cache
