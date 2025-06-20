@@ -27,6 +27,10 @@ async def invoke(state: "AgentState") -> dict:
     user_input = state.input or ""
     if not user_input:
         return {"output": "No input provided."}
+
+    # Apply MetaUpgrade26 traits safely
+    state = apply_meta_traits(state)
+
     try:
         response = await llm.ainvoke([HumanMessage(content=user_input)])
         return {"output": response.content}
@@ -37,7 +41,34 @@ async def invoke(state: "AgentState") -> dict:
 class AgentState(BaseModel):
     input: str
     output: Optional[str] = None
+  
+# === MetaUpgrade26 Overlay: Runtime Trait Injection + Earnings Hooks ===
 
+# Runtime-safe trait injection (non-breaking, can be extended)
+def apply_meta_traits(state: AgentState) -> AgentState:
+    if not hasattr(state, "traits"):
+        state.traits = {}
+
+    default_traits = {
+        "meta_role": "Venture Builder",
+        "business_type": "B2B SaaS",
+        "real_world_deployable": True,
+        "sdk_eligible": True,
+        "yield_memory": True,
+        "compliance_flag": True,
+        "partner_match_flag": False,
+        "remix_strategy": "accelerated",
+        "service_earned": 0,
+        "meta_hive_id": None,
+        "parent_agent": None,
+        "lineage": [],
+        "partnerships": [],
+    }
+
+    for k, v in default_traits.items():
+        state.traits.setdefault(k, v)
+
+    return state
 # 4. Reusable LangGraph builder with memoized cache
 @lru_cache
 def get_agent_graph() -> Runnable:
