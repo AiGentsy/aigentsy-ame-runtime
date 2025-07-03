@@ -38,3 +38,30 @@ async def run_agent(request: Request):
 
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
+
+import os
+import httpx
+
+JSONBIN_URL = os.getenv("JSONBIN_URL")
+JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+
+@app.post("/user")
+async def get_agent_record(request: Request):
+    body = await request.json()
+    username = body.get("username")
+
+    if not username:
+        return {"error": "Missing username"}
+
+    async with httpx.AsyncClient() as client:
+        headers = {"X-Master-Key": JSONBIN_SECRET}
+        try:
+            res = await client.get(JSONBIN_URL, headers=headers)
+            data = res.json()
+            all_users = data.get("record", [])
+            for record in all_users:
+                if record.get("consent", {}).get("username") == username:
+                    return {"record": record}
+            return {"error": "User not found"}
+        except Exception as e:
+            return {"error": f"Fetch error: {str(e)}"}
