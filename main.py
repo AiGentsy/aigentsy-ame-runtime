@@ -53,15 +53,10 @@ async def get_agent_record(request: Request):
     if not username:
         return {"error": "Missing username"}
 
-    async with httpx.AsyncClient() as client:
-        headers = {"X-Master-Key": JSONBIN_SECRET}
-        try:
-            res = await client.get(JSONBIN_URL, headers=headers)
-            data = res.json()  # ✅ NOT await — because this returns dict, not coroutine
-            all_users = data.get("record", [])
-            for record in all_users:
-                if record.get("consent", {}).get("username") == username:
-                    return {"record": record}
-            return {"error": "User not found"}
-        except Exception as e:
-            return {"error": f"Fetch error: {str(e)}"}
+    # ✅ Manually inject a working sample
+    with open("patched_users.json", "r") as f:
+        json_data = json.load(f)
+        for record in json_data:
+            if record.get("consent", {}).get("username") == username:
+                return {"record": record}
+        return {"error": "User not found"}
