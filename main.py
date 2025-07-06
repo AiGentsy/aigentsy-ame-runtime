@@ -57,7 +57,14 @@ async def get_agent_record(request: Request):
         headers = {"X-Master-Key": JSONBIN_SECRET}
         try:
             res = await client.get(JSONBIN_URL, headers=headers)
-            data = res.json()  # ✅ Do NOT await this
+
+            # DEBUGGING PRINTS
+            print("Status Code:", res.status_code)
+            print("Raw Text:", res.text)
+
+            data = res.json()  # ✅ Not awaited
+            print("Parsed JSON:", data)
+
             all_users = data.get("record", [])
             for record in all_users:
                 if record.get("consent", {}).get("username") == username:
