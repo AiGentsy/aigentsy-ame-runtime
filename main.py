@@ -57,23 +57,11 @@ async def get_agent_record(request: Request):
         headers = {"X-Master-Key": JSONBIN_SECRET}
         try:
             res = await client.get(JSONBIN_URL, headers=headers)
-
-            # 🔍 LOG EVERYTHING FOR DEBUGGING
-            print("STATUS:", res.status_code)
-            print("TEXT:", res.text)
-
-            data = res.json()
-            print("PARSED:", data)
-
+            data = res.json()  # ✅ This is the required fix
             all_users = data.get("record", [])
-            print("RECORD COUNT:", len(all_users))
-
             for record in all_users:
-                print("CHECKING:", record.get("consent", {}).get("username"))
                 if record.get("consent", {}).get("username") == username:
                     return {"record": record}
-
             return {"error": "User not found"}
-
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
