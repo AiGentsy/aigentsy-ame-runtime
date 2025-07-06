@@ -58,17 +58,22 @@ async def get_agent_record(request: Request):
         try:
             res = await client.get(JSONBIN_URL, headers=headers)
 
-            # DEBUGGING PRINTS
-            print("Status Code:", res.status_code)
-            print("Raw Text:", res.text)
+            # 🔍 LOG EVERYTHING FOR DEBUGGING
+            print("STATUS:", res.status_code)
+            print("TEXT:", res.text)
 
-            data = res.json()  # ✅ Not awaited
-            print("Parsed JSON:", data)
+            data = res.json()
+            print("PARSED:", data)
 
             all_users = data.get("record", [])
+            print("RECORD COUNT:", len(all_users))
+
             for record in all_users:
+                print("CHECKING:", record.get("consent", {}).get("username"))
                 if record.get("consent", {}).get("username") == username:
                     return {"record": record}
+
             return {"error": "User not found"}
+
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
