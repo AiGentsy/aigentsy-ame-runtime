@@ -45,6 +45,8 @@ import httpx
 JSONBIN_URL = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 
+import httpx
+
 @app.post("/user")
 async def get_agent_record(request: Request):
     body = await request.json()
@@ -53,10 +55,16 @@ async def get_agent_record(request: Request):
     if not username:
         return {"error": "Missing username"}
 
-    # ✅ Manually inject a working sample
-    with open("patched_users.json", "r") as f:
-        json_data = json.load(f)
-        for record in json_data:
-            if record.get("consent", {}).get("username") == username:
-                return {"record": record}
-        return {"error": "User not found"}
+    async with httpx.AsyncClient() as client:
+        headers = {"X-Master-Key": JSONBIN_SECRET}
+        try:
+            res = await client.get(JSONBIN_URL, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            all_users = data.get("record", [])
+            for record in all_users:
+                if record.get("consent", {}).get("username") == username:
+                    return {"record": record}
+            return {"error": "User not found"}
+        except Exception as e:
+            return {"error": f"Fetch error: {str(e)}"}
