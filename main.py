@@ -62,9 +62,17 @@ async def get_agent_record(request: Request):
             res.raise_for_status()
             data = res.json()
             all_users = data.get("record", [])
+
             for record in all_users:
-                if record.get("consent", {}).get("username") == username:
+                consent_username = record.get("consent", {}).get("username")
+                direct_username = record.get("username")
+
+                if consent_username == username or direct_username == username:
+                    # Normalize username in response
+                    record["username"] = consent_username or direct_username
                     return {"record": record}
+
             return {"error": "User not found"}
+
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
