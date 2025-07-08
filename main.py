@@ -50,6 +50,18 @@ import httpx
 def normalize_user_record(record):
     consent = record.get("consent", {})
 
+    # Inject fallback team if missing
+    default_team = {
+        "CTO": "AiGent SDK",
+        "CMO": "AiGent Growth",
+        "CLO": "AiGent Remix",
+        "CFO": "AiGent0"
+    }
+
+    record_team = record.get("team", {})
+    for role in default_team:
+        record_team.setdefault(role, default_team[role])
+
     return {
         "id": record.get("id", ""),
         "username": consent.get("username") or record.get("username", ""),
@@ -65,7 +77,7 @@ def normalize_user_record(record):
         "realm": record.get("realm", {"name": "Unassigned Realm"}),
         "activity": record.get("activity", {}),
         "stats": record.get("stats", {"labels": [], "values": []}),
-        "team": record.get("team", {}),
+        "team": record_team,
         "wallet": record.get("wallet", {"aigx": 0, "staked": 0}),
         "achievements": record.get("achievements", []),
         "referrals": record.get("referrals", {"count": 0}),
