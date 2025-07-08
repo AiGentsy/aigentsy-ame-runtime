@@ -47,6 +47,32 @@ JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 
 import httpx
 
+def normalize_user_record(record):
+    consent = record.get("consent", {})
+
+    return {
+        "id": record.get("id", ""),
+        "username": consent.get("username") or record.get("username", ""),
+        "traits": record.get("traits", []),
+        "vaultAccess": record.get("vaultAccess", False),
+        "remixUnlocked": record.get("remixUnlocked", False),
+        "sdkEligible": record.get("sdkEligible", False),
+        "licenseUnlocked": record.get("licenseUnlocked", False),
+        "mintTime": record.get("mintTime", ""),
+        "runtimeURL": record.get("runtimeURL", ""),
+        "metaVenture": record.get("metaVenture", {}),
+        "yield": record.get("yield", 0),
+        "realm": record.get("realm", {"name": "Unassigned Realm"}),
+        "activity": record.get("activity", {}),
+        "stats": record.get("stats", {"labels": [], "values": []}),
+        "team": record.get("team", {}),
+        "wallet": record.get("wallet", {"aigx": 0, "staked": 0}),
+        "achievements": record.get("achievements", []),
+        "referrals": record.get("referrals", {"count": 0}),
+        "status": record.get("status", "idle"),
+        "agentType": record.get("agentType", "AiGent"),
+    }
+
 @app.post("/user")
 async def get_agent_record(request: Request):
     body = await request.json()
@@ -68,9 +94,8 @@ async def get_agent_record(request: Request):
                 direct_username = record.get("username")
 
                 if consent_username == username or direct_username == username:
-                    # Normalize username in response
-                    record["username"] = consent_username or direct_username
-                    return {"record": record}
+                    normalized = normalize_user_record(record)
+                    return {"record": normalized}
 
             return {"error": "User not found"}
 
