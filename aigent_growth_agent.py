@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from aigent_growth_metamatch import run_metamatch_campaign
 import os
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
@@ -94,9 +95,13 @@ def log_to_jsonbin(payload: dict):
         return f"Log error: {str(e)}"
 
 @lru_cache
+
+@lru_cache
 def get_agent_graph():
     graph = StateGraph(AgentState)
+    graph.add_node("metamatch", metamatch)
     graph.add_node("agent", invoke)
-    graph.set_entry_point("agent")
+    graph.set_entry_point("metamatch")
+    graph.add_edge("metamatch", "agent")
     graph.set_finish_point("agent")
     return graph.compile()
