@@ -113,3 +113,39 @@ async def get_agent_record(request: Request):
 
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
+
+@app.post("/log-meta-match")
+async def log_meta_match_event(request: Request):
+    try:
+        body = await request.json()
+        match_source = body.get("matchSource")
+
+        if not match_source:
+            return {"error": "Missing matchSource (username required)"}
+
+        async with httpx.AsyncClient() as client:
+            headers = {"X-Master-Key": JSONBIN_SECRET}
+            res = await client.get(JSONBIN_URL, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            all_users = data.get("record", [])
+
+            for i, record in enumerate(all_users):
+                username = record.get("consent", {}).get("username") or record.get("username")
+                if username == match_source:
+                    if "metaMatchEvents" not in record:
+                        record["metaMatchEvents"] = []
+
+                    body["timestamp"] = body.get("timestamp") or str(datetime.utcnow().isoformat())
+                    record["metaMatchEvents"].append(body)
+
+                    updated_data = {"record": all_users}
+                    put_res = await client.put(JSONBIN_URL, headers=headers, json=updated_data)
+                    put_res.raise_for_status()
+                    return {"status": "✅ Match event logged", "match": body}
+
+            return {"error": "User not found in JSONBin"}
+
+    except Exception as e:
+        return {"error": f"MetaMatch logging error: {str(e)}"}
+
