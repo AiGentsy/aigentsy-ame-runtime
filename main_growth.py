@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from aigent_growth_metamatch import run_metamatch_campaign
 from aigent_growth_agent import get_agent_graph
 
 # Initialize agent graph from MetaUpgrade25 archetype
@@ -39,20 +38,3 @@ async def run_agent(request: Request):
 
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
-
-
-
-@app.post("/launch-metamatch")
-async def launch_metamatch(request: Request):
-    try:
-        data = await request.json()
-        user_data = data.get("user_data")
-
-        if not user_data or not user_data.get("username"):
-            return {"error": "Missing or invalid user_data."}
-
-        run_metamatch_campaign(user_data)
-        return {"status": "✅ MetaMatch campaign launched."}
-
-    except Exception as e:
-        return {"error": f"MetaMatch error: {str(e)}"}
