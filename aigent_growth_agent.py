@@ -88,6 +88,58 @@ async def invoke(state: "AgentState") -> dict:
             except Exception as e:
                 print(f"MetaMatch error: {str(e)}")
 
+        
+
+        # 💸 Revenue Split Logger
+        def log_rev_split(username, matched_partner, source="metamatch", yield_share=0.3):
+            try:
+                from datetime import datetime
+                import requests
+                payload = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "username": username,
+                    "matched_with": matched_partner,
+                    "source": source,
+                    "yield_share": yield_share
+                }
+                res = requests.post(os.getenv("REV_SPLIT_LOG_URL"), json=payload, headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")})
+                print("✅ RevSplit logged:", res.status_code)
+            except Exception as e:
+                print("⚠️ RevSplit error:", str(e))
+
+        # 🛰 External Proposal Trigger
+        def trigger_outbound_proposal():
+            try:
+                from aigent_growth_metamatch import run_outbound_proposal
+                if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
+                    run_outbound_proposal()
+            except Exception as e:
+                print("⚠️ Outbound proposal error:", str(e))
+
+        # 🧠 Match Client Request Trigger
+        if any(phrase in user_input.lower() for phrase in [
+            "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
+        ]):
+            try:
+                from aigent_growth_metamatch import run_metamatch_campaign
+                if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
+                    print("🧠 MetaMatch triggered...")
+                    matches = run_metamatch_campaign({
+                        "username": "growth_default",
+                        "traits": ["growth", "autonomous", "aigentsy", "founder"],
+                        "prebuiltKit": "universal"
+                    })
+                    for match in matches or []:
+                        log_rev_split("growth_default", match.get("username", "unknown"))
+                else:
+                    print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
+            except Exception as e:
+                print(f"MetaMatch error: {str(e)}")
+
+            # Optional outbound trigger
+            if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
+                trigger_outbound_proposal()
+
         state.memory.append(user_input)
         response = await llm.ainvoke([
             AIGENT_SYS_MSG,
