@@ -69,7 +69,7 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         
-        traits = ["growth", "autonomous", "aigentsy", "founder"]  # default traits fallback
+        traits = agent_traits.get("traits", []) if isinstance(agent_traits, dict) else []
 
         # ✅ Weighted match preferences for targeting
         match_preferences = {
