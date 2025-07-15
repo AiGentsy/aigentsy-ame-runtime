@@ -69,7 +69,7 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         
-        
+        traits = ["growth", "autonomous", "aigentsy", "founder"]  # default traits fallback
 
         # ✅ Weighted match preferences for targeting
         match_preferences = {
