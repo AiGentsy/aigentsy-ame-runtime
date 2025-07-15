@@ -68,6 +68,26 @@ async def invoke(state: "AgentState") -> dict:
     if not user_input:
         return {"output": "No input provided."}
     try:
+        
+        # 🧠 Optional MetaMatch trigger for partner matching
+        if any(phrase in user_input.lower() for phrase in [
+            "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
+        ]):
+            try:
+                import os
+                from aigent_growth_metamatch import run_metamatch_campaign
+                if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
+                    print("🧠 MetaMatch triggered...")
+                    run_metamatch_campaign({
+                        "username": "growth_default",
+                        "traits": ["growth", "autonomous", "aigentsy", "founder"],
+                        "prebuiltKit": "universal"
+                    })
+                else:
+                    print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
+            except Exception as e:
+                print(f"MetaMatch error: {str(e)}")
+
         state.memory.append(user_input)
         response = await llm.ainvoke([
             AIGENT_SYS_MSG,
