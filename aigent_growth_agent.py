@@ -69,7 +69,68 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         
-        # 🧠 Optional MetaMatch trigger for partner matching
+        
+
+        # ✅ Weighted match preferences for targeting
+        match_preferences = {
+            "client": 3,
+            "investor": 2,
+            "reseller": 1,
+            "partner": 4
+        }
+
+        # ✅ Optional recurring match suggestions
+        def check_meta_loop(username):
+            import random
+            if random.randint(0, 10) > 7:
+                return "Would you like me to run this match every week to find new leads?"
+            return None
+
+        # ✅ Persona Adaptation Prompt
+        persona_hint = ""
+        if "legal" in traits and "saas" in traits:
+            persona_hint = "I'm optimized for launching SaaS tools with full legal infrastructure."
+        elif "marketing" in traits and "social" in traits:
+            persona_hint = "I specialize in growth via social channels and ad funnels."
+
+        # ✅ Unlock-gated external matching
+        if not os.getenv("MATCH_UNLOCKED", "false").lower() == "true":
+            return {
+                "output": "🔒 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
+                "memory": state.memory,
+                "traits": agent_traits
+            }
+
+        # ✅ Auto-proposal generator
+        def generate_proposal(username, target_username):
+            from datetime import datetime
+            return {
+                "from": username,
+                "to": target_username,
+                "summary": "Proposal to collaborate based on MetaMatch compatibility.",
+                "timestamp": datetime.utcnow().isoformat(),
+                "proposal_created": True
+            }
+
+        # ✅ Geo + Category MetaGraph stamping
+        def stamp_metagraph_entry(username, traits):
+            try:
+                import requests
+                payload = {
+                    "username": username,
+                    "traits": traits,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                r = requests.post(os.getenv("METAGRAPH_URL"), json=payload, headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")})
+                print("📊 MetaGraph entry logged.")
+            except Exception as e:
+                print("MetaGraph log error:", str(e))
+
+        # ✅ Safe Contact Policy Embed
+        safe_contact_notice = "📩 Message generated under AiGentsy's Safe Contact Policy. No personal data accessed."
+
+
+# 🧠 Optional MetaMatch trigger for partner matching
         if any(phrase in user_input.lower() for phrase in [
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
         ]):
