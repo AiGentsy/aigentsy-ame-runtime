@@ -204,38 +204,39 @@ async def invoke(state: "AgentState") -> dict:
         state.memory.append(user_input)
         
         if "what are you optimized for" in user_input.lower():
-            traits = ["founder"]
-            kits = []
-            region = "Global"
-
             try:
                 from aigent_growth_metamatch import get_user_record
                 record = get_user_record("growth_default")
-                traits = record.get("traits", traits)
-                kits = record.get("kits", kits)
-                region = record.get("region", region)
+                traits = record.get("traits", ["growth", "aigentsy", "autonomous"])
+                kits = record.get("kits", [])
+                region = record.get("region", "Global")
             except Exception as e:
-                print("Trait/kits/region fetch error:", str(e))
+                traits = ["growth", "aigentsy", "autonomous"]
+                kits = []
+                region = "Global"
 
-            persona = "I'm optimized for"
+            summary = "I'm optimized for"
             if "legal" in traits or "Legal Kit" in kits:
-                persona += " legal-backed ventures,"
+                summary += " legal-backed ventures,"
             if "saas" in traits or "SaaS Kit" in kits:
-                persona += " SaaS deployment,"
+                summary += " SaaS tools,"
             if "branding" in traits or "Branding Pack" in kits:
-                persona += " branded launches,"
-            if persona.endswith(","):
-                persona = persona[:-1]
-            persona += f" — operating primarily in {region}."
-
+                summary += " branded launches,"
+            if "marketing" in traits or "Marketing Kit" in kits:
+                summary += " marketing campaigns,"
+            if "social" in traits or "Social Kit" in kits:
+                summary += " influencer campaigns,"
+            if summary.endswith(","):
+                summary = summary[:-1]
+            summary += f" — with primary reach in {region}."
             return {
-                "output": persona,
+                "output": summary,
                 "memory": state.memory,
                 "traits": traits,
                 "kits": kits,
                 "region": region
             }
-    
+
 response = await llm.ainvoke([
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
