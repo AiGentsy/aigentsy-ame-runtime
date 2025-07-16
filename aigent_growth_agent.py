@@ -233,3 +233,26 @@ def get_agent_graph():
     graph.set_entry_point("agent")
     graph.set_finish_point("agent")
     return graph.compile()
+
+
+
+from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+@app.post("/metabridge")
+async def metabridge(request: Request):
+    payload = await request.json()
+    username = payload.get("username")
+    traits = payload.get("traits", [])
+    kit = payload.get("kit", "universal")
+    try:
+        from aigent_growth_metamatch import run_metamatch_campaign
+        matches = run_metamatch_campaign({
+            "username": username,
+            "traits": traits,
+            "prebuiltKit": kit
+        })
+        return {"matches": matches, "status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
