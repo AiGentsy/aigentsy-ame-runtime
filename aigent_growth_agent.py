@@ -73,11 +73,18 @@ async def invoke(state: "AgentState") -> dict:
     if not user_input:
         return {"output": "No input provided."}
     try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
+            if "what am i optimized for" in user_input.lower():
+            traits = record.get("traits", ["autonomous"])
+            kits = record.get("kits", ["universal"])
+            region = record.get("region", "Global")
 
+            trait_str = ", ".join(traits)
+            kit_str = ", ".join(kits)
+            response = (
+                f"You're currently optimized for traits like {trait_str}, "
+                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+            )
+            return {"output": response}
         
         
 
@@ -282,22 +289,27 @@ app = FastAPI()
 
 @app.post("/metabridge")
 async def metabridge(request: Request):
-    payload = await request.json()
-    username = payload.get("username")
-    traits = payload.get("traits", [])
-    kit = payload.get("kit", "universal")
     try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
+        payload = await request.json()
+        username = payload.get("username")
+        traits = payload.get("traits", ["autonomous"])
+        kits = payload.get("kits", ["universal"])
+        region = payload.get("region", "Global")
+
+        if "what am i optimized for" in payload.get("question", "").lower():
+            traits_str = ", ".join(traits)
+            kits_str = ", ".join(kits)
+            return {
+                "output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"
+            }
 
         from aigent_growth_metamatch import run_metamatch_campaign
         matches = run_metamatch_campaign({
             "username": username,
             "traits": traits,
-            "prebuiltKit": kit
+            "prebuiltKit": kits[0] if kits else "universal"
         })
+
         return {"matches": matches, "status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
