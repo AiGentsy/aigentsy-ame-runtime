@@ -74,17 +74,17 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
             if "what am i optimized for" in user_input.lower():
-            traits = record.get("traits", ["autonomous"])
-            kits = record.get("kits", ["universal"])
-            region = record.get("region", "Global")
+    traits = record.get("traits", ["autonomous"])
+    kits = record.get("kits", ["universal"])
+    region = record.get("region", "Global")
 
-            trait_str = ", ".join(traits)
-            kit_str = ", ".join(kits)
-            response = (
-                f"You're currently optimized for traits like {trait_str}, "
-                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
-            )
-            return {"output": response}
+    trait_str = ", ".join(traits)
+    kit_str = ", ".join(kits)
+    response = (
+        f"You're currently optimized for traits like {trait_str}, "
+        f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+    )
+    return {"output": response}
         
         
 
