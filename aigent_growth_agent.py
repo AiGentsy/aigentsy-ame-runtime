@@ -202,7 +202,41 @@ async def invoke(state: "AgentState") -> dict:
                 trigger_outbound_proposal()
 
         state.memory.append(user_input)
-        response = await llm.ainvoke([
+        
+        if "what are you optimized for" in user_input.lower():
+            traits = ["founder"]
+            kits = []
+            region = "Global"
+
+            try:
+                from aigent_growth_metamatch import get_user_record
+                record = get_user_record("growth_default")
+                traits = record.get("traits", traits)
+                kits = record.get("kits", kits)
+                region = record.get("region", region)
+            except Exception as e:
+                print("Trait/kits/region fetch error:", str(e))
+
+            persona = "I'm optimized for"
+            if "legal" in traits or "Legal Kit" in kits:
+                persona += " legal-backed ventures,"
+            if "saas" in traits or "SaaS Kit" in kits:
+                persona += " SaaS deployment,"
+            if "branding" in traits or "Branding Pack" in kits:
+                persona += " branded launches,"
+            if persona.endswith(","):
+                persona = persona[:-1]
+            persona += f" — operating primarily in {region}."
+
+            return {
+                "output": persona,
+                "memory": state.memory,
+                "traits": traits,
+                "kits": kits,
+                "region": region
+            }
+    
+response = await llm.ainvoke([
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
         ])
