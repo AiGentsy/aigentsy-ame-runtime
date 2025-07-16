@@ -64,7 +64,7 @@ class AgentState(BaseModel):
     memory: list[str] = []
 
 async def invoke(state: "AgentState") -> dict:
-    user_input = state.input or ""user_input = state.input or ""
+    user_input = state.input or ""
 
         if "what am i optimized for" in user_input.lower():
             traits = record.get("traits", ["autonomous"])
