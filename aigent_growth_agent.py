@@ -204,28 +204,25 @@ async def invoke(state: "AgentState") -> dict:
         
 
         # ✅ Trait/Kit/Region Awareness for Optimized Response
-        if "what am i optimized for" in user_input.lower():
-    record = {
-        "traits": list(agent_traits.keys()),
-        "kits": ["universal"],
-        "region": "Global"
-    }
-    traits_fallback = record.get("traits", ["autonomous", "growth"])
-    kits_fallback = record.get("kits", ["universal"])
-    region = record.get("region", "Global")
-    trait_str = ", ".join(traits_fallback)
-    kit_str = ", ".join(kits_fallback)
-    response_text = (
-        f"You're currently optimized for traits like {trait_str}, "
-        f"equipped with the {kit_str} kit(s), and operating in the {region} region."
-    )
-    return {
-        "output": response_text,
-        "memory": state.memory,
-        "traits": traits_fallback,
-        "kits": kits_fallback,
-        "region": region
-    }
+                if "what am i optimized for" in user_input.lower():
+            # Safe fallback values directly using known data structures
+            traits_fallback = list(agent_traits.keys())
+            kits_fallback = ["universal"]
+            region = "Global"
+
+            trait_str = ", ".join(traits_fallback)
+            kit_str = ", ".join(kits_fallback)
+            response_text = (
+                f"You're currently optimized for traits like {trait_str}, "
+                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+            )
+            return {
+                "output": response_text,
+                "memory": state.memory,
+                "traits": traits_fallback,
+                "kits": kits_fallback,
+                "region": region
+            }
 
         response = await llm.ainvoke([
             AIGENT_SYS_MSG,
