@@ -87,7 +87,8 @@ async def invoke(state: "AgentState") -> dict:
 
         # ✅ Persona Adaptation Prompt
         persona_hint = ""
-        if "legal" in traits and "saas" in traits:
+       user_traits = agent_traits.get("traits", [])
+if "legal" in user_traits and "saas" in user_traits:
             persona_hint = "I'm optimized for launching SaaS tools with full legal infrastructure."
         elif "marketing" in traits and "social" in traits:
             persona_hint = "I specialize in growth via social channels and ad funnels."
