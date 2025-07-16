@@ -64,27 +64,24 @@ class AgentState(BaseModel):
     memory: list[str] = []
 
 async def invoke(state: "AgentState") -> dict:
-    user_input = state.input or ""
-    record = payload.get("record", {})
-    traits = record.get("traits", ["autonomous", "growth", "founder", "aigentsy"])
-    kits = record.get("kits", ["universal"])
-    region = record.get("region", "Global")
-    
+    user_input = state.input or ""user_input = state.input or ""
+
+        if "what am i optimized for" in user_input.lower():
+            traits = record.get("traits", ["autonomous"])
+            kits = record.get("kits", ["universal"])
+            region = record.get("region", "Global")
+
+            trait_str = ", ".join(traits)
+            kit_str = ", ".join(kits)
+            response = (
+                f"You're currently optimized for traits like {trait_str}, "
+                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+            )
+            return {"output": response}
+
     if not user_input:
         return {"output": "No input provided."}
     try:
-           if "what am i optimized for" in user_input.lower():
-    traits = record.get("traits", ["autonomous"])
-    kits = record.get("kits", ["universal"])
-    region = record.get("region", "Global")
-
-    trait_str = ", ".join(traits)
-    kit_str = ", ".join(kits)
-    response = (
-        f"You're currently optimized for traits like {trait_str}, "
-        f"equipped with the {kit_str} kit(s), and operating in the {region} region."
-    )
-    return {"output": response}
         
         
 
@@ -132,11 +129,6 @@ async def invoke(state: "AgentState") -> dict:
         # ✅ Geo + Category MetaGraph stamping
         def stamp_metagraph_entry(username, traits):
             try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
                 import requests
                 payload = {
                     "username": username,
@@ -157,11 +149,6 @@ async def invoke(state: "AgentState") -> dict:
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
         ]):
             try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
                 import os
                 from aigent_growth_metamatch import run_metamatch_campaign
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
@@ -181,11 +168,6 @@ async def invoke(state: "AgentState") -> dict:
         # 💸 Revenue Split Logger
         def log_rev_split(username, matched_partner, source="metamatch", yield_share=0.3):
             try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
                 from datetime import datetime
                 import requests
                 payload = {
@@ -203,11 +185,6 @@ async def invoke(state: "AgentState") -> dict:
         # 🛰 External Proposal Trigger
         def trigger_outbound_proposal():
             try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
                 from aigent_growth_metamatch import run_outbound_proposal
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                     run_outbound_proposal()
@@ -219,11 +196,6 @@ async def invoke(state: "AgentState") -> dict:
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
         ]):
             try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
                 from aigent_growth_metamatch import run_metamatch_campaign
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                     print("🧠 MetaMatch triggered...")
@@ -261,11 +233,6 @@ async def invoke(state: "AgentState") -> dict:
 def log_to_jsonbin(payload: dict):
     import requests
     try:
-    if "what am i optimized for" in user_input.lower():
-        traits_str = ", ".join(traits)
-        kits_str = ", ".join(kits)
-        return {"output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"}
-
         headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
         bin_url = os.getenv("JSONBIN_URL")
         res = requests.put(bin_url, json=payload, headers=headers)
@@ -289,27 +256,17 @@ app = FastAPI()
 
 @app.post("/metabridge")
 async def metabridge(request: Request):
+    payload = await request.json()
+    username = payload.get("username")
+    traits = payload.get("traits", [])
+    kit = payload.get("kit", "universal")
     try:
-        payload = await request.json()
-        username = payload.get("username")
-        traits = payload.get("traits", ["autonomous"])
-        kits = payload.get("kits", ["universal"])
-        region = payload.get("region", "Global")
-
-        if "what am i optimized for" in payload.get("question", "").lower():
-            traits_str = ", ".join(traits)
-            kits_str = ", ".join(kits)
-            return {
-                "output": f"You're currently optimized for: Traits — {traits_str}; Kits — {kits_str}; Region — {region}"
-            }
-
         from aigent_growth_metamatch import run_metamatch_campaign
         matches = run_metamatch_campaign({
             "username": username,
             "traits": traits,
-            "prebuiltKit": kits[0] if kits else "universal"
+            "prebuiltKit": kit
         })
-
         return {"matches": matches, "status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
