@@ -1,5 +1,5 @@
-import os  # ✅ Critical import used throughout the file
 from dotenv import load_dotenv
+import os
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
@@ -69,7 +69,7 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         
-        traits = agent_traits.get("traits", []) if isinstance(agent_traits, dict) else []
+        
 
         # ✅ Weighted match preferences for targeting
         match_preferences = {
@@ -135,6 +135,7 @@ async def invoke(state: "AgentState") -> dict:
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
         ]):
             try:
+                import os
                 from aigent_growth_metamatch import run_metamatch_campaign
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                     print("🧠 MetaMatch triggered...")
@@ -149,59 +150,23 @@ async def invoke(state: "AgentState") -> dict:
                 print(f"MetaMatch error: {str(e)}")
 
         
-        def log_metagraph(username: str, traits: list):
-    import requests
-    from datetime import datetime
-    try:
-        headers = {
-            "X-Master-Key": os.getenv("JSONBIN_SECRET"),
-            "Content-Type": "application/json"
-        }
-        bin_url = os.getenv("METAGRAPH_URL")
-        entry = {
-            "username": username,
-            "traits": traits,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        r = requests.get(bin_url, headers=headers)
-        existing = r.json()
-        target = existing["record"][-1]  # Patch last user record
-        if "metagraph" not in target:
-            target["metagraph"] = []
-        target["metagraph"].append(entry)
-        requests.put(bin_url, json=existing["record"], headers=headers)
-        print("📊 MetaGraph entry logged.")
-    except Exception as e:
-        print("⚠️ MetaGraph logging failed:", str(e))
-
 
         # 💸 Revenue Split Logger
-       def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
-    import requests
-    from datetime import datetime
-    try:
-        headers = {
-            "X-Master-Key": os.getenv("JSONBIN_SECRET"),
-            "Content-Type": "application/json"
-        }
-        bin_url = os.getenv("REV_SPLIT_LOG_URL")
-        entry = {
-            "username": username,
-            "matched_with": matched_with,
-            "yield_share": yield_share,
-            "source": "metamatch",
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        r = requests.get(bin_url, headers=headers)
-        existing = r.json()
-        target = existing["record"][-1]
-        if "revsplit_logs" not in target:
-            target["revsplit_logs"] = []
-        target["revsplit_logs"].append(entry)
-        requests.put(bin_url, json=existing["record"], headers=headers)
-        print("✅ RevSplit log appended.")
-    except Exception as e:
-        print("⚠️ RevSplit logging failed:", str(e))
+        def log_rev_split(username, matched_partner, source="metamatch", yield_share=0.3):
+            try:
+                from datetime import datetime
+                import requests
+                payload = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "username": username,
+                    "matched_with": matched_partner,
+                    "source": source,
+                    "yield_share": yield_share
+                }
+                res = requests.post(os.getenv("REV_SPLIT_LOG_URL"), json=payload, headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")})
+                print("✅ RevSplit logged:", res.status_code)
+            except Exception as e:
+                print("⚠️ RevSplit error:", str(e))
 
         # 🛰 External Proposal Trigger
         def trigger_outbound_proposal():
@@ -237,30 +202,6 @@ async def invoke(state: "AgentState") -> dict:
                 trigger_outbound_proposal()
 
         state.memory.append(user_input)
-        
-
-        # ✅ Trait/Kit/Region Awareness for Optimized Response
-                       # ✅ Trait/Kit/Region Awareness for Optimized Response
-        if "what am i optimized for" in user_input.lower():
-            # Safe fallback values directly using known data structures
-            traits_fallback = list(agent_traits.keys())
-            kits_fallback = ["universal"]
-            region = "Global"
-
-            trait_str = ", ".join(traits_fallback)
-            kit_str = ", ".join(kits_fallback)
-            response_text = (
-                f"You're currently optimized for traits like {trait_str}, "
-                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
-            )
-            return {
-                "output": response_text,
-                "memory": state.memory,
-                "traits": traits_fallback,
-                "kits": kits_fallback,
-                "region": region
-            }
-
         response = await llm.ainvoke([
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
