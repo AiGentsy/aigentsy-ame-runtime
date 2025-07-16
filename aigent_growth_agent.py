@@ -5,6 +5,7 @@ from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from functools import lru_cache
 from langchain_openai import ChatOpenAI
+from fastapi import FastAPI, Request
 
 load_dotenv()
 
@@ -68,10 +69,8 @@ async def invoke(state: "AgentState") -> dict:
     if not user_input:
         return {"output": "No input provided."}
     try:
-        # ✅ Extract traits safely from agent_traits dict
         traits = list(agent_traits.keys()) if isinstance(agent_traits, dict) else []
 
-        # ✅ Weighted match preferences for targeting
         match_preferences = {
             "client": 3,
             "investor": 2,
@@ -79,29 +78,25 @@ async def invoke(state: "AgentState") -> dict:
             "partner": 4
         }
 
-        # ✅ Optional recurring match suggestions
         def check_meta_loop(username):
             import random
             if random.randint(0, 10) > 7:
                 return "Would you like me to run this match every week to find new leads?"
             return None
 
-        # ✅ Persona Adaptation Prompt
         persona_hint = ""
         if "legal" in traits and "saas" in traits:
             persona_hint = "I'm optimized for launching SaaS tools with full legal infrastructure."
         elif "marketing" in traits and "social" in traits:
             persona_hint = "I specialize in growth via social channels and ad funnels."
 
-        # ✅ Unlock-gated external matching
         if not os.getenv("MATCH_UNLOCKED", "false").lower() == "true":
             return {
-                "output": "🔒 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
+                "output": "\ud83d\udd12 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
                 "memory": state.memory,
                 "traits": agent_traits
             }
 
-        # ✅ Auto-proposal generator
         def generate_proposal(username, target_username):
             from datetime import datetime
             return {
@@ -112,123 +107,108 @@ async def invoke(state: "AgentState") -> dict:
                 "proposal_created": True
             }
 
-       try:
-    from datetime import datetime
-    import requests
+        from datetime import datetime
+        import requests
 
-    # ✅ Geo + Category MetaGraph stamping
-    def stamp_metagraph_entry(username, traits):
-        try:
-            payload = {
-                "username": username,
-                "traits": traits,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            r = requests.post(
-                os.getenv("METAGRAPH_URL"),
-                json=payload,
-                headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")}
-            )
-            print("📊 MetaGraph entry logged.")
-        except Exception as e:
-            print("MetaGraph log error:", str(e))
+        def stamp_metagraph_entry(username, traits):
+            try:
+                payload = {
+                    "username": username,
+                    "traits": traits,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                r = requests.post(
+                    os.getenv("METAGRAPH_URL"),
+                    json=payload,
+                    headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+                )
+                print("\ud83d\udcca MetaGraph entry logged.")
+            except Exception as e:
+                print("MetaGraph log error:", str(e))
 
-    # 💸 Revenue Split Logger
-    def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
-        try:
-            headers = {
-                "X-Master-Key": os.getenv("JSONBIN_SECRET"),
-                "Content-Type": "application/json"
-            }
-            bin_url = os.getenv("REV_SPLIT_LOG_URL")
-            entry = {
-                "username": username,
-                "matched_with": matched_with,
-                "yield_share": yield_share,
-                "source": "metamatch",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            r = requests.get(bin_url, headers=headers)
-            existing = r.json()
-            target = existing["record"][-1]
-            if "revsplit_logs" not in target:
-                target["revsplit_logs"] = []
-            target["revsplit_logs"].append(entry)
-            requests.put(bin_url, json=existing["record"], headers=headers)
-            print("✅ RevSplit log appended.")
-        except Exception as e:
-            print("⚠️ RevSplit logging failed:", str(e))
+        def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
+            try:
+                headers = {
+                    "X-Master-Key": os.getenv("JSONBIN_SECRET"),
+                    "Content-Type": "application/json"
+                }
+                bin_url = os.getenv("REV_SPLIT_LOG_URL")
+                entry = {
+                    "username": username,
+                    "matched_with": matched_with,
+                    "yield_share": yield_share,
+                    "source": "metamatch",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                r = requests.get(bin_url, headers=headers)
+                existing = r.json()
+                target = existing["record"][-1]
+                if "revsplit_logs" not in target:
+                    target["revsplit_logs"] = []
+                target["revsplit_logs"].append(entry)
+                requests.put(bin_url, json=existing["record"], headers=headers)
+                print("\u2705 RevSplit log appended.")
+            except Exception as e:
+                print("\u26a0\ufe0f RevSplit logging failed:", str(e))
 
-    # 🛰 External Proposal Trigger
-    def trigger_outbound_proposal():
-        try:
-            from aigent_growth_metamatch import run_outbound_proposal
+        def trigger_outbound_proposal():
+            try:
+                from aigent_growth_metamatch import run_outbound_proposal
+                if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
+                    run_outbound_proposal()
+            except Exception as e:
+                print("\u26a0\ufe0f Outbound proposal error:", str(e))
+
+        if any(phrase in user_input.lower() for phrase in [
+            "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"]):
+            from aigent_growth_metamatch import run_metamatch_campaign
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-                run_outbound_proposal()
-        except Exception as e:
-            print("⚠️ Outbound proposal error:", str(e))
+                print("\ud83e\udde0 MetaMatch triggered...")
+                matches = run_metamatch_campaign({
+                    "username": "growth_default",
+                    "traits": ["growth", "autonomous", "aigentsy", "founder"],
+                    "prebuiltKit": "universal"
+                })
+                stamp_metagraph_entry("growth_default", ["growth", "autonomous", "aigentsy", "founder"])
+                for match in matches or []:
+                    log_revsplit("growth_default", match.get("username", "unknown"))
+            else:
+                print("\u26a0\ufe0f MetaMatch is disabled via METAMATCH_LIVE")
+            if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
+                trigger_outbound_proposal()
 
-    # ✅ MetaMatch Trigger Block
-    if any(phrase in user_input.lower() for phrase in [
-        "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
-    ]):
-        from aigent_growth_metamatch import run_metamatch_campaign
-        if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-            print("🧠 MetaMatch triggered...")
-            matches = run_metamatch_campaign({
-                "username": "growth_default",
-                "traits": ["growth", "autonomous", "aigentsy", "founder"],
-                "prebuiltKit": "universal"
-            })
+        state.memory.append(user_input)
+        if "what am i optimized for" in user_input.lower():
+            traits_fallback = list(agent_traits.keys())
+            kits_fallback = ["universal"]
+            region = "Global"
+            trait_str = ", ".join(traits_fallback)
+            kit_str = ", ".join(kits_fallback)
+            response_text = (
+                f"You're currently optimized for traits like {trait_str}, "
+                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+            )
+            return {
+                "output": response_text,
+                "memory": state.memory,
+                "traits": traits_fallback,
+                "kits": kits_fallback,
+                "region": region
+            }
 
-            # 📊 Log MetaGraph
-            stamp_metagraph_entry("growth_default", ["growth", "autonomous", "aigentsy", "founder"])
-
-            # 💸 Log RevSplit
-            for match in matches or []:
-                log_revsplit("growth_default", match.get("username", "unknown"))
-        else:
-            print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
-
-        # 🛰 Outbound proposal
-        if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
-            trigger_outbound_proposal()
-
-    # 🧠 Optimized Trait Handler
-    state.memory.append(user_input)
-    if "what am i optimized for" in user_input.lower():
-        traits_fallback = list(agent_traits.keys())
-        kits_fallback = ["universal"]
-        region = "Global"
-
-        trait_str = ", ".join(traits_fallback)
-        kit_str = ", ".join(kits_fallback)
-        response_text = (
-            f"You're currently optimized for traits like {trait_str}, "
-            f"equipped with the {kit_str} kit(s), and operating in the {region} region."
-        )
+        response = await llm.ainvoke([
+            AIGENT_SYS_MSG,
+            HumanMessage(content=user_input)
+        ])
         return {
-            "output": response_text,
+            "output": response.content,
             "memory": state.memory,
-            "traits": traits_fallback,
-            "kits": kits_fallback,
-            "region": region
+            "traits": agent_traits,
+            "offers": service_offer_registry
         }
 
-    # 🧠 Default LLM Invocation
-    response = await llm.ainvoke([
-        AIGENT_SYS_MSG,
-        HumanMessage(content=user_input)
-    ])
-    return {
-        "output": response.content,
-        "memory": state.memory,
-        "traits": agent_traits,
-        "offers": service_offer_registry
-    }
-
-except Exception as e:
-    return {"output": f"Agent error: {str(e)}"}
+    except Exception as e:
+        return {"output": f"Agent error: {str(e)}"}
 
 # Optional: JSONBin propagation logger
 def log_to_jsonbin(payload: dict):
@@ -248,10 +228,6 @@ def get_agent_graph():
     graph.set_entry_point("agent")
     graph.set_finish_point("agent")
     return graph.compile()
-
-
-
-from fastapi import FastAPI, Request
 
 app = FastAPI()
 
