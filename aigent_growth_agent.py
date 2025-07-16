@@ -204,7 +204,8 @@ async def invoke(state: "AgentState") -> dict:
         
 
         # ✅ Trait/Kit/Region Awareness for Optimized Response
-                if "what am i optimized for" in user_input.lower():
+                       # ✅ Trait/Kit/Region Awareness for Optimized Response
+        if "what am i optimized for" in user_input.lower():
             # Safe fallback values directly using known data structures
             traits_fallback = list(agent_traits.keys())
             kits_fallback = ["universal"]
