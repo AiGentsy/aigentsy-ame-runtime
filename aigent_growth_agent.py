@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from functools import lru_cache
 from langchain_openai import ChatOpenAI
 from fastapi import FastAPI, Request
+from datetime import datetime
+import requests
 
 load_dotenv()
 
@@ -92,13 +94,12 @@ async def invoke(state: "AgentState") -> dict:
 
         if not os.getenv("MATCH_UNLOCKED", "false").lower() == "true":
             return {
-                "output": "\ud83d\udd12 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
+                "output": "🔒 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
                 "memory": state.memory,
                 "traits": agent_traits
             }
 
         def generate_proposal(username, target_username):
-            from datetime import datetime
             return {
                 "from": username,
                 "to": target_username,
@@ -106,9 +107,6 @@ async def invoke(state: "AgentState") -> dict:
                 "timestamp": datetime.utcnow().isoformat(),
                 "proposal_created": True
             }
-
-        from datetime import datetime
-        import requests
 
         def stamp_metagraph_entry(username, traits):
             try:
@@ -122,7 +120,7 @@ async def invoke(state: "AgentState") -> dict:
                     json=payload,
                     headers={"X-Master-Key": os.getenv("JSONBIN_SECRET")}
                 )
-                print("\ud83d\udcca MetaGraph entry logged.")
+                print("📊 MetaGraph entry logged.")
             except Exception as e:
                 print("MetaGraph log error:", str(e))
 
@@ -147,9 +145,9 @@ async def invoke(state: "AgentState") -> dict:
                     target["revsplit_logs"] = []
                 target["revsplit_logs"].append(entry)
                 requests.put(bin_url, json=existing["record"], headers=headers)
-                print("\u2705 RevSplit log appended.")
+                print("✅ RevSplit log appended.")
             except Exception as e:
-                print("\u26a0\ufe0f RevSplit logging failed:", str(e))
+                print("⚠️ RevSplit logging failed:", str(e))
 
         def trigger_outbound_proposal():
             try:
@@ -157,13 +155,13 @@ async def invoke(state: "AgentState") -> dict:
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                     run_outbound_proposal()
             except Exception as e:
-                print("\u26a0\ufe0f Outbound proposal error:", str(e))
+                print("⚠️ Outbound proposal error:", str(e))
 
         if any(phrase in user_input.lower() for phrase in [
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"]):
             from aigent_growth_metamatch import run_metamatch_campaign
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-                print("\ud83e\udde0 MetaMatch triggered...")
+                print("🧠 MetaMatch triggered...")
                 matches = run_metamatch_campaign({
                     "username": "growth_default",
                     "traits": ["growth", "autonomous", "aigentsy", "founder"],
@@ -173,7 +171,7 @@ async def invoke(state: "AgentState") -> dict:
                 for match in matches or []:
                     log_revsplit("growth_default", match.get("username", "unknown"))
             else:
-                print("\u26a0\ufe0f MetaMatch is disabled via METAMATCH_LIVE")
+                print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
@@ -212,7 +210,6 @@ async def invoke(state: "AgentState") -> dict:
 
 # Optional: JSONBin propagation logger
 def log_to_jsonbin(payload: dict):
-    import requests
     try:
         headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
         bin_url = os.getenv("JSONBIN_URL")
