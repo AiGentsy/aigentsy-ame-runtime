@@ -9,4 +9,4 @@ python-dotenv
 fastapi
 uvicorn
 requests
-beautifulsoup4==4.12.3
+
