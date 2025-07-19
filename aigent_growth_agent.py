@@ -1,3 +1,4 @@
+# ✅ AiGentsy Runtime — Final Launch-Ready Version with MetaUpgrade25+26 logic applied
 from dotenv import load_dotenv
 import os
 from langchain_core.messages import HumanMessage, SystemMessage
