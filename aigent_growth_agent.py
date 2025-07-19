@@ -1,6 +1,3 @@
-# ✅ AiGentsy Runtime — Fully Upgraded for Launch
-# Last patched: 2025-07-19T17:27:41.313230 UTC
-
 from dotenv import load_dotenv
 import os
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -89,6 +86,11 @@ async def invoke(state: "AgentState") -> dict:
         return {"output": "No input provided."}
     try:
         traits = list(agent_traits.keys()) if isinstance(agent_traits, dict) else []
+        record = get_jsonbin_record("growth_default")
+        if not record.get("traits"):
+            record["traits"] = ["starter"]
+        if not record.get("kits"):
+            record["kits"] = {"universal": {"unlocked": True}}
 
         match_preferences = {
             "client": 3,
@@ -170,7 +172,7 @@ async def invoke(state: "AgentState") -> dict:
             try:
                 from aigent_growth_metamatch import run_outbound_proposal
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-                    run_outbound_proposal(record, matches)
+                    run_outbound_proposal()
             except Exception as e:
                 print("⚠️ Outbound proposal error:", str(e))
 
@@ -179,27 +181,33 @@ async def invoke(state: "AgentState") -> dict:
             from aigent_growth_metamatch import run_metamatch_campaign
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                 print("🧠 MetaMatch triggered...")
+                record = get_jsonbin_record("growth_default")
+                username = record.get("username", "growth_default")
+                traits = record.get("traits", ["generalist"])
+                kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+
                 matches = run_metamatch_campaign({
-                    "username": "growth_default",
-                    "traits": ["growth", "autonomous", "aigentsy", "founder"],
-                    "prebuiltKit": "universal"
-                })
-                stamp_metagraph_entry("growth_default", ["growth", "autonomous", "aigentsy", "founder"])
-                for match in matches or []:
-                    log_revsplit("growth_default", match.get("username", "unknown"))
+               "username": username,
+               "traits": traits,
+               "prebuiltKit": kits
+              })
+                
+              stamp_metagraph_entry(username, traits)
+              for match in matches or []:
+                  log_revsplit(username, match.get("username", "unknown"))
+
             else:
                 print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
         state.memory.append(user_input)
-        record = get_jsonbin_record("growth_default")
-        traits_fallback = record.get("traits", list(agent_traits.keys()))
-        kits_fallback = [k for k, v in record.get("kits", {}).items() if v.get("unlocked")]
-        region = record.get("region", "Global")
-            traits_fallback = list(agent_traits.keys())
-            kits_fallback = ["universal"]
-            region = "Global"
+        if "what am i optimized for" in user_input.lower():
+            record = get_jsonbin_record("growth_default")
+            traits_fallback = record.get("traits", list(agent_traits.keys()))
+            kits_fallback = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+            region = record.get("region", "Global")
+
             trait_str = ", ".join(traits_fallback)
             kit_str = ", ".join(kits_fallback)
             response_text = (
@@ -214,14 +222,14 @@ async def invoke(state: "AgentState") -> dict:
                 "region": region
             }
 
-        response = await llm.ainvoke([
+                response = await llm.ainvoke([
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
         ])
         return {
             "output": response.content,
             "memory": state.memory,
-            "traits": agent_traits,
+            "traits": record.get("traits", agent_traits),
             "offers": service_offer_registry
         }
 
@@ -254,12 +262,15 @@ async def metabridge(request: Request):
     username = payload.get("username")
     traits = payload.get("traits", [])
     kit = payload.get("kit", "universal")
+
+    # Fallback if traits or kit not provided
+    if not traits or not kit:
+        record = get_jsonbin_record(username)
+        traits = record.get("traits", ["starter"])
+        kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
-        if not traits or not kit:
-            record = get_jsonbin_record(username)
-            traits = record.get("traits", ["generalist"])
-            kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         matches = run_metamatch_campaign({
             "username": username,
             "traits": traits,
