@@ -175,26 +175,13 @@ async def invoke(state: "AgentState") -> dict:
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
-               state.memory.append(user_input)
-
-        # 🔍 Dynamic trait/kit/region resolution from JSONBin
-        username = state.input.split("|")[-1].strip() if "|" in state.input else "anonymous"
-        record = {}
-        try:
-            headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
-            r = requests.get(os.getenv("JSONBIN_URL"), headers=headers)
-            users = r.json().get("record", [])
-            record = next((u for u in users if u.get("id") == username or u.get("consent", {}).get("username") == username), {})
-        except Exception as e:
-            print("User fetch failed:", str(e))
-
-        traits_live = record.get("traits", list(agent_traits.keys()))
-        kits_live = record.get("kits", ["universal"])
-        region = record.get("region", "Global")
-
+        state.memory.append(user_input)
         if "what am i optimized for" in user_input.lower():
-            trait_str = ", ".join(traits_live)
-            kit_str = ", ".join(kits_live)
+            traits_fallback = list(agent_traits.keys())
+            kits_fallback = ["universal"]
+            region = "Global"
+            trait_str = ", ".join(traits_fallback)
+            kit_str = ", ".join(kits_fallback)
             response_text = (
                 f"You're currently optimized for traits like {trait_str}, "
                 f"equipped with the {kit_str} kit(s), and operating in the {region} region."
@@ -202,26 +189,24 @@ async def invoke(state: "AgentState") -> dict:
             return {
                 "output": response_text,
                 "memory": state.memory,
-                "traits": traits_live,
-                "kits": kits_live,
+                "traits": traits_fallback,
+                "kits": kits_fallback,
                 "region": region
             }
 
-        # 💬 Dynamic context included in system prompt
-        dynamic_context = f"\n\nActive traits: {traits_live}\nAvailable kits: {kits_live}\nRegion: {region}"
-        sys_msg = SystemMessage(content=AIGENT_SYS_MSG.content + dynamic_context)
-
         response = await llm.ainvoke([
-            sys_msg,
+            AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
         ])
         return {
             "output": response.content,
             "memory": state.memory,
-            "traits": traits_live,
-            "kits": kits_live,
+            "traits": agent_traits,
             "offers": service_offer_registry
         }
+
+    except Exception as e:
+        return {"output": f"Agent error: {str(e)}"}
 
 # Optional: JSONBin propagation logger
 def log_to_jsonbin(payload: dict):
