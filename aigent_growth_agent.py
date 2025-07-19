@@ -1,4 +1,6 @@
-# ✅ AiGentsy Runtime — Final Launch-Ready Version with MetaUpgrade25+26 logic applied
+# ✅ AiGentsy Runtime — Fully Upgraded for Launch
+# Last patched: 2025-07-19T17:27:41.313230 UTC
+
 from dotenv import load_dotenv
 import os
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -11,6 +13,20 @@ from datetime import datetime
 import requests
 
 load_dotenv()
+
+def get_jsonbin_record(username):
+    try:
+        url = os.getenv("JSONBIN_URL")
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        res = requests.get(url, headers=headers)
+        users = res.json().get("record", [])
+        for user in reversed(users):
+            if user.get("username") == username:
+                return user
+        return {}
+    except Exception as e:
+        print("⚠️ JSONBin fetch failed:", str(e))
+        return {}
 
 # MetaUpgrade25 + 26 Traits: Growth Archetype
 agent_traits = {
@@ -154,7 +170,7 @@ async def invoke(state: "AgentState") -> dict:
             try:
                 from aigent_growth_metamatch import run_outbound_proposal
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-                    run_outbound_proposal()
+                    run_outbound_proposal(record, matches)
             except Exception as e:
                 print("⚠️ Outbound proposal error:", str(e))
 
@@ -177,7 +193,10 @@ async def invoke(state: "AgentState") -> dict:
                 trigger_outbound_proposal()
 
         state.memory.append(user_input)
-        if "what am i optimized for" in user_input.lower():
+        record = get_jsonbin_record("growth_default")
+        traits_fallback = record.get("traits", list(agent_traits.keys()))
+        kits_fallback = [k for k, v in record.get("kits", {}).items() if v.get("unlocked")]
+        region = record.get("region", "Global")
             traits_fallback = list(agent_traits.keys())
             kits_fallback = ["universal"]
             region = "Global"
@@ -237,6 +256,10 @@ async def metabridge(request: Request):
     kit = payload.get("kit", "universal")
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
+        if not traits or not kit:
+            record = get_jsonbin_record(username)
+            traits = record.get("traits", ["generalist"])
+            kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         matches = run_metamatch_campaign({
             "username": username,
             "traits": traits,
