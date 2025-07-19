@@ -25,7 +25,6 @@ def get_jsonbin_record(username):
         print("⚠️ JSONBin fetch failed:", str(e))
         return {}
 
-# MetaUpgrade25 + 26 Traits: Growth Archetype
 agent_traits = {
     "yield_memory": True,
     "growth_loop_enabled": True,
@@ -36,7 +35,6 @@ agent_traits = {
     "meta_upgrade": "25+26"
 }
 
-# Offer Registry for Growth Function
 service_offer_registry = [
     "Referral Funnel Optimization",
     "Propagation Strategy Design",
@@ -44,7 +42,6 @@ service_offer_registry = [
     "Growth Content Generator"
 ]
 
-# System Message: AiGent Growth logic
 AIGENT_SYS_MSG = SystemMessage(content=f"""
 You are AiGent Growth, the autonomous growth strategist of the AiGentsy protocol.
 You are built with MetaUpgrade25+26 logic and specialize in user propagation, agent proliferation, and revenue acceleration.
@@ -67,7 +64,6 @@ Available tools: {service_offer_registry}
 Always act as a sovereign growth-first operator within the AiGentsy universe.
 """)
 
-# Enhanced LLM setup
 llm = ChatOpenAI(
     model="openai/gpt-4o-2024-11-20",
     temperature=0.7,
@@ -93,10 +89,7 @@ async def invoke(state: "AgentState") -> dict:
             record["kits"] = {"universal": {"unlocked": True}}
 
         match_preferences = {
-            "client": 3,
-            "investor": 2,
-            "reseller": 1,
-            "partner": 4
+            "client": 3, "investor": 2, "reseller": 1, "partner": 4
         }
 
         def check_meta_loop(username):
@@ -181,21 +174,17 @@ async def invoke(state: "AgentState") -> dict:
             from aigent_growth_metamatch import run_metamatch_campaign
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                 print("🧠 MetaMatch triggered...")
-                record = get_jsonbin_record("growth_default")
                 username = record.get("username", "growth_default")
                 traits = record.get("traits", ["generalist"])
                 kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
-
                 matches = run_metamatch_campaign({
-               "username": username,
-               "traits": traits,
-               "prebuiltKit": kits
-              })
-                
-              stamp_metagraph_entry(username, traits)
-              for match in matches or []:
-                  log_revsplit(username, match.get("username", "unknown"))
-
+                    "username": username,
+                    "traits": traits,
+                    "prebuiltKit": kits
+                })
+                stamp_metagraph_entry(username, traits)
+                for match in matches or []:
+                    log_revsplit(username, match.get("username", "unknown"))
             else:
                 print("⚠️ MetaMatch is disabled via METAMATCH_LIVE")
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
@@ -203,11 +192,9 @@ async def invoke(state: "AgentState") -> dict:
 
         state.memory.append(user_input)
         if "what am i optimized for" in user_input.lower():
-            record = get_jsonbin_record("growth_default")
             traits_fallback = record.get("traits", list(agent_traits.keys()))
             kits_fallback = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
             region = record.get("region", "Global")
-
             trait_str = ", ".join(traits_fallback)
             kit_str = ", ".join(kits_fallback)
             response_text = (
@@ -222,7 +209,7 @@ async def invoke(state: "AgentState") -> dict:
                 "region": region
             }
 
-                response = await llm.ainvoke([
+        response = await llm.ainvoke([
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
         ])
@@ -236,7 +223,6 @@ async def invoke(state: "AgentState") -> dict:
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
-# Optional: JSONBin propagation logger
 def log_to_jsonbin(payload: dict):
     try:
         headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
@@ -262,13 +248,10 @@ async def metabridge(request: Request):
     username = payload.get("username")
     traits = payload.get("traits", [])
     kit = payload.get("kit", "universal")
-
-    # Fallback if traits or kit not provided
     if not traits or not kit:
         record = get_jsonbin_record(username)
         traits = record.get("traits", ["starter"])
         kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
-
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
         matches = run_metamatch_campaign({
