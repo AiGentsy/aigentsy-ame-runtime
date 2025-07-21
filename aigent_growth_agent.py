@@ -425,6 +425,47 @@ def proposal_delivery(sender: str, proposals: list[dict]):
     except Exception as e:
         print("⚠️ Proposal log failed:", str(e))
 
+# ----------------- External Signal Trigger -----------------
+
+external_signal_registry: list[dict] = []
+
+@app.post("/external_signal")
+async def external_signal(request: Request):
+    """
+    Activates off-platform signal tracking. This tells the agent:
+    "I'm marketing my offering right now on X platform — prepare proposals."
+
+    Payload:
+        - username (str)
+        - platform (str): e.g., "linkedin", "tiktok", "fiverr"
+        - tags (list[str]): optional topics or keywords (e.g., ["ai", "seo"])
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        platform = payload.get("platform", "unknown")
+        tags = payload.get("tags", [])
+
+        log_entry = {
+            "username": username,
+            "platform": platform,
+            "tags": tags,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        external_signal_registry.append(log_entry)
+
+        print(f"🚀 External signal received: {log_entry}")
+
+        return {
+            "status": "ok",
+            "message": f"Signal received for {username} on {platform}. Proposal prep will begin.",
+            "signal": log_entry
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/metabridge")
 async def metabridge(request: Request):
     """
