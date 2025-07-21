@@ -406,6 +406,35 @@ def proposal_generator(query: str, matches: list[dict]) -> list[dict]:
 
     return proposals
 
+def proposal_dispatch(username: str, proposal: str, match_target: str = None):
+    """
+    Stores or delivers a proposal for logging or external delivery.
+    """
+    try:
+        bin_url = os.getenv("PROPOSAL_LOG_URL")
+        headers = {
+            "X-Master-Key": os.getenv("JSONBIN_SECRET"),
+            "Content-Type": "application/json"
+        }
+
+        record = {
+            "username": username,
+            "target": match_target,
+            "proposal": proposal,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Append to latest record
+        r = requests.get(bin_url, headers=headers, timeout=10)
+        current = r.json().get("record", [{}])[-1]
+        current.setdefault("proposals", []).append(record)
+        requests.put(bin_url, json=r.json()["record"], headers=headers, timeout=10)
+
+        print("📬 Proposal logged successfully.")
+
+    except Exception as e:
+        print("⚠️ Proposal dispatch error:", str(e))
+
 def proposal_delivery(sender: str, proposals: list[dict]):
     """
     Logs generated proposals (future: webhook, DM, email).
