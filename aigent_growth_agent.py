@@ -95,7 +95,6 @@ class AgentState(BaseModel):
     memory: list[str] = []
 
 # ----------------- Core Logic -----------------
-
 async def invoke(state: AgentState) -> dict:
     user_input = state.input or ""
     if not user_input:
@@ -110,7 +109,6 @@ async def invoke(state: AgentState) -> dict:
         traits = record.get("traits", list(agent_traits.keys()))
         kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         region = record.get("region", "Global")
-                # ---- NEW: compute service needs ---------------------------------
         service_needs = suggest_service_needs(traits, kits)
 
         match_preferences = {"client": 3, "investor": 2, "reseller": 1, "partner": 4}
@@ -122,17 +120,16 @@ async def invoke(state: AgentState) -> dict:
                 "traits": traits,
             }
 
-        if any(
-            phrase in user_input.lower()
-            for phrase in ["match clients", "find clients", "connect me", "partner", "collaborate", "find customers"]
-        ):
+        # 🔁 MetaMatch trigger phrases
+        if any(phrase in user_input.lower() for phrase in [
+            "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"
+        ]):
             from aigent_growth_metamatch import run_metamatch_campaign
-
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                 print("🧠 MetaMatch triggered…")
-                matches = run_metamatch_campaign(
-                    {"username": username, "traits": traits, "prebuiltKit": kits}
-                )
+                matches = run_metamatch_campaign({
+                    "username": username, "traits": traits, "prebuiltKit": kits
+                })
                 stamp_metagraph_entry(username, traits)
                 for m in matches or []:
                     log_revsplit(username, m.get("username", "unknown"))
@@ -142,30 +139,29 @@ async def invoke(state: AgentState) -> dict:
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
-                 state.memory.append(user_input)
+        # ✅ NEW: Optimized-for summary response
+        state.memory.append(user_input)
         if "what am i optimized for" in user_input.lower():
             trait_str = ", ".join(traits)
-            kit_str   = ", ".join(kits)
-
-            # 🔹 service‑need suggestions (reuse your mini rules‑engine)
-            service_suggestions = suggest_service_needs(traits, kits)
-            svc_bullets = "\n• " + "\n• ".join(service_suggestions)
+            kit_str = ", ".join(kits)
+            svc_bullets = "\n• " + "\n• ".join(service_needs)
 
             resp = (
                 f"You're currently optimized for traits like {trait_str}, "
                 f"equipped with the {kit_str} kit(s), and operating in the {region} region.\n\n"
                 f"📊 **Next best moves for you:**{svc_bullets}"
             )
+
             return {
                 "output": resp,
                 "memory": state.memory,
                 "traits": traits,
                 "kits": kits,
                 "region": region,
-                "suggested_services": service_suggestions,
+                "suggested_services": service_needs,
             }
 
-        # ---- Trait‑aware fallback ----
+        # 💬 Trait-aware fallback w/ dual-offer match
         persona_intro = (
             f"You are responding on behalf of the AiGentsy business '{username}'. "
             f"Their traits are: {', '.join(traits)}. Their region is {region}. "
@@ -192,23 +188,19 @@ async def invoke(state: AgentState) -> dict:
         if username == "growth_default" or username.lower() == "universal":
             persona_intro += " The user may have typed a custom business name in the search bar. If traits are limited, default to broad business-building advice."
 
-                # ---- Dual‑side offer↔need matching (auto) ----------------------------
+        # 🔄 Dual-offer matching
         my_offers = record.get("offers", [])
-        my_needs  = record.get("needs",  [])
-
+        my_needs = record.get("needs", [])
         matched_partners = dual_side_offer_match(username, my_offers, my_needs)
-
         if matched_partners:
-            # For now, surface as chat output (future: auto‑proposal via MetaBridge)
             match_lines = [
-                f"🔗 **{p['username']}**  →  "
-                f"offers match: {p['matched_their_offers']} | "
-                f"needs match: {p['matched_their_needs']}"
-                for p in matched_partners[:5]          # cap to first 5 suggestions
+                f"🔗 **{p['username']}**  →  offers match: {p['matched_their_offers']} | needs match: {p['matched_their_needs']}"
+                for p in matched_partners[:5]
             ]
             match_msg = "🤝 **Potential dual‑side partners found:**\n" + "\n".join(match_lines)
             persona_intro += "\n\n" + match_msg
 
+        # 🧠 Final LLM response
         llm_resp = await llm.ainvoke([
             SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
             HumanMessage(content=user_input)
