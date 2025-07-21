@@ -83,19 +83,20 @@ async def invoke(state: "AgentState") -> dict:
     try:
         traits = list(agent_traits.keys()) if isinstance(agent_traits, dict) else []
         username = "growth_default"
-if "|" in state.input:
-    username = state.input.split("|")[-1].strip()
-record = get_jsonbin_record(username)
-traits = record.get("traits", list(agent_traits.keys()))
-kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
-region = record.get("region", "Global")
+        if "|" in state.input:
+          username = state.input.split("|")[-1].strip()
+          record = get_jsonbin_record(username)
+          traits = record.get("traits", list(agent_traits.keys()))
+          kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+          region = record.get("region", "Global")
 
-match_preferences = {
-    "client": 3,
-    "investor": 2,
-    "reseller": 1,
-    "partner": 4
-}
+          match_preferences = {
+            "client": 3,
+            "investor": 2,
+            "reseller": 1,
+            "partner": 4
+            
+           }
 
         def check_meta_loop(username):
             import random
