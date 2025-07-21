@@ -378,30 +378,30 @@ def metabridge_dual_match_realworld_fulfillment(input_text: str) -> list[dict]:
         print("⚠️ MetaBridge Dual Match error:", str(e))
         return []
         
-  @app.post("/metabridge")
-async def metabridge(request: Request):
-    """
-    MetaBridge: Dual-side external fulfillment matcher.
+    @app.post("/metabridge")
+    async def metabridge(request: Request):
+        """
+        MetaBridge: Dual-side external fulfillment matcher.
 
-    Accepts:
-        - query: a text-based offer/need to match against AiGentsy users
-        - username: optional, for tracking or internal fallback
+       Accepts:
+           - query: a text-based offer/need to match against AiGentsy users
+           - username: optional, for tracking or internal fallback
 
-    Returns:
-        - Top matching AiGentsy agents with score and match reasons
-    """
-    payload = await request.json()
-    search_query = payload.get("query")  # external offer or need
-    username = payload.get("username", "growth_default")
+       Returns:
+           - Top matching AiGentsy agents with score and match reasons
+       """
+       payload = await request.json()
+       search_query = payload.get("query")  # external offer or need
+       username = payload.get("username", "growth_default")
 
-    if not search_query:
-        return {"status": "error", "message": "No query provided."}
+       if not search_query:
+           return {"status": "error", "message": "No query provided."}
 
-    matches = metabridge_dual_match_realworld_fulfillment(search_query)
+       matches = metabridge_dual_match_realworld_fulfillment(search_query)
 
-    return {
-        "status": "ok",
-        "query": search_query,
-        "match_count": len(matches),
-        "matches": matches,
-    }
+       return {
+           "status": "ok",
+           "query": search_query,
+           "match_count": len(matches),
+           "matches": matches,
+       }
