@@ -27,6 +27,18 @@ def get_jsonbin_record(username: str) -> dict:
         print("⚠️ JSONBin fetch failed:", str(e))
         return {}
 
+ # 🔹 NEW ──────────────────────────────────────────────────────────────────────
+def get_all_jsonbin_records() -> list[dict]:
+    """Return every user record in JSONBin (used for offer↔need matching)."""
+    try:
+        url = os.getenv("JSONBIN_URL")
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        res = requests.get(url, headers=headers, timeout=10)
+        return res.json().get("record", [])
+    except Exception as e:
+        print("⚠️ JSONBin (all‑records) fetch failed:", str(e))
+        return []
+# ────────────────────────────────────────────────────────────────────────────
 # ----------------- Static Config -----------------
 
 agent_traits = {
@@ -130,14 +142,19 @@ async def invoke(state: AgentState) -> dict:
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
-        state.memory.append(user_input)
+                 state.memory.append(user_input)
         if "what am i optimized for" in user_input.lower():
             trait_str = ", ".join(traits)
-            kit_str = ", ".join(kits)
+            kit_str   = ", ".join(kits)
+
+            # 🔹 service‑need suggestions (reuse your mini rules‑engine)
+            service_suggestions = suggest_service_needs(traits, kits)
+            svc_bullets = "\n• " + "\n• ".join(service_suggestions)
+
             resp = (
-                f"Traits ➜ {', '.join(traits)}  |  Kits ➜ {', '.join(kits)}  "
-                f"| Region ➜ {region}\n"
-                f"🔍 Next suggested moves: {', '.join(service_needs)}"
+                f"You're currently optimized for traits like {trait_str}, "
+                f"equipped with the {kit_str} kit(s), and operating in the {region} region.\n\n"
+                f"📊 **Next best moves for you:**{svc_bullets}"
             )
             return {
                 "output": resp,
@@ -145,7 +162,7 @@ async def invoke(state: AgentState) -> dict:
                 "traits": traits,
                 "kits": kits,
                 "region": region,
-                "suggested_services": service_needs,
+                "suggested_services": service_suggestions,
             }
 
         # ---- Trait‑aware fallback ----
@@ -174,6 +191,23 @@ async def invoke(state: AgentState) -> dict:
 
         if username == "growth_default" or username.lower() == "universal":
             persona_intro += " The user may have typed a custom business name in the search bar. If traits are limited, default to broad business-building advice."
+
+                # ---- Dual‑side offer↔need matching (auto) ----------------------------
+        my_offers = record.get("offers", [])
+        my_needs  = record.get("needs",  [])
+
+        matched_partners = dual_side_offer_match(username, my_offers, my_needs)
+
+        if matched_partners:
+            # For now, surface as chat output (future: auto‑proposal via MetaBridge)
+            match_lines = [
+                f"🔗 **{p['username']}**  →  "
+                f"offers match: {p['matched_their_offers']} | "
+                f"needs match: {p['matched_their_needs']}"
+                for p in matched_partners[:5]          # cap to first 5 suggestions
+            ]
+            match_msg = "🤝 **Potential dual‑side partners found:**\n" + "\n".join(match_lines)
+            persona_intro += "\n\n" + match_msg
 
         llm_resp = await llm.ainvoke([
             SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
@@ -261,6 +295,33 @@ def trigger_outbound_proposal():
     except Exception as e:
         print("⚠️ Outbound proposal error:", str(e))
 
+# 🔹 NEW ──────────────────────────────────────────────────────────────────────
+def dual_side_offer_match(username: str,
+                          my_offers: list[str],
+                          my_needs: list[str]) -> list[dict]:
+    """
+    Return a list of partner records where:
+       • partner.offers ∩ my_needs  OR  partner.needs ∩ my_offers
+    """
+    partners: list[dict] = []
+    if not (my_offers or my_needs):
+        return partners
+
+    for user in get_all_jsonbin_records():
+        if user.get("username") == username:      # skip self
+            continue
+        offers = user.get("offers", [])
+        needs  = user.get("needs",  [])
+        if set(offers) & set(my_needs) or set(needs) & set(my_offers):
+            partners.append(
+                {
+                    "username": user.get("username"),
+                    "matched_their_offers": list(set(offers) & set(my_needs)),
+                    "matched_their_needs":  list(set(needs)  & set(my_offers)),
+                }
+            )
+    return partners
+# ────────────────────────────────────────────────────────────────────────────
 # ----------------- Graph & Endpoint -----------------
 
 @lru_cache
