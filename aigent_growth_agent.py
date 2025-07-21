@@ -378,7 +378,7 @@ def metabridge_dual_match_realworld_fulfillment(input_text: str) -> list[dict]:
         print("⚠️ MetaBridge Dual Match error:", str(e))
         return []
         
-  @app.post("/metabridge")
+@app.post("/metabridge")
 async def metabridge(request: Request):
     """
     MetaBridge: Dual-side external fulfillment matcher.
