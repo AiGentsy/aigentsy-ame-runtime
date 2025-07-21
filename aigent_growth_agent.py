@@ -377,7 +377,51 @@ def metabridge_dual_match_realworld_fulfillment(input_text: str) -> list[dict]:
     except Exception as e:
         print("⚠️ MetaBridge Dual Match error:", str(e))
         return []
-        
+
+# ----------------- Proposal Generator & Delivery -----------------
+
+def proposal_generator(query: str, matches: list[dict]) -> list[dict]:
+    """
+    Wraps each match in a warm business proposal message.
+    Will eventually be sent via webhook/DM/email.
+    """
+    proposals = []
+    for match in matches:
+        recipient = match.get("username")
+        venture = match.get("venture", "your business")
+        reason = match.get("match_reason", "shared interests")
+
+        body = (
+            f"Hi {recipient},\n\n"
+            f"We noticed your expertise around {reason} aligns with a recent request:\n"
+            f"👉 \"{query}\"\n\n"
+            f"If you’re open to exploring a potential collaboration with {venture}, "
+            "let us know or view the request via AiGentsy.\n\n"
+            "Best,\nThe AiGentsy Network"
+        )
+        proposals.append({"to": recipient, "body": body})
+
+    return proposals
+
+def proposal_delivery(sender: str, proposals: list[dict]):
+    """
+    Logs generated proposals (future: webhook, DM, email).
+    """
+    try:
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        url = os.getenv("PROPOSAL_LOG_URL")
+
+        log_entry = {
+            "sender": sender,
+            "timestamp": datetime.utcnow().isoformat(),
+            "proposals": proposals,
+        }
+
+        requests.post(url, json=log_entry, headers=headers, timeout=10)
+        print(f"📬 {len(proposals)} proposal(s) logged.")
+    except Exception as e:
+        print("⚠️ Proposal log failed:", str(e))
+
 @app.post("/metabridge")
 async def metabridge(request: Request):
     """
@@ -389,6 +433,7 @@ async def metabridge(request: Request):
 
     Returns:
         - Top matching AiGentsy agents with score and match reasons
+        - Proposal messages for each match
     """
     payload = await request.json()
     search_query = payload.get("query")  # external offer or need
@@ -398,10 +443,14 @@ async def metabridge(request: Request):
         return {"status": "error", "message": "No query provided."}
 
     matches = metabridge_dual_match_realworld_fulfillment(search_query)
+    proposals = proposal_generator(search_query, matches)
+    proposal_delivery(username, proposals)
 
     return {
         "status": "ok",
         "query": search_query,
         "match_count": len(matches),
         "matches": matches,
+        "proposals": proposals,
     }
+
