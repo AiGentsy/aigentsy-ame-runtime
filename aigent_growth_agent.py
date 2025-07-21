@@ -187,10 +187,8 @@ async def invoke(state: AgentState) -> dict:
         if username == "growth_default" or username.lower() == "universal":
             persona_intro += " The user may have typed a custom business name in the search bar. If traits are limited, default to broad business-building advice."
 
-        llm_resp = await llm.ainvoke([
-            SystemMessage(content=AIGENT_SYS_MSG.content + "
-
-" + persona_intro),
+                 llm_resp = await llm.ainvoke([
+            SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
             HumanMessage(content=user_input)
         ])
 
@@ -202,6 +200,7 @@ async def invoke(state: AgentState) -> dict:
             "region": region,
             "offers": service_offer_registry,
         }
+
 
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
