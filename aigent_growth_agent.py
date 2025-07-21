@@ -380,6 +380,16 @@ def metabridge_dual_match_realworld_fulfillment(input_text: str) -> list[dict]:
         
   @app.post("/metabridge")
 async def metabridge(request: Request):
+    """
+    MetaBridge: Dual-side external fulfillment matcher.
+
+    Accepts:
+        - query: a text-based offer/need to match against AiGentsy users
+        - username: optional, for tracking or internal fallback
+
+    Returns:
+        - Top matching AiGentsy agents with score and match reasons
+    """
     payload = await request.json()
     search_query = payload.get("query")  # external offer or need
     username = payload.get("username", "growth_default")
@@ -388,26 +398,10 @@ async def metabridge(request: Request):
         return {"status": "error", "message": "No query provided."}
 
     matches = metabridge_dual_match_realworld_fulfillment(search_query)
+
     return {
         "status": "ok",
         "query": search_query,
         "match_count": len(matches),
-        "matches": matches
+        "matches": matches,
     }
-
-    try:
-        from aigent_growth_metamatch import run_metamatch_campaign
-        matches = run_metamatch_campaign({
-            "username": username,
-            "traits": traits,
-            "prebuiltKit": kit
-        })
-        return {
-            "matches": matches,
-            "status": "ok",
-            "traits_used": traits,
-            "kits_used": kit,
-            "username": username
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
