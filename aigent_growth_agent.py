@@ -7,7 +7,9 @@ from functools import lru_cache
 from langchain_openai import ChatOpenAI
 from fastapi import FastAPI, Request
 from datetime import datetime
+from proposal_delivery import deliver_proposal
 import requests
+
 
 load_dotenv()
 
@@ -534,7 +536,16 @@ async def scan_external_content(request: Request):
         matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
         proposal = proposal_generator(username, inferred_offer, matches)
         proposal_dispatch(username, proposal, match_target=matches[0].get("username") if matches else None)
-      
+              # 🔁 Deliver proposals externally (webhook/email/DM)
+        try:
+            deliver_proposal(
+                query=inferred_offer,
+                matches=matches,
+                originator=username
+            )
+        except Exception as e:
+            print("⚠️ Proposal delivery failed:", str(e))
+
         return {
             "status": "ok",
             "url": target_url,
