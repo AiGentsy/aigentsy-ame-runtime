@@ -174,19 +174,24 @@ match_preferences = {
             except Exception as e:
                 print("⚠️ Outbound proposal error:", str(e))
 
-        if any(phrase in user_input.lower() for phrase in [
+                        if any(phrase in user_input.lower() for phrase in [
             "match clients", "find clients", "connect me", "partner", "collaborate", "find customers"]):
             from aigent_growth_metamatch import run_metamatch_campaign
             if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
                 print("🧠 MetaMatch triggered...")
-                username = record.get("username", "growth_default")
-                traits = record.get("traits", ["generalist"])
+                username = "growth_default"
+                if "|" in state.input:
+                    username = state.input.split("|")[-1].strip()
+                record = get_jsonbin_record(username)
+                traits = record.get("traits", list(agent_traits.keys()))
                 kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+
                 matches = run_metamatch_campaign({
                     "username": username,
                     "traits": traits,
                     "prebuiltKit": kits
                 })
+
                 stamp_metagraph_entry(username, traits)
                 for match in matches or []:
                     log_revsplit(username, match.get("username", "unknown"))
@@ -250,13 +255,15 @@ app = FastAPI()
 @app.post("/metabridge")
 async def metabridge(request: Request):
     payload = await request.json()
-    username = payload.get("username")
-    traits = payload.get("traits", [])
-    kit = payload.get("kit", "universal")
+    username = payload.get("username", "growth_default")
+    traits = payload.get("traits")
+    kit = payload.get("kit")
+
     if not traits or not kit:
         record = get_jsonbin_record(username)
         traits = record.get("traits", ["starter"])
         kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
         matches = run_metamatch_campaign({
