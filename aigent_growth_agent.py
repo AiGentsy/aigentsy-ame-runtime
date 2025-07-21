@@ -533,7 +533,8 @@ async def scan_external_content(request: Request):
         # 🎯 Match using AiGentsy logic
         matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
         proposal = proposal_generator(username, inferred_offer, matches)
-
+        proposal_dispatch(username, proposal, match_target=matches[0].get("username") if matches else None)
+      
         return {
             "status": "ok",
             "url": target_url,
@@ -568,6 +569,7 @@ async def metabridge(request: Request):
 
     matches = metabridge_dual_match_realworld_fulfillment(search_query)
     proposals = proposal_generator(search_query, matches)
+    proposal_dispatch(username, proposal, match_target=matches[0].get("username") if matches else None)
     proposal_delivery(username, proposals)
 
     return {
