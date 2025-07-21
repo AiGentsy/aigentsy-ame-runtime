@@ -466,6 +466,57 @@ async def external_signal(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.post("/scan_external_content")
+async def scan_external_content(request: Request):
+    """
+    Scans a user-submitted external URL (e.g. LinkedIn or Fiverr),
+    extracts visible content (lightweight), infers offering, and matches it.
+
+    Payload:
+        - username (str)
+        - url (str)
+
+    Returns:
+        - Detected offer (via OpenRouter LLM)
+        - Best AiGentsy matches
+        - Proposal draft
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        target_url = payload.get("url")
+
+        if not target_url:
+            return {"status": "error", "message": "No URL provided."}
+
+        # 🧽 Fetch and lightweight clean
+        page = requests.get(target_url, timeout=10)
+        raw_text = page.text
+        clean_text = " ".join(raw_text.split("<")).replace(">", " ")[:2000]
+
+        # 🤖 Extract offer using OpenRouter LLM
+        extract_msg = HumanMessage(
+            content=f"From this content, identify what is being marketed or offered. Return a simple 1-line business offering:\n\n{clean_text}"
+        )
+        offer_resp = await llm.ainvoke([extract_msg])
+        inferred_offer = offer_resp.content.strip()
+
+        # 🎯 Match using AiGentsy logic
+        matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
+        proposal = proposal_generator(username, inferred_offer, matches)
+
+        return {
+            "status": "ok",
+            "url": target_url,
+            "detected_offer": inferred_offer,
+            "match_count": len(matches),
+            "matches": matches,
+            "proposal": proposal
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/metabridge")
 async def metabridge(request: Request):
     """
