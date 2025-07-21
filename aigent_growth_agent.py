@@ -98,6 +98,8 @@ async def invoke(state: AgentState) -> dict:
         traits = record.get("traits", list(agent_traits.keys()))
         kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         region = record.get("region", "Global")
+                # ---- NEW: compute service needs ---------------------------------
+        service_needs = suggest_service_needs(traits, kits)
 
         match_preferences = {"client": 3, "investor": 2, "reseller": 1, "partner": 4}
 
@@ -133,8 +135,9 @@ async def invoke(state: AgentState) -> dict:
             trait_str = ", ".join(traits)
             kit_str = ", ".join(kits)
             resp = (
-                f"You're currently optimized for traits like {trait_str}, "
-                f"equipped with the {kit_str} kit(s), and operating in the {region} region."
+                f"Traits ➜ {', '.join(traits)}  |  Kits ➜ {', '.join(kits)}  "
+                f"| Region ➜ {region}\n"
+                f"🔍 Next suggested moves: {', '.join(service_needs)}"
             )
             return {
                 "output": resp,
@@ -142,6 +145,7 @@ async def invoke(state: AgentState) -> dict:
                 "traits": traits,
                 "kits": kits,
                 "region": region,
+                "suggested_services": service_needs,
             }
 
         # ---- Trait‑aware fallback ----
@@ -187,6 +191,25 @@ async def invoke(state: AgentState) -> dict:
 
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
+
+# ----------------- Service‑demand helper -----------------
+def suggest_service_needs(traits: list[str], kits: list[str]) -> list[str]:
+    suggestions = []
+    if "legal" not in traits:
+        suggestions.append("Legal Kit")
+    if "marketing" not in traits and "social" not in traits:
+        suggestions.append("Marketing Strategy Session")
+    if "sdk_spawner" not in traits and "sdk" not in kits:
+        suggestions.append("SDK Integration Setup")
+    if "compliance_sentinel" not in traits:
+        suggestions.append("Compliance Review")
+    if "growth_loop_enabled" in traits:
+        suggestions.append("Propagation Funnel Upgrade")
+    if "founder" in traits:
+        suggestions.append("Strategic Venture Collaboration")
+    if "branding" not in kits:
+        suggestions.append("Brand Identity Package")
+    return suggestions
 
 # ----------------- Helper Functions -----------------
 
