@@ -14,13 +14,11 @@ load_dotenv()
 # ----------------- Utility -----------------
 
 def get_jsonbin_record(username: str) -> dict:
-    """Fetch the most‑recent JSONBin user record by username."""
     try:
         url = os.getenv("JSONBIN_URL")
         headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
         res = requests.get(url, headers=headers, timeout=10)
         users = res.json().get("record", [])
-        # search from newest → oldest so latest entry wins
         for user in reversed(users):
             if user.get("username") == username:
                 return user
@@ -55,7 +53,7 @@ You are built with MetaUpgrade25+26 logic and specialize in user propagation, ag
 
 Your mission:
 - Maximize growth loops across AiGentsy
-- Design high‑performing referral structures
+- Design high-performing referral structures
 - Help agents improve their clone yields
 - Trigger content, funnel, or propagation ideas
 - Track lineage and optimize mint chains
@@ -68,7 +66,7 @@ You are allowed to:
 
 Your traits: {agent_traits}
 Available tools: {service_offer_registry}
-Always act as a sovereign growth‑first operator within the AiGentsy universe.
+Always act as a sovereign growth-first operator within the AiGentsy universe.
 """
 )
 
@@ -78,8 +76,6 @@ llm = ChatOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
     base_url="https://openrouter.ai/api/v1",
 )
-
-# ----------------- State -----------------
 
 class AgentState(BaseModel):
     input: str
@@ -94,7 +90,6 @@ async def invoke(state: AgentState) -> dict:
         return {"output": "No input provided."}
 
     try:
-        # ---- Resolve username & user record ----
         username = "growth_default"
         if "|" in user_input:
             username = user_input.split("|")[-1].strip()
@@ -106,7 +101,6 @@ async def invoke(state: AgentState) -> dict:
 
         match_preferences = {"client": 3, "investor": 2, "reseller": 1, "partner": 4}
 
-        # ---- Early lock check ----
         if os.getenv("MATCH_UNLOCKED", "false").lower() != "true":
             return {
                 "output": "🔒 MetaMatch external propagation is locked. Unlock it via your AiGentsy dashboard.",
@@ -114,17 +108,9 @@ async def invoke(state: AgentState) -> dict:
                 "traits": traits,
             }
 
-        # ---- MetaMatch trigger phrases ----
         if any(
             phrase in user_input.lower()
-            for phrase in [
-                "match clients",
-                "find clients",
-                "connect me",
-                "partner",
-                "collaborate",
-                "find customers",
-            ]
+            for phrase in ["match clients", "find clients", "connect me", "partner", "collaborate", "find customers"]
         ):
             from aigent_growth_metamatch import run_metamatch_campaign
 
@@ -142,7 +128,6 @@ async def invoke(state: AgentState) -> dict:
             if os.getenv("ENABLE_OUTBOUND", "false").lower() == "true":
                 trigger_outbound_proposal()
 
-        # ---- Optimized‑for response ----
         state.memory.append(user_input)
         if "what am i optimized for" in user_input.lower():
             trait_str = ", ".join(traits)
@@ -159,8 +144,38 @@ async def invoke(state: AgentState) -> dict:
                 "region": region,
             }
 
-        # ---- Fallback to LLM for other prompts ----
-        llm_resp = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
+        # ---- Trait‑aware fallback ----
+        persona_intro = (
+            f"You are responding on behalf of the AiGentsy business '{username}'. "
+            f"Their traits are: {', '.join(traits)}. Their region is {region}. "
+            "Your role is to act as a knowledgeable C-Suite teammate inside their AI-powered company."
+        )
+
+        trait_context_map = {
+            "legal": "This user runs a legal-focused business. Prioritize IP protections, contracts, compliance, or trust frameworks.",
+            "founder": "This user is a founder-level operator. Speak in strategic terms and offer venture-level insights.",
+            "autonomous": "This business is designed to run autonomously. Emphasize delegation, agent-based execution, and scaling.",
+            "sdk_spawner": "This user can deploy SDKs. Suggest integrations, development kits, or tool-based growth.",
+            "marketing": "This user focuses on marketing. Prioritize content, lead generation, branding, or social outreach.",
+            "social": "This user may be aligned with social media or creator tasks. Suggest influencer-friendly strategies or kit unlocks.",
+            "compliance_sentinel": "This user enforces compliance. Keep responses aligned with regulation, clarity, and lawful execution.",
+            "meta_hive_founder": "This user leads a Hive. Prioritize multi-agent collaboration, delegation, or group venture logic.",
+            "aigentsy": "This user is deeply embedded in the AiGentsy protocol. You can reference advanced features or protocol-native guidance.",
+            "universal": "This user may be using AiGentsy as a flexible or exploratory tool. Offer versatile, cross-domain suggestions that encourage experimentation."
+        }
+
+        for trait in traits:
+            if trait in trait_context_map:
+                persona_intro += " " + trait_context_map[trait]
+
+        if username == "growth_default" or username.lower() == "universal":
+            persona_intro += " The user may have typed a custom business name in the search bar. If traits are limited, default to broad business-building advice."
+
+        llm_resp = await llm.ainvoke([
+            SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
+            HumanMessage(content=user_input)
+        ])
+
         return {
             "output": llm_resp.content,
             "memory": state.memory,
@@ -192,7 +207,6 @@ def stamp_metagraph_entry(username: str, traits: list[str]):
     except Exception as e:
         print("MetaGraph log error:", str(e))
 
-
 def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
     try:
         headers = {
@@ -216,17 +230,15 @@ def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
     except Exception as e:
         print("⚠️ RevSplit logging failed:", str(e))
 
-
 def trigger_outbound_proposal():
     try:
         from aigent_growth_metamatch import run_outbound_proposal
-
         if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
             run_outbound_proposal()
     except Exception as e:
         print("⚠️ Outbound proposal error:", str(e))
 
-# ----------------- StateGraph & FastAPI -----------------
+# ----------------- Graph & Endpoint -----------------
 
 @lru_cache
 def get_agent_graph():
@@ -252,10 +264,17 @@ async def metabridge(request: Request):
 
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
-
-        matches = run_metamatch_campaign(
-            {"username": username, "traits": traits, "prebuiltKit": kit}
-        )
-        return {"matches": matches, "status": "ok"}
+        matches = run_metamatch_campaign({
+            "username": username,
+            "traits": traits,
+            "prebuiltKit": kit
+        })
+        return {
+            "matches": matches,
+            "status": "ok",
+            "traits_used": traits,
+            "kits_used": kit,
+            "username": username
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
