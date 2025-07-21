@@ -159,16 +159,50 @@ async def invoke(state: AgentState) -> dict:
                 "region": region,
             }
 
-        # ---- Fallback to LLM for other prompts ----
-        llm_resp = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
-        return {
-            "output": llm_resp.content,
-            "memory": state.memory,
-            "traits": traits,
-            "kits": kits,
-            "region": region,
-            "offers": service_offer_registry,
-        }
+         # ---- Fallback to LLM with trait-personalized injection ----
+
+persona_intro = (
+    f"You are responding on behalf of the AiGentsy business '{username}'. "
+    f"Their traits are: {', '.join(traits)}. Their region is {region}. "
+    "Your role is to act as a knowledgeable C-Suite teammate inside their AI-powered company."
+)
+
+# 🧠 Inject trait-specific personalization
+trait_context_map = {
+    "legal": "This user runs a legal-focused business. Prioritize IP protections, contracts, compliance, or trust frameworks.",
+    "founder": "This user is a founder-level operator. Speak in strategic terms and offer venture-level insights.",
+    "autonomous": "This business is designed to run autonomously. Emphasize delegation, agent-based execution, and scaling.",
+    "sdk_spawner": "This user can deploy SDKs. Suggest integrations, development kits, or tool-based growth.",
+    "marketing": "This user focuses on marketing. Prioritize content, lead generation, branding, or social outreach.",
+    "social": "This user may be aligned with social media or creator tasks. Suggest influencer-friendly strategies or kit unlocks.",
+    "compliance_sentinel": "This user enforces compliance. Keep responses aligned with regulation, clarity, and lawful execution.",
+    "meta_hive_founder": "This user leads a Hive. Prioritize multi-agent collaboration, delegation, or group venture logic.",
+    "aigentsy": "This user is deeply embedded in the AiGentsy protocol. You can reference advanced features or protocol-native guidance.",
+    "universal": "This user may be using AiGentsy as a flexible or exploratory tool. Offer versatile, cross-domain suggestions that encourage experimentation."
+}
+
+# Add matched trait hints
+for trait in traits:
+    if trait in trait_context_map:
+        persona_intro += " " + trait_context_map[trait]
+
+# 🔎 Add custom hint for universal input
+if username == "growth_default" or username.lower() == "universal":
+    persona_intro += " The user may have typed a custom business name in the search bar. If traits are limited, default to broad business-building advice."
+
+llm_resp = await llm.ainvoke([
+    SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
+    HumanMessage(content=user_input)
+])
+
+return {
+    "output": llm_resp.content,
+    "memory": state.memory,
+    "traits": traits,
+    "kits": kits,
+    "region": region,
+    "offers": service_offer_registry,
+}
 
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
@@ -238,24 +272,58 @@ def get_agent_graph():
 
 app = FastAPI()
 
+# ----------------- MetaBridge Endpoint -----------------
+
 @app.post("/metabridge")
 async def metabridge(request: Request):
+    """
+    Dynamically returns MetaMatch campaign results.
+    Accepts:
+      - username / user   (string)  – required
+      - traits            (list | str | None)
+      - kit               (list | str | None)
+    Falls back to JSONBin record when traits / kit omitted.
+    """
     payload = await request.json()
-    username = payload.get("username", "growth_default")
-    traits = payload.get("traits")
-    kit = payload.get("kit")
 
-    if not traits or not kit:
-        record = get_jsonbin_record(username)
-        traits = record.get("traits", ["starter"])
-        kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+    # ---- Resolve username (body, query‑param, or default) ----
+    username = (
+        payload.get("username")
+        or payload.get("user")
+        or request.query_params.get("user")
+        or "growth_default"
+    )
 
+    # ---- Pull JSONBin record ----
+    record = get_jsonbin_record(username)
+
+    # ---- Resolve traits / kits ----
+    traits = payload.get("traits") or record.get("traits", ["universal"])
+    kit    = payload.get("kit")    or list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+
+    # Normalise to list
+    if isinstance(traits, str):
+        traits = [traits]
+    if isinstance(kit, str):
+        kit = [kit]
+
+    # ---- Run MetaMatch campaign ----
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
 
         matches = run_metamatch_campaign(
             {"username": username, "traits": traits, "prebuiltKit": kit}
         )
-        return {"matches": matches, "status": "ok"}
+
+        # (Optional) RevSplit / MetaGraph logging could be added here
+
+        return {
+            "status": "ok",
+            "username": username,
+            "traits_used": traits,
+            "kits_used": kit,
+            "matches": matches,
+        }
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
