@@ -326,17 +326,74 @@ def get_agent_graph():
 
 app = FastAPI()
 
-@app.post("/metabridge")
+def metabridge_dual_match_realworld_fulfillment(input_text: str) -> list[dict]:
+    """
+    Matches external job/offer text to AiGentsy agents with relevant traits/kits.
+    Can be used inside MetaBridge or outbound campaign intake.
+
+    Returns list of potential matches with user, traits, score, and match_reason.
+    """
+    try:
+        url = os.getenv("JSONBIN_URL")
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        res = requests.get(url, headers=headers, timeout=10)
+        all_users = res.json().get("record", [])
+
+        matches = []
+
+        keywords = input_text.lower().split()
+        for user in all_users:
+            score = 0
+            reasons = []
+
+            user_traits = [t.lower() for t in user.get("traits", [])]
+            user_kits = list(user.get("kits", {}).keys())
+
+            # Score trait/kit hits
+            for kw in keywords:
+                if kw in user_traits:
+                    score += 2
+                    reasons.append(f"Trait match: {kw}")
+                if kw in user_kits:
+                    score += 1
+                    reasons.append(f"Kit match: {kw}")
+                if kw in user.get("ventureID", "").lower():
+                    score += 1
+                    reasons.append("Business name match")
+
+            if score > 0:
+                matches.append({
+                    "username": user.get("username"),
+                    "venture": user.get("ventureID"),
+                    "traits": user_traits,
+                    "kits": user_kits,
+                    "score": score,
+                    "match_reason": ", ".join(reasons),
+                    "contact_url": user.get("runtimeURL", "#")
+                })
+
+        return sorted(matches, key=lambda m: m["score"], reverse=True)
+
+    except Exception as e:
+        print("⚠️ MetaBridge Dual Match error:", str(e))
+        return []
+        
+  @app.post("/metabridge")
 async def metabridge(request: Request):
     payload = await request.json()
+    search_query = payload.get("query")  # external offer or need
     username = payload.get("username", "growth_default")
-    traits = payload.get("traits")
-    kit = payload.get("kit")
 
-    if not traits or not kit:
-        record = get_jsonbin_record(username)
-        traits = record.get("traits", ["starter"])
-        kit = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
+    if not search_query:
+        return {"status": "error", "message": "No query provided."}
+
+    matches = metabridge_dual_match_realworld_fulfillment(search_query)
+    return {
+        "status": "ok",
+        "query": search_query,
+        "match_count": len(matches),
+        "matches": matches
+    }
 
     try:
         from aigent_growth_metamatch import run_metamatch_campaign
