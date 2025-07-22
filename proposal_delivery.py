@@ -2,6 +2,29 @@ import os
 import requests
 from datetime import datetime
 
+# ✅ Universal DM Bot Formatter
+def format_universal_dm(recipient: str, platform: str, proposal: str):
+    """
+    Formats a universal DM for any platform (Fiverr, LinkedIn, etc.)
+    """
+    timestamp = datetime.utcnow().isoformat()
+    return f"""
+💬 Direct Message (via {platform})
+To: {recipient}
+
+Hi {recipient},
+
+We found a strong match between your needs and one of our AiGentsy solutions:
+
+{proposal}
+
+To explore or collaborate, visit:
+https://aigentsy.com/start?invite={recipient}
+
+🕒 Sent: {timestamp}
+""".strip()
+
+
 def deliver_proposal(query: str, matches: list[dict], originator: str):
     """
     Multi-channel proposal dispatch:
@@ -31,7 +54,7 @@ Timestamp: {datetime.utcnow().isoformat()}
 
     delivery_status = {"webhook": False, "email": False, "dm": False}
 
-    # --- Webhook ---
+    # --- Webhook Delivery ---
     webhook_url = os.getenv("PROPOSAL_WEBHOOK_URL")
     if webhook_url:
         try:
@@ -47,24 +70,18 @@ Timestamp: {datetime.utcnow().isoformat()}
         except Exception as e:
             print("⚠️ Webhook failed:", str(e))
 
-    # --- Email Stub (to replace with SMTP/API) ---
+    # --- Email Delivery (Stub) ---
     email = os.getenv("PROPOSAL_EMAIL")
     if email:
         print(f"✉️ [Stub] Email would be sent to {email}")
         delivery_status["email"] = True
 
-    # --- Universal DM Stub ---
+    # --- Universal DM Delivery ---
     dm_target = os.getenv("PROPOSAL_DM_TARGET")
     dm_platform = os.getenv("PROPOSAL_DM_PLATFORM", "universal")
     if dm_target:
-        print(f"""
-💬 DM Message
-Platform: {dm_platform}
-To: {dm_target}
----
-{proposal_msg}
----
-""")
+        formatted_dm = format_universal_dm(dm_target, dm_platform, proposal_msg)
+        print(formatted_dm)
         delivery_status["dm"] = True
 
     return delivery_status
