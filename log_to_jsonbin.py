@@ -30,7 +30,9 @@ def log_agent_update(data: dict):
             # 🚀 Trigger auto-proposal after mint
         if data.get("username"):
             auto_proposal_on_mint(data)
-
+        if data.get("yield", {}).get("aigxEarnedEnabled"):
+            print(f"💸 AIGx unlock detected for {data['username']}")
+            # Placeholder: Add any yield logic or ledger writing here
     except requests.exceptions.HTTPError as http_err:
         print(f"❌ HTTP error: {http_err.response.status_code} - {http_err.response.text}")
     except requests.exceptions.RequestException as e:
