@@ -503,6 +503,44 @@ def proposal_delivery(sender: str, proposals: list[dict]):
     except Exception as e:
         print("⚠️ Proposal log failed:", str(e))
 
+# ----------------- Trait Inference from External Content -----------------
+@app.post("/infer_traits_from_text")
+async def infer_traits_from_text(request: Request):
+    """
+    Given raw text (e.g., social media bio or post), infer the user's likely traits.
+    Returns a list of inferred AiGentsy traits.
+    """
+    try:
+        payload = await request.json()
+        raw_text = payload.get("text", "").strip()
+
+        if not raw_text:
+            return {"status": "error", "message": "No text provided."}
+
+        trait_prompt = f"""
+You're an AiGentsy trait analyst.
+
+Given the following user-submitted text, infer what traits might apply from this list:
+
+legal, marketing, finance, sdk_spawner, compliance_sentinel, founder, social, autonomous, meta_hive_founder
+
+Text:
+\"\"\"{raw_text}\"\"\"
+
+Return a list of the most likely traits from the list above, separated by commas. Keep it short.
+"""
+
+        trait_resp = await llm.ainvoke([HumanMessage(content=trait_prompt)])
+        inferred = [t.strip() for t in trait_resp.content.split(",") if t.strip()]
+
+        return {
+            "status": "ok",
+            "inferred_traits": inferred
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # ----------------- External Signal Trigger -----------------
 
 external_signal_registry: list[dict] = []
