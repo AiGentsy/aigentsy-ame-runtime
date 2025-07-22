@@ -11,6 +11,18 @@ JSONBIN_URL = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 VERBOSE_LOGGING = os.getenv("VERBOSE_LOGGING", "true").lower() == "true"
 
+def generate_collectible(username: str, reason: str, metadata: dict = None):
+    """
+    Placeholder for collectible minting logic.
+    This can later call a smart contract, store JSON, or issue NFT.
+    """
+    collectible = {
+        "username": username,
+        "reason": reason,
+        "metadata": metadata or {},
+    }
+    print(f"🏅 Collectible generated: {collectible}")
+
 def log_agent_update(data: dict):
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
@@ -27,6 +39,19 @@ def log_agent_update(data: dict):
         response.raise_for_status()
         if VERBOSE_LOGGING:
             print(f"✅ Logged to JSONBin: {response.status_code}")
+            # 🏅 Auto-mint collectible on key milestone
+if data.get("yield", {}).get("aigxEarned", 0) > 0:
+    generate_collectible(data["username"], reason="First AIGx Earned")
+
+if data.get("cloneLineageSpread", 0) >= 5:
+    generate_collectible(data["username"], reason="Lineage Milestone", metadata={"spread": data["cloneLineageSpread"]})
+
+if data.get("remixUnlockedForks", 0) >= 3:
+    generate_collectible(data["username"], reason="Remix Milestone", metadata={"forks": data["remixUnlockedForks"]})
+
+if data.get("servicesRendered", 0) >= 1:
+    generate_collectible(data["username"], reason="First Service Delivered")
+
             # 🚀 Trigger auto-proposal after mint
         if data.get("username"):
             auto_proposal_on_mint(data)
