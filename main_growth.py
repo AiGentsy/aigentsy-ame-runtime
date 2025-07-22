@@ -38,3 +38,42 @@ async def run_agent(request: Request):
 
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
+
+@app.post("/metabridge")
+async def metabridge_dispatch(request: Request):
+    """
+    MetaBridge Matchmaking + Dispatch Runtime:
+    Accepts external queries and returns matched AiGentsy agents with proposals.
+    """
+    try:
+        data = await request.json()
+        query = data.get("query")
+        originator = data.get("username", "guest_agent")
+
+        if not query:
+            return {"error": "No query provided."}
+
+        # 🧠 Match with current MetaMatch logic
+        from aigent_growth_metamatch import metabridge_dual_match_realworld_fulfillment
+        from proposal_generator import proposal_generator, proposal_dispatch, deliver_proposal
+
+        matches = metabridge_dual_match_realworld_fulfillment(query)
+        proposal = proposal_generator(originator, query, matches)
+
+        # 🔁 Dispatch proposal to top match (if available)
+        if matches:
+            proposal_dispatch(originator, proposal, match_target=matches[0].get("username"))
+
+        # 📨 Deliver externally (webhook/email/DM)
+        deliver_proposal(query=query, matches=matches, originator=originator)
+
+        return {
+            "status": "ok",
+            "query": query,
+            "match_count": len(matches),
+            "proposal": proposal,
+            "matches": matches
+        }
+
+    except Exception as e:
+        return {"error": f"MetaBridge runtime error: {str(e)}"}
