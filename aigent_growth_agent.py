@@ -541,6 +541,60 @@ Return a list of the most likely traits from the list above, separated by commas
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ----------------- Cold Lead Auto-Pitcher -----------------
+@app.post("/cold_lead_pitch")
+async def cold_lead_pitch(request: Request):
+    """
+    Accepts external lead info (e.g. scraped post, cold message) and:
+    - Extracts need/offer
+    - Matches AiGentsy agents
+    - Generates and delivers pitch
+    """
+    try:
+        payload = await request.json()
+        raw_text = payload.get("text", "").strip()
+        originator = payload.get("originator", "growth_default")
+
+        if not raw_text:
+            return {"status": "error", "message": "No text provided."}
+
+        # Step 1: Extract likely offer/need
+        prompt = f"""
+You are an AiGentsy extractor bot.
+
+Given this cold lead text, infer their offer or need in a short phrase:
+\"\"\"{raw_text}\"\"\"
+
+Respond with only the inferred phrase.
+"""
+        extraction = await llm.ainvoke([HumanMessage(content=prompt)])
+        inferred_query = extraction.content.strip()
+
+        if not inferred_query:
+            return {"status": "error", "message": "Could not infer query."}
+
+        # Step 2: Match to internal users
+        matches = metabridge_dual_match_realworld_fulfillment(inferred_query)
+
+        if not matches:
+            return {"status": "ok", "query": inferred_query, "matches": []}
+
+        # Step 3: Generate & dispatch proposal
+        proposal = proposal_generator(originator, inferred_query, matches)
+        proposal_dispatch(originator, proposal, match_target=matches[0].get("username"))
+        deliver_proposal(inferred_query, matches, originator)
+
+        return {
+            "status": "ok",
+            "query": inferred_query,
+            "match_count": len(matches),
+            "matches": matches,
+            "proposal": proposal
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # ----------------- External Signal Trigger -----------------
 
 external_signal_registry: list[dict] = []
