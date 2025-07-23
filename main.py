@@ -17,28 +17,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# === Agent Endpoints ===
+CFO_ENDPOINT = "https://aigent0.onrender.com/agent"
+CMO_ENDPOINT = "https://aigent-growth.onrender.com/agent"
+CTO_ENDPOINT = "https://aigent-sdk.onrender.com/agent"
+CLO_ENDPOINT = "https://aigent-remix.onrender.com/agent"
+
+# === Smart Router ===
+def route_to_agent_endpoint(user_input: str) -> str:
+    q = user_input.lower()
+    if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate"]):
+        return CLO_ENDPOINT
+    elif any(k in q for k in ["growth", "marketing", "campaign", "audience", "promotion", "referral"]):
+        return CMO_ENDPOINT
+    elif any(k in q for k in ["tech", "build", "clone", "deploy", "sdk", "feature", "toolkit"]):
+        return CTO_ENDPOINT
+    elif any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn"]):
+        return CFO_ENDPOINT
+    return CFO_ENDPOINT  # fallback default
+
+# === Agent Router ===
 @app.post("/agent")
-async def run_agent(request: Request):
+async def agent_router(request: Request):
     try:
         data = await request.json()
         user_input = data.get("input", "")
         if not user_input:
             return {"error": "No input provided."}
 
-        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
-        initial_state = {
-            "input": user_input,
-            "memory": []
-        }
+        endpoint = route_to_agent_endpoint(user_input)
 
-        # Invoke the agent graph
-        result = await agent_graph.ainvoke(initial_state)
-
-        return {"output": result.get("output", "No output returned.")}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(endpoint, json={"input": user_input})
+            response.raise_for_status()
+            return response.json()
 
     except Exception as e:
-        return {"error": f"Agent runtime error: {str(e)}"}
-
+        return {"error": f"Router error: {str(e)}"}
+        
 import os
 import httpx
 
