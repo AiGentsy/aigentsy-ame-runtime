@@ -187,4 +187,3 @@ async def metabridge_dispatch(request: Request):
 
     except Exception as e:
         return {"error": f"MetaBridge runtime error: {str(e)}"}
-
