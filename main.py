@@ -17,26 +17,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === Agent Endpoints ===
-CFO_ENDPOINT = "https://aigent0.onrender.com/agent"
-CMO_ENDPOINT = "https://aigent-growth.onrender.com/agent"
-CTO_ENDPOINT = "https://aigent-sdk.onrender.com/agent"
-CLO_ENDPOINT = "https://aigent-remix.onrender.com/agent"
+# === Agent Endpoints (Corrected with Runtime URLs) ===
+CFO_ENDPOINT = "https://aigentsy-ame-runtime.onrender.com/agent"       # AiGent0 / Finance
+CMO_ENDPOINT = "https://aigent-growth-runtime.onrender.com/agent"      # AiGent Growth
+CTO_ENDPOINT = "https://aigent-sdk-runtime.onrender.com/agent"         # AiGent SDK
+CLO_ENDPOINT = "https://aigent-remix-runtime.onrender.com/agent"       # AiGent Remix
 
-# === Smart Router ===
+# === Smart Router Based on Input Context ===
 def route_to_agent_endpoint(user_input: str) -> str:
     q = user_input.lower()
-    if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate"]):
-        return CLO_ENDPOINT
-    elif any(k in q for k in ["growth", "marketing", "campaign", "audience", "promotion", "referral"]):
-        return CMO_ENDPOINT
-    elif any(k in q for k in ["tech", "build", "clone", "deploy", "sdk", "feature", "toolkit"]):
-        return CTO_ENDPOINT
-    elif any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn"]):
-        return CFO_ENDPOINT
-    return CFO_ENDPOINT  # fallback default
 
-# === Agent Router ===
+    if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate", "terms", "clo"]):
+        return CLO_ENDPOINT
+
+    if any(k in q for k in ["growth", "marketing", "campaign", "audience", "promotion", "referral", "visibility", "traction", "cmo"]):
+        return CMO_ENDPOINT
+
+    if any(k in q for k in ["tech", "build", "clone", "deploy", "sdk", "feature", "toolkit", "cto", "dev", "tools"]):
+        return CTO_ENDPOINT
+
+    if any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn", "withdraw", "stripe", "cfo"]):
+        return CFO_ENDPOINT
+
+    return CFO_ENDPOINT  # Default fallback
+
+# === Agent Router Endpoint ===
 @app.post("/agent")
 async def agent_router(request: Request):
     try:
@@ -50,10 +55,13 @@ async def agent_router(request: Request):
         async with httpx.AsyncClient() as client:
             response = await client.post(endpoint, json={"input": user_input})
             response.raise_for_status()
-            return response.json()
+            return {
+                "output": response.json().get("output", "No response."),
+                "source": endpoint  # Optional: helps frontend label correctly
+            }
 
     except Exception as e:
-        return {"error": f"Router error: {str(e)}"}
+        return {"error": f"Router error: {str(e)}"}}
         
 import os
 import httpx
