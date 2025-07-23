@@ -20,6 +20,18 @@ agent_traits = {
 
 # SDK-Oriented Offer Registry
 service_offer_registry = [
+    # 🧬 Replication Logic (Clone Services)
+agent_traits["clone_support"] = True
+agent_traits["replication_enabled"] = True
+
+# Add to service offers if not already present
+clone_offers = [
+    "Clone Licensing",
+    "Replication-as-a-Service",
+    "Agent Duplication Toolkit"
+]
+service_offer_registry.extend([o for o in clone_offers if o not in service_offer_registry])
+
     "SDK-as-a-Service",
     "Custom Protocol Toolkits",
     "Agent Integration Packs",
