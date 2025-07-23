@@ -17,52 +17,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === Agent Endpoints (Corrected with Runtime URLs) ===
-CFO_ENDPOINT = "https://aigentsy-ame-runtime.onrender.com/agent"       # AiGent0 / Finance
-CMO_ENDPOINT = "https://aigent-growth-runtime.onrender.com/agent"      # AiGent Growth
-CTO_ENDPOINT = "https://aigent-sdk-runtime.onrender.com/agent"         # AiGent SDK
-CLO_ENDPOINT = "https://aigent-remix-runtime.onrender.com/agent"       # AiGent Remix
-
-# === Smart Router Based on Input Context ===
-def route_to_agent_endpoint(user_input: str) -> str:
-    q = user_input.lower()
-
-    if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate", "terms", "clo"]):
-        return CLO_ENDPOINT
-
-    if any(k in q for k in ["growth", "marketing", "campaign", "audience", "promotion", "referral", "visibility", "traction", "cmo"]):
-        return CMO_ENDPOINT
-
-    if any(k in q for k in ["tech", "build", "clone", "deploy", "sdk", "feature", "toolkit", "cto", "dev", "tools"]):
-        return CTO_ENDPOINT
-
-    if any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn", "withdraw", "stripe", "cfo"]):
-        return CFO_ENDPOINT
-
-    return CFO_ENDPOINT  # Default fallback
-
-# === Agent Router Endpoint ===
 @app.post("/agent")
-async def agent_router(request: Request):
+async def run_agent(request: Request):
     try:
         data = await request.json()
         user_input = data.get("input", "")
         if not user_input:
             return {"error": "No input provided."}
 
-        endpoint = route_to_agent_endpoint(user_input)
+        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
+        initial_state = {
+            "input": user_input,
+            "memory": []
+        }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(endpoint, json={"input": user_input})
-            response.raise_for_status()
-            return {
-                "output": response.json().get("output", "No response."),
-                "source": endpoint  # Optional: helps frontend label correctly
-            }
+        # Invoke the agent graph
+        result = await agent_graph.ainvoke(initial_state)
+
+        return {"output": result.get("output", "No output returned.")}
 
     except Exception as e:
-        return {"error": f"Router error: {str(e)}"}
-        
+        return {"error": f"Agent runtime error: {str(e)}"}
+
 import os
 import httpx
 
@@ -211,5 +187,3 @@ async def metabridge_dispatch(request: Request):
 
     except Exception as e:
         return {"error": f"MetaBridge runtime error: {str(e)}"}
-
-
