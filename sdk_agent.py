@@ -18,13 +18,11 @@ agent_traits = {
     "meta_upgrade": "25+26"
 }
 
-# SDK-Oriented Offer Registry
-service_offer_registry = [
 # Enable clone-related traits
 agent_traits["clone_support"] = True
 agent_traits["replication_enabled"] = True
 
-# Initialize service offer registry
+# Start with core SDK offers
 service_offer_registry = [
     "SDK-as-a-Service",
     "Custom Protocol Toolkits",
@@ -32,7 +30,7 @@ service_offer_registry = [
     "White-Label Agent Builder APIs"
 ]
 
-# Add clone-related offers if not already present
+# Add clone-related services if not already present
 clone_offers = [
     "Clone Licensing",
     "Replication-as-a-Service",
@@ -41,6 +39,7 @@ clone_offers = [
 for offer in clone_offers:
     if offer not in service_offer_registry:
         service_offer_registry.append(offer)
+
 
 # System Message: AiGent SDK logic
 AIGENT_SYS_MSG = SystemMessage(content=f"""
