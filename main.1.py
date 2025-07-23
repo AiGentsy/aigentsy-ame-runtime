@@ -113,3 +113,78 @@ async def get_agent_record(request: Request):
 
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
+
+@app.post("/log-meta-match")
+async def log_meta_match_event(request: Request):
+    try:
+        body = await request.json()
+        match_source = body.get("matchSource")
+
+        if not match_source:
+            return {"error": "Missing matchSource (username required)"}
+
+        async with httpx.AsyncClient() as client:
+            headers = {"X-Master-Key": JSONBIN_SECRET}
+            res = await client.get(JSONBIN_URL, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            all_users = data.get("record", [])
+
+            for i, record in enumerate(all_users):
+                username = record.get("consent", {}).get("username") or record.get("username")
+                if username == match_source:
+                    if "metaMatchEvents" not in record:
+                        record["metaMatchEvents"] = []
+
+                    body["timestamp"] = body.get("timestamp") or str(datetime.utcnow().isoformat())
+                    record["metaMatchEvents"].append(body)
+
+                    updated_data = {"record": all_users}
+                    put_res = await client.put(JSONBIN_URL, headers=headers, json=updated_data)
+                    put_res.raise_for_status()
+                    return {"status": "✅ Match event logged", "match": body}
+
+            return {"error": "User not found in JSONBin"}
+
+    except Exception as e:
+        return {"error": f"MetaMatch logging error: {str(e)}"}
+
+@app.post("/metabridge")
+async def metabridge_dispatch(request: Request):
+    """
+    AiGentsy MetaBridge Runtime:
+    Accepts a query (external offer or need), matches via MetaMatch logic,
+    generates a proposal, dispatches across channels, and returns structured response.
+    """
+    try:
+        data = await request.json()
+        query = data.get("query")
+        originator = data.get("username", "anonymous")
+
+        if not query:
+            return {"error": "No query provided."}
+
+        # ✅ Runtime modules from aigent_growth_agent
+        from aigent_growth_agent import (
+            metabridge_dual_match_realworld_fulfillment,
+            proposal_generator,
+            proposal_dispatch,
+            deliver_proposal
+        )
+
+        matches = metabridge_dual_match_realworld_fulfillment(query)
+        proposal = proposal_generator(originator, query, matches)
+        proposal_dispatch(originator, proposal, match_target=matches[0].get("username") if matches else None)
+        deliver_proposal(query=query, matches=matches, originator=originator)
+
+        return {
+            "status": "ok",
+            "query": query,
+            "match_count": len(matches),
+            "proposal": proposal,
+            "matches": matches
+        }
+
+    except Exception as e:
+        return {"error": f"MetaBridge runtime error: {str(e)}"}
+
