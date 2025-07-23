@@ -61,7 +61,7 @@ async def agent_router(request: Request):
             }
 
     except Exception as e:
-        return {"error": f"Router error: {str(e)}"}}
+        return {"error": f"Router error: {str(e)}"}
         
 import os
 import httpx
