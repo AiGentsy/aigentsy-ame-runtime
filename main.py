@@ -197,7 +197,7 @@ async def agent_router(request: Request):
         endpoint = route_to_agent_endpoint(user_input)
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(f"{endpoint}/agent", json={"input": user_input})
+            response = await client.post(endpoint, json={"input": user_input})
             response.raise_for_status()
             return response.json()
 
