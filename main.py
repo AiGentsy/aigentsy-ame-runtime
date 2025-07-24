@@ -185,22 +185,24 @@ def route_to_agent_endpoint(user_input: str) -> str:
         return CFO_ENDPOINT
     return CFO_ENDPOINT  # Default fallback
 
-# === Smart Router Endpoint ===
 @app.post("/agent")
-async def agent_router(request: Request):
+async def run_agent(request: Request):
     try:
         data = await request.json()
         user_input = data.get("input", "")
         if not user_input:
             return {"error": "No input provided."}
 
-        endpoint = route_to_agent_endpoint(user_input)
+        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
+        initial_state = {
+            "input": user_input,
+            "memory": []
+        }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(endpoint, json={"input": user_input})
-            response.raise_for_status()
-            return response.json()
+        # Invoke the agent graph
+        result = await agent_graph.ainvoke(initial_state)
+
+        return {"output": result.get("output", "No output returned.")}
 
     except Exception as e:
-        return {"error": f"Router error: {str(e)}"}
-
+        return {"error": f"Agent runtime error: {str(e)}"}
