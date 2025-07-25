@@ -72,13 +72,12 @@ async def invoke(state: "AgentState") -> dict:
             AIGENT_SYS_MSG,
             HumanMessage(content=user_input)
         ])
-        role_label = "CFO"  # You can adjust this per agent
         return {
-            "output": f"{role_label}: {response.content}",
-            "memory": state.memory,
-            "traits": agent_traits,
-            "offers": service_offer_registry
-        }
+    "output": response.content,  # Let frontend handle labeling
+    "memory": state.memory,
+    "traits": agent_traits,
+    "offers": service_offer_registry
+}
 
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
