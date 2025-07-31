@@ -17,27 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/agent")
-async def run_agent(request: Request):
-    try:
-        data = await request.json()
-        user_input = data.get("input", "")
-        if not user_input:
-            return {"error": "No input provided."}
-
-        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
-        initial_state = {
-            "input": user_input,
-            "memory": []
-        }
-
-        # Invoke the agent graph
-        result = await agent_graph.ainvoke(initial_state)
-
-        return {"output": result.get("output", "No output returned.")}
-
-    except Exception as e:
-        return {"error": f"Agent runtime error: {str(e)}"}
 
 import os
 import httpx
@@ -187,3 +166,43 @@ async def metabridge_dispatch(request: Request):
 
     except Exception as e:
         return {"error": f"MetaBridge runtime error: {str(e)}"}
+        # === Smart Agent Endpoints ===
+CFO_ENDPOINT = "https://aigentsy-ame-runtime.onrender.com"
+CMO_ENDPOINT = "https://aigent-growth-runtime.onrender.com"
+CTO_ENDPOINT = "https://aigent-sdk-runtime.onrender.com"
+CLO_ENDPOINT = "https://aigent-remix-runtime.onrender.com"
+
+# === Smart Router Function ===
+def route_to_agent_endpoint(user_input: str) -> str:
+    q = user_input.lower()
+    if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate"]):
+        return CLO_ENDPOINT
+    elif any(k in q for k in ["growth", "marketing", "campaign", "audience", "promotion", "referral"]):
+        return CMO_ENDPOINT
+    elif any(k in q for k in ["tech", "build", "clone", "deploy", "sdk", "feature", "toolkit"]):
+        return CTO_ENDPOINT
+    elif any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn"]):
+        return CFO_ENDPOINT
+    return CFO_ENDPOINT  # Default fallback
+
+@app.post("/agent")
+async def run_agent(request: Request):
+    try:
+        data = await request.json()
+        user_input = data.get("input", "")
+        if not user_input:
+            return {"error": "No input provided."}
+
+        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
+        initial_state = {
+            "input": user_input,
+            "memory": []
+        }
+
+        # Invoke the agent graph
+        result = await agent_graph.ainvoke(initial_state)
+
+        return {"output": result.get("output", "No output returned.")}
+
+    except Exception as e:
+        return {"error": f"Agent runtime error: {str(e)}"}
