@@ -90,31 +90,25 @@ async def get_agent_record(request: Request):
         return {"error": "Missing username"}
 
     async with httpx.AsyncClient() as client:
-    headers = {"X-Master-Key": JSONBIN_SECRET}
-    try:
-        res = await client.get(JSONBIN_URL, headers=headers)
-        res.raise_for_status()
-        data = res.json()
-        all_users = data.get("record", [])
+        headers = {"X-Master-Key": JSONBIN_SECRET}
+        try:
+            res = await client.get(JSONBIN_URL, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            all_users = data.get("record", [])
 
-        for record in all_users:
-            consent_username = record.get("consent", {}).get("username")
-            direct_username = record.get("username")
+            for record in all_users:
+                consent_username = record.get("consent", {}).get("username")
+                direct_username = record.get("username")
 
-            if consent_username == username or direct_username == username:
-                # 🔄 Normalize record to legacy dashboard format
-                normalized = normalize_user_record(record)
+                if consent_username == username or direct_username == username:
+                    # 🔄 Normalize record to legacy dashboard format
+                    normalized = normalize_user_record(record)
 
-                # 🧬 Enforce trait + unlock schema
-                normalized = normalize_user_data(normalized)
+                    # 🧬 Enforce trait + unlock schema
+                    normalized = normalize_user_data(normalized)
 
-                return {"record": normalized}
-
-
-            return {"error": "User not found"}
-
-        except Exception as e:
-            return {"error": f"Fetch error: {str(e)}"}
+                    return {"record": normalized}
 
 @app.post("/log-meta-match")
 async def log_meta_match_event(request: Request):
