@@ -1,28 +1,35 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from venture_builder_agent import get_agent_graph
-import os
-import httpx
-from datetime import datetime
 
 # Initialize agent graph from MetaUpgrade25 archetype
 agent_graph = get_agent_graph()
 
+# FastAPI app setup
 app = FastAPI()
 
+# === ✅ CORS Middleware ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Or restrict to ["https://aigentsy.com"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+import os
+import httpx
+
 JSONBIN_URL = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 
+import httpx
+
 def normalize_user_record(record):
     consent = record.get("consent", {})
+
+    # Inject fallback team if missing
     default_team = {
         "CTO": "AiGent SDK",
         "CMO": "AiGent Growth",
@@ -57,27 +64,11 @@ def normalize_user_record(record):
         "agentType": record.get("agentType", "AiGent"),
     }
 
-def normalize_user_data(raw):
-    return {
-        "username": raw.get("username", ""),
-        "traits": raw.get("traits", []),
-        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
-        "referralCount": raw.get("referralCount", 0),
-        "proposals": raw.get("proposals", []),
-        "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked", False),
-        "legalKitUnlocked": raw.get("legalKitUnlocked", False),
-        "runtimeFlags": raw.get("runtimeFlags", {
-            "sdkAccess_eligible": False,
-            "vaultAccess": False,
-            "remixUnlocked": False
-        }),
-        **raw
-    }
-
 @app.post("/user")
 async def get_agent_record(request: Request):
     body = await request.json()
     username = body.get("username")
+
     if not username:
         return {"error": "Missing username"}
 
@@ -94,10 +85,8 @@ async def get_agent_record(request: Request):
                 direct_username = record.get("username")
 
                 if consent_username == username or direct_username == username:
-                    base = normalize_user_record(record)
-                    extras = normalize_user_data(record)
-                    merged = {**base, **extras}  # ✅ Ensures normalized fields aren't overwritten
-                    return {"record": merged}
+                    normalized = normalize_user_record(record)
+                    return {"record": normalized}
 
             return {"error": "User not found"}
 
@@ -109,6 +98,7 @@ async def log_meta_match_event(request: Request):
     try:
         body = await request.json()
         match_source = body.get("matchSource")
+
         if not match_source:
             return {"error": "Missing matchSource (username required)"}
 
@@ -140,13 +130,20 @@ async def log_meta_match_event(request: Request):
 
 @app.post("/metabridge")
 async def metabridge_dispatch(request: Request):
+    """
+    AiGentsy MetaBridge Runtime:
+    Accepts a query (external offer or need), matches via MetaMatch logic,
+    generates a proposal, dispatches across channels, and returns structured response.
+    """
     try:
         data = await request.json()
         query = data.get("query")
         originator = data.get("username", "anonymous")
+
         if not query:
             return {"error": "No query provided."}
 
+        # ✅ Runtime modules from aigent_growth_agent
         from aigent_growth_agent import (
             metabridge_dual_match_realworld_fulfillment,
             proposal_generator,
@@ -169,12 +166,13 @@ async def metabridge_dispatch(request: Request):
 
     except Exception as e:
         return {"error": f"MetaBridge runtime error: {str(e)}"}
-
+        # === Smart Agent Endpoints ===
 CFO_ENDPOINT = "https://aigentsy-ame-runtime.onrender.com"
 CMO_ENDPOINT = "https://aigent-growth-runtime.onrender.com"
 CTO_ENDPOINT = "https://aigent-sdk-runtime.onrender.com"
 CLO_ENDPOINT = "https://aigent-remix-runtime.onrender.com"
 
+# === Smart Router Function ===
 def route_to_agent_endpoint(user_input: str) -> str:
     q = user_input.lower()
     if any(k in q for k in ["legal", "license", "ip", "contract", "intellectual", "compliance", "insulate"]):
@@ -185,7 +183,7 @@ def route_to_agent_endpoint(user_input: str) -> str:
         return CTO_ENDPOINT
     elif any(k in q for k in ["finance", "revenue", "yield", "profit", "payment", "token", "earn"]):
         return CFO_ENDPOINT
-    return CFO_ENDPOINT
+    return CFO_ENDPOINT  # Default fallback
 
 @app.post("/agent")
 async def run_agent(request: Request):
@@ -195,12 +193,15 @@ async def run_agent(request: Request):
         if not user_input:
             return {"error": "No input provided."}
 
+        # Prepare input state for Venture Builder agent (MetaUpgrade25 logic)
         initial_state = {
             "input": user_input,
             "memory": []
         }
 
+        # Invoke the agent graph
         result = await agent_graph.ainvoke(initial_state)
+
         return {"output": result.get("output", "No output returned.")}
 
     except Exception as e:
