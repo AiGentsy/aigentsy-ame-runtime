@@ -94,9 +94,10 @@ async def get_agent_record(request: Request):
                 direct_username = record.get("username")
 
                 if consent_username == username or direct_username == username:
-                    normalized = normalize_user_record(record)
-                    normalized = normalize_user_data(normalized)
-                    return {"record": normalized}
+                    base = normalize_user_record(record)
+                    extras = normalize_user_data(record)
+                    merged = {**extras, **base}
+                    return {"record": merged}
 
             return {"error": "User not found"}
 
