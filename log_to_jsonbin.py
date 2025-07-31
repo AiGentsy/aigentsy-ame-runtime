@@ -54,31 +54,40 @@ def log_agent_update(data: dict):
     }
 
     try:
-        response = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(data))
-        response.raise_for_status()
+        # ✅ Step 1: Fetch current JSONBin record
+        res = requests.get(JSONBIN_URL, headers=headers)
+        res.raise_for_status()
+        current_record = res.json().get("record", {})
+
+        # ✅ Step 2: Match by username
+        if current_record.get("username") != data.get("username"):
+            print("⚠️ Username mismatch or missing. Overwriting entire record.")
+            merged_data = data  # fallback: overwrite anyway
+        else:
+            merged_data = {**current_record, **data}
+
+        # ✅ Step 3: Write back merged record
+        put_res = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(merged_data))
+        put_res.raise_for_status()
+
         if VERBOSE_LOGGING:
-            print(f"✅ Logged to JSONBin: {response.status_code}")
-            
-        # 🏅 Auto-mint collectible on key milestone
+            print(f"✅ Safely logged merged record for: {data.get('username')}")
+
+        # 🏅 Optional: Milestone logic preserved here...
         if data.get("yield", {}).get("aigxEarned", 0) > 0:
             generate_collectible(data["username"], reason="First AIGx Earned")
-
         if data.get("cloneLineageSpread", 0) >= 5:
             generate_collectible(data["username"], reason="Lineage Milestone", metadata={"spread": data["cloneLineageSpread"]})
-
         if data.get("remixUnlockedForks", 0) >= 3:
             generate_collectible(data["username"], reason="Remix Milestone", metadata={"forks": data["remixUnlockedForks"]})
-
         if data.get("servicesRendered", 0) >= 1:
             generate_collectible(data["username"], reason="First Service Delivered")
 
-        # 🚀 Trigger auto-proposal after mint
         if data.get("username"):
             auto_proposal_on_mint(data)
 
         if data.get("yield", {}).get("aigxEarnedEnabled"):
             print(f"💸 AIGx unlock detected for {data['username']}")
-            # Placeholder: Add any yield logic or ledger writing here
 
     except requests.exceptions.HTTPError as http_err:
         print(f"❌ HTTP error: {http_err.response.status_code} - {http_err.response.text}")
@@ -86,3 +95,4 @@ def log_agent_update(data: dict):
         print(f"❌ Request error: {str(e)}")
     except Exception as e:
         print(f"❌ Unexpected error during JSONBin log: {str(e)}")
+
