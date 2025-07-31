@@ -1,6 +1,22 @@
 import os
 import requests
 import json
+def normalize_user_data(raw):
+    return {
+        "username": raw.get("username", ""),
+        "traits": raw.get("traits", []),
+        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
+        "referralCount": raw.get("referralCount", 0),
+        "proposals": raw.get("proposals", []),
+        "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked", False),
+        "legalKitUnlocked": raw.get("legalKitUnlocked", False),
+        "runtimeFlags": raw.get("runtimeFlags", {
+            "sdkAccess_eligible": False,
+            "vaultAccess": False,
+            "remixUnlocked": False
+        }),
+        **raw  # preserve any additional fields
+    }
 
 # ✅ Auto-proposal logic for 3.3A (trigger on user mint)
 from proposal_generator import proposal_generator, proposal_dispatch, deliver_proposal
@@ -25,6 +41,8 @@ def generate_collectible(username: str, reason: str, metadata: dict = None):
     print(f"🏅 Collectible generated: {collectible}")
 
 def log_agent_update(data: dict):
+        data = normalize_user_data(data)
+
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
             print("❌ JSONBin logging disabled — missing credentials.")
