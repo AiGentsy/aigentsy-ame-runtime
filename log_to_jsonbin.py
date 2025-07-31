@@ -41,7 +41,7 @@ def generate_collectible(username: str, reason: str, metadata: dict = None):
     print(f"🏅 Collectible generated: {collectible}")
 
 def log_agent_update(data: dict):
-        data = normalize_user_data(data)
+    data = normalize_user_data(data)
 
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
@@ -59,7 +59,7 @@ def log_agent_update(data: dict):
         if VERBOSE_LOGGING:
             print(f"✅ Logged to JSONBin: {response.status_code}")
             
-                 # 🏅 Auto-mint collectible on key milestone
+        # 🏅 Auto-mint collectible on key milestone
         if data.get("yield", {}).get("aigxEarned", 0) > 0:
             generate_collectible(data["username"], reason="First AIGx Earned")
 
@@ -72,13 +72,14 @@ def log_agent_update(data: dict):
         if data.get("servicesRendered", 0) >= 1:
             generate_collectible(data["username"], reason="First Service Delivered")
 
-
-            # 🚀 Trigger auto-proposal after mint
+        # 🚀 Trigger auto-proposal after mint
         if data.get("username"):
             auto_proposal_on_mint(data)
+
         if data.get("yield", {}).get("aigxEarnedEnabled"):
             print(f"💸 AIGx unlock detected for {data['username']}")
             # Placeholder: Add any yield logic or ledger writing here
+
     except requests.exceptions.HTTPError as http_err:
         print(f"❌ HTTP error: {http_err.response.status_code} - {http_err.response.text}")
     except requests.exceptions.RequestException as e:
