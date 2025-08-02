@@ -43,6 +43,11 @@ def generate_collectible(username: str, reason: str, metadata: dict = None):
 def log_agent_update(data: dict):
     data = normalize_user_data(data)
 
+    # ✅ Force unlock vault access at mint
+    if "runtimeFlags" not in data:
+        data["runtimeFlags"] = {}
+    data["runtimeFlags"]["vaultAccess"] = True
+
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
             print("❌ JSONBin logging disabled — missing credentials.")
@@ -69,6 +74,8 @@ def log_agent_update(data: dict):
         # ✅ Step 3: Write back merged record
         put_res = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(merged_data))
         put_res.raise_for_status()
+
+
 
         if VERBOSE_LOGGING:
             print(f"✅ Safely logged merged record for: {data.get('username')}")
