@@ -10,16 +10,11 @@ def normalize_user_data(raw):
         "proposals": raw.get("proposals", []),
         "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked", False),
         "legalKitUnlocked": raw.get("legalKitUnlocked", False),
-        
-        # 👇 Add this at top level (outside runtimeFlags)
-        "vaultAccess": raw.get("vaultAccess", False),
-
-        "runtimeFlags": {
-            "sdkAccess_eligible": raw.get("runtimeFlags", {}).get("sdkAccess_eligible", False),
-            "vaultAccess": raw.get("runtimeFlags", {}).get("vaultAccess", False),
-            "remixUnlocked": raw.get("runtimeFlags", {}).get("remixUnlocked", False),
-        },
-
+        "runtimeFlags": raw.get("runtimeFlags", {
+            "sdkAccess_eligible": False,
+            "vaultAccess": False,
+            "remixUnlocked": False
+        }),
         **raw  # preserve any additional fields
     }
 
@@ -48,16 +43,6 @@ def generate_collectible(username: str, reason: str, metadata: dict = None):
 def log_agent_update(data: dict):
     data = normalize_user_data(data)
 
-    # ✅ Force unlock vault access at mint (both legacy + runtimeFlags)
-    if "vaultAccess" not in data:
-        data["vaultAccess"] = True
-
-    if "runtimeFlags" not in data:
-        data["runtimeFlags"] = {}
-
-    if "vaultAccess" not in data["runtimeFlags"]:
-        data["runtimeFlags"]["vaultAccess"] = True
-
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
             print("❌ JSONBin logging disabled — missing credentials.")
@@ -68,7 +53,6 @@ def log_agent_update(data: dict):
         "X-Master-Key": JSONBIN_SECRET
     }
 
-    # (rest of function continues...)
     try:
         # ✅ Step 1: Fetch current JSONBin record
         res = requests.get(JSONBIN_URL, headers=headers)
@@ -85,8 +69,6 @@ def log_agent_update(data: dict):
         # ✅ Step 3: Write back merged record
         put_res = requests.put(JSONBIN_URL, headers=headers, data=json.dumps(merged_data))
         put_res.raise_for_status()
-
-
 
         if VERBOSE_LOGGING:
             print(f"✅ Safely logged merged record for: {data.get('username')}")
@@ -113,4 +95,3 @@ def log_agent_update(data: dict):
         print(f"❌ Request error: {str(e)}")
     except Exception as e:
         print(f"❌ Unexpected error during JSONBin log: {str(e)}")
-
