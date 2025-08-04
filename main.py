@@ -64,23 +64,6 @@ def normalize_user_record(record):
         "agentType": record.get("agentType", "AiGent"),
     }
 
-def normalize_user_data(raw):
-    return {
-        "username": raw.get("username", ""),
-        "traits": raw.get("traits", []),
-        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
-        "referralCount": raw.get("referralCount", 0),
-        "proposals": raw.get("proposals", []),
-        "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked", False),
-        "legalKitUnlocked": raw.get("legalKitUnlocked", False),
-        "runtimeFlags": raw.get("runtimeFlags", {
-            "sdkAccess_eligible": False,
-            "vaultAccess": False,
-            "remixUnlocked": False
-        }),
-        **raw  # preserve additional fields
-    }
-
 @app.post("/user")
 async def get_agent_record(request: Request):
     body = await request.json()
@@ -90,26 +73,20 @@ async def get_agent_record(request: Request):
         return {"error": "Missing username"}
 
     async with httpx.AsyncClient() as client:
-    headers = {"X-Master-Key": JSONBIN_SECRET}
-    try:
-        res = await client.get(JSONBIN_URL, headers=headers)
-        res.raise_for_status()
-        data = res.json()
-        all_users = data.get("record", [])
+        headers = {"X-Master-Key": JSONBIN_SECRET}
+        try:
+            res = await client.get(JSONBIN_URL, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            all_users = data.get("record", [])
 
-        for record in all_users:
-            consent_username = record.get("consent", {}).get("username")
-            direct_username = record.get("username")
+            for record in all_users:
+                consent_username = record.get("consent", {}).get("username")
+                direct_username = record.get("username")
 
-            if consent_username == username or direct_username == username:
-                # 🔄 Normalize record to legacy dashboard format
-                normalized = normalize_user_record(record)
-
-                # 🧬 Enforce trait + unlock schema
-                normalized = normalize_user_data(normalized)
-
-                return {"record": normalized}
-
+                if consent_username == username or direct_username == username:
+                    normalized = normalize_user_record(record)
+                    return {"record": normalized}
 
             return {"error": "User not found"}
 
