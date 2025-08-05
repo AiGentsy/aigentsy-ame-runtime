@@ -63,6 +63,8 @@ def normalize_user_data(raw):
         "username": raw.get("username", ""),
         "traits": raw.get("traits", []),
         "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
+        "wallet": raw.get("wallet", {"aigx": 0, "staked": 0}),  # ✅ New
+        "stats": raw.get("stats", {"labels": [], "values": []}),  # ✅ New
         "referralCount": raw.get("referralCount", 0),
         "proposals": raw.get("proposals", []),
         "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked", False),
@@ -71,6 +73,7 @@ def normalize_user_data(raw):
             "sdkAccess_eligible": raw.get("runtimeFlags", {}).get("sdkAccess_eligible", False),
             "vaultAccess": raw.get("runtimeFlags", {}).get("vaultAccess", False),
             "remixUnlocked": raw.get("runtimeFlags", {}).get("remixUnlocked", False),
+            "brandingKitUnlocked": raw.get("runtimeFlags", {}).get("brandingKitUnlocked", False),  # ✅ New
         },
         **raw
     }
