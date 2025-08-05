@@ -84,6 +84,7 @@ async def get_agent_record(request: Request):
     username = body.get("username")
     if not username:
         return {"error": "Missing username"}
+
     async with httpx.AsyncClient() as client:
         headers = {"X-Master-Key": JSONBIN_SECRET}
         try:
@@ -91,14 +92,22 @@ async def get_agent_record(request: Request):
             res.raise_for_status()
             data = res.json()
             all_users = data.get("record", [])
+
             for record in all_users:
                 consent_username = record.get("consent", {}).get("username")
                 direct_username = record.get("username")
+
                 if consent_username == username or direct_username == username:
-                    normalized = normalize_user_record(record)
-                    normalized = normalize_user_data(normalized)
-                    return {"record": normalized}
-            return {"error": "User not found"}
+                    # ✅ Normalize both layers
+                    record_normalized = normalize_user_record(record)
+                    data_normalized = normalize_user_data(record)
+
+                    # ✅ Deep merge for dashboard compatibility
+                    merged = {**record_normalized, **data_normalized}
+                    return {"record": merged}
+
+            return {"error": "User not found"}  # ✅ Outside the for-loop
+
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
 
