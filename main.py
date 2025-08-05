@@ -17,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 import os
 import httpx
 
@@ -25,6 +24,29 @@ JSONBIN_URL = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
 
 import httpx
+
+def normalize_user_data(raw):
+    runtime = raw.get("runtimeFlags", {})
+    kits = raw.get("kits", {})
+    licenses = raw.get("licenses", {})
+
+    return {
+        "username": raw.get("username", ""),
+        "traits": raw.get("traits", []),
+        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
+        "referralCount": raw.get("referralCount", 0),
+        "proposals": raw.get("proposals", []),
+        "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked") or licenses.get("clone", False),
+        "legalKitUnlocked": raw.get("legalKitUnlocked") or kits.get("legal", {}).get("unlocked", False),
+        "runtimeFlags": {
+            "sdkAccess_eligible": runtime.get("sdkAccess_eligible", False) or licenses.get("sdk", False),
+            "vaultAccess": runtime.get("vaultAccess", False) or licenses.get("vault", False) or kits.get("universal", {}).get("unlocked", False),
+            "remixUnlocked": runtime.get("remixUnlocked", False) or licenses.get("remix", False),
+            "brandingKitUnlocked": runtime.get("brandingKitUnlocked", False) or kits.get("branding", {}).get("unlocked", False)
+        },
+        **raw  # ✅ Preserve all other fields for dashboard usage
+    }
+
 
 def normalize_user_record(record):
     consent = record.get("consent", {})
@@ -85,13 +107,15 @@ async def get_agent_record(request: Request):
                 direct_username = record.get("username")
 
                 if consent_username == username or direct_username == username:
-                    normalized = normalize_user_record(record)
+                    # ✅ Only normalize for aigent0.html compatibility
+                    normalized = normalize_user_data(record)
                     return {"record": normalized}
 
             return {"error": "User not found"}
 
         except Exception as e:
             return {"error": f"Fetch error: {str(e)}"}
+
 
 @app.post("/log-meta-match")
 async def log_meta_match_event(request: Request):
