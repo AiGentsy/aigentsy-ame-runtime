@@ -23,10 +23,33 @@ def generate_collectible(username: str, reason: str, metadata: dict = None):
         "metadata": metadata or {},
     }
     print(f"🏅 Collectible generated: {collectible}")
+def normalize_user_data(raw):
+    runtime = raw.get("runtimeFlags", {})
+    kits = raw.get("kits", {})
+    licenses = raw.get("licenses", {})
+
+    return {
+        "username": raw.get("username", ""),
+        "traits": raw.get("traits", []),
+        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
+        "referralCount": raw.get("referralCount", 0),
+        "proposals": raw.get("proposals", []),
+
+        # ✅ Flatten runtime unlocks
+        "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked") or licenses.get("clone", False),
+        "legalKitUnlocked": raw.get("legalKitUnlocked") or kits.get("legal", {}).get("unlocked", False),
+
+        "runtimeFlags": {
+            "sdkAccess_eligible": runtime.get("sdkAccess_eligible", False) or licenses.get("sdk", False),
+            "vaultAccess": runtime.get("vaultAccess", False) or licenses.get("vault", False) or kits.get("universal", {}).get("unlocked", False),
+            "remixUnlocked": runtime.get("remixUnlocked", False) or licenses.get("remix", False),
+            "brandingKitUnlocked": runtime.get("brandingKitUnlocked", False) or kits.get("branding", {}).get("unlocked", False)
+        },
+
+        **raw  # ✅ Preserve full backend data
+    }
 
 def log_agent_update(data: dict):
-    from main import normalize_user_data  # Import at top of file
-
     data = normalize_user_data(data)
 
     # ✅ Patch: Force unlock vault access at mint and sync trait
