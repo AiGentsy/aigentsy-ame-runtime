@@ -29,10 +29,16 @@ def log_agent_update(data: dict):
 
     data = normalize_user_data(data)
 
-    # ✅ Force unlock vault access at mint
+    # ✅ Patch: Force unlock vault access at mint and sync trait
     if "runtimeFlags" not in data:
         data["runtimeFlags"] = {}
-    data["runtimeFlags"]["vaultAccess"] = True
+    if not data["runtimeFlags"].get("vaultAccess"):
+        data["runtimeFlags"]["vaultAccess"] = True
+
+    # Also ensure trait is injected
+    data["traits"] = data.get("traits", [])
+    if "vault" not in data["traits"]:
+        data["traits"].append("vault")
 
     if not JSONBIN_URL or not JSONBIN_SECRET:
         if VERBOSE_LOGGING:
