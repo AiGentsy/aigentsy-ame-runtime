@@ -27,8 +27,8 @@ import httpx
 
 def normalize_user_data(raw):
     runtime = raw.get("runtimeFlags", {})
-    kits = raw.get("kits", {})
-    licenses = raw.get("licenses", {})
+    kits = raw.get("kits", {})  # ✅ Needed in frontend
+    licenses = raw.get("licenses", {})  # ✅ Needed in frontend
 
     return {
         "username": raw.get("username", ""),
@@ -38,13 +38,15 @@ def normalize_user_data(raw):
         "proposals": raw.get("proposals", []),
         "cloneLicenseUnlocked": raw.get("cloneLicenseUnlocked") or licenses.get("clone", False),
         "legalKitUnlocked": raw.get("legalKitUnlocked") or kits.get("legal", {}).get("unlocked", False),
+        "kits": kits,
+        "licenses": licenses,
         "runtimeFlags": {
             "sdkAccess_eligible": runtime.get("sdkAccess_eligible", False) or licenses.get("sdk", False),
             "vaultAccess": runtime.get("vaultAccess", False) or licenses.get("vault", False) or kits.get("universal", {}).get("unlocked", False),
             "remixUnlocked": runtime.get("remixUnlocked", False) or licenses.get("remix", False),
             "brandingKitUnlocked": runtime.get("brandingKitUnlocked", False) or kits.get("branding", {}).get("unlocked", False)
         },
-        **raw  # ✅ Preserve all other fields for dashboard usage
+        **raw  # ✅ FULL raw record preserved
     }
 
 
