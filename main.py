@@ -5,6 +5,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from venture_builder_agent import get_agent_graph
+from log_to_jsonbin_merged import log_agent_update, append_intent_ledger, credit_aigx as credit_aigx_srv, log_metaloop, log_autoconnect, log_metabridge, log_metahive
 import os, httpx, uuid, json
 from datetime import datetime, timezone
 from typing import Dict, Any
@@ -233,6 +234,11 @@ async def mint_user(request: Request):
         new_user = make_canonical_record(username, company_type, referral)
         users = _upsert(users, new_user)
         await _jsonbin_put(client, users)
+        try:
+            log_agent_update(new_user)
+            append_intent_ledger(username, {"event":"mint","referral": referral})
+        except Exception:
+            pass
         return {"ok": True, "record": normalize_user_record(new_user)}
 
 # ---- POST: unlock (kits/licenses/flags) ----
@@ -372,6 +378,11 @@ async def aigx_credit(request: Request):
                 u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amount
                 users[i] = u
                 await _jsonbin_put(client, users)
+                try:
+                    append_intent_ledger(username, {"event":"aigx_credit","amount": amount, "basis": basis})
+                    log_metaloop(username, "credit", {"basis": basis, "amount": amount})
+                except Exception:
+                    pass
                 return {"ok": True, "ledgerEntry": entry, "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
