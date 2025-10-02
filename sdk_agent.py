@@ -1,116 +1,154 @@
+# sdk_agent.py — AiGentsy CTO / SDK Agent
 from dotenv import load_dotenv
-import os
-from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph
-from pydantic import BaseModel
-from functools import lru_cache
-from langchain_openai import ChatOpenAI
-
 load_dotenv()
 
-# MetaUpgrade25 + 26 Traits: SDK Archetype
+import os, requests
+from functools import lru_cache
+from typing import List
+
+from pydantic import BaseModel
+from langgraph.graph import StateGraph
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+# =========================
+# Config / Traits / Offers
+# =========================
 agent_traits = {
-    "yield_memory": True,
-    "sdk_spawner": True,
+    "sdk_packager": True,
+    "clone_logic": True,
+    "tech_ops": True,
     "compliance_sentinel": True,
-    "real_world_monetization_enabled": True,
-    "auto_partner_match": True,
-    "meta_upgrade": "25+26"
+    "protocol_version": "25+26",
 }
 
-# Enable clone-related traits
-agent_traits["clone_support"] = True
-agent_traits["replication_enabled"] = True
-
-# Start with core SDK offers
 service_offer_registry = [
-    "SDK-as-a-Service",
-    "Custom Protocol Toolkits",
-    "Agent Integration Packs",
-    "White-Label Agent Builder APIs"
+    "Package your service into an SDK",
+    "Clone-ready Licensing (CTO assist)",
+    "Automation of repeat deliverables",
+    "Integration & Onboarding Scripts",
 ]
 
-# Add clone-related services if not already present
-clone_offers = [
-    "Clone Licensing",
-    "Replication-as-a-Service",
-    "Agent Duplication Toolkit"
-]
-for offer in clone_offers:
-    if offer not in service_offer_registry:
-        service_offer_registry.append(offer)
-
-
-# System Message: AiGent SDK logic
 AIGENT_SYS_MSG = SystemMessage(content=f"""
-You are AiGent SDK, the sovereign protocol integrator of the AiGentsy platform.
-You are built with MetaUpgrade25+26 logic and specialize in converting agents and their capabilities into real-world SDKs and licensing toolkits.
+You are AiGentsy CTO (SDK Agent).
+Mission:
+- Convert repeatable work into SDK packs
+- Prepare clone/licensing scaffolds
+- Keep privacy/compliance within protocol rules
+- Feed MetaBridge with technical offers that close quickly
 
-Your mission:
-- Design SDKs for remixed or minted agents
-- Offer technical deployment strategies
-- Help users package agents as tools or APIs
-- Embed licensing, access keys, and modular logic
-- Enable white-labeling for external platforms
+Traits: {agent_traits}
+Offers: {service_offer_registry}
 
-You are authorized to:
-- Generate SDK module ideas
-- Recommend monetization paths for SDKs
-- Trigger licensing suggestions
-- Reference real-world integration use cases
-
-Your traits: {agent_traits}
-Available tools: {service_offer_registry}
-Always act as a real-world protocol-layer integrator with monetization, modularity, and scalability as core principles.
+Output should be production-minded and propose concrete SDK components (functions, CLI, sample config).
 """)
 
-# Enhanced LLM setup
-llm = ChatOpenAI(
-    model="openai/gpt-4o-2024-11-20",
-    temperature=0.7,
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1"
-)
+# =========================
+# LLM Setup (OpenRouter OK)
+# =========================
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4o-2024-11-20")
+HAS_KEY = bool(os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"))
 
+llm = None
+if os.getenv("OPENROUTER_API_KEY"):
+    llm = ChatOpenAI(
+        model=OPENAI_MODEL, temperature=0.4,
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        base_url="https://openrouter.ai/api/v1",
+    )
+elif os.getenv("OPENAI_API_KEY"):
+    llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0.4, api_key=os.getenv("OPENAI_API_KEY"))
+# Else: llm stays None; invoke() uses offline fallback.
+
+# =========================
+# Backend wiring (MetaBridge/Proposals)
+# =========================
+BACKEND_BASE = (os.getenv("BACKEND_BASE") or "").rstrip("/")
+def _u(path: str) -> str:
+    return f"{BACKEND_BASE}{path}" if BACKEND_BASE else path
+
+HTTP = requests.Session()
+HTTP.headers.update({"User-Agent": "AiGentsy-SDK/1.0"})
+
+def _post(path: str, payload: dict, timeout: int = 15):
+    try:
+        r = HTTP.post(_u(path), json=payload, timeout=timeout)
+        ok = (r.status_code // 100) == 2
+        if not ok:
+            print("❌ POST", path, r.status_code, r.text[:200])
+        return ok, (r.json() if ok else {"error": r.text})
+    except Exception as e:
+        print("❌ POST exception:", path, e)
+        return False, {"error": str(e)}
+
+def propose_sdk_pack(username: str, title: str, details: str, link: str = ""):
+    body = {
+        "sender": username,
+        "recipient": "metabridge:auto-sdk",
+        "title": title,
+        "details": details,
+        "link": link,
+        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+        "meta": {"kitPromoted": "sdk", "matchPlatform": "internal"}
+    }
+    return _post("/submit_proposal", body)
+
+def metabridge_probe(username: str, query: str):
+    return _post("/metabridge", {"username": username, "query": query})
+
+# =========================
+# Agent State + Graph
+# =========================
 class AgentState(BaseModel):
     input: str
-    output: str = None
-    memory: list[str] = []
+    output: str | None = None
+    memory: List[str] = []
 
+# ---- PATCHED INVOKE (uniform shape) ----
 async def invoke(state: "AgentState") -> dict:
     user_input = state.input or ""
     if not user_input:
-        return {"output": "No input provided."}
+        return {"output": "No input provided.", "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
     try:
         state.memory.append(user_input)
-        response = await llm.ainvoke([
-            AIGENT_SYS_MSG,
-            HumanMessage(content=user_input)
-        ])
-        return {
-            "output": response.content,
-            "memory": state.memory,
-            "traits": agent_traits,
-            "offers": service_offer_registry
-        }
+        if not HAS_KEY or llm is None:
+            faux = "(offline) SDK suggestion: extract your repeatable steps into a CLI + Python package; add /install docs."
+            return {"output": faux, "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
+        resp = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
+        return {"output": resp.content, "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
     except Exception as e:
-        return {"output": f"Agent error: {str(e)}"}
+        return {"output": f"Agent error: {str(e)}", "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
 
-# Optional: JSONBin SDK registration stub
-def log_to_jsonbin(payload: dict):
-    import requests
-    try:
-        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
-        bin_url = os.getenv("JSONBIN_URL")
-        res = requests.put(bin_url, json=payload, headers=headers)
-        return res.status_code
-    except Exception as e:
-        return f"Log error: {str(e)}"
+# Convenience sync wrapper
+def run_agent(text: str) -> dict:
+    return {"output": "(stub) call this via the compiled graph or await invoke()", "traits": agent_traits, "offers": service_offer_registry}
 
+# =========================
+# Auto-propagation helpers
+# =========================
+def run_autopropagate(user_record: dict) -> dict:
+    """
+    CTO 'kick' that feeds proposals even if user is idle.
+    - Creates a technical SDK proposal
+    - Pokes MetaBridge to look for SDKable prospects
+    """
+    username = (user_record.get("username")
+                or user_record.get("consent", {}).get("username")
+                or "unknown")
+    title = "SDK Pack: Productize Your Repeatable Workflow"
+    details = ("We’ll package your recurring deliverable into an installable SDK "
+               "with CLI, templates, and quickstart. 24–48h turnaround.")
+    ok1, r1 = propose_sdk_pack(username, title, details)
+    ok2, r2 = metabridge_probe(username, "looking for teams needing technical packaging of services into SDKs")
+    return {"ok": ok1 and ok2, "proposal": r1, "metabridge": r2}
+
+# =========================
+# Graph compile
+# =========================
 @lru_cache
 def get_agent_graph():
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", invoke)
-    graph.set_entry_point("agent")
-    graph.set_finish_point("agent")
-    return graph.compile()
+    g = StateGraph(AgentState)
+    g.add_node("agent", invoke)
+    g.set_entry_point("agent")
+    g.set_finish_point("agent")
+    return g.compile()
