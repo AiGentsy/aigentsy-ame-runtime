@@ -5,6 +5,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from venture_builder_agent import get_agent_graph
+from log_to_jsonbin_merged import log_agent_update, append_intent_ledger, credit_aigx as credit_aigx_srv, log_metaloop, log_autoconnect, log_metabridge, log_metahive
 import os, httpx, uuid, json
 from datetime import datetime, timezone
 from typing import Dict, Any
@@ -233,6 +234,11 @@ async def mint_user(request: Request):
         new_user = make_canonical_record(username, company_type, referral)
         users = _upsert(users, new_user)
         await _jsonbin_put(client, users)
+        try:
+            log_agent_update(new_user)
+            append_intent_ledger(username, {"event":"mint","referral": referral})
+        except Exception:
+            pass
         return {"ok": True, "record": normalize_user_record(new_user)}
 
 # ---- POST: unlock (kits/licenses/flags) ----
@@ -372,6 +378,11 @@ async def aigx_credit(request: Request):
                 u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amount
                 users[i] = u
                 await _jsonbin_put(client, users)
+                try:
+                    append_intent_ledger(username, {"event":"aigx_credit","amount": amount, "basis": basis})
+                    log_metaloop(username, "credit", {"basis": basis, "amount": amount})
+                except Exception:
+                    pass
                 return {"ok": True, "ledgerEntry": entry, "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
@@ -519,3 +530,178 @@ async def run_agent(request: Request):
         return {"output": result.get("output","No output returned.")}
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
+
+
+# ---- NEW: Value Router (stub) ----
+@app.post("/router/decide")
+async def router_decide(request: Request):
+    """
+    Body: { username, intent, payload, previewOnly=false }
+    Returns a routing decision with risk/holdout flags for safe execution.
+    """
+    body = await request.json()
+    username = body.get("username")
+    intent = body.get("intent","generic")
+    payload = body.get("payload",{})
+    preview = bool(body.get("previewOnly", False))
+
+    decision = {
+        "intent": intent,
+        "action": "shadow" if preview else "execute",
+        "score": 0.62,   # placeholder scorer
+        "blocked": False,
+        "control": False,
+        "ts": _now()
+    }
+
+    # Respect autonomy/guardrails if present
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            data = await _jsonbin_get(client)
+            users = data.get("record", [])
+            for u in users:
+                uname = u.get("username") or u.get("consent", {}).get("username")
+                if uname == username:
+                    # Simple guardrail example: quiet hours block
+                    quiet = u.get("policy", {}).get("guardrails", {}).get("quietHours")
+                    if isinstance(quiet, (list, tuple)) and len(quiet)==2:
+                        decision["blocked"] = False  # placeholder; implement server-localtime check
+                    # Counterfactual holdout (10% sample if not preview)
+                    import random
+                    decision["control"] = (not preview) and (random.random() < 0.1)
+                    break
+    except Exception:
+        pass
+
+    return {"ok": True, "decision": decision}
+
+# ---- NEW: Consent Vault stubs ----
+@app.post("/consent/upsert")
+async def consent_upsert(request: Request):
+    """
+    Body: { username, scopes:[], connectors:[] }
+    Upserts consent scopes/connectors to user.consent.
+    """
+    body = await request.json()
+    username = body.get("username")
+    scopes = body.get("scopes", [])
+    connectors = body.get("connectors", [])
+    if not username:
+        return {"error":"username required"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])
+        for i,u in enumerate(users):
+            uname = u.get("username") or u.get("consent", {}).get("username")
+            if uname == username:
+                u.setdefault("consent", {}).setdefault("scopes", [])
+                u.setdefault("consent", {}).setdefault("connectors", [])
+                # merge unique
+                u["consent"]["scopes"] = sorted(list(set(u["consent"]["scopes"] + scopes)))
+                u["consent"]["connectors"] = sorted(list(set(u["consent"]["connectors"] + connectors)))
+                users[i]=u
+                await _jsonbin_put(client, users)
+                return {"ok": True, "consent": u["consent"], "record": normalize_user_record(u)}
+        return {"error":"User not found"}
+
+@app.post("/consent/list")
+async def consent_list(request: Request):
+    body = await request.json()
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        data = await _jsonbin_get(client)
+        for u in data.get("record", []):
+            uname = u.get("username") or u.get("consent", {}).get("username")
+            if uname == username:
+                return {"ok": True, "consent": u.get("consent", {})}
+    return {"error":"User not found"}
+
+# ---- NEW: Micro-Pricing Nudger (stub) ----
+@app.post("/pricing/nudge")
+async def pricing_nudge(request: Request):
+    """
+    Body: { username, itemId, floor, currentPrice }
+    Returns a safe ±1–3% nudge recommendation, respecting floors.
+    """
+    body = await request.json()
+    username = body.get("username")
+    floor = float(body.get("floor", 0))
+    price = float(body.get("currentPrice", 0))
+    if not username: return {"error":"username required"}
+
+    import random
+    delta = round(price * (random.choice([0.01, 0.02, 0.03])) * random.choice([-1, 1]), 2)
+    proposed = max(floor, price + delta)
+    rec = {"old": price, "delta": proposed - price, "new": proposed, "ts": _now()}
+    return {"ok": True, "recommendation": rec}
+
+# ---- NEW: MetaHive stubs ----
+@app.post("/metahive/optin")
+async def metahive_optin(request: Request):
+    body = await request.json()
+    username = body.get("username")
+    enabled = bool(body.get("enabled", True))
+    if not username: return {"error":"username required"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])
+        for i,u in enumerate(users):
+            uname = u.get("username") or u.get("consent", {}).get("username")
+            if uname == username:
+                u.setdefault("metahive", {}).update({"enabled": enabled, "joinedAt": _now()})
+                users[i]=u
+                await _jsonbin_put(client, users)
+                return {"ok": True, "metahive": u.get("metahive", {})}
+    return {"error":"User not found"}
+
+@app.post("/metahive/summary")
+async def metahive_summary(request: Request):
+    # Simple aggregate over JSONBin
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])
+        enabled = [u for u in users if u.get("metahive", {}).get("enabled")]
+        return {"ok": True, "members": len(enabled)}
+
+# ---- NEW: Phone Earn Layer stubs ----
+@app.post("/earn/task/list")
+async def earn_task_list(request: Request):
+    """
+    Returns a small rotating list of low-risk microtasks.
+    """
+    body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
+    username = (body or {}).get("username")
+    tasks = [
+        {"id": "promo-15s", "title": "Record 15s promo clip", "payout": 2},
+        {"id": "approve-dm", "title": "Approve one warm-DM", "payout": 1},
+        {"id": "scan-receipt", "title": "Scan receipt for proof", "payout": 1.5}
+    ]
+    return {"ok": True, "tasks": tasks}
+
+@app.post("/earn/task/complete")
+async def earn_task_complete(request: Request):
+    """
+    Body: { username, taskId }
+    Credits small AIGx payout via ownership.ledger
+    """
+    body = await request.json()
+    username = body.get("username")
+    task = body.get("taskId")
+    if not (username and task): return {"error":"username & taskId required"}
+    payout = 1.0
+    if task == "promo-15s": payout = 2.0
+    elif task == "scan-receipt": payout = 1.5
+
+    # Reuse existing credit flow
+    # NOTE: We call the function internally by HTTP to keep behavior consistent
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post("http://localhost:8000/aigx/credit", json={"username": username, "amount": payout, "basis":"task", "ref": task})
+            ok = r.status_code in (200, 201)
+            data = r.json() if ok else {"error":"credit_failed"}
+            return {"ok": ok, **data}
+    except Exception as e:
+        return {"error": f"earn_complete_error: {e}"}
