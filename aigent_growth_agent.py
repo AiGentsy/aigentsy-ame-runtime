@@ -729,4 +729,15 @@ async def metabridge(request: Request):
         "matches": matches,
         "proposals": proposals,
     }
+# ---- Growth: expose a simple trigger we can call from main.py ----
+from aigent_growth_metamatch import run_metamatch_campaign
+
+def trigger_metamatch(user_record: dict) -> dict:
+    """
+    Safe entry point for mint/hydrate. Traits → keywords → proposals via /submit_proposal.
+    """
+    try:
+        return run_metamatch_campaign(user_record, per_keyword_limit=2, sleep_between=0.8)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
