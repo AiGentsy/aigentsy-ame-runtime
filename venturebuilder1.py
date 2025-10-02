@@ -73,11 +73,12 @@ async def invoke(state: "AgentState") -> dict:
             HumanMessage(content=user_input)
         ])
         return {
-            "output": response.content,
-            "memory": state.memory,
-            "traits": agent_traits,
-            "offers": service_offer_registry
-        }
+    "output": response.content,  # Let frontend handle labeling
+    "memory": state.memory,
+    "traits": agent_traits,
+    "offers": service_offer_registry
+}
+
     except Exception as e:
         return {"output": f"Agent error: {str(e)}"}
 
