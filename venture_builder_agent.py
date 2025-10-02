@@ -153,3 +153,28 @@ def get_agent_graph():
     graph.set_entry_point("agent")
     graph.set_finish_point("agent")
     return graph.compile()
+    # ---- Venture: Auto-propagation wiring (paste near bottom) ----
+import requests, os
+BACKEND_BASE = (os.getenv("BACKEND_BASE") or "").rstrip("/")
+def _u(path: str) -> str: return f"{BACKEND_BASE}{path}" if BACKEND_BASE else path
+HTTP = requests.Session(); HTTP.headers.update({"User-Agent": "AiGentsy-Venture/1.0"})
+
+def _post(path: str, payload: dict, timeout: int = 15):
+    try:
+        r = HTTP.post(_u(path), json=payload, timeout=timeout)
+        ok = (r.status_code // 100) == 2
+        return ok, (r.json() if ok else {"error": r.text})
+    except Exception as e:
+        return False, {"error": str(e)}
+
+def metabridge_probe(username: str, query: str):
+    return _post("/metabridge", {"username": username, "query": query})
+
+def run_autopropagate(user_record: dict) -> dict:
+    """CFO kick: ask MetaBridge for high-EV quick wins + set starting price band."""
+    username = (user_record.get("username")
+                or user_record.get("consent", {}).get("username")
+                or "unknown")
+    q = "SMBs needing quick high-EV wins (Branding Blitz, Growth Sprint, SDK Pack). Budget $99–$299."
+    return metabridge_probe(username, q)
+
