@@ -2,26 +2,47 @@
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
 # ============================
-from fastapi import FastAPI, Request, Body, Path
+import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, List, Optional
+
+from fastapi import FastAPI, Request, Body, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
 from venture_builder_agent import get_agent_graph
 from log_to_jsonbin_merged import (
     log_agent_update, append_intent_ledger, credit_aigx as credit_aigx_srv,
     log_metaloop, log_autoconnect, log_metabridge, log_metahive
 )
-import os, httpx, uuid, json, hmac, hashlib, csv, io
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+# Admin normalize uses the classic module (keep both available)
+from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
 
-# ---- App & CORS ----
+# ---- App, logging, CORS (single block) ----
 app = FastAPI()
+
+logger = logging.getLogger("aigentsy")
+logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
+
+ALLOW_ORIGINS = [
+    os.getenv("FRONTEND_ORIGIN", "https://aigentsy.com"),
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],            # lock down later to your domains
+    allow_origins=ALLOW_ORIGINS,   # keep explicit origins (good with credentials)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---- Simple health check ----
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
 # ---- Env ----
 JSONBIN_URL     = os.getenv("JSONBIN_URL")
@@ -29,6 +50,7 @@ JSONBIN_SECRET  = os.getenv("JSONBIN_SECRET")
 PROPOSAL_WEBHOOK_URL = os.getenv("PROPOSAL_WEBHOOK_URL")  # used by /contacts/send webhook
 POL_SECRET      = os.getenv("POL_SECRET", "dev-secret")   # for signed Offer Links
 CANONICAL_SCHEMA_VERSION = "v1.1"  # bumped
+SELF_URL        = os.getenv("SELF_URL")  # optional, e.g. https://your-service.onrender.com
 
 # ---- Agent Graph (AiGent Venture; MetaUpgrade25+26) ----
 agent_graph = get_agent_graph()
@@ -559,10 +581,11 @@ async def metabridge_dispatch(request: Request):
         matches  = metabridge_dual_match_realworld_fulfillment(query)
         proposals = proposal_generator(query, matches, originator)
 
-        # Persist each proposal to the sender's record
+        # Persist each proposal to the sender's record (self-call uses SELF_URL or PORT)
+        base = SELF_URL or f"http://127.0.0.1:{os.getenv('PORT','8000')}"
         async with httpx.AsyncClient(timeout=20) as client:
             for p in proposals:
-                await client.post("http://localhost:8000/submit_proposal", json=p, headers={"Content-Type":"application/json"})
+                await client.post(f"{base}/submit_proposal", json=p, headers={"Content-Type":"application/json"})
 
         try:
             log_metabridge(originator, {"query": query, "matches": len(matches)})
@@ -1245,46 +1268,6 @@ async def audit_log(body: Dict = Body(...)):
         await _save_users(client, users)
         return {"ok": True}
 
-# ---------- OFF-PLATFORM / POL / PARTNER ----------
-@app.post("/offer/publish")
-async def offer_publish(body: Dict = Body(...)):
-    """
-    Input: {username, title, price, scope, terms, src?}
-    Output: {oid, sig, url}  (POL = signed, expiring link)
-    """
-    username = body.get("username"); title = body.get("title"); price = float(body.get("price",0))
-    scope = body.get("scope",""); terms = body.get("terms",""); src = body.get("src","direct")
-    if not (username and title): return {"error":"username & title required"}
-    oid = _id("pol")
-    exp = int((datetime.utcnow()+timedelta(days=3)).timestamp())
-    sig = _hmac(f"{oid}.{username}.{exp}", POL_SECRET)
-    url = f"/offer?oid={oid}&sig={sig}&usr={username}&exp={exp}&src={src}"
-    async with httpx.AsyncClient(timeout=20) as client:
-        users = await _load_users(client)
-        u = next((x for x in users if _uname(x)==username), None)
-        if not u: return {"error":"user not found"}
-        _ensure_business(u)
-        u["offers"].append({"id": oid, "title": title, "price": price, "scope": scope, "terms": terms,
-                            "sig": sig, "exp": exp, "src": src, "ts": _now(), "status":"live"})
-        await _save_users(client, users)
-        return {"ok": True, "oid": oid, "sig": sig, "url": url}
-
-@app.post("/partner/track")
-async def partner_track(body: Dict = Body(...)):
-    username = body.get("username"); pid = body.get("partnerId"); event = body.get("event")
-    if not (username and pid and event): return {"error":"username, partnerId, event required"}
-    async with httpx.AsyncClient(timeout=20) as client:
-        users = await _load_users(client)
-        u = next((x for x in users if _uname(x)==username), None)
-        if not u: return {"error":"user not found"}
-        _ensure_business(u)
-        u.setdefault("partner_events", []).append({"partnerId": pid, "event": event, "ref": body.get("ref"), "ts": _now()})
-        if event == "conversion":
-            u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + 1.0
-            u["ownership"]["ledger"].append({"ts": _now(), "amount": 1.0, "currency": "AIGx", "basis": "partner", "ref": pid})
-        await _save_users(client, users)
-        return {"ok": True}
-
 # ================================
 # >>> Two essential patches <<<
 # ================================
@@ -1343,12 +1326,6 @@ async def earn_task_complete(request: Request):
         return {"error": f"earn_complete_error: {e}"}
 
 # --- Admin normalize route ---
-import os
-from fastapi import HTTPException
-from pydantic import BaseModel
-from starlette.concurrency import run_in_threadpool
-from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
-
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
 class AdminIn(BaseModel):
@@ -1365,4 +1342,3 @@ async def admin_normalize(a: AdminIn):
     upgraded = [normalize_user_data(r) for r in records]
     await run_in_threadpool(_bin_put, upgraded)
     return {"ok": True, "count": len(upgraded)}
-
