@@ -1341,3 +1341,28 @@ async def earn_task_complete(request: Request):
             return {"ok": True, "ledgerEntry": entry}
     except Exception as e:
         return {"error": f"earn_complete_error: {e}"}
+
+# --- Admin normalize route ---
+import os
+from fastapi import HTTPException
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+class AdminIn(BaseModel):
+    token: str
+
+@app.post("/admin/normalize")
+async def admin_normalize(a: AdminIn):
+    if not ADMIN_TOKEN or a.token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    data = await run_in_threadpool(_bin_get)
+    records = data["record"] if isinstance(data, dict) and "record" in data else data
+    if not isinstance(records, list):
+        raise HTTPException(status_code=500, detail="bin payload not a list")
+    upgraded = [normalize_user_data(r) for r in records]
+    await run_in_threadpool(_bin_put, upgraded)
+    return {"ok": True, "count": len(upgraded)}
+
