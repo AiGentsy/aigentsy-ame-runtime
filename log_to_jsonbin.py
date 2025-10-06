@@ -1,179 +1,400 @@
+# log_to_jsonbin.py
+"""
+AiGentsy JSONBin adapter (sync, robust, schema-aware).
 
-import os, json, requests
+Exports:
+- JSONBIN_URL, JSONBIN_SECRET
+- normalize_user_data(record) -> dict
+- _get()  -> raw JSONBin response (dict with 'record' or a list)
+- _put(records: list) -> True/False
+- log_agent_update(record: dict) -> dict (normalized & upserted)
+- append_intent_ledger(username: str, entry: dict) -> bool
+- credit_aigx(username: str, amount: float, meta: dict = None) -> bool
+- get_user(username: str) -> dict | None
+- list_users() -> list[dict]
+"""
+
+from __future__ import annotations
+import os
+import json
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 from datetime import datetime, timezone
 
-# External growth agent hooks (if present in runtime)
+# Prefer httpx, fallback to requests
 try:
-    from aigent_growth_agent import (
-        metabridge_dual_match_realworld_fulfillment,
-        proposal_generator,
-        proposal_dispatch,
-        deliver_proposal
-    )
-    GROWTH_OK = True
-except Exception:
-    GROWTH_OK = False
+    import httpx as _http
+    _USE_HTTPX = True
+except Exception:  # pragma: no cover
+    import requests as _http  # type: ignore
+    _USE_HTTPX = False
 
-JSONBIN_URL    = os.getenv("JSONBIN_URL")
-JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
-VERBOSE        = os.getenv("VERBOSE_LOGGING","true").lower()=="true"
+# --------- ENV ---------
+JSONBIN_URL: str = os.getenv("JSONBIN_URL", "")
+JSONBIN_SECRET: str = os.getenv("JSONBIN_SECRET", "")
 
-def _now(): 
+# Local cache (used when JSONBin is missing/unreachable)
+_CACHE: List[Dict[str, Any]] = []
+
+# --------- Time helpers ---------
+def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-def _get():
-    r = requests.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET}, timeout=15)
-    r.raise_for_status()
-    return r.json()
+# --------- Schema normalizer (v3) ---------
+SCHEMA_VERSION = 3
 
-def _put(users):
-    r = requests.put(JSONBIN_URL,
-                     headers={"X-Master-Key": JSONBIN_SECRET, "Content-Type":"application/json"},
-                     data=json.dumps({"record": users}), timeout=20)
-    r.raise_for_status()
-    return True
+def normalize_user_data(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """Idempotent, safe normalizer. Fills all fields the UI & API expect."""
+    r = dict(rec or {})
+    u = (r.get("consent") or {}).get("username") or r.get("username") or "guest"
 
-def _upsert(users, rec):
-    uname = rec.get("username") or rec.get("consent",{}).get("username")
-    rid = rec.get("id")
-    replaced = False
-    for i,u in enumerate(users):
-        if u.get("id")==rid or (uname and (u.get("username")==uname or u.get("consent",{}).get("username")==uname)):
-            users[i]=rec; replaced=True; break
-    if not replaced: users.append(rec)
-    return users
-
-# ---------- Normalizer (v1.1 shape) ----------
-def normalize_user_data(raw: dict) -> dict:
-    raw = dict(raw or {})
-    runtime = raw.get("runtimeFlags", {}) or {}
-    kits    = raw.get("kits", {}) or {}
-    licenses= raw.get("licenses", {}) or {}
-    raw.setdefault("ownership", {}).setdefault("ledger", [])
-    raw.setdefault("transactions", {}).setdefault("outreachEvents", [])
-    raw.setdefault("amg", {"apps": [], "capabilities": [], "lastSync": None})
-    raw.setdefault("contacts", {"sources": [], "counts": {}, "lastSync": None})
-    normalized = {
-        "username": raw.get("username") or raw.get("consent",{}).get("username") or "",
-        "traits": raw.get("traits", []),
-        "walletStats": raw.get("walletStats", {"aigxEarned": 0, "staked": 0}),
-        "referralCount": raw.get("referralCount", 0),
-        "proposals": raw.get("proposals", []),
-        "runtimeFlags": {
-            "sdkAccess_eligible": runtime.get("sdkAccess_eligible", False) or licenses.get("sdk", False),
-            "vaultAccess": runtime.get("vaultAccess", False) or licenses.get("vault", False) or kits.get("universal", {}).get("unlocked", False),
-            "remixUnlocked": runtime.get("remixUnlocked", False) or licenses.get("remix", False),
-            "brandingKitUnlocked": runtime.get("brandingKitUnlocked", False) or kits.get("branding", {}).get("unlocked", False),
-            "cloneLicenseUnlocked": runtime.get("cloneLicenseUnlocked", False) or licenses.get("clone", False),
-            "autonomyLevel": runtime.get("autonomyLevel", "AL1")
-        },
-        **raw
-    }
-    return normalized
-
-# ---------- Collectibles ----------
-def generate_collectible(username: str, reason: str, metadata: dict = None):
-    collectible = {"username": username, "reason": reason, "metadata": metadata or {}, "ts": _now()}
-    if VERBOSE: print(f"🏅 Collectible generated:", collectible)
-    # Future: persist collectibles under ownership.playbooks or a collectibles array
-
-def _collectible_milestones(data: dict):
-    y = (data.get("yield") or {})
-    if y.get("aigxEarned", 0) > 0:
-        generate_collectible(data["username"], reason="First AIGx Earned")
-    if (data.get("cloneLineageSpread") or 0) >= 5:
-        generate_collectible(data["username"], reason="Lineage Milestone", metadata={"spread": data["cloneLineageSpread"]})
-    if (data.get("remixUnlockedForks") or 0) >= 3:
-        generate_collectible(data["username"], reason="Remix Milestone", metadata={"forks": data["remixUnlockedForks"]})
-    if (data.get("servicesRendered") or 0) >= 1:
-        generate_collectible(data["username"], reason="First Service Delivered")
-
-# ---------- Intent Ledger ----------
-def append_intent_ledger(username: str, entry: dict) -> bool:
-    if not (JSONBIN_URL and JSONBIN_SECRET): return False
+    # version
+    r.setdefault("schemaVersion", 0)
     try:
-        data = _get()
-        users = data.get("record", [])
-        for i,u in enumerate(users):
-            uname = u.get("username") or u.get("consent",{}).get("username")
-            if uname == username:
-                u.setdefault("ownership", {}).setdefault("ledger", [])
-                entry = {"ts": _now(), "type":"intent", **(entry or {})}
-                u["ownership"]["ledger"].append(entry)
-                users[i]=u
-                _put(users)
-                return True
-        return False
+        r["schemaVersion"] = max(int(r["schemaVersion"] or 0), SCHEMA_VERSION)
     except Exception:
-        return False
+        r["schemaVersion"] = SCHEMA_VERSION
 
-# ---------- Event hooks (MetaLoop, AutoConnect, MetaBridge/Hive) ----------
-def log_metaloop(username: str, kind: str, meta: dict=None):
-    return append_intent_ledger(username, {"event":"metaloop", "kind":kind, "meta": meta or {}})
+    # identity/consent
+    r["username"] = u
+    r.setdefault("companyType", r.get("companyType") or "general")
+    r.setdefault("created", r.get("created") or _now_iso())
+    r.setdefault("consent", {})
+    r["consent"].setdefault("agreed", bool(r["consent"].get("agreed")))
+    r["consent"].setdefault("username", u)
+    r["consent"].setdefault("timestamp", r["consent"].get("timestamp") or _now_iso())
 
-def log_autoconnect(username: str, connector: str, scopes: list=None):
-    return append_intent_ledger(username, {"event":"autoconnect", "connector":connector, "scopes": scopes or []})
+    # traits / flags
+    r.setdefault("traits", list(r.get("traits") or []))
+    r.setdefault("runtimeFlags", {})
+    rf = r["runtimeFlags"]
+    rf.setdefault("vaultAccess", True)
+    rf.setdefault("remixUnlocked", r.get("remixUnlocked") or False)
+    rf.setdefault("cloneLicenseUnlocked", r.get("cloneLicenseUnlocked") or False)
 
-def log_metabridge(username: str, action: str, payload: dict=None):
-    return append_intent_ledger(username, {"event":"metabridge", "action":action, "payload": payload or {}})
+    # wallet / yield
+    r.setdefault("wallet", {})
+    r["wallet"].setdefault("staked", r.get("staked") or 0)
+    r.setdefault("yield", {})
+    ry = r["yield"]
+    ry.setdefault("aigxEarned", float(ry.get("aigxEarned") or 0))
+    ry.setdefault("vaultYield", float(ry.get("vaultYield") or 0))
+    ry.setdefault("remixYield", float(ry.get("remixYield") or 0))
 
-def log_metahive(username: str, action: str, payload: dict=None):
-    return append_intent_ledger(username, {"event":"metahive", "action":action, "payload": payload or {}})
-
-# ---------- Canonical update (upsert) ----------
-def log_agent_update(record: dict):
-    """Merge a normalized record into JSONBin. Keeps vaultAccess true; triggers milestones and optional auto-proposal."""
-    if not (JSONBIN_URL and JSONBIN_SECRET):
-        if VERBOSE: print("❌ JSONBin creds missing"); 
-        return
-    data = normalize_user_data(record)
-
-    # Force vault access true by default
-    data.setdefault("runtimeFlags", {})
-    if not data["runtimeFlags"].get("vaultAccess"):
-        data["runtimeFlags"]["vaultAccess"] = True
-    # Ensure trait is injected
-    data["traits"] = list(set(data.get("traits", []) + ["vault"]))
-
-    bin_data = _get()
-    users = bin_data.get("record", [])
-    users = _upsert(users, data)
-    _put(users)
-    if VERBOSE: print("✅ JSONBin upsert complete")
-
-    # Milestone collectibles
-    try:
-        _collectible_milestones(data)
-    except Exception as e:
-        if VERBOSE: print("Collectible check error:", e)
-
-    # Optional: auto-proposal on mint (requires growth agent functions)
-    if GROWTH_OK and data.get("username") and data.get("created"):
+    # proposals (+ followups)
+    r.setdefault("proposals", list(r.get("proposals") or []))
+    for p in r["proposals"]:
+        p.setdefault("id", p.get("id") or f"p_{uuid4().hex[:8]}")
+        p.setdefault("sender", p.get("sender") or "")
+        p.setdefault("recipient", p.get("recipient") or u)
+        p.setdefault("title", p.get("title") or "")
+        p.setdefault("details", p.get("details") or "")
+        # tolerate 'price' legacy key
+        amt = p.get("amount", p.get("price", 0))
         try:
-            query = f"auto-proposal for {data['username']}"
-            matches  = metabridge_dual_match_realworld_fulfillment(query)
-            proposal = proposal_generator(data["username"], query, matches)
-            proposal_dispatch(data["username"], proposal, match_target=matches[0].get("username") if matches else None)
-            deliver_proposal(query=query, matches=matches, originator=data["username"])
-            append_intent_ledger(data["username"], {"event":"auto_proposal_on_mint","matches":len(matches)})
-        except Exception as e:
-            if VERBOSE: print("Auto-proposal error:", e)
+            p["amount"] = float(amt or 0)
+        except Exception:
+            p["amount"] = 0.0
+        p.setdefault("timestamp", p.get("timestamp") or _now_iso())
+        p.setdefault("link", p.get("link") or "")
+        p.setdefault("followups", list(p.get("followups") or []))
 
-# ---------- Server-side AIGx credit ----------
-def credit_aigx(username: str, amount: float, basis="uplift", ref=None):
-    if not (JSONBIN_URL and JSONBIN_SECRET): return False
-    data = _get()
-    users = data.get("record", [])
-    for i,u in enumerate(users):
-        uname = u.get("username") or u.get("consent",{}).get("username")
-        if uname == username:
-            u.setdefault("ownership", {"aigx":0,"royalties":0,"ledger":[]})
-            u.setdefault("yield", {"aigxEarned":0})
-            entry = {"ts": _now(), "amount": float(amount), "currency":"AIGx", "basis": basis, "ref": ref}
-            u["ownership"]["ledger"].append(entry)
-            u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + float(amount)
-            u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + float(amount)
-            users[i]=u
-            _put(users)
-            return True
-    return False
+    # Order-to-Cash rails
+    r.setdefault("orders", list(r.get("orders") or []))
+    for o in r["orders"]:
+        o.setdefault("id", o.get("id") or f"o_{uuid4().hex[:8]}")
+        o.setdefault("quoteId", o.get("quoteId") or "")
+        o.setdefault("proposalId", o.get("proposalId") or "")
+        o.setdefault("status", o.get("status") or "queued")  # queued|doing|blocked|done
+        o.setdefault("createdAt", o.get("createdAt") or _now_iso())
+        o.setdefault("sla", o.get("sla") or {"due": None, "started": None, "completed": None})
+        o.setdefault("tasks", list(o.get("tasks") or []))     # [{title,assignee,due,doneAt}]
+
+    r.setdefault("invoices", list(r.get("invoices") or []))
+    for i in r["invoices"]:
+        i.setdefault("id", i.get("id") or f"inv_{uuid4().hex[:8]}")
+        i.setdefault("orderId", i.get("orderId") or "")
+        try:
+            i["amount"] = float(i.get("amount") or 0)
+        except Exception:
+            i["amount"] = 0.0
+        i.setdefault("currency", i.get("currency") or "USD")
+        i.setdefault("status", i.get("status") or "draft")    # draft|sent|paid|void
+        i.setdefault("issuedAt", i.get("issuedAt") or _now_iso())
+        i.setdefault("dueAt", i.get("dueAt") or None)
+        i.setdefault("paidAt", i.get("paidAt") or None)
+
+    r.setdefault("payments", list(r.get("payments") or []))
+    for pmt in r["payments"]:
+        pmt.setdefault("id", pmt.get("id") or f"pay_{uuid4().hex[:8]}")
+        pmt.setdefault("invoiceId", pmt.get("invoiceId") or "")
+        try:
+            pmt["amount"] = float(pmt.get("amount") or 0)
+        except Exception:
+            pmt["amount"] = 0.0
+        pmt.setdefault("currency", pmt.get("currency") or "USD")
+        pmt.setdefault("status", pmt.get("status") or "initiated")  # initiated|succeeded|failed
+        pmt.setdefault("provider", pmt.get("provider") or "stripe")
+        pmt.setdefault("receiptUrl", pmt.get("receiptUrl") or "")
+        pmt.setdefault("createdAt", pmt.get("createdAt") or _now_iso())
+
+    # CRM-lite / meetings / KPIs / docs
+    r.setdefault("contacts", list(r.get("contacts") or []))
+    r.setdefault("meetings", list(r.get("meetings") or []))
+    r.setdefault("kpi_snapshots", list(r.get("kpi_snapshots") or []))
+    r.setdefault("docs", list(r.get("docs") or []))
+
+    # ownership + ledger (for audit & AIGx credit)
+    r.setdefault("ownership", {})
+    r["ownership"].setdefault("ledger", list(r["ownership"].get("ledger") or []))
+
+    # Convenience mirrors
+    if r["wallet"]["staked"] and not r.get("staked"):
+        r["staked"] = r["wallet"]["staked"]
+
+    # Ensure ID
+    r.setdefault("id", r.get("id") or f"user_{uuid4().hex[:8]}")
+
+    return r
+
+# --------- Low-level JSONBin I/O (sync) ---------
+def _headers() -> Dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    if JSONBIN_SECRET:
+        h["X-Master-Key"] = JSONBIN_SECRET
+    return h
+
+def _ok_jsonbin() -> bool:
+    return bool(JSONBIN_URL and JSONBIN_SECRET)
+
+def _read_jsonbin() -> Tuple[Optional[List[Dict[str, Any]]], Optional[Any]]:
+    """Returns (records_list_or_none, raw_response_or_error)."""
+    if not _ok_jsonbin():
+        return None, "jsonbin-not-configured"
+    try:
+        if _USE_HTTPX:
+            with _http.Client(timeout=15) as cx:  # type: ignore[attr-defined]
+                r = cx.get(JSONBIN_URL, headers=_headers())
+                r.raise_for_status()
+                data = r.json()
+        else:
+            r = _http.get(JSONBIN_URL, headers=_headers(), timeout=15)
+            r.raise_for_status()
+            data = r.json()
+        if isinstance(data, dict) and "record" in data:
+            return list(data["record"] or []), data
+        if isinstance(data, list):
+            return data, data
+        # Unknown shape; do not crash
+        return None, data
+    except Exception as e:  # pragma: no cover
+        return None, e
+
+def _write_jsonbin(records: List[Dict[str, Any]]) -> Tuple[bool, Optional[Any]]:
+    if not _ok_jsonbin():
+        return False, "jsonbin-not-configured"
+    try:
+        payload = records  # v3: PUT the raw JSON you want stored; response wraps it as {'record': ...}
+        if _USE_HTTPX:
+            with _http.Client(timeout=20) as cx:  # type: ignore[attr-defined]
+                r = cx.put(JSONBIN_URL, headers=_headers(), json=payload)
+                r.raise_for_status()
+        else:
+            r = _http.put(JSONBIN_URL, headers=_headers(), json=payload, timeout=20)
+            r.raise_for_status()
+        return True, None
+    except Exception as e:  # pragma: no cover
+        return False, e
+
+# Public low-level API (kept to match your existing imports)
+def _get() -> Any:
+    """Raw JSONBin GET. Returns dict with 'record' (preferred) or a list (legacy)."""
+    recs, raw = _read_jsonbin()
+    if isinstance(raw, Exception):
+        # Fallback to cache
+        return {"record": _CACHE}
+    if isinstance(raw, list):
+        return {"record": raw}
+    if isinstance(raw, dict):
+        return raw
+    # Unknown → wrap cache
+    return {"record": _CACHE}
+
+def _put(records: List[Dict[str, Any]]) -> bool:
+    """Raw JSONBin PUT. Overwrites the bin with given records list."""
+    ok, _err = _write_jsonbin(records)
+    if ok:
+        # refresh cache
+        global _CACHE
+        _CACHE = list(records)
+    return ok
+
+# --------- High-level helpers ---------
+def _merge_into_list(records: List[Dict[str, Any]], user_record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Upsert by consent.username or username."""
+    target = normalize_user_data(user_record)
+    uname = (target.get("consent") or {}).get("username") or target.get("username")
+    replaced = False
+    out: List[Dict[str, Any]] = []
+    for rec in (records or []):
+        u = (rec.get("consent") or {}).get("username") or rec.get("username")
+        if u == uname and not replaced:
+            out.append(target)
+            replaced = True
+        else:
+            out.append(rec)
+    if not replaced:
+        out.append(target)
+    return out
+
+def log_agent_update(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize & upsert a user record into JSONBin.
+    Falls back to in-process cache if JSONBin is unavailable.
+    """
+    global _CACHE
+    # Load existing
+    existing, _raw = _read_jsonbin()
+    if existing is None:
+        # work on cache if bin is down
+        existing = list(_CACHE)
+    # Merge
+    merged = _merge_into_list(existing, record)
+    # Write
+    ok, _err = _write_jsonbin(merged)
+    if not ok:
+        # keep cache updated even if bin failed
+        _CACHE = merged
+    else:
+        _CACHE = merged
+    # Return the normalized upserted record
+    uname = (record.get("consent") or {}).get("username") or record.get("username")
+    for rec in merged:
+        u = (rec.get("consent") or {}).get("username") or rec.get("username")
+        if u == uname:
+            return normalize_user_data(rec)
+    return normalize_user_data(record)
+
+def get_user(username: str) -> Optional[Dict[str, Any]]:
+    """Fetch one user (JSONBin first, then cache)."""
+    existing, _raw = _read_jsonbin()
+    pool = existing if existing is not None else _CACHE
+    for rec in pool:
+        u = (rec.get("consent") or {}).get("username") or rec.get("username")
+        if u == username:
+            return normalize_user_data(rec)
+    return None
+
+def list_users() -> List[Dict[str, Any]]:
+    """List all users (normalized)."""
+    existing, _raw = _read_jsonbin()
+    pool = existing if existing is not None else _CACHE
+    return [normalize_user_data(r) for r in pool]
+
+def append_intent_ledger(username: str, entry: Dict[str, Any]) -> bool:
+    """
+    Append an event to ownership.ledger for audit/attribution.
+    Entry is augmented with a timestamp.
+    """
+    if not isinstance(entry, dict):
+        entry = {"event": str(entry)}
+    entry = dict(entry)
+    entry.setdefault("ts", _now_iso())
+
+    # Load all
+    existing, _raw = _read_jsonbin()
+    if existing is None:
+        existing = list(_CACHE)
+
+    updated = False
+    out: List[Dict[str, Any]] = []
+    for rec in existing:
+        u = (rec.get("consent") or {}).get("username") or rec.get("username")
+        if u == username:
+            rec = normalize_user_data(rec)
+            rec.setdefault("ownership", {})
+            rec["ownership"].setdefault("ledger", [])
+            rec["ownership"]["ledger"].append(entry)
+            out.append(rec)
+            updated = True
+        else:
+            out.append(rec)
+
+    if not updated:
+        # Create user if not found
+        fresh = normalize_user_data({"username": username})
+        fresh.setdefault("ownership", {"ledger": [entry]})
+        out.append(fresh)
+
+    ok, _err = _write_jsonbin(out)
+    if ok:
+        global _CACHE
+        _CACHE = out
+    return ok
+
+def credit_aigx(username: str, amount: float, meta: Optional[Dict[str, Any]] = None) -> bool:
+    """
+    Credit AIGx and add a ledger entry. Safe math & normalization.
+    """
+    try:
+        amt = float(amount)
+    except Exception:
+        amt = 0.0
+
+    existing, _raw = _read_jsonbin()
+    if existing is None:
+        existing = list(_CACHE)
+
+    updated = False
+    out: List[Dict[str, Any]] = []
+    for rec in existing:
+        u = (rec.get("consent") or {}).get("username") or rec.get("username")
+        if u == username:
+            rec = normalize_user_data(rec)
+            ry = rec.setdefault("yield", {})
+            ry["aigxEarned"] = float(ry.get("aigxEarned") or 0) + amt
+            # ledger note
+            rec.setdefault("ownership", {})
+            rec["ownership"].setdefault("ledger", [])
+            rec["ownership"]["ledger"].append({
+                "event": "aigx_credit",
+                "amount": amt,
+                "meta": meta or {},
+                "ts": _now_iso()
+            })
+            out.append(rec)
+            updated = True
+        else:
+            out.append(rec)
+
+    if not updated:
+        fresh = normalize_user_data({"username": username})
+        fresh["yield"]["aigxEarned"] = float(fresh["yield"].get("aigxEarned") or 0) + amt
+        fresh.setdefault("ownership", {"ledger": [{
+            "event": "aigx_credit", "amount": amt, "meta": meta or {}, "ts": _now_iso()
+        }]})
+        out.append(fresh)
+
+    ok, _err = _write_jsonbin(out)
+    if ok:
+        global _CACHE
+        _CACHE = out
+    return ok
+
+# Convenience: upgrade all cached users to current schema (used by admin route)
+def _upgrade_all_local_cache() -> None:
+    global _CACHE
+    _CACHE = [normalize_user_data(r) for r in _CACHE]
+
+__all__ = [
+    "JSONBIN_URL",
+    "JSONBIN_SECRET",
+    "normalize_user_data",
+    "_get",
+    "_put",
+    "log_agent_update",
+    "append_intent_ledger",
+    "credit_aigx",
+    "get_user",
+    "list_users",
+]
