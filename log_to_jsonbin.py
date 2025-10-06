@@ -40,94 +40,161 @@ _CACHE: List[Dict[str, Any]] = []
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-# --------- Schema normalizer (v3) ---------
+# --------- Schema normalizer (v3, legacy-safe) ---------
 SCHEMA_VERSION = 3
 
-def normalize_user_data(rec: Dict[str, Any]) -> Dict[str, Any]:
-    """Idempotent, safe normalizer. Fills all fields the UI & API expect."""
+from uuid import uuid4
+from datetime import datetime, timezone
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+def _as_dict(v, default=None):
+    return v if isinstance(v, dict) else (default or {})
+
+def _as_list(v):
+    return v if isinstance(v, list) else []
+
+def normalize_user_data(rec: dict) -> dict:
     r = dict(rec or {})
-    u = (r.get("consent") or {}).get("username") or r.get("username") or "guest"
 
-    # version
-    r.setdefault("schemaVersion", 0)
-    try:
-        r["schemaVersion"] = max(int(r["schemaVersion"] or 0), SCHEMA_VERSION)
-    except Exception:
-        r["schemaVersion"] = SCHEMA_VERSION
-
-    # identity/consent
+    # --- identity / consent ---
+    consent = _as_dict(r.get("consent"))
+    u = consent.get("username") or r.get("username") or "guest"
     r["username"] = u
     r.setdefault("companyType", r.get("companyType") or "general")
     r.setdefault("created", r.get("created") or _now_iso())
-    r.setdefault("consent", {})
-    r["consent"].setdefault("agreed", bool(r["consent"].get("agreed")))
-    r["consent"].setdefault("username", u)
-    r["consent"].setdefault("timestamp", r["consent"].get("timestamp") or _now_iso())
+    r["consent"] = {
+        "agreed": bool(consent.get("agreed", consent.get("agreed") is True)),
+        "username": u,
+        "timestamp": consent.get("timestamp") or _now_iso(),
+    }
 
-    # traits / flags
-    r.setdefault("traits", list(r.get("traits") or []))
-    r.setdefault("runtimeFlags", {})
-    rf = r["runtimeFlags"]
-    rf.setdefault("vaultAccess", True)
-    rf.setdefault("remixUnlocked", r.get("remixUnlocked") or False)
-    rf.setdefault("cloneLicenseUnlocked", r.get("cloneLicenseUnlocked") or False)
+    # --- schema version (tolerate strings like "v1.0") ---
+    sv = r.get("schemaVersion")
+    if isinstance(sv, int):
+        r["schemaVersion"] = max(sv, SCHEMA_VERSION)
+    else:
+        r["schemaVersion"] = SCHEMA_VERSION
 
-    # wallet / yield
-    r.setdefault("wallet", {})
-    r["wallet"].setdefault("staked", r.get("staked") or 0)
-    r.setdefault("yield", {})
-    ry = r["yield"]
-    ry.setdefault("aigxEarned", float(ry.get("aigxEarned") or 0))
-    ry.setdefault("vaultYield", float(ry.get("vaultYield") or 0))
-    ry.setdefault("remixYield", float(ry.get("remixYield") or 0))
+    # --- traits / flags ---
+    r["traits"] = _as_list(r.get("traits"))
+    rf = _as_dict(r.get("runtimeFlags"))
+    rf.setdefault("vaultAccess", True if r.get("vaultAccess", rf.get("vaultAccess")) else rf.get("vaultAccess", True))
+    rf.setdefault("remixUnlocked", bool(r.get("remixUnlocked", rf.get("remixUnlocked", False))))
+    rf.setdefault("cloneLicenseUnlocked", bool(r.get("cloneLicenseUnlocked", rf.get("cloneLicenseUnlocked", False))))
+    # bubble sdkAccess_eligible if present on root
+    if "sdkAccess_eligible" in r and "sdkAccess_eligible" not in rf:
+        rf["sdkAccess_eligible"] = bool(r.get("sdkAccess_eligible"))
+    r["runtimeFlags"] = rf
 
-    # proposals (+ followups)
-    r.setdefault("proposals", list(r.get("proposals") or []))
-    for p in r["proposals"]:
-        p.setdefault("id", p.get("id") or f"p_{uuid4().hex[:8]}")
-        p.setdefault("sender", p.get("sender") or "")
-        p.setdefault("recipient", p.get("recipient") or u)
-        p.setdefault("title", p.get("title") or "")
-        p.setdefault("details", p.get("details") or "")
-        # tolerate 'price' legacy key
-        amt = p.get("amount", p.get("price", 0))
+    # --- wallet (coerce "0x0" → {"address":"0x0","staked":0}) ---
+    wallet_in = r.get("wallet")
+    w = _as_dict(wallet_in)
+    if not isinstance(wallet_in, dict):
+        # string or None
+        addr = r.get("walletAddress")
+        if isinstance(wallet_in, str) and wallet_in.strip():
+            addr = wallet_in
+        w = {"address": addr or "0x0"}
+    # staked: prefer numeric; map bool → 1/0
+    staked_root = r.get("staked")
+    if isinstance(staked_root, bool):
+        staked_val = 1 if staked_root else 0
+    else:
         try:
-            p["amount"] = float(amt or 0)
+            staked_val = int(staked_root or 0)
+        except Exception:
+            staked_val = 0
+    w.setdefault("address", r.get("walletAddress", w.get("address", "0x0")))
+    w.setdefault("staked", staked_val)
+    r["wallet"] = w
+    # keep legacy mirror for UI if needed
+    if r["wallet"]["staked"] and not r.get("staked"):
+        r["staked"] = r["wallet"]["staked"]
+
+    # --- yield (always a dict of floats) ---
+    y_in = _as_dict(r.get("yield"))
+    y = {
+        "autoStake": bool(y_in.get("autoStake", False)),
+        "aigxEarned": float(y_in.get("aigxEarned") or 0),
+        "vaultYield": float(y_in.get("vaultYield") or 0),
+        "remixYield": float(y_in.get("remixYield") or 0),
+        "aigxAttributedTo": _as_list(y_in.get("aigxAttributedTo")),
+        "aigxEarnedEnabled": bool(y_in.get("aigxEarnedEnabled", False)),
+    }
+    r["yield"] = y
+
+    # --- proposals (unify legacy proposal.{proposalsSent,proposalsReceived}) ---
+    unified = _as_list(r.get("proposals"))
+    legacy_prop = _as_dict(r.get("proposal"))
+    for bucket, direction in ((legacy_prop.get("proposalsSent"), "outbound"),
+                              (legacy_prop.get("proposalsReceived"), "inbound")):
+        for item in _as_list(bucket):
+            pid = item.get("id") or f"p_{uuid4().hex[:8]}"
+            amt = item.get("amount", item.get("price", 0))
+            try:
+                amt = float(amt or 0)
+            except Exception:
+                amt = 0.0
+            unified.append({
+                "id": pid,
+                "sender": item.get("sender") or (u if direction == "outbound" else "external"),
+                "recipient": item.get("recipient") or (u if direction == "inbound" else "external"),
+                "title": item.get("title") or "",
+                "details": item.get("details") or "",
+                "amount": amt,
+                "timestamp": item.get("timestamp") or _now_iso(),
+                "link": item.get("link") or "",
+                "followups": _as_list(item.get("followups")),
+            })
+    # ensure normalized shape on all proposals
+    normd = []
+    for p in unified:
+        p = dict(p or {})
+        p.setdefault("id", f"p_{uuid4().hex[:8]}")
+        p.setdefault("sender", "")
+        p.setdefault("recipient", u)
+        p.setdefault("title", "")
+        p.setdefault("details", "")
+        try:
+            p["amount"] = float(p.get("amount") or p.get("price") or 0)
         except Exception:
             p["amount"] = 0.0
         p.setdefault("timestamp", p.get("timestamp") or _now_iso())
         p.setdefault("link", p.get("link") or "")
-        p.setdefault("followups", list(p.get("followups") or []))
+        p["followups"] = _as_list(p.get("followups"))
+        normd.append(p)
+    r["proposals"] = normd
 
-    # Order-to-Cash rails
-    r.setdefault("orders", list(r.get("orders") or []))
+    # --- Order-to-Cash rails ---
+    r["orders"] = _as_list(r.get("orders"))
     for o in r["orders"]:
-        o.setdefault("id", o.get("id") or f"o_{uuid4().hex[:8]}")
-        o.setdefault("quoteId", o.get("quoteId") or "")
-        o.setdefault("proposalId", o.get("proposalId") or "")
-        o.setdefault("status", o.get("status") or "queued")  # queued|doing|blocked|done
-        o.setdefault("createdAt", o.get("createdAt") or _now_iso())
-        o.setdefault("sla", o.get("sla") or {"due": None, "started": None, "completed": None})
-        o.setdefault("tasks", list(o.get("tasks") or []))     # [{title,assignee,due,doneAt}]
+        o.setdefault("id", f"o_{uuid4().hex[:8]}")
+        o.setdefault("quoteId", "")
+        o.setdefault("proposalId", "")
+        o.setdefault("status", "queued")  # queued|doing|blocked|done
+        o.setdefault("createdAt", _now_iso())
+        o.setdefault("sla", {"due": None, "started": None, "completed": None})
+        o["tasks"] = _as_list(o.get("tasks"))
 
-    r.setdefault("invoices", list(r.get("invoices") or []))
+    r["invoices"] = _as_list(r.get("invoices"))
     for i in r["invoices"]:
-        i.setdefault("id", i.get("id") or f"inv_{uuid4().hex[:8]}")
-        i.setdefault("orderId", i.get("orderId") or "")
+        i.setdefault("id", f"inv_{uuid4().hex[:8]}")
+        i.setdefault("orderId", "")
         try:
             i["amount"] = float(i.get("amount") or 0)
         except Exception:
             i["amount"] = 0.0
         i.setdefault("currency", i.get("currency") or "USD")
-        i.setdefault("status", i.get("status") or "draft")    # draft|sent|paid|void
+        i.setdefault("status", i.get("status") or "draft")  # draft|sent|paid|void
         i.setdefault("issuedAt", i.get("issuedAt") or _now_iso())
         i.setdefault("dueAt", i.get("dueAt") or None)
         i.setdefault("paidAt", i.get("paidAt") or None)
 
-    r.setdefault("payments", list(r.get("payments") or []))
+    r["payments"] = _as_list(r.get("payments"))
     for pmt in r["payments"]:
-        pmt.setdefault("id", pmt.get("id") or f"pay_{uuid4().hex[:8]}")
-        pmt.setdefault("invoiceId", pmt.get("invoiceId") or "")
+        pmt.setdefault("id", f"pay_{uuid4().hex[:8]}")
+        pmt.setdefault("invoiceId", "")
         try:
             pmt["amount"] = float(pmt.get("amount") or 0)
         except Exception:
@@ -138,21 +205,24 @@ def normalize_user_data(rec: Dict[str, Any]) -> Dict[str, Any]:
         pmt.setdefault("receiptUrl", pmt.get("receiptUrl") or "")
         pmt.setdefault("createdAt", pmt.get("createdAt") or _now_iso())
 
-    # CRM-lite / meetings / KPIs / docs
-    r.setdefault("contacts", list(r.get("contacts") or []))
-    r.setdefault("meetings", list(r.get("meetings") or []))
-    r.setdefault("kpi_snapshots", list(r.get("kpi_snapshots") or []))
-    r.setdefault("docs", list(r.get("docs") or []))
+    # --- misc collections expected by UI/logic ---
+    r["contacts"] = _as_list(r.get("contacts"))
+    r["meetings"] = _as_list(r.get("meetings"))
+    r["kpi_snapshots"] = _as_list(r.get("kpi_snapshots"))
+    r["docs"] = _as_list(r.get("docs"))
 
-    # ownership + ledger (for audit & AIGx credit)
-    r.setdefault("ownership", {})
-    r["ownership"].setdefault("ledger", list(r["ownership"].get("ledger") or []))
+    # --- ownership / audit ledger ---
+    owner = _as_dict(r.get("ownership"))
+    owner["ledger"] = _as_list(owner.get("ledger"))
+    r["ownership"] = owner
 
-    # Convenience mirrors
-    if r["wallet"]["staked"] and not r.get("staked"):
-        r["staked"] = r["wallet"]["staked"]
+    # --- tidy a few enums for consistency (non-breaking) ---
+    if "listingStatus" in r and isinstance(r["listingStatus"], str):
+        r["listingStatus"] = "Active" if r["listingStatus"].lower() == "active" else r["listingStatus"]
+    if "protocolStatus" in r and isinstance(r["protocolStatus"], str):
+        r["protocolStatus"] = "Bound" if r["protocolStatus"].lower() == "bound" else r["protocolStatus"]
 
-    # Ensure ID
+    # --- ensure id ---
     r.setdefault("id", r.get("id") or f"user_{uuid4().hex[:8]}")
 
     return r
