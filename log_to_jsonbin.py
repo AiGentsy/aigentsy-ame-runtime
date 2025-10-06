@@ -1,6 +1,6 @@
 # log_to_jsonbin.py
 """
-AiGentsy JSONBin adapter (sync, robust, schema-aware).
+AiGentsy JSONBin adapter (sync, robust, schema-aware, legacy-safe).
 
 Exports:
 - JSONBIN_URL, JSONBIN_SECRET
@@ -16,7 +16,6 @@ Exports:
 
 from __future__ import annotations
 import os
-import json
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -36,16 +35,8 @@ JSONBIN_SECRET: str = os.getenv("JSONBIN_SECRET", "")
 # Local cache (used when JSONBin is missing/unreachable)
 _CACHE: List[Dict[str, Any]] = []
 
-# --------- Time helpers ---------
+# --------- Helpers ---------
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-# --------- Schema normalizer (v3, legacy-safe) ---------
-SCHEMA_VERSION = 3
-
-from uuid import uuid4
-from datetime import datetime, timezone
-def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 def _as_dict(v, default=None):
@@ -53,6 +44,9 @@ def _as_dict(v, default=None):
 
 def _as_list(v):
     return v if isinstance(v, list) else []
+
+# --------- Schema normalizer (v3, legacy-safe) ---------
+SCHEMA_VERSION = 3
 
 def normalize_user_data(rec: dict) -> dict:
     r = dict(rec or {})
@@ -82,7 +76,6 @@ def normalize_user_data(rec: dict) -> dict:
     rf.setdefault("vaultAccess", True if r.get("vaultAccess", rf.get("vaultAccess")) else rf.get("vaultAccess", True))
     rf.setdefault("remixUnlocked", bool(r.get("remixUnlocked", rf.get("remixUnlocked", False))))
     rf.setdefault("cloneLicenseUnlocked", bool(r.get("cloneLicenseUnlocked", rf.get("cloneLicenseUnlocked", False))))
-    # bubble sdkAccess_eligible if present on root
     if "sdkAccess_eligible" in r and "sdkAccess_eligible" not in rf:
         rf["sdkAccess_eligible"] = bool(r.get("sdkAccess_eligible"))
     r["runtimeFlags"] = rf
@@ -91,12 +84,10 @@ def normalize_user_data(rec: dict) -> dict:
     wallet_in = r.get("wallet")
     w = _as_dict(wallet_in)
     if not isinstance(wallet_in, dict):
-        # string or None
         addr = r.get("walletAddress")
         if isinstance(wallet_in, str) and wallet_in.strip():
             addr = wallet_in
         w = {"address": addr or "0x0"}
-    # staked: prefer numeric; map bool → 1/0
     staked_root = r.get("staked")
     if isinstance(staked_root, bool):
         staked_val = 1 if staked_root else 0
@@ -108,7 +99,6 @@ def normalize_user_data(rec: dict) -> dict:
     w.setdefault("address", r.get("walletAddress", w.get("address", "0x0")))
     w.setdefault("staked", staked_val)
     r["wallet"] = w
-    # keep legacy mirror for UI if needed
     if r["wallet"]["staked"] and not r.get("staked"):
         r["staked"] = r["wallet"]["staked"]
 
@@ -124,7 +114,7 @@ def normalize_user_data(rec: dict) -> dict:
     }
     r["yield"] = y
 
-    # --- proposals (unify legacy proposal.{proposalsSent,proposalsReceived}) ---
+    # --- proposals (merge legacy proposal.proposalsSent/Received) ---
     unified = _as_list(r.get("proposals"))
     legacy_prop = _as_dict(r.get("proposal"))
     for bucket, direction in ((legacy_prop.get("proposalsSent"), "outbound"),
@@ -147,7 +137,6 @@ def normalize_user_data(rec: dict) -> dict:
                 "link": item.get("link") or "",
                 "followups": _as_list(item.get("followups")),
             })
-    # ensure normalized shape on all proposals
     normd = []
     for p in unified:
         p = dict(p or {})
@@ -216,7 +205,7 @@ def normalize_user_data(rec: dict) -> dict:
     owner["ledger"] = _as_list(owner.get("ledger"))
     r["ownership"] = owner
 
-    # --- tidy a few enums for consistency (non-breaking) ---
+    # --- friendly enums ---
     if "listingStatus" in r and isinstance(r["listingStatus"], str):
         r["listingStatus"] = "Active" if r["listingStatus"].lower() == "active" else r["listingStatus"]
     if "protocolStatus" in r and isinstance(r["protocolStatus"], str):
@@ -255,7 +244,6 @@ def _read_jsonbin() -> Tuple[Optional[List[Dict[str, Any]]], Optional[Any]]:
             return list(data["record"] or []), data
         if isinstance(data, list):
             return data, data
-        # Unknown shape; do not crash
         return None, data
     except Exception as e:  # pragma: no cover
         return None, e
@@ -264,7 +252,7 @@ def _write_jsonbin(records: List[Dict[str, Any]]) -> Tuple[bool, Optional[Any]]:
     if not _ok_jsonbin():
         return False, "jsonbin-not-configured"
     try:
-        payload = records  # v3: PUT the raw JSON you want stored; response wraps it as {'record': ...}
+        payload = records  # PUT raw array; JSONBin v3 wraps it as {'record': ...}
         if _USE_HTTPX:
             with _http.Client(timeout=20) as cx:  # type: ignore[attr-defined]
                 r = cx.put(JSONBIN_URL, headers=_headers(), json=payload)
@@ -276,26 +264,22 @@ def _write_jsonbin(records: List[Dict[str, Any]]) -> Tuple[bool, Optional[Any]]:
     except Exception as e:  # pragma: no cover
         return False, e
 
-# Public low-level API (kept to match your existing imports)
+# Public low-level API
 def _get() -> Any:
     """Raw JSONBin GET. Returns dict with 'record' (preferred) or a list (legacy)."""
     recs, raw = _read_jsonbin()
     if isinstance(raw, Exception):
-        # Fallback to cache
         return {"record": _CACHE}
     if isinstance(raw, list):
         return {"record": raw}
     if isinstance(raw, dict):
         return raw
-    # Unknown → wrap cache
     return {"record": _CACHE}
 
 def _put(records: List[Dict[str, Any]]) -> bool:
-    """Raw JSONBin PUT. Overwrites the bin with given records list."""
+    global _CACHE  # declare before any use/assignment
     ok, _err = _write_jsonbin(records)
     if ok:
-        # refresh cache
-        global _CACHE
         _CACHE = list(records)
     return ok
 
@@ -318,26 +302,16 @@ def _merge_into_list(records: List[Dict[str, Any]], user_record: Dict[str, Any])
     return out
 
 def log_agent_update(record: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Normalize & upsert a user record into JSONBin.
-    Falls back to in-process cache if JSONBin is unavailable.
-    """
-    global _CACHE
-    # Load existing
+    global _CACHE  # declare first
     existing, _raw = _read_jsonbin()
     if existing is None:
-        # work on cache if bin is down
         existing = list(_CACHE)
-    # Merge
     merged = _merge_into_list(existing, record)
-    # Write
     ok, _err = _write_jsonbin(merged)
-    if not ok:
-        # keep cache updated even if bin failed
+    if ok:
         _CACHE = merged
     else:
-        _CACHE = merged
-    # Return the normalized upserted record
+        _CACHE = merged  # keep cache even if network failed
     uname = (record.get("consent") or {}).get("username") or record.get("username")
     for rec in merged:
         u = (rec.get("consent") or {}).get("username") or rec.get("username")
@@ -346,7 +320,6 @@ def log_agent_update(record: Dict[str, Any]) -> Dict[str, Any]:
     return normalize_user_data(record)
 
 def get_user(username: str) -> Optional[Dict[str, Any]]:
-    """Fetch one user (JSONBin first, then cache)."""
     existing, _raw = _read_jsonbin()
     pool = existing if existing is not None else _CACHE
     for rec in pool:
@@ -356,22 +329,17 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
     return None
 
 def list_users() -> List[Dict[str, Any]]:
-    """List all users (normalized)."""
     existing, _raw = _read_jsonbin()
     pool = existing if existing is not None else _CACHE
     return [normalize_user_data(r) for r in pool]
 
 def append_intent_ledger(username: str, entry: Dict[str, Any]) -> bool:
-    """
-    Append an event to ownership.ledger for audit/attribution.
-    Entry is augmented with a timestamp.
-    """
+    global _CACHE  # MUST be first line in function
     if not isinstance(entry, dict):
         entry = {"event": str(entry)}
     entry = dict(entry)
     entry.setdefault("ts", _now_iso())
 
-    # Load all
     existing, _raw = _read_jsonbin()
     if existing is None:
         existing = list(_CACHE)
@@ -391,21 +359,17 @@ def append_intent_ledger(username: str, entry: Dict[str, Any]) -> bool:
             out.append(rec)
 
     if not updated:
-        # Create user if not found
         fresh = normalize_user_data({"username": username})
         fresh.setdefault("ownership", {"ledger": [entry]})
         out.append(fresh)
 
     ok, _err = _write_jsonbin(out)
     if ok:
-        global _CACHE
         _CACHE = out
     return ok
 
 def credit_aigx(username: str, amount: float, meta: Optional[Dict[str, Any]] = None) -> bool:
-    """
-    Credit AIGx and add a ledger entry. Safe math & normalization.
-    """
+    global _CACHE  # MUST be first line in function
     try:
         amt = float(amount)
     except Exception:
@@ -423,7 +387,6 @@ def credit_aigx(username: str, amount: float, meta: Optional[Dict[str, Any]] = N
             rec = normalize_user_data(rec)
             ry = rec.setdefault("yield", {})
             ry["aigxEarned"] = float(ry.get("aigxEarned") or 0) + amt
-            # ledger note
             rec.setdefault("ownership", {})
             rec["ownership"].setdefault("ledger", [])
             rec["ownership"]["ledger"].append({
@@ -447,11 +410,9 @@ def credit_aigx(username: str, amount: float, meta: Optional[Dict[str, Any]] = N
 
     ok, _err = _write_jsonbin(out)
     if ok:
-        global _CACHE
         _CACHE = out
     return ok
 
-# Convenience: upgrade all cached users to current schema (used by admin route)
 def _upgrade_all_local_cache() -> None:
     global _CACHE
     _CACHE = [normalize_user_data(r) for r in _CACHE]
