@@ -20,6 +20,11 @@ from log_to_jsonbin_merged import (
 from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
 
 # ---- App, logging, CORS (single block) ----
+import os, logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timezone
+
 app = FastAPI()
 
 logger = logging.getLogger("aigentsy")
@@ -27,16 +32,21 @@ logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else log
 
 ALLOW_ORIGINS = [
     os.getenv("FRONTEND_ORIGIN", "https://aigentsy.com"),
+    "https://aigentsy.com",
+    "https://www.aigentsy.com",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,   # keep explicit origins (good with credentials)
-    allow_credentials=True,
+    allow_origins=ALLOW_ORIGINS,   # explicit allowed sites
+    allow_credentials=False,       # set True only if you use cookies/auth headers
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
 )
 
 # ---- Simple health check ----
