@@ -91,6 +91,26 @@ def _empty_kits() -> Dict[str, Any]:
 def _empty_licenses():
     return {"sdk": False, "vault": False, "remix": False, "clone": False, "aigx": False}
 
+def _platform_fee_rate(u) -> float:
+    base = float(os.getenv("PLATFORM_FEE", "0.20"))  # default 20%
+    # Loyalty: lower fees for referrers & MetaHive members
+    referrals = len((u.get("transactions", {}) or {}).get("referralEvents", []))
+    if u.get("metahive", {}).get("enabled"): base -= 0.02
+    if referrals >= 3: base -= 0.03
+    # Risk: mildly increase for new or flagged accounts
+    if u.get("runtimeFlags", {}).get("flagged"): base += 0.05
+    return round(max(0.05, min(base, 0.35)), 2)
+
+def _ratelimit(u, key: str, per_min: int = 30):
+    now = datetime.utcnow()
+    window_start = (now - timedelta(minutes=1)).isoformat()
+    rl = u.setdefault("rate", {}).setdefault(key, [])
+    rl[:] = [t for t in rl if t >= window_start]
+    if len(rl) >= per_min:
+        return False, len(rl)
+    rl.append(_now())
+    return True, len(rl)
+
 COMPANY_TYPE_PRESETS = {
     "legal":     {"meta_role": "CLO", "traits_add": ["legal"],     "kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
     "social":    {"meta_role": "CMO", "traits_add": ["marketing"], "kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
@@ -220,6 +240,28 @@ def make_canonical_record(username: str, company_type: str = "general", referral
     # ensure default chart-friendly flags
     user["runtimeFlags"]["vaultAccess"] = user["runtimeFlags"]["vaultAccess"] or user["kits"]["universal"]["unlocked"]
     return user
+
+def _today_key():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+def _current_spend(u):
+    s = u.setdefault("spend", {})
+    day = _today_key()
+    s.setdefault(day, 0.0)
+    return s, day
+
+def _can_spend(u, amt: float) -> bool:
+    guard = (u.get("policy", {}) or {}).get("guardrails", {}) or {}
+    cap = float(guard.get("dailyBudget", 0))
+    s, day = _current_spend(u)
+    return (s[day] + amt) <= cap if cap else True
+
+def _spend(u, amt: float, basis="media_spend", ref=None):
+    s, day = _current_spend(u)
+    s[day] = round(s[day] + amt, 2)
+    u.setdefault("ownership", {}).setdefault("ledger", []).append(
+        {"ts": _now(), "amount": -float(amt), "currency": "USD", "basis": basis, "ref": ref}
+    )
 
 def normalize_user_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     if not raw: return {}
@@ -647,6 +689,45 @@ async def aigx_credit(request: Request):
                 return {"ok": True, "ledgerEntry": entry, "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
+@app.post("/referral/link")
+async def referral_link(body: Dict = Body(...)):
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    oid = _id("ref"); exp = int((datetime.utcnow()+timedelta(days=14)).timestamp())
+    sig = _hmac(f"{oid}.{username}.{exp}", POL_SECRET)
+    url = f"/r?oid={oid}&sig={sig}&ref={username}&exp={exp}"
+    return {"ok": True, "url": url, "exp": exp}
+
+@app.post("/vault/autostake")
+async def vault_autostake(body: Dict = Body(...)):
+    username = body.get("username"); enabled = bool(body.get("enabled", True)); pct = float(body.get("percent", 0.5))
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        y = u.setdefault("yield", {}); y["autoStake"] = enabled; y["autoStakePct"] = pct
+        await _save_users(client, users)
+        return {"ok": True, "yield": y}
+
+@app.get("/metrics")
+async def metrics():
+    async with httpx.AsyncClient(timeout=30) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])
+        rev = fee = payouts = invoices_open = 0.0
+        for u in users:
+            for l in (u.get("ownership", {}).get("ledger", []) or []):
+                if l.get("basis") == "revenue": rev += float(l.get("amount",0))
+                if l.get("basis") == "platform_fee": fee += float(l.get("amount",0))
+                if l.get("basis") == "payout": payouts += float(l.get("amount",0))
+            for inv in (u.get("invoices",[]) or []):
+                if inv.get("status") == "issued": invoices_open += float(inv.get("amount",0))
+        return {"ok": True, "totals": {
+            "revenue": round(rev,2), "platform_fees": round(fee,2),
+            "payouts": round(payouts,2), "invoices_open": round(invoices_open,2)
+        }}
+
 # ---- POST: Contacts (privacy-first) opt-in + counts ----
 @app.post("/contacts/optin")
 async def contacts_optin(request: Request):
@@ -686,6 +767,9 @@ async def contacts_send(request: Request):
     We **do not** store raw contacts here—only outreach events & counts.
     If PROPOSAL_WEBHOOK_URL is set, we post a payload there for delivery.
     """
+    ok, used = _ratelimit(u, "contacts_send", per_min=20)
+    if not ok: return {"error": "rate_limited", "used_last_minute": used}
+
     body = await request.json()
     username = body.get("username")
     channel  = body.get("channel","email")
@@ -1041,6 +1125,7 @@ async def revenue_recognize(body: Dict = Body(...)):
             if p.get("invoiceId") == inv_id:
                 p["status"] = "paid"; p["paid_ts"] = _now()
 
+        
         # revenue (+)
         rev = {"ts": _now(), "amount": amount, "currency": currency, "basis":"revenue", "ref": inv_id}
         u["ownership"]["ledger"].append(rev)
@@ -1048,12 +1133,85 @@ async def revenue_recognize(body: Dict = Body(...)):
         fee_amt = round(-amount * PLATFORM_FEE, 2)
         fee = {"ts": _now(), "amount": fee_amt, "currency": currency, "basis":"platform_fee", "ref": inv_id}
         u["ownership"]["ledger"].append(fee)
+
+        fee_rate = (u.get("fees", {}) or {}).get("take_rate") or _platform_fee_rate(u)
+        fee_amt = round(-amount * fee_rate, 2)
+
         # mint AIGx (display balance)
         u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amount
         u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + amount
 
         await _save_users(client, users)
         return {"ok": True, "invoice": invoice, "ledger": {"revenue": rev, "fee": fee}, "summary": _money_summary(u)}
+
+@app.post("/budget/spend")
+async def budget_spend(body: Dict = Body(...)):
+    username = body.get("username"); amount = float(body.get("amount", 0))
+    basis = body.get("basis", "media_spend"); ref = body.get("ref")
+    if not (username and amount): return {"error": "username & amount required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        if not _can_spend(u, amount): 
+            return {"error": "daily budget exceeded"}
+        _spend(u, amount, basis, ref)
+        await _save_users(client, users)
+        return {"ok": True, "spent_today": _current_spend(u)[0][_today_key()], "summary": _money_summary(u)}
+
+@app.post("/events/log")
+async def events_log(body: Dict = Body(...)):
+    username = body.get("username"); ev = body.get("event")
+    if not (username and isinstance(ev, dict)): return {"error":"username & event required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        ev.setdefault("ts", _now())
+        u.setdefault("events", []).append(ev)  # {playbook, channel, kind, cost?, revenue?}
+        await _save_users(client, users)
+        return {"ok": True}
+
+@app.post("/attribution/rollup")
+async def attribution_rollup(body: Dict = Body(...)):
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        data = {}
+        for ev in u.get("events", []):
+            key = (ev.get("playbook") or "unknown", ev.get("channel") or "unknown")
+            data.setdefault(key, {"spend":0.0,"rev":0.0,"count":0})
+            data[key]["spend"] += float(ev.get("cost",0))
+            data[key]["rev"]   += float(ev.get("revenue",0))
+            data[key]["count"] += 1
+        table = [{"playbook":k[0], "channel":k[1], "spend":round(v["spend"],2),
+                  "revenue":round(v["rev"],2), "roas": round((v["rev"]/v["spend"]) if v["spend"] else 0, 2),
+                  "events": v["count"]} for k,v in data.items()]
+        table.sort(key=lambda r: r["roas"], reverse=True)
+        return {"ok": True, "by_channel": table[:20]}
+
+@app.post("/automatch/pulse")
+async def automatch_pulse(body: Dict = Body(...)):
+    username = body.get("username"); unit_spend = float(body.get("unitSpend", 1.0))
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=25) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        enabled = ((u.get("playbooks", {}) or {}).get("enabled", []))  # catalog code(s)
+        actions = []
+        for code in enabled:
+            if not _can_spend(u, unit_spend): break
+            # “fire” a tiny action – e.g., a post, an email, a DM; here we just log outreach
+            u.setdefault("transactions", {}).setdefault("outreachEvents", []).append(
+                {"code": code, "delivered": True, "ts": _now()}
+            )
+            _spend(u, unit_spend, basis="media_spend", ref=code)
+            actions.append({"code": code, "spent": unit_spend})
+        await _save_users(client, users)
+        return {"ok": True, "fired": actions, "spent_today": _current_spend(u)[0][_today_key()]}
 
 # ===== Monetize toggle (AL1 by default with budget/quietHours guardrails) =====
 @app.post("/monetize/toggle")
