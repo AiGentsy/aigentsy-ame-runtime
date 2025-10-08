@@ -6,7 +6,7 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, Request, Body, Path, HTTPException
+from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -611,7 +611,8 @@ async def wallet_connect(body: Dict = Body(...)):
         return {"ok": True, "wallet": safe}
 
 @app.post("/payout/request")
-async def payout_request(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def payout_request(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key'), idemp: str | None = Header(None, alias='Idempotency-Key')):
+    body = await request.json()
     """
     Body: { username, amount, method?: "stripe"|"crypto" }
     Checks available balance and raises a payout request (queued for ops/batch).
@@ -821,7 +822,11 @@ async def algo_schedule_plan(body: Dict = Body(...)):
 
 # ---------- DISTRIBUTION REGISTRY + PUSH ----------
 @app.post("/distribution/register")
-async def distribution_register(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def distribution_register(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    endpoint_candidate = body.get('endpoint_url') or body.get('endpoint') or body.get('url')
+if not _safe_url(str(endpoint_candidate or "")):
+    raise HTTPException(status_code=400, detail="endpoint not allowed")
+    body = await request.json()
     """
     Body: { username, channel, endpoint_url, token }
     """
@@ -837,7 +842,8 @@ async def distribution_register(body: Dict = Body(..., x_api_key: str | None = H
         return {"ok": True}
 
 @app.post("/distribution/push")
-async def distribution_push(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def distribution_push(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     """
     Body: { username, listingId, channels?:[] }
     Pushes a signed lightweight Offer Card (POL) to registered webhooks.
@@ -878,7 +884,8 @@ async def distribution_push(body: Dict = Body(..., x_api_key: str | None = Heade
 
 # ---------- REVENUE SPLITTER (JV mesh) ----------
 @app.post("/revenue/split")
-async def revenue_split(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def revenue_split(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     """
     Body: { username, amount, currency:'USD', ref, jvId? }
     If jvId present, split by that entry; else split equally across all JV mesh entries.
@@ -1350,7 +1357,8 @@ async def pay_link(body: Dict = Body(...)):
         return {"ok": True, "checkout_url": checkout_url, "payment": payment}
 
 @app.post("/revenue/recognize")
-async def revenue_recognize(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def revenue_recognize(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); inv_id = body.get("invoiceId")
     if not (username and inv_id):
         return {"error": "username & invoiceId required"}
@@ -1679,7 +1687,8 @@ async def meeting_notes(body: Dict = Body(...)):
 
 # ---------- 5) CRM-LITE ----------
 @app.post("/contacts/import")
-async def contacts_import(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_import(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username")
     if not username: return {"error":"username required"}
     new_contacts: List[Dict[str, Any]] = []
@@ -1702,7 +1711,8 @@ async def contacts_import(body: Dict = Body(..., x_api_key: str | None = Header(
         return {"ok": True, "added": len(new_contacts)}
 
 @app.post("/contacts/segment")
-async def contacts_segment(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_segment(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); ids = body.get("ids", []); tags = body.get("tags", [])
     if not (username and ids and tags): return {"error":"username, ids, tags required"}
     async with httpx.AsyncClient(timeout=20) as client:
@@ -1718,7 +1728,8 @@ async def contacts_segment(body: Dict = Body(..., x_api_key: str | None = Header
         return {"ok": True}
 
 @app.post("/contacts/optout")
-async def contacts_optout(body: Dict = Body(..., x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_optout(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); email = (body.get("email") or "").lower()
     if not (username and email): return {"error":"username & email required"}
     async with httpx.AsyncClient(timeout=20) as client:
@@ -2092,7 +2103,7 @@ def _safe_url(u: str) -> bool:
         return False
 
 
-from fastapi import Header, HTTPException
+from fastapi import HTTPException
 
 def _uname(u):
     return (u.get("username") or u.get("consent",{}).get("username"))
