@@ -101,6 +101,16 @@ def _platform_fee_rate(u) -> float:
     if u.get("runtimeFlags", {}).get("flagged"): base += 0.05
     return round(max(0.05, min(base, 0.35)), 2)
 
+def _platform_fee_rate(u: Dict[str, Any]) -> float:
+    # future: tiered fees by plan/volume/partner
+    return 0.05
+
+# inside /revenue/recognize just before saving:
+fee_rate = _platform_fee_rate(u)
+fee_amt  = round(amt * fee_rate, 2)
+u["ownership"]["ledger"].append({"ts": _now(), "amount": -fee_amt, "currency": invoice.get("currency","USD"),
+                                 "basis": "platform_fee", "ref": inv_id})
+
 def _ratelimit(u, key: str, per_min: int = 30):
     now = datetime.utcnow()
     window_start = (now - timedelta(minutes=1)).isoformat()
@@ -372,6 +382,55 @@ def _find_in(lst: List[Dict[str, Any]], key: str, val: str) -> Optional[Dict[str
 # ============================
 # Endpoints
 # ============================
+
+# ---------- BANDIT: epsilon-greedy for creatives/offers ----------
+def _bandit_slot(u: Dict[str, Any], key: str):
+    b = u.setdefault("bandits", {}).setdefault(key, {"arms": {}})
+    return b
+
+@app.post("/bandit/next")
+async def bandit_next(body: Dict = Body(...)):
+    """
+    Body: { username, key, arms:["A","B",...], epsilon:0.15 }
+    Returns: { arm }
+    """
+    username = body.get("username"); key = body.get("key"); arms = body.get("arms") or []
+    eps = float(body.get("epsilon", 0.15))
+    if not (username and key and arms): return {"error":"username, key, arms required"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        slot = _bandit_slot(u, key)
+        # init arms
+        for a in arms:
+            slot["arms"].setdefault(a, {"n": 0, "r": 0.0})
+        import random
+        if random.random() < eps:
+            choice = random.choice(arms)
+        else:
+            # pick argmax avg reward
+            choice = max(arms, key=lambda a: (slot["arms"][a]["r"] / max(1, slot["arms"][a]["n"])))
+        await _save_users(client, users)
+        return {"ok": True, "arm": choice}
+
+@app.post("/bandit/reward")
+async def bandit_reward(body: Dict = Body(...)):
+    """
+    Body: { username, key, arm, reward }   # reward ∈ [0,1] (click/lead/won)
+    """
+    username = body.get("username"); key = body.get("key"); arm = body.get("arm")
+    reward = float(body.get("reward", 0))
+    if not (username and key and arm): return {"error":"username, key, arm required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        slot = _bandit_slot(u, key)
+        armstat = slot["arms"].setdefault(arm, {"n":0, "r":0.0})
+        armstat["n"] += 1
+        armstat["r"] += reward
+        await _save_users(client, users)
+        return {"ok": True, "arm": arm, "n": armstat["n"], "sum_r": armstat["r"]}
 
 # ---- GET/POST: normalized user by username ----
 @app.post("/user")
@@ -728,6 +787,181 @@ async def metrics():
             "payouts": round(payouts,2), "invoices_open": round(invoices_open,2)
         }}
 
+ # ---------- ALGO HINTS + SCHEDULER ----------
+@app.post("/algo/hints/upsert")
+async def algo_hints_upsert(body: Dict = Body(...)):
+    """
+    Body: { username, platform, hints: { cadence_per_day, quiet_hours:[22,8], max_caption_len, hashtags:int } }
+    """
+    username = body.get("username"); platform = (body.get("platform") or "").lower()
+    hints = body.get("hints") or {}
+    if not (username and platform): return {"error":"username & platform required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        u.setdefault("algo_hints", {})[platform] = hints
+        await _save_users(client, users)
+        return {"ok": True, "hints": hints}
+
+@app.post("/algo/schedule/plan")
+async def algo_schedule_plan(body: Dict = Body(...)):
+    """
+    Body: { username, platform, window_hours: 48, start_iso?: now }
+    Returns: { slots:[iso...] } best-effort evenly spaced outside quiet hours.
+    """
+    username = body.get("username"); platform = (body.get("platform") or "").lower()
+    window = int(body.get("window_hours", 48))
+    start = datetime.fromisoformat(body.get("start_iso")) if body.get("start_iso") else datetime.utcnow()
+    if not (username and platform): return {"error":"username & platform required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        hints = (u.get("algo_hints") or {}).get(platform, {})
+        per_day = max(1, int(hints.get("cadence_per_day", 2)))
+        quiet   = hints.get("quiet_hours", [23, 7])  # [startHour, endHour)
+        slots = []
+        total_posts = int((window/24.0) * per_day)
+        step = timedelta(hours=window/max(1,total_posts))
+        t = start
+        while len(slots) < total_posts:
+            hr = t.hour
+            bad = quiet and ((quiet[0] <= hr) or (hr < quiet[1])) if quiet[0] < quiet[1] else (quiet[1] <= hr <= quiet[0])
+            if not bad:
+                slots.append(t.replace(microsecond=0).isoformat()+"Z")
+            t += step
+        return {"ok": True, "slots": slots}
+
+# ---------- DISTRIBUTION REGISTRY + PUSH ----------
+@app.post("/distribution/register")
+async def distribution_register(body: Dict = Body(...)):
+    """
+    Body: { username, channel, endpoint_url, token }
+    """
+    username = body.get("username"); channel = (body.get("channel") or "partner").lower()
+    url = body.get("endpoint_url"); token = body.get("token")
+    if not (username and url and token): return {"error":"username, endpoint_url, token required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        u.setdefault("distribution", []).append({"id": _id("dist"), "channel": channel, "url": url, "token": token, "ts": _now()})
+        await _save_users(client, users)
+        return {"ok": True}
+
+@app.post("/distribution/push")
+async def distribution_push(body: Dict = Body(...)):
+    """
+    Body: { username, listingId, channels?:[] }
+    Pushes a signed lightweight Offer Card (POL) to registered webhooks.
+    """
+    username = body.get("username"); lid = body.get("listingId"); channels = body.get("channels")
+    if not (username and lid): return {"error":"username & listingId required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        listing = _find_in(u.get("listings", []), "id", lid)
+        if not listing: return {"error":"listing not found"}
+
+        # prep POL-like card
+        oid = _id("pol")
+        exp = int((datetime.utcnow()+timedelta(days=2)).timestamp())
+        sig = _hmac(f"{oid}.{username}.{exp}", POL_SECRET)
+        card = {
+            "oid": oid, "sig": sig, "exp": exp, "src": "distribution",
+            "title": listing["title"], "price": listing.get("price",0), "usr": username,
+            "url": f"/offer?oid={oid}&sig={sig}&usr={username}&exp={exp}&src=dist"
+        }
+
+        dispatched = []
+        for d in u.get("distribution", []):
+            if channels and d["channel"] not in channels:
+                continue
+            try:
+                r = await client.post(d["url"], json={"token": d["token"], "card": card}, timeout=8)
+                dispatched.append({"channel": d["channel"], "status": r.status_code})
+            except Exception:
+                dispatched.append({"channel": d["channel"], "status": "error"})
+
+        listing["impressions"] = listing.get("impressions", 0) + len(dispatched)
+        await _save_users(client, users)
+        return {"ok": True, "sent": dispatched, "card": card}
+
+# ---------- REVENUE SPLITTER (JV mesh) ----------
+@app.post("/revenue/split")
+async def revenue_split(body: Dict = Body(...)):
+    """
+    Body: { username, amount, currency:'USD', ref, jvId? }
+    If jvId present, split by that entry; else split equally across all JV mesh entries.
+    """
+    username = body.get("username"); amt = float(body.get("amount", 0)); cur = (body.get("currency") or "USD").upper()
+    ref = body.get("ref"); jvId = body.get("jvId")
+    if not (username and amt): return {"error":"username & amount required"}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        def find_user(name): return next((x for x in users if _uname(x)==name), None)
+        origin = find_user(username)
+        if not origin: return {"error":"user not found"}
+
+        mesh = origin.get("jvMesh", []) or []
+        targets = []
+        if jvId:
+            jv = _find_in(mesh, "id", jvId)
+            if not jv: return {"error":"jv not found"}
+            split = jv.get("split", {"a":0.5,"b":0.5})
+            # assume A is origin for simplicity; for real use, include explicit usernames in JV entry
+            targets = [(username, split.get("a",0.5)), ("partner", split.get("b",0.5))]
+        else:
+            if not mesh:
+                targets = [(username, 1.0)]
+            else:
+                eq = 1.0/len(mesh)
+                targets = [(username, eq) for _ in mesh]
+
+        for uname, frac in targets:
+            u = find_user(uname) or origin
+            u.setdefault("ownership", {"aigx":0,"royalties":0,"ledger":[]})
+            val = round(amt * frac, 2)
+            entry = {"ts": _now(), "amount": val, "currency": cur, "basis": "jv_split", "ref": ref}
+            u["ownership"]["ledger"].append(entry)
+            u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + val
+
+        await _save_users(client, users)
+        return {"ok": True, "distributed": [{"user":t[0], "amount": round(amt*t[1],2)} for t in targets]}
+
+# ---------- CREATIVE RENDER (FTC-safe) ----------
+DISCLOSURES = {
+    "tiktok": "#ad",
+    "instagram": "#ad",
+    "x": "Ad:",
+    "twitter": "Ad:",
+    "linkedin": "Sponsored",
+    "youtube": "Includes paid promotion",
+}
+
+@app.post("/creative/render")
+async def creative_render(body: Dict = Body(...)):
+    """
+    Body: { username, platform, caption, intent? }
+    Ensures disclosure + max caption len based on algo hints (if set).
+    """
+    username = body.get("username"); platform = (body.get("platform") or "tiktok").lower()
+    caption  = (body.get("caption") or "").strip()
+    if not username: return {"error":"username required"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        hints = (u.get("algo_hints") or {}).get(platform, {})
+        max_len = int(hints.get("max_caption_len", 2200 if platform == "instagram" else 280))
+        disc = DISCLOSURES.get(platform)
+        out = caption
+        if disc and disc.lower() not in caption.lower():
+            out = f"{disc} {caption}".strip()
+        if len(out) > max_len:
+            out = out[:max_len-1] + "…"
+        return {"ok": True, "caption": out, "disclosure": disc, "max_len": max_len}
+
 # ---- POST: Contacts (privacy-first) opt-in + counts ----
 @app.post("/contacts/optin")
 async def contacts_optin(request: Request):
@@ -759,54 +993,78 @@ async def contacts_optin(request: Request):
                 return {"ok": True, "contacts": u["contacts"], "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
-# ---- POST: Contacts send (webhook; logs outreach) ----
+# ---------- MONETIZE: BUDGET SCALER BY ROAS ----------
+@app.post("/monetize/scale")
+async def monetize_scale(body: Dict = Body(...)):
+    """
+    Body: { username, roas: float, min:0.5, max:1.5 }
+    Returns a multiplier for tomorrow's budget based on ROAS.
+    """
+    username = body.get("username"); roas = float(body.get("roas", 1.0))
+    lo = float(body.get("min", 0.8)); hi = float(body.get("max", 1.25))
+    if not username: return {"error":"username required"}
+    # piecewise: below 1.0 → shrink; above 2.0 → boost; clamp
+    if roas < 0.8: m = lo
+    elif roas < 1.0: m = 0.9
+    elif roas < 1.5: m = 1.05
+    elif roas < 2.0: m = 1.15
+    else: m = hi
+    return {"ok": True, "multiplier": round(m, 3)}
+
+# ---- POST: Contacts send (webhook; logs outreach) [FIXED + RATE LIMIT] ----
 @app.post("/contacts/send")
 async def contacts_send(request: Request):
     """
     Body: { username, channel:"sms|email|dm", template, previewOnly=false }
-    We **do not** store raw contacts here—only outreach events & counts.
-    If PROPOSAL_WEBHOOK_URL is set, we post a payload there for delivery.
+    We store outreach events & counts only (no raw PII).
+    Optional webhook fanout via PROPOSAL_WEBHOOK_URL.
+    Adds soft per-user/channel rate-limit: 50 sends / 24h.
     """
-    ok, used = _ratelimit(u, "contacts_send", per_min=20)
-    if not ok: return {"error": "rate_limited", "used_last_minute": used}
-
     body = await request.json()
     username = body.get("username")
-    channel  = body.get("channel","email")
-    template = body.get("template","")
+    channel  = (body.get("channel") or "email").lower()
+    template = body.get("template") or ""
     preview  = bool(body.get("previewOnly", False))
     if not (username and template):
         return {"error": "username & template required"}
 
-    payload = {
-        "type": "contacts_send",
-        "channel": channel,
-        "username": username,
-        "template": template,
-        "ts": _now()
-    }
-
-    delivered = False
-    if (PROPOSAL_WEBHOOK_URL and not preview):
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.post(PROPOSAL_WEBHOOK_URL, json=payload, headers={"Content-Type":"application/json"})
-                delivered = r.status_code in (200,204)
-        except Exception:
-            delivered = False
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        data = await _jsonbin_get(client)
+    async with httpx.AsyncClient(timeout=20) as client:
+        data  = await _jsonbin_get(client)
         users = data.get("record", [])
-        for i, u in enumerate(users):
-            if (u.get("username") or u.get("consent", {}).get("username")) == username:
-                u.setdefault("transactions", {}).setdefault("outreachEvents", []).append(
-                    {"channel": channel, "templateHash": hash(template), "delivered": delivered, "ts": _now()}
-                )
-                users[i] = u
-                await _jsonbin_put(client, users)
-                return {"ok": True, "delivered": delivered, "record": normalize_user_record(u)}
-        return {"error": "User not found"}
+        # load user first (previous bug fix)
+        idx = next((i for i,u in enumerate(users) if (u.get("username") or u.get("consent", {}).get("username")) == username), None)
+        if idx is None:
+            return {"error": "User not found"}
+        u = users[idx]
+        _ensure_business(u)
+
+        # soft rate-limit
+        today = datetime.utcnow().date().isoformat()
+        rl = u.setdefault("rate_limits", {}).setdefault("contacts_send", {})
+        stats = rl.setdefault(channel, {"date": today, "count": 0})
+        if stats["date"] != today:
+            stats["date"] = today
+            stats["count"] = 0
+        if stats["count"] >= 50 and not preview:
+            return {"error": "rate_limited", "detail": "Daily channel cap reached"}
+
+        payload = {"type": "contacts_send", "channel": channel, "username": username, "template": template, "ts": _now()}
+        delivered = False
+        if (PROPOSAL_WEBHOOK_URL and not preview):
+            try:
+                r = await client.post(PROPOSAL_WEBHOOK_URL, json=payload, headers={"Content-Type":"application/json"})
+                delivered = r.status_code in (200, 204)
+            except Exception:
+                delivered = False
+
+        stats["count"] += 1
+        u.setdefault("transactions", {}).setdefault("outreachEvents", []).append(
+            {"channel": channel, "templateHash": hash(template), "delivered": delivered, "ts": _now()}
+        )
+        users[idx] = u
+        await _jsonbin_put(client, users)
+        return {"ok": True, "delivered": delivered, "count": stats["count"]}
+
 
 # ---- POST: JV Mesh (MetaBridge 2.0 cap-table stub) ----
 @app.post("/jv/create")
@@ -855,6 +1113,15 @@ async def metabridge_dispatch(request: Request):
         )
         matches  = metabridge_dual_match_realworld_fulfillment(query)
         proposals = proposal_generator(query, matches, originator)
+
+        # inside /metabridge route, replace the localhost hop:
+        target = (SELF_URL or "").rstrip("/") + "/submit_proposal"
+        async with httpx.AsyncClient(timeout=20) as client:
+            for p in proposals:
+                try:
+                    await client.post(target, json=p, headers={"Content-Type": "application/json"})
+                except Exception:
+                    pass
 
         # Persist each proposal to the sender's record (self-call uses SELF_URL or PORT)
         base = SELF_URL or f"http://127.0.0.1:{os.getenv('PORT','8000')}"
