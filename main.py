@@ -91,25 +91,13 @@ def _empty_kits() -> Dict[str, Any]:
 def _empty_licenses():
     return {"sdk": False, "vault": False, "remix": False, "clone": False, "aigx": False}
 
-def _platform_fee_rate(u) -> float:
-    base = float(os.getenv("PLATFORM_FEE", "0.20"))  # default 20%
-    # Loyalty: lower fees for referrers & MetaHive members
-    referrals = len((u.get("transactions", {}) or {}).get("referralEvents", []))
-    if u.get("metahive", {}).get("enabled"): base -= 0.02
-    if referrals >= 3: base -= 0.03
-    # Risk: mildly increase for new or flagged accounts
-    if u.get("runtimeFlags", {}).get("flagged"): base += 0.05
-    return round(max(0.05, min(base, 0.35)), 2)
+# ---- Fees ----
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.05"))
 
-def _platform_fee_rate(u: Dict[str, Any]) -> float:
-    # future: tiered fees by plan/volume/partner
-    return 0.05
+def _platform_fee_rate(u: dict) -> float:
+    """Resolve take-rate in order: per-user override -> env PLATFORM_FEE -> 0.05 default."""
+    return float((u.get("fees") or {}).get("take_rate") or PLATFORM_FEE or 0.05)
 
-# inside /revenue/recognize just before saving:
-fee_rate = _platform_fee_rate(u)
-fee_amt  = round(amt * fee_rate, 2)
-u["ownership"]["ledger"].append({"ts": _now(), "amount": -fee_amt, "currency": invoice.get("currency","USD"),
-                                 "basis": "platform_fee", "ref": inv_id})
 
 def _ratelimit(u, key: str, per_min: int = 30):
     now = datetime.utcnow()
@@ -1103,40 +1091,32 @@ async def metabridge_dispatch(request: Request):
     try:
         data = await request.json()
         query = (data.get("query") or "").strip()
-        originator = data.get("username","anonymous")
-        if not query: return {"error":"No query provided."}
+        originator = data.get("username", "anonymous")
+        if not query:
+            return {"error": "No query provided."}
 
-        # Use growth agent's matcher/generator
         from aigent_growth_agent import (
             metabridge_dual_match_realworld_fulfillment,
             proposal_generator
         )
-        matches  = metabridge_dual_match_realworld_fulfillment(query)
+        matches   = metabridge_dual_match_realworld_fulfillment(query)
         proposals = proposal_generator(query, matches, originator)
 
-        # inside /metabridge route, replace the localhost hop:
-        target = (SELF_URL or "").rstrip("/") + "/submit_proposal"
-        async with httpx.AsyncClient(timeout=20) as client:
-            for p in proposals:
-                try:
-                    await client.post(target, json=p, headers={"Content-Type": "application/json"})
-                except Exception:
-                    pass
+        base = (os.getenv("SELF_URL") or str(request.base_url)).rstrip("/")
+        submit_url = f"{base}/submit_proposal"
 
-        # Persist each proposal to the sender's record (self-call uses SELF_URL or PORT)
-        base = SELF_URL or f"http://127.0.0.1:{os.getenv('PORT','8000')}"
         async with httpx.AsyncClient(timeout=20) as client:
             for p in proposals:
-                await client.post(f"{base}/submit_proposal", json=p, headers={"Content-Type":"application/json"})
+                await client.post(submit_url, json=p, headers={"Content-Type": "application/json"})
 
         try:
             log_metabridge(originator, {"query": query, "matches": len(matches)})
         except Exception:
             pass
 
-        return {"status":"ok","query":query,"match_count":len(matches),"proposals":proposals,"matches":matches}
+        return {"status": "ok", "query": query, "match_count": len(matches), "proposals": proposals, "matches": matches}
     except Exception as e:
-        return {"error": f"MetaBridge runtime error: {str(e)}"}
+        return {"error": f"MetaBridge runtime error: {e}"}
 
 # ---- Agent passthrough ----
 @app.post("/agent")
@@ -1367,49 +1347,53 @@ async def pay_link(body: Dict = Body(...)):
 
 @app.post("/revenue/recognize")
 async def revenue_recognize(body: Dict = Body(...)):
-    """
-    Body: { username, invoiceId, amount?, currency? }
-    - Marks invoice paid
-    - Posts revenue ledger line (+)
-    - Posts platform fee ledger line (-)
-    - Mints AIGx 1:1 for the amount
-    """
     username = body.get("username"); inv_id = body.get("invoiceId")
-    amount = body.get("amount"); currency = (body.get("currency") or "USD").upper()
-    if not (username and inv_id): return {"error":"username & invoiceId required"}
+    if not (username and inv_id):
+        return {"error": "username & invoiceId required"}
 
-    async with httpx.AsyncClient(timeout=25) as client:
-        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
-        if not u: return {"error":"user not found"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
         _ensure_business(u)
-        invoice = _find_in(u["invoices"], "id", inv_id)
-        if not invoice: return {"error":"invoice not found"}
 
-        if amount is None: amount = float(invoice.get("amount",0))
-        amount = float(amount)
-        invoice["status"] = "paid"; invoice["paid_ts"] = _now()
+        invoice = _find_in(u["invoices"], "id", inv_id)
+        if not invoice:
+            return {"error": "invoice not found"}
+
+        # mark paid
+        invoice["status"]  = "paid"
+        invoice["paid_ts"] = _now()
+
+        # mark related payment paid
         for p in u.get("payments", []):
             if p.get("invoiceId") == inv_id:
-                p["status"] = "paid"; p["paid_ts"] = _now()
+                p["status"]  = "paid"
+                p["paid_ts"] = _now()
 
-        
-        # revenue (+)
-        rev = {"ts": _now(), "amount": amount, "currency": currency, "basis":"revenue", "ref": inv_id}
-        u["ownership"]["ledger"].append(rev)
-        # platform fee (-)
-        fee_amt = round(-amount * PLATFORM_FEE, 2)
-        fee = {"ts": _now(), "amount": fee_amt, "currency": currency, "basis":"platform_fee", "ref": inv_id}
-        u["ownership"]["ledger"].append(fee)
+        amt      = float(invoice.get("amount", 0))
+        currency = invoice.get("currency", "USD")
 
-        fee_rate = (u.get("fees", {}) or {}).get("take_rate") or _platform_fee_rate(u)
-        fee_amt = round(-amount * fee_rate, 2)
+        # platform fee (single source of truth)
+        fee_rate = _platform_fee_rate(u)             # e.g. 0.05
+        fee_amt  = round(amt * fee_rate, 2)          # positive
+        net_amt  = round(amt - fee_amt, 2)
 
-        # mint AIGx (display balance)
-        u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amount
-        u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + amount
+        # ledger entries: revenue (+), platform fee (-)
+        u["ownership"]["ledger"].append({
+            "ts": _now(), "amount": amt, "currency": currency, "basis": "revenue", "ref": inv_id
+        })
+        u["ownership"]["ledger"].append({
+            "ts": _now(), "amount": -fee_amt, "currency": currency, "basis": "platform_fee", "ref": inv_id
+        })
+
+        # reflect in balances
+        u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned", 0)) + net_amt
+        u["ownership"]["aigx"]   = float(u["ownership"].get("aigx", 0)) + net_amt
 
         await _save_users(client, users)
-        return {"ok": True, "invoice": invoice, "ledger": {"revenue": rev, "fee": fee}, "summary": _money_summary(u)}
+        return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
 
 @app.post("/budget/spend")
 async def budget_spend(body: Dict = Body(...)):
