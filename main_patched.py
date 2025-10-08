@@ -822,23 +822,34 @@ async def algo_schedule_plan(body: Dict = Body(...)):
 
 # ---------- DISTRIBUTION REGISTRY + PUSH ----------
 @app.post("/distribution/register")
-async def distribution_register(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
-    endpoint_candidate = body.get('endpoint_url') or body.get('endpoint') or body.get('url')
-if not _safe_url(str(endpoint_candidate or "")):
-    raise HTTPException(status_code=400, detail="endpoint not allowed")
+async def distribution_register(request: Request, x_api_key: str | None = Header(None, alias="X-API-Key")):
     body = await request.json()
     """
     Body: { username, channel, endpoint_url, token }
     """
-    username = body.get("username"); channel = (body.get("channel") or "partner").lower()
-    url = body.get("endpoint_url"); token = body.get("token")
-    if not (username and url and token): return {"error":"username, endpoint_url, token required"}
-    async with httpx.AsyncClient(timeout=15) as client:
-        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+    username = body.get("username")
+    channel = (body.get("channel") or "partner").lower()
+    endpoint_url = body.get("endpoint_url") or body.get("endpoint") or body.get("url")
+    token = body.get("token")
+    if not (username and endpoint_url and token):
+        return {"error":"username, endpoint_url, token required"}
+    if not _safe_url(str(endpoint_url or "")):
+        raise HTTPException(status_code=400, detail="endpoint not allowed")
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
         _require_key(users, username, x_api_key)
-        if not u: return {"error":"user not found"}
-        u.setdefault("distribution", []).append({"id": _id("dist"), "channel": channel, "url": url, "token": token, "ts": _now()})
-        await _save_users(client, users)
+        if not u:
+            return {"error":"user not found"}
+        _ensure_business(u)
+        u.setdefault("distribution", []).append({
+            "id": str(uuid.uuid4()),
+            "channel": channel,
+            "url": endpoint_url,
+            "token": token,
+            "ts": _now()
+        })
+        await _save_users(users, client)
         return {"ok": True}
 
 @app.post("/distribution/push")
