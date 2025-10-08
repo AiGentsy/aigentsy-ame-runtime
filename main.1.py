@@ -91,6 +91,26 @@ def _empty_kits() -> Dict[str, Any]:
 def _empty_licenses():
     return {"sdk": False, "vault": False, "remix": False, "clone": False, "aigx": False}
 
+def _platform_fee_rate(u) -> float:
+    base = float(os.getenv("PLATFORM_FEE", "0.20"))  # default 20%
+    # Loyalty: lower fees for referrers & MetaHive members
+    referrals = len((u.get("transactions", {}) or {}).get("referralEvents", []))
+    if u.get("metahive", {}).get("enabled"): base -= 0.02
+    if referrals >= 3: base -= 0.03
+    # Risk: mildly increase for new or flagged accounts
+    if u.get("runtimeFlags", {}).get("flagged"): base += 0.05
+    return round(max(0.05, min(base, 0.35)), 2)
+
+def _ratelimit(u, key: str, per_min: int = 30):
+    now = datetime.utcnow()
+    window_start = (now - timedelta(minutes=1)).isoformat()
+    rl = u.setdefault("rate", {}).setdefault(key, [])
+    rl[:] = [t for t in rl if t >= window_start]
+    if len(rl) >= per_min:
+        return False, len(rl)
+    rl.append(_now())
+    return True, len(rl)
+
 COMPANY_TYPE_PRESETS = {
     "legal":     {"meta_role": "CLO", "traits_add": ["legal"],     "kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
     "social":    {"meta_role": "CMO", "traits_add": ["marketing"], "kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
@@ -99,6 +119,57 @@ COMPANY_TYPE_PRESETS = {
     "custom":    {"meta_role": "Founder", "traits_add": ["custom"],"kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
     "general":   {"meta_role": "Founder", "traits_add": [],        "kits_unlock": ["universal"],              "flags": {"vaultAccess": True}},
 }
+
+# ===== Monetization / payouts config =====
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))            # 12% take rate
+PAYOUT_MIN = float(os.getenv("PAYOUT_MIN", "10"))                  # $10 minimum
+PAYOUT_HOLDBACK_DAYS = int(os.getenv("PAYOUT_HOLDBACK_DAYS", "7")) # 7-day eligibility window
+REFERRAL_BOUNTY = float(os.getenv("REFERRAL_BOUNTY", "1.0"))       # 1 AIGx for a signup referral
+
+# Treat 1 AIGx == 1 USD for accounting display (you can change later).
+def _as_usd(entry: Dict[str, Any]) -> float:
+    amt = float(entry.get("amount", 0))
+    cur = (entry.get("currency") or "USD").upper()
+    # If ledger is in AIGx treat 1:1 to USD for money tab. Tune via FX later if needed.
+    return amt if cur in ("USD", "AIGX") else amt
+
+def _days_ago(ts_iso: str) -> int:
+    try:
+        then = datetime.fromisoformat(ts_iso.replace("Z","+00:00"))
+        return (datetime.now(timezone.utc) - then.astimezone(timezone.utc)).days
+    except Exception:
+        return 9999
+
+def _money_summary(u: Dict[str, Any]) -> Dict[str, Any]:
+    led = (u.get("ownership") or {}).get("ledger", [])
+    # Gross money events that increase balance
+    earn_bases = {"revenue","partner","affiliate","bounty","task","uplift","royalty"}
+    gross_all = sum(_as_usd(x) for x in led if (x.get("basis") in earn_bases))
+    # Eligible (older than holdback)
+    eligible_gross = sum(_as_usd(x) for x in led
+                         if (x.get("basis") in earn_bases and _days_ago(x.get("ts","")) >= PAYOUT_HOLDBACK_DAYS))
+    # Platform fees already posted as negative ledger lines (if you adopt patch below)
+    posted_fees = sum(_as_usd(x) for x in led if x.get("basis") == "platform_fee")
+    # Final payouts executed (negative)
+    paid_out = sum(_as_usd(x) for x in led if x.get("basis") == "payout")
+    # Pending payout requests (not yet ledgered)
+    pending_req = sum(float(p.get("amount",0)) for p in u.get("payouts", []) if p.get("status") in ("requested","queued"))
+
+    # If you *haven't* posted platform_fee lines yet, uncomment the next line to estimate fees:
+    # posted_fees = - eligible_gross * PLATFORM_FEE
+
+    available_gross = eligible_gross + posted_fees + paid_out  # posted_fees is negative, paid_out negative
+    available = max(0.0, available_gross - pending_req)
+
+    return {
+        "gross_lifetime": round(gross_all, 2),
+        "eligible_gross": round(eligible_gross, 2),
+        "fees_posted": round(posted_fees, 2),
+        "paid_out": round(paid_out, 2),
+        "pending_requests": round(pending_req, 2),
+        "available": round(available, 2),
+        "holdback_days": PAYOUT_HOLDBACK_DAYS,
+    }
 
 def make_canonical_record(username: str, company_type: str = "general", referral: str = "origin/hero") -> Dict[str, Any]:
     preset = COMPANY_TYPE_PRESETS.get(company_type, COMPANY_TYPE_PRESETS["general"])
@@ -169,6 +240,28 @@ def make_canonical_record(username: str, company_type: str = "general", referral
     # ensure default chart-friendly flags
     user["runtimeFlags"]["vaultAccess"] = user["runtimeFlags"]["vaultAccess"] or user["kits"]["universal"]["unlocked"]
     return user
+
+def _today_key():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+def _current_spend(u):
+    s = u.setdefault("spend", {})
+    day = _today_key()
+    s.setdefault(day, 0.0)
+    return s, day
+
+def _can_spend(u, amt: float) -> bool:
+    guard = (u.get("policy", {}) or {}).get("guardrails", {}) or {}
+    cap = float(guard.get("dailyBudget", 0))
+    s, day = _current_spend(u)
+    return (s[day] + amt) <= cap if cap else True
+
+def _spend(u, amt: float, basis="media_spend", ref=None):
+    s, day = _current_spend(u)
+    s[day] = round(s[day] + amt, 2)
+    u.setdefault("ownership", {}).setdefault("ledger", []).append(
+        {"ts": _now(), "amount": -float(amt), "currency": "USD", "basis": basis, "ref": ref}
+    )
 
 def normalize_user_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     if not raw: return {}
@@ -405,6 +498,105 @@ async def amg_sync(request: Request):
                 return {"ok": True, "amg": u["amg"], "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
+# ===== Money / Summary =====
+@app.post("/money/summary")
+async def money_summary(body: Dict = Body(...)):
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        return {"ok": True, "summary": _money_summary(u)}
+
+# ===== Referral credit (double-sided friendly) =====
+@app.post("/referral/credit")
+async def referral_credit(body: Dict = Body(...)):
+    """
+    Body: { referrer: "alice", newUser: "bob", amount?: number }
+    Adds AIGx to referrer for bringing in a new user.
+    """
+    referrer = body.get("referrer"); new_user = body.get("newUser")
+    amount = float(body.get("amount", REFERRAL_BOUNTY))
+    if not (referrer and new_user): return {"error":"referrer & newUser required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        r = next((x for x in users if _uname(x)==referrer), None)
+        if not r: return {"error":"referrer not found"}
+        _ensure_business(r)
+        # ledger
+        entry = {"ts": _now(), "amount": amount, "currency": "AIGx", "basis": "referral_bounty", "ref": new_user}
+        r["ownership"]["ledger"].append(entry)
+        r["ownership"]["aigx"] = float(r["ownership"].get("aigx",0)) + amount
+        r.setdefault("transactions", {}).setdefault("referralEvents", []).append(
+            {"user": new_user, "amount": amount, "ts": _now()}
+        )
+        await _save_users(client, users)
+        return {"ok": True, "ledgerEntry": entry, "summary": _money_summary(r)}
+
+# ===== Wallet connect / payout rail =====
+
+@app.post("/wallet/connect")
+async def wallet_connect(body: Dict = Body(...)):
+    """
+    Body: { username, method: "stripe"|"crypto", account?: "acct_...", address?: "0x..", note? }
+    Stores payout destination metadata for the user.
+    """
+    username = body.get("username"); method = (body.get("method") or "stripe").lower()
+    if not username: return {"error":"username required"}
+    if method not in ("stripe","crypto"): return {"error":"method must be stripe|crypto"}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        w = u.setdefault("wallet", {})
+        w["method"] = method
+        if method == "stripe":
+            if body.get("account"): w["stripe_connect_id"] = body.get("account")
+        else:
+            if body.get("address"): w["crypto_address"] = body.get("address")
+        w["updated"] = _now(); w["note"] = body.get("note")
+        await _save_users(client, users)
+
+        safe = {k:v for k,v in w.items() if k not in ("keys","secrets")}
+        return {"ok": True, "wallet": safe}
+
+@app.post("/payout/request")
+async def payout_request(body: Dict = Body(...)):
+    """
+    Body: { username, amount, method?: "stripe"|"crypto" }
+    Checks available balance and raises a payout request (queued for ops/batch).
+    """
+    username = body.get("username"); amount = float(body.get("amount", 0))
+    method = (body.get("method") or "stripe").lower()
+    if not (username and amount): return {"error":"username & amount required"}
+    if amount < PAYOUT_MIN: return {"error": f"minimum payout is {PAYOUT_MIN}"}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        # ensure wallet is set
+        w = u.get("wallet") or {}
+        if (method == "stripe" and not w.get("stripe_connect_id")) and (method == "crypto" and not w.get("crypto_address")):
+            return {"error":"no payout destination on file; call /wallet/connect first"}
+
+        money = _money_summary(u)
+        if amount > money["available"]:
+            return {"error": f"insufficient available funds ({money['available']})"}
+
+        u.setdefault("payouts", [])
+        pid = _id("pyo")
+        req = {"id": pid, "amount": round(amount,2), "method": method, "status":"requested",
+               "ts": _now(), "requested_by": username}
+        u["payouts"].append(req)
+        await _save_users(client, users)
+        return {"ok": True, "payout": req, "summary": _money_summary(u)}
+
 # ---- POST: Autonomy Level AL0–AL5 ----
 @app.post("/autonomy")
 async def set_autonomy(request: Request):
@@ -429,6 +621,37 @@ async def set_autonomy(request: Request):
                 await _jsonbin_put(client, users)
                 return {"ok": True, "record": normalize_user_record(u)}
         return {"error": "User not found"}
+
+@app.post("/payout/status")
+async def payout_status(body: Dict = Body(...)):
+    """
+    Admin/daemon hook.
+    Body: { username, payoutId, status: "queued"|"paid"|"failed", txn_id? }
+    On 'paid' we post a negative payout ledger line.
+    """
+    username = body.get("username"); pid = body.get("payoutId"); status = (body.get("status") or "").lower()
+    if not (username and pid and status): return {"error":"username, payoutId, status required"}
+    if status not in ("queued","paid","failed"): return {"error":"bad status"}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+
+        pay = next((p for p in u.get("payouts", []) if p.get("id")==pid), None)
+        if not pay: return {"error":"payout not found"}
+        pay["status"] = status; pay["status_ts"] = _now()
+        if body.get("txn_id"): pay["txn_id"] = body.get("txn_id")
+
+        if status == "paid":
+            # finalize by ledgering a negative payout
+            amt = float(pay.get("amount",0))
+            entry = {"ts": _now(), "amount": -amt, "currency": "USD", "basis": "payout", "ref": pid}
+            u["ownership"]["ledger"].append(entry)
+
+        await _save_users(client, users)
+        return {"ok": True, "payout": pay, "summary": _money_summary(u)}
 
 # ---- POST: AIGx credit (Earn Layer receipts) ----
 @app.post("/aigx/credit")
@@ -465,6 +688,45 @@ async def aigx_credit(request: Request):
                     pass
                 return {"ok": True, "ledgerEntry": entry, "record": normalize_user_record(u)}
         return {"error": "User not found"}
+
+@app.post("/referral/link")
+async def referral_link(body: Dict = Body(...)):
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    oid = _id("ref"); exp = int((datetime.utcnow()+timedelta(days=14)).timestamp())
+    sig = _hmac(f"{oid}.{username}.{exp}", POL_SECRET)
+    url = f"/r?oid={oid}&sig={sig}&ref={username}&exp={exp}"
+    return {"ok": True, "url": url, "exp": exp}
+
+@app.post("/vault/autostake")
+async def vault_autostake(body: Dict = Body(...)):
+    username = body.get("username"); enabled = bool(body.get("enabled", True)); pct = float(body.get("percent", 0.5))
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        y = u.setdefault("yield", {}); y["autoStake"] = enabled; y["autoStakePct"] = pct
+        await _save_users(client, users)
+        return {"ok": True, "yield": y}
+
+@app.get("/metrics")
+async def metrics():
+    async with httpx.AsyncClient(timeout=30) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])
+        rev = fee = payouts = invoices_open = 0.0
+        for u in users:
+            for l in (u.get("ownership", {}).get("ledger", []) or []):
+                if l.get("basis") == "revenue": rev += float(l.get("amount",0))
+                if l.get("basis") == "platform_fee": fee += float(l.get("amount",0))
+                if l.get("basis") == "payout": payouts += float(l.get("amount",0))
+            for inv in (u.get("invoices",[]) or []):
+                if inv.get("status") == "issued": invoices_open += float(inv.get("amount",0))
+        return {"ok": True, "totals": {
+            "revenue": round(rev,2), "platform_fees": round(fee,2),
+            "payouts": round(payouts,2), "invoices_open": round(invoices_open,2)
+        }}
 
 # ---- POST: Contacts (privacy-first) opt-in + counts ----
 @app.post("/contacts/optin")
@@ -505,6 +767,9 @@ async def contacts_send(request: Request):
     We **do not** store raw contacts here—only outreach events & counts.
     If PROPOSAL_WEBHOOK_URL is set, we post a payload there for delivery.
     """
+    ok, used = _ratelimit(u, "contacts_send", per_min=20)
+    if not ok: return {"error": "rate_limited", "used_last_minute": used}
+
     body = await request.json()
     username = body.get("username")
     channel  = body.get("channel","email")
@@ -835,26 +1100,211 @@ async def pay_link(body: Dict = Body(...)):
 
 @app.post("/revenue/recognize")
 async def revenue_recognize(body: Dict = Body(...)):
+    """
+    Body: { username, invoiceId, amount?, currency? }
+    - Marks invoice paid
+    - Posts revenue ledger line (+)
+    - Posts platform fee ledger line (-)
+    - Mints AIGx 1:1 for the amount
+    """
     username = body.get("username"); inv_id = body.get("invoiceId")
+    amount = body.get("amount"); currency = (body.get("currency") or "USD").upper()
     if not (username and inv_id): return {"error":"username & invoiceId required"}
-    async with httpx.AsyncClient(timeout=20) as client:
+
+    async with httpx.AsyncClient(timeout=25) as client:
         users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         invoice = _find_in(u["invoices"], "id", inv_id)
         if not invoice: return {"error":"invoice not found"}
+
+        if amount is None: amount = float(invoice.get("amount",0))
+        amount = float(amount)
         invoice["status"] = "paid"; invoice["paid_ts"] = _now()
-        for p in u["payments"]:
+        for p in u.get("payments", []):
             if p.get("invoiceId") == inv_id:
                 p["status"] = "paid"; p["paid_ts"] = _now()
-        amt = float(invoice.get("amount", 0))
-        entry = {"ts": _now(), "amount": amt, "currency": invoice.get("currency","USD"),
-                 "basis":"revenue", "ref": inv_id}
-        u["ownership"]["ledger"].append(entry)
-        u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amt
-        u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + amt
+
+        
+        # revenue (+)
+        rev = {"ts": _now(), "amount": amount, "currency": currency, "basis":"revenue", "ref": inv_id}
+        u["ownership"]["ledger"].append(rev)
+        # platform fee (-)
+        fee_amt = round(-amount * PLATFORM_FEE, 2)
+        fee = {"ts": _now(), "amount": fee_amt, "currency": currency, "basis":"platform_fee", "ref": inv_id}
+        u["ownership"]["ledger"].append(fee)
+
+        fee_rate = (u.get("fees", {}) or {}).get("take_rate") or _platform_fee_rate(u)
+        fee_amt = round(-amount * fee_rate, 2)
+
+        # mint AIGx (display balance)
+        u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned",0)) + amount
+        u["ownership"]["aigx"] = float(u["ownership"].get("aigx",0)) + amount
+
         await _save_users(client, users)
-        return {"ok": True, "invoice": invoice, "ledgerEntry": entry}
+        return {"ok": True, "invoice": invoice, "ledger": {"revenue": rev, "fee": fee}, "summary": _money_summary(u)}
+
+@app.post("/budget/spend")
+async def budget_spend(body: Dict = Body(...)):
+    username = body.get("username"); amount = float(body.get("amount", 0))
+    basis = body.get("basis", "media_spend"); ref = body.get("ref")
+    if not (username and amount): return {"error": "username & amount required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        if not _can_spend(u, amount): 
+            return {"error": "daily budget exceeded"}
+        _spend(u, amount, basis, ref)
+        await _save_users(client, users)
+        return {"ok": True, "spent_today": _current_spend(u)[0][_today_key()], "summary": _money_summary(u)}
+
+@app.post("/events/log")
+async def events_log(body: Dict = Body(...)):
+    username = body.get("username"); ev = body.get("event")
+    if not (username and isinstance(ev, dict)): return {"error":"username & event required"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        ev.setdefault("ts", _now())
+        u.setdefault("events", []).append(ev)  # {playbook, channel, kind, cost?, revenue?}
+        await _save_users(client, users)
+        return {"ok": True}
+
+@app.post("/attribution/rollup")
+async def attribution_rollup(body: Dict = Body(...)):
+    username = body.get("username")
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        data = {}
+        for ev in u.get("events", []):
+            key = (ev.get("playbook") or "unknown", ev.get("channel") or "unknown")
+            data.setdefault(key, {"spend":0.0,"rev":0.0,"count":0})
+            data[key]["spend"] += float(ev.get("cost",0))
+            data[key]["rev"]   += float(ev.get("revenue",0))
+            data[key]["count"] += 1
+        table = [{"playbook":k[0], "channel":k[1], "spend":round(v["spend"],2),
+                  "revenue":round(v["rev"],2), "roas": round((v["rev"]/v["spend"]) if v["spend"] else 0, 2),
+                  "events": v["count"]} for k,v in data.items()]
+        table.sort(key=lambda r: r["roas"], reverse=True)
+        return {"ok": True, "by_channel": table[:20]}
+
+@app.post("/automatch/pulse")
+async def automatch_pulse(body: Dict = Body(...)):
+    username = body.get("username"); unit_spend = float(body.get("unitSpend", 1.0))
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=25) as client:
+        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        enabled = ((u.get("playbooks", {}) or {}).get("enabled", []))  # catalog code(s)
+        actions = []
+        for code in enabled:
+            if not _can_spend(u, unit_spend): break
+            # “fire” a tiny action – e.g., a post, an email, a DM; here we just log outreach
+            u.setdefault("transactions", {}).setdefault("outreachEvents", []).append(
+                {"code": code, "delivered": True, "ts": _now()}
+            )
+            _spend(u, unit_spend, basis="media_spend", ref=code)
+            actions.append({"code": code, "spent": unit_spend})
+        await _save_users(client, users)
+        return {"ok": True, "fired": actions, "spent_today": _current_spend(u)[0][_today_key()]}
+
+# ===== Monetize toggle (AL1 by default with budget/quietHours guardrails) =====
+@app.post("/monetize/toggle")
+async def monetize_toggle(body: Dict = Body(...)):
+    """
+    Body: { username, enabled: bool, dailyBudget?: number, quietHours?: [22,8] }
+    Sets runtimeFlags.monetizeEnabled and basic guardrails.
+    """
+    username = body.get("username"); enabled = bool(body.get("enabled", False))
+    budget = float(body.get("dailyBudget", 10))  # default $10/day
+    quiet = body.get("quietHours", [22, 8])
+
+    if not username: return {"error":"username required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        u.setdefault("runtimeFlags", {})["monetizeEnabled"] = enabled
+        u.setdefault("policy", {}).setdefault("guardrails", {})
+        u["policy"]["guardrails"]["dailyBudget"] = budget
+        u["policy"]["guardrails"]["quietHours"] = quiet
+        users = users  # no-op, clarity
+        await _save_users(client, users)
+        return {"ok": True, "monetizeEnabled": enabled, "policy": u.get("policy", {})}
+
+# ===== Playbook catalog (static examples) =====
+_PLAYBOOK_CATALOG = [
+    {
+        "code": "tiktok_affiliate",
+        "title": "TikTok → Affiliate Links",
+        "requires": ["content_out"],
+        "default_budget": 0,
+        "steps": ["connect_tiktok","fetch_trending","render_script","post_with_disclosure","track_clicks"]
+    },
+    {
+        "code": "email_audit_to_checkout",
+        "title": "Email Audit → Stripe Checkout",
+        "requires": ["email_out","calendar","commerce_in"],
+        "default_budget": 10,
+        "steps": ["send_audit_offer","book_meeting","issue_checkout"]
+    },
+    {
+        "code": "shorts_calendar_checkout",
+        "title": "Shorts → Calendar → Checkout",
+        "requires": ["content_out","calendar","commerce_in"],
+        "default_budget": 5,
+        "steps": ["generate_short","post_short","send_booking","send_payment_link"]
+    },
+]
+
+@app.get("/playbooks/catalog")
+async def playbooks_catalog():
+    return {"ok": True, "catalog": _PLAYBOOK_CATALOG}
+
+# ===== User playbooks enable/config =====
+@app.post("/playbooks/enable")
+async def playbooks_enable(body: Dict = Body(...)):
+    """
+    Body: { username, codes: ["tiktok_affiliate", ...], enabled: true|false }
+    """
+    username = body.get("username"); codes = body.get("codes", []); enabled = bool(body.get("enabled", True))
+    if not (username and codes): return {"error":"username & codes required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        cfg = u.setdefault("playbooks", {"enabled": [], "configs": {}})
+        if enabled:
+            for c in codes:
+                if c not in cfg["enabled"]: cfg["enabled"].append(c)
+        else:
+            cfg["enabled"] = [c for c in cfg["enabled"] if c not in codes]
+        await _save_users(client, users)
+        return {"ok": True, "playbooks": cfg}
+
+@app.post("/playbooks/config")
+async def playbooks_config(body: Dict = Body(...)):
+    """
+    Body: { username, code, config: { budget?:number, notes?:str } }
+    """
+    username = body.get("username"); code = body.get("code"); config = body.get("config", {})
+    if not (username and code): return {"error":"username & code required"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x)==username), None)
+        if not u: return {"error":"user not found"}
+        _ensure_business(u)
+        pb = u.setdefault("playbooks", {"enabled": [], "configs": {}})
+        pb["configs"][code] = {**pb["configs"].get(code, {}), **config, "updated": _now()}
+        await _save_users(client, users)
+        return {"ok": True, "playbooks": pb}
 
 # ---------- 2) FULFILLMENT ----------
 @app.post("/orders/{orderId}/tasks/add")
