@@ -1,3 +1,9 @@
+import uuid
+from typing import Literal, Optional, List, Dict
+from fastapi.responses import StreamingResponse
+import asyncio
+import hashlib
+import hmac
 # ============================
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
@@ -6,11 +12,6 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
-import hmac
-import hashlib
-import asyncio
-from typing import Literal
-from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
@@ -363,15 +364,6 @@ def _ensure_business(u: Dict[str, Any]) -> Dict[str, Any]:
     u.setdefault("offers", [])
     u.setdefault("ownership", {"aigx": 0.0, "royalties": 0.0, "ledger": []})
     u.setdefault("yield", {"aigxEarned": 0.0})
-    
-    # Ensure privacy-first contacts dict
-    if not isinstance(u.get("contacts"), dict):
-        u["contacts"] = {"sources": [], "counts": {}, "lastSync": None}
-    else:
-        u.setdefault("contacts", {"sources": [], "counts": {}, "lastSync": None})
-    # Ensure CRM list exists for opted-in contacts
-    u.setdefault("crm", [])
-    
     return u
 
 def _find_in(lst: List[Dict[str, Any]], key: str, val: str) -> Optional[Dict[str, Any]]:
@@ -769,21 +761,8 @@ async def vault_autostake(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         y = u.setdefault("yield", {}); y["autoStake"] = enabled; y["autoStakePct"] = pct
-            # Referral split
-    REF_SPLIT = float(os.getenv('REF_SPLIT_PCT','0.05'))
-    if u.get('referrer'):
-        ref = _find_user(users, u['referrer'])
-        if ref:
-            ref.setdefault('yield', {'aigxEarned':0.0})
-            ref['yield']['aigxEarned'] += float(amount) * REF_SPLIT
-            ref.setdefault('yield_ledger', []).append({'ts': _now(), 'amount': float(amount)*REF_SPLIT, 'reason': f'referral:{u.get("username")}'})
-    await _save_users(client, users)
-    # Broadcast to agents
-    try:
-        await _broadcast_yield(u, {'amount': float(amount), 'reason': reason})
-    except Exception:
-        pass
-    return {"ok": True, "yield": y}
+        await _save_users(client, users)
+        return {"ok": True, "yield": y}
 
 @app.get("/metrics")
 async def metrics():
@@ -2145,14 +2124,27 @@ from fastapi import HTTPException
 
 
 
+EVENT_BUS = asyncio.Queue()
+
+async def publish(evt: dict):
+    try:
+        await EVENT_BUS.put(json.dumps(evt))
+    except Exception:
+        pass
+
+@app.get("/stream/activity")
+async def stream_activity():
+    async def gen():
+        while True:
+            msg = await EVENT_BUS.get()
+            yield f"data: {msg}\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
 def _find_proposal(u, proposal_id):
-    # searches across user's proposals list; adjust if you store globally
     for p in u.get("proposals", []):
-        if p.get("id") == proposal_id:
+        if p.get("id")==proposal_id:
             return p
     return None
-
-
 
 ProposalOutcome = Literal["won","lost","ignored","replied"]
 
@@ -2175,25 +2167,6 @@ async def proposal_feedback(username: str, proposal_id: str, outcome: ProposalOu
     return {"ok": True, "weights": u["runtimeWeights"]}
 
 
-
-EVENT_BUS = asyncio.Queue()
-
-async def publish(evt: dict):
-    try:
-        await EVENT_BUS.put(json.dumps(evt))
-    except Exception:
-        pass
-
-@app.get("/stream/activity")
-async def stream_activity():
-    async def gen():
-        while True:
-            msg = await EVENT_BUS.get()
-            yield f"data: {msg}\n\n"
-    return StreamingResponse(gen(), media_type="text/event-stream")
-
-
-
 AGENT_WEBHOOKS = {
     "cfo":   os.getenv("VENTURE_AGENT_URL"),
     "cmo":   os.getenv("GROWTH_AGENT_URL"),
@@ -2206,7 +2179,7 @@ async def _broadcast_yield(u, event):
         import httpx
     except Exception:
         return
-    payload = {"username": u.get("username") or u.get("consent",{}).get("username"), "event": event, "ts": _now()}
+    payload = {"username": (u.get("username") or u.get("consent",{}).get("username")), "event": event, "ts": _now()}
     async with httpx.AsyncClient(timeout=8.0) as h:
         for name, url in AGENT_WEBHOOKS.items():
             if not url: continue
@@ -2215,71 +2188,10 @@ async def _broadcast_yield(u, event):
             except Exception:
                 pass
 
-
-PRICE_BANDS = {"sdk": 199, "vault": 149, "remix": 99, "clone": 249}
-_PRICING_CACHE = {"users": [], "ts": 0}
-
-def _parse_ts(ts):
-    try:
-        from datetime import datetime
-        return datetime.fromisoformat(ts.replace("Z","+00:00"))
-    except Exception:
-        from datetime import datetime
-        return datetime.utcnow()
-
-def _window_velocity_all(users, kit, hours=24):
-    from datetime import datetime, timedelta
-    now = datetime.utcnow()
-    cutoff = now - timedelta(hours=hours)
-    total = 0
-    for u in users:
-        for e in u.get("purchases", []):
-            if e.get("kit")==kit:
-                t = _parse_ts(e.get("ts",""))
-                if t >= cutoff:
-                    total += 1
-    return total / max(1, hours)
-
-def dynamic_price(kit, base, users):
-    v = _window_velocity_all(users, kit, hours=24)
-    return min(base * (1 + 0.10*v), base*2)
-
-@app.get("/pricing")
-async def pricing():
-    users, client = await _get_users_client()
-    return {k: dynamic_price(k, v, users) for k,v in PRICE_BANDS.items()}
-
-
-
-@app.post("/autonomy/reinvest")
-async def autonomy_reinvest(threshold: float = 500.0):
-    users, client = await _get_users_client()
-    spawned = []
-    for u in users:
-        try:
-            bal = float(u.get("yield", {}).get("aigxEarned", 0))
-        except Exception:
-            bal = 0.0
-        if bal >= threshold and not u.get("autoSpawned"):
-            u["autoSpawned"] = _now()
-            spawned.append(u.get("username") or u.get("consent",{}).get("username"))
-    await _save_users(client, users)
-    # trigger proposals
-    try:
-        for uname in spawned:
-            uu = next((x for x in users if (x.get("username") or x.get("consent",{}).get("username"))==uname), None)
-            if uu:
-                await _broadcast_yield(uu, {"amount":0,"reason":"auto-reinvest"})
-    except Exception:
-        pass
-    return {"ok": True, "spawned": spawned}
-
-
-
 def _verify_signature(body: bytes, ts: str, sign: str):
     secret = os.getenv("HMAC_SECRET","")
     if not secret:
-        return True  # disabled if no secret set
+        return True
     mac = hmac.new(secret.encode(), (ts+"."+body.decode()).encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(mac, sign)
 
@@ -2292,9 +2204,278 @@ async def hmac_guard(request, call_next):
         if not _verify_signature(body, ts or "", sign or ""):
             from fastapi.responses import JSONResponse
             return JSONResponse({"error":"bad signature"}, status_code=401)
-        # re-inject body for downstream
         async def receive():
             return {"type": "http.request", "body": body, "more_body": False}
         request._receive = receive
     return await call_next(request)
 
+
+# ========= AiGentsy Consumer-First Upgrades (Storefront, Widget, PoO-Lite, Intent Auction, Productizer, Quotes, Escrow, etc.) =========
+
+def _uid():
+    return str(uuid.uuid4())
+
+def _username_of(u):
+    return u.get("username") or u.get("consent",{}).get("username")
+
+def _global_find_intent(users, intent_id):
+    for u in users:
+        for it in u.get("intents", []):
+            if it.get("id")==intent_id:
+                return u, it
+    return None, None
+
+@app.get("/storefront/config")
+async def storefront_get_config(username: str):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    cfg = u.setdefault("storefront", {"theme":"light","palette":"default","hero_video":None,"offers":[], "kits":[], "badges":[], "social":{}})
+    return {"ok": True, "config": cfg}
+
+@app.post("/storefront/config")
+async def storefront_set_config(username: str, config: dict):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    u["storefront"] = {**u.get("storefront", {}), **(config or {})}
+    await _save_users(client, users)
+    return {"ok": True, "config": u["storefront"]}
+
+@app.post("/storefront/publish")
+async def storefront_publish(username: str, base_url: Optional[str] = None):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    u.setdefault("storefront", {}).update({"published": _now()})
+    slug = _username_of(u)
+    url = f"{(base_url or os.getenv('PUBLIC_BASE','https://aigentsy.com')).rstrip('/')}/u/{slug}"
+    u["storefront"]["url"] = url
+    await _save_users(client, users)
+    return {"ok": True, "url": url}
+
+@app.post("/analytics/track")
+async def analytics_track(username: str, event: dict):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    q = u.setdefault("analytics", [])
+    event = {"id": _uid(), "ts": _now(), **(event or {})}
+    q.append(event)
+    await _save_users(client, users)
+    try:
+        await publish({"type":"analytics","user":username,"event":event})
+    except Exception:
+        pass
+    return {"ok": True}
+
+@app.post("/poo/issue")
+async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    entry = {"id": _uid(), "ts": _now(), "title": title, "metrics": metrics or {}, "evidence_urls": evidence_urls or []}
+    u.setdefault("outcomes", []).append(entry)
+    score = int(u.get("outcomeScore", 0)) + 3
+    u["outcomeScore"] = max(0, min(100, score))
+    await _save_users(client, users)
+    try:
+        await publish({"type":"poo","user":username,"title":title})
+    except Exception:
+        pass
+    return {"ok": True, "outcome": entry, "score": u["outcomeScore"]}
+
+@app.get("/score/outcome")
+async def get_outcome_score(username: str):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    return {"ok": True, "score": int(u.get("outcomeScore", 0))}
+
+@app.post("/intent/create")
+async def intent_create(buyer: str, brief: str, budget: float):
+    users, client = await _get_users_client()
+    u = _find_user(users, buyer)
+    if not u: return {"error":"buyer not found"}
+    intent = {"id": _uid(), "ts": _now(), "brief": brief, "budget": float(budget), "status":"open", "bids":[]}
+    u.setdefault("intents", []).append(intent)
+    await _save_users(client, users)
+    try:
+        await publish({"type":"intent","buyer":buyer,"id":intent["id"],"brief":brief})
+    except Exception:
+        pass
+    return {"ok": True, "intent": intent}
+
+@app.post("/intent/bid")
+async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
+    users, client = await _get_users_client()
+    buyer_user, intent = _global_find_intent(users, intent_id)
+    if not intent: return {"error":"intent not found"}
+    if intent.get("status") != "open": return {"error":"intent closed"}
+    bid = {"id": _uid(), "agent": agent, "price": float(price), "ttr": ttr, "ts": _now()}
+    intent.setdefault("bids", []).append(bid)
+    await _save_users(client, users)
+    try:
+        await publish({"type":"intent_bid","intent_id":intent_id,"agent":agent,"price":price})
+    except Exception:
+        pass
+    return {"ok": True, "bid": bid}
+
+@app.post("/intent/award")
+async def intent_award(intent_id: str, bid_id: str = None):
+    users, client = await _get_users_client()
+    buyer_user, intent = _global_find_intent(users, intent_id)
+    if not intent: return {"error":"intent not found"}
+    if intent.get("status") != "open": return {"error":"intent closed"}
+    chosen = None
+    if bid_id:
+        chosen = next((b for b in intent.get("bids",[]) if b["id"]==bid_id), None)
+    else:
+        bids = intent.get("bids", [])
+        if not bids: return {"error":"no bids"}
+        bids_sorted = sorted(bids, key=lambda b: (b["price"], b["ttr"]))
+        chosen = bids_sorted[0]
+    intent["status"] = "awarded"
+    intent["award"] = chosen
+    await _save_users(client, users)
+    try:
+        await publish({"type":"intent_award","intent_id":intent_id,"agent":chosen['agent'],"buyer": _username_of(buyer_user)})
+    except Exception:
+        pass
+    return {"ok": True, "award": chosen}
+
+@app.post("/productize")
+async def productize(username: str, url: Optional[str] = None, file_meta: dict = None):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    offer = {"id": _uid(), "title": "Auto Productized Offer", "source": url or file_meta or {}, "price": 199, "created": _now()}
+    u.setdefault("offers", []).append(offer)
+    await _save_users(client, users)
+    return {"ok": True, "offer": offer}
+
+@app.post("/quote")
+async def quote(buyer: str, seller: str, scope: str, ttr: str = "48h"):
+    users, client = await _get_users_client()
+    sb = _find_user(users, seller); bb = _find_user(users, buyer)
+    if not (sb and bb): return {"error":"buyer or seller not found"}
+    base = 199.0
+    price = base * (1.5 if (ttr or '').lower().startswith("24") else 1.0)
+    q = {"id": _uid(), "ts": _now(), "buyer": buyer, "seller": seller, "scope": scope, "ttr": ttr, "price": price, "status":"open"}
+    sb.setdefault("quotes", []).append(q)
+    bb.setdefault("quotes", []).append(q)
+    await _save_users(client, users)
+    return {"ok": True, "quote": q}
+
+@app.post("/escrow/create")
+async def escrow_create(quote_id: str, buyer: str):
+    users, client = await _get_users_client()
+    b = _find_user(users, buyer)
+    if not b: return {"error":"buyer not found"}
+    e = {"id": _uid(), "quote_id": quote_id, "status":"held", "ts": _now()}
+    b.setdefault("escrow", []).append(e)
+    await _save_users(client, users)
+    return {"ok": True, "escrow": e}
+
+@app.post("/escrow/release")
+async def escrow_release(escrow_id: str):
+    users, client = await _get_users_client()
+    for u in users:
+        for e in u.get("escrow", []):
+            if e["id"]==escrow_id:
+                e["status"] = "released"; await _save_users(client, users); return {"ok": True}
+    return {"error":"escrow not found"}
+
+@app.post("/escrow/dispute")
+async def escrow_dispute(escrow_id: str, reason: str):
+    users, client = await _get_users_client()
+    for u in users:
+        for e in u.get("escrow", []):
+            if e["id"]==escrow_id:
+                e["status"] = "disputed"; e["reason"]=reason; await _save_users(client, users); return {"ok": True}
+    return {"error":"escrow not found"}
+
+@app.post("/offer/localize")
+async def offer_localize(username: str, offer_id: str, locales: List[str]):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    variants = []
+    for loc in locales or []:
+        variants.append({"id": _uid(), "base": offer_id, "locale": loc, "ts": _now()})
+    u.setdefault("offer_variants", []).extend(variants)
+    await _save_users(client, users)
+    return {"ok": True, "variants": variants}
+
+@app.get("/fx")
+async def fx():
+    return {"USD":1.0,"EUR":0.93,"GBP":0.81,"JPY":149.0}
+
+@app.post("/media/bind_offer")
+async def media_bind_offer(username: str, media_id: str, offer_id: str):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    m = {"media_id": media_id, "offer_id": offer_id, "ts": _now()}
+    u.setdefault("media_bindings", []).append(m)
+    await _save_users(client, users)
+    return {"ok": True, "binding": m}
+
+@app.post("/team/create")
+async def team_create(lead_owner: str, members: List[str], split: List[float]):
+    users, client = await _get_users_client()
+    lead = _find_user(users, lead_owner)
+    if not lead: return {"error":"lead not found"}
+    team = {"id": _uid(), "members": members, "split": split, "ts": _now()}
+    lead.setdefault("teams", []).append(team)
+    await _save_users(client, users)
+    return {"ok": True, "team": team}
+
+@app.post("/team/offer")
+async def team_offer(lead_owner: str, team_id: str, bundle_spec: dict):
+    users, client = await _get_users_client()
+    lead = _find_user(users, lead_owner)
+    if not lead: return {"error":"lead not found"}
+    t = next((x for x in lead.get("teams", []) if x["id"]==team_id), None)
+    if not t: return {"error":"team not found"}
+    off = {"id": _uid(), "team_id": team_id, "spec": bundle_spec, "ts": _now()}
+    lead.setdefault("team_offers", []).append(off)
+    await _save_users(client, users)
+    return {"ok": True, "team_offer": off}
+
+@app.post("/retarget/schedule")
+async def retarget_schedule(username: str, lead_id: str, cadence: str = "3d", incentive: str = "AIGx10"):
+    users, client = await _get_users_client()
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    task = {"id": _uid(), "lead_id": lead_id, "cadence": cadence, "incentive": incentive, "ts": _now()}
+    u.setdefault("retarget_tasks", []).append(task)
+    await _save_users(client, users)
+    return {"ok": True, "task": task}
+
+@app.get("/market/rank")
+async def market_rank(category: Optional[str] = None):
+    users, client = await _get_users_client()
+    ranked = []
+    for u in users:
+        score = int(u.get("outcomeScore", 0))
+        completion = len(u.get("outcomes", []))
+        response_bonus = 1 if len(u.get("analytics", []))>0 else 0
+        price_bias = 0
+        ranked.append({"username": _username_of(u), "rank": score + completion + response_bonus - price_bias})
+    ranked.sort(key=lambda r: r["rank"], reverse=True)
+    return {"ok": True, "results": ranked[:100]}
+
+@app.get("/offer/upsells")
+async def offer_upsells(offer_id: str):
+    return {"ok": True, "upsells":[
+        {"id":"rush","title":"Rush Delivery (24h)","price_delta":99},
+        {"id":"brandpack","title":"Brand Pack Add-on","price_delta":149},
+        {"id":"support30","title":"30 Days Support","price_delta":79}
+    ]}
+
+@app.post("/concierge/triage")
+async def concierge_triage(text: str):
+    scope = "General help with " + (text[:120] if text else "your project")
+    suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
+    return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
