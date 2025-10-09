@@ -783,7 +783,7 @@ async def vault_autostake(body: Dict = Body(...)):
         await _broadcast_yield(u, {'amount': float(amount), 'reason': reason})
     except Exception:
         pass
-return {"ok": True, "yield": y}
+    return {"ok": True, "yield": y}
 
 @app.get("/metrics")
 async def metrics():
@@ -2297,3 +2297,4 @@ async def hmac_guard(request, call_next):
             return {"type": "http.request", "body": body, "more_body": False}
         request._receive = receive
     return await call_next(request)
+
