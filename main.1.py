@@ -6,7 +6,8 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, Request, Body, Path, HTTPException
+from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -92,7 +93,6 @@ def _empty_licenses():
     return {"sdk": False, "vault": False, "remix": False, "clone": False, "aigx": False}
 
 # ---- Fees ----
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.05"))
 
 def _platform_fee_rate(u: dict) -> float:
     """Resolve take-rate in order: per-user override -> env PLATFORM_FEE -> 0.05 default."""
@@ -119,7 +119,6 @@ COMPANY_TYPE_PRESETS = {
 }
 
 # ===== Monetization / payouts config =====
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))            # 12% take rate
 PAYOUT_MIN = float(os.getenv("PAYOUT_MIN", "10"))                  # $10 minimum
 PAYOUT_HOLDBACK_DAYS = int(os.getenv("PAYOUT_HOLDBACK_DAYS", "7")) # 7-day eligibility window
 REFERRAL_BOUNTY = float(os.getenv("REFERRAL_BOUNTY", "1.0"))       # 1 AIGx for a signup referral
@@ -612,7 +611,8 @@ async def wallet_connect(body: Dict = Body(...)):
         return {"ok": True, "wallet": safe}
 
 @app.post("/payout/request")
-async def payout_request(body: Dict = Body(...)):
+async def payout_request(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key'), idemp: str | None = Header(None, alias='Idempotency-Key')):
+    body = await request.json()
     """
     Body: { username, amount, method?: "stripe"|"crypto" }
     Checks available balance and raises a payout request (queued for ops/batch).
@@ -624,6 +624,7 @@ async def payout_request(body: Dict = Body(...)):
 
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client)
+        _require_key(users, username, x_api_key)
         u = next((x for x in users if _uname(x)==username), None)
         if not u: return {"error":"user not found"}
         _ensure_business(u)
@@ -821,22 +822,39 @@ async def algo_schedule_plan(body: Dict = Body(...)):
 
 # ---------- DISTRIBUTION REGISTRY + PUSH ----------
 @app.post("/distribution/register")
-async def distribution_register(body: Dict = Body(...)):
+async def distribution_register(request: Request, x_api_key: str | None = Header(None, alias="X-API-Key")):
+    body = await request.json()
     """
     Body: { username, channel, endpoint_url, token }
     """
-    username = body.get("username"); channel = (body.get("channel") or "partner").lower()
-    url = body.get("endpoint_url"); token = body.get("token")
-    if not (username and url and token): return {"error":"username, endpoint_url, token required"}
-    async with httpx.AsyncClient(timeout=15) as client:
-        users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
-        if not u: return {"error":"user not found"}
-        u.setdefault("distribution", []).append({"id": _id("dist"), "channel": channel, "url": url, "token": token, "ts": _now()})
-        await _save_users(client, users)
+    username = body.get("username")
+    channel = (body.get("channel") or "partner").lower()
+    endpoint_url = body.get("endpoint_url") or body.get("endpoint") or body.get("url")
+    token = body.get("token")
+    if not (username and endpoint_url and token):
+        return {"error":"username, endpoint_url, token required"}
+    if not _safe_url(str(endpoint_url or "")):
+        raise HTTPException(status_code=400, detail="endpoint not allowed")
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        _require_key(users, username, x_api_key)
+        if not u:
+            return {"error":"user not found"}
+        _ensure_business(u)
+        u.setdefault("distribution", []).append({
+            "id": str(uuid.uuid4()),
+            "channel": channel,
+            "url": endpoint_url,
+            "token": token,
+            "ts": _now()
+        })
+        await _save_users(users, client)
         return {"ok": True}
 
 @app.post("/distribution/push")
-async def distribution_push(body: Dict = Body(...)):
+async def distribution_push(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     """
     Body: { username, listingId, channels?:[] }
     Pushes a signed lightweight Offer Card (POL) to registered webhooks.
@@ -845,6 +863,7 @@ async def distribution_push(body: Dict = Body(...)):
     if not (username and lid): return {"error":"username & listingId required"}
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        _require_key(users, username, x_api_key)
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         listing = _find_in(u.get("listings", []), "id", lid)
@@ -876,7 +895,8 @@ async def distribution_push(body: Dict = Body(...)):
 
 # ---------- REVENUE SPLITTER (JV mesh) ----------
 @app.post("/revenue/split")
-async def revenue_split(body: Dict = Body(...)):
+async def revenue_split(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     """
     Body: { username, amount, currency:'USD', ref, jvId? }
     If jvId present, split by that entry; else split equally across all JV mesh entries.
@@ -887,6 +907,7 @@ async def revenue_split(body: Dict = Body(...)):
 
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client)
+        _require_key(users, username, x_api_key)
         def find_user(name): return next((x for x in users if _uname(x)==name), None)
         origin = find_user(username)
         if not origin: return {"error":"user not found"}
@@ -952,7 +973,7 @@ async def creative_render(body: Dict = Body(...)):
 
 # ---- POST: Contacts (privacy-first) opt-in + counts ----
 @app.post("/contacts/optin")
-async def contacts_optin(request: Request):
+async def contacts_optin(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
     """
     Body: { username, sources: [{source:"upload/csv/gmail/phone", count:int}] }
     We store counts only (privacy-first). Send actual outreach via /contacts/send -> webhook.
@@ -1056,12 +1077,13 @@ async def contacts_send(request: Request):
 
 # ---- POST: JV Mesh (MetaBridge 2.0 cap-table stub) ----
 @app.post("/jv/create")
-async def jv_create(request: Request):
+async def jv_create(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
     """
     Body: { a: "userA", b: "userB", title, split: {"a":0.6,"b":0.4}, terms }
     Appends JV entry to both users' jvMesh; settlement handled by MetaBridge runtime.
     """
     body = await request.json()
+    username = (body.get('username') or body.get('consent',{}).get('username'))
     a = body.get("a"); b = body.get("b")
     title = body.get("title","JV")
     split = body.get("split", {"a":0.5,"b":0.5})
@@ -1346,13 +1368,15 @@ async def pay_link(body: Dict = Body(...)):
         return {"ok": True, "checkout_url": checkout_url, "payment": payment}
 
 @app.post("/revenue/recognize")
-async def revenue_recognize(body: Dict = Body(...)):
+async def revenue_recognize(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); inv_id = body.get("invoiceId")
     if not (username and inv_id):
         return {"error": "username & invoiceId required"}
 
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client)
+        _require_key(users, username, x_api_key)
         u = next((x for x in users if _uname(x) == username), None)
         if not u:
             return {"error": "user not found"}
@@ -1674,7 +1698,8 @@ async def meeting_notes(body: Dict = Body(...)):
 
 # ---------- 5) CRM-LITE ----------
 @app.post("/contacts/import")
-async def contacts_import(body: Dict = Body(...)):
+async def contacts_import(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username")
     if not username: return {"error":"username required"}
     new_contacts: List[Dict[str, Any]] = []
@@ -1689,20 +1714,23 @@ async def contacts_import(body: Dict = Body(...)):
                                  "tags": [], "opt_in": False})
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        _require_key(users, username, x_api_key)
         if not u: return {"error":"user not found"}
         _ensure_business(u)
-        u["contacts"].extend(new_contacts)
+        u["crm"].extend(new_contacts)
         await _save_users(client, users)
         return {"ok": True, "added": len(new_contacts)}
 
 @app.post("/contacts/segment")
-async def contacts_segment(body: Dict = Body(...)):
+async def contacts_segment(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); ids = body.get("ids", []); tags = body.get("tags", [])
     if not (username and ids and tags): return {"error":"username, ids, tags required"}
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        _require_key(users, username, x_api_key)
         if not u: return {"error":"user not found"}
-        for c in u.get("contacts", []):
+        for c in u.get("crm", []):
             if c["id"] in ids:
                 c.setdefault("tags", [])
                 for t in tags:
@@ -1711,13 +1739,15 @@ async def contacts_segment(body: Dict = Body(...)):
         return {"ok": True}
 
 @app.post("/contacts/optout")
-async def contacts_optout(body: Dict = Body(...)):
+async def contacts_optout(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+    body = await request.json()
     username = body.get("username"); email = (body.get("email") or "").lower()
     if not (username and email): return {"error":"username & email required"}
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client); u = next((x for x in users if _uname(x)==username), None)
+        _require_key(users, username, x_api_key)
         if not u: return {"error":"user not found"}
-        for c in u.get("contacts", []):
+        for c in u.get("crm", []):
             if (c.get("email") or "").lower() == email:
                 c["opt_in"] = False; c.setdefault("tags", []).append("opt_out")
         await _save_users(client, users)
@@ -2053,3 +2083,49 @@ async def admin_normalize(a: AdminIn):
     upgraded = [normalize_user_data(r) for r in records]
     await run_in_threadpool(_bin_put, upgraded)
     return {"ok": True, "count": len(upgraded)}
+
+from urllib.parse import urlparse
+import ipaddress, socket
+
+ALLOWED_DIST_DOMAINS = [d.strip() for d in os.getenv("ALLOWED_DIST_DOMAINS", "hooks.slack.com,discord.com,api.telegram.org").split(",") if d.strip()]
+
+def _safe_url(u: str) -> bool:
+    try:
+        p = urlparse(u)
+        if p.scheme not in ("https", "http"):
+            return False
+        host = p.hostname or ""
+        if not any(host.endswith(d) for d in ALLOWED_DIST_DOMAINS):
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except Exception:
+            return False
+        ips = {ai[4][0] for ai in infos if ai and ai[4]}
+        for ip in ips:
+            try:
+                ipaddr = ipaddress.ip_address(ip)
+            except Exception:
+                return False
+            if ipaddr.is_private or ipaddr.is_loopback or ipaddr.is_link_local:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+from fastapi import HTTPException
+
+def _uname(u):
+    return (u.get("username") or u.get("consent",{}).get("username"))
+
+def _require_key(users, username: str, x_api_key: str | None):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="missing X-API-Key")
+    u = next((x for x in users if _uname(x) == username), None)
+    if not u:
+        raise HTTPException(status_code=404, detail="user not found")
+    for k in u.get("api_keys", []):
+        if not k.get("revoked") and k.get("key") == x_api_key:
+            return u
+    raise HTTPException(status_code=403, detail="invalid API key")
