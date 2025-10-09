@@ -6,6 +6,11 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
+import hmac
+import hashlib
+import asyncio
+from typing import Literal
+from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
@@ -358,6 +363,15 @@ def _ensure_business(u: Dict[str, Any]) -> Dict[str, Any]:
     u.setdefault("offers", [])
     u.setdefault("ownership", {"aigx": 0.0, "royalties": 0.0, "ledger": []})
     u.setdefault("yield", {"aigxEarned": 0.0})
+    
+    # Ensure privacy-first contacts dict
+    if not isinstance(u.get("contacts"), dict):
+        u["contacts"] = {"sources": [], "counts": {}, "lastSync": None}
+    else:
+        u.setdefault("contacts", {"sources": [], "counts": {}, "lastSync": None})
+    # Ensure CRM list exists for opted-in contacts
+    u.setdefault("crm", [])
+    
     return u
 
 def _find_in(lst: List[Dict[str, Any]], key: str, val: str) -> Optional[Dict[str, Any]]:
@@ -630,7 +644,7 @@ async def payout_request(request: Request, x_api_key: str | None = Header(None, 
         _ensure_business(u)
         # ensure wallet is set
         w = u.get("wallet") or {}
-        if (method == "stripe" and not w.get("stripe_connect_id")) and (method == "crypto" and not w.get("crypto_address")):
+        if (method == 'stripe' and not w.get('stripe_connect_id')) or (method == 'crypto' and not w.get('crypto_address')):
             return {"error":"no payout destination on file; call /wallet/connect first"}
 
         money = _money_summary(u)
@@ -755,8 +769,21 @@ async def vault_autostake(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         y = u.setdefault("yield", {}); y["autoStake"] = enabled; y["autoStakePct"] = pct
-        await _save_users(client, users)
-        return {"ok": True, "yield": y}
+            # Referral split
+    REF_SPLIT = float(os.getenv('REF_SPLIT_PCT','0.05'))
+    if u.get('referrer'):
+        ref = _find_user(users, u['referrer'])
+        if ref:
+            ref.setdefault('yield', {'aigxEarned':0.0})
+            ref['yield']['aigxEarned'] += float(amount) * REF_SPLIT
+            ref.setdefault('yield_ledger', []).append({'ts': _now(), 'amount': float(amount)*REF_SPLIT, 'reason': f'referral:{u.get("username")}'})
+    await _save_users(client, users)
+    # Broadcast to agents
+    try:
+        await _broadcast_yield(u, {'amount': float(amount), 'reason': reason})
+    except Exception:
+        pass
+return {"ok": True, "yield": y}
 
 @app.get("/metrics")
 async def metrics():
@@ -849,7 +876,7 @@ async def distribution_register(request: Request, x_api_key: str | None = Header
             "token": token,
             "ts": _now()
         })
-        await _save_users(users, client)
+        await _save_users(client, users)
         return {"ok": True}
 
 @app.post("/distribution/push")
@@ -2116,16 +2143,157 @@ def _safe_url(u: str) -> bool:
 
 from fastapi import HTTPException
 
-def _uname(u):
-    return (u.get("username") or u.get("consent",{}).get("username"))
 
-def _require_key(users, username: str, x_api_key: str | None):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="missing X-API-Key")
-    u = next((x for x in users if _uname(x) == username), None)
-    if not u:
-        raise HTTPException(status_code=404, detail="user not found")
-    for k in u.get("api_keys", []):
-        if not k.get("revoked") and k.get("key") == x_api_key:
-            return u
-    raise HTTPException(status_code=403, detail="invalid API key")
+
+def _find_proposal(u, proposal_id):
+    # searches across user's proposals list; adjust if you store globally
+    for p in u.get("proposals", []):
+        if p.get("id") == proposal_id:
+            return p
+    return None
+
+
+
+ProposalOutcome = Literal["won","lost","ignored","replied"]
+
+@app.post("/proposal/feedback")
+async def proposal_feedback(username: str, proposal_id: str, outcome: ProposalOutcome, weight: float = 1.0, x_api_key: str = Header("")):
+    users, client = await _get_users_client()
+    _require_key(users, username, x_api_key)
+    u = _find_user(users, username)
+    if not u: return {"error":"user not found"}
+    u.setdefault("runtimeWeights", {"keywords": {}, "platforms": {}})
+    p = _find_proposal(u, proposal_id)
+    if not p: return {"error":"proposal not found"}
+    meta = p.get("meta", {})
+    kws = meta.get("keywords", []) or []
+    plat = meta.get("platform", "internal")
+    for k in kws:
+        u["runtimeWeights"]["keywords"][k] = u["runtimeWeights"]["keywords"].get(k, 0.0) + (1.0 if outcome=="won" else (-0.5 if outcome=="ignored" else (0.2 if outcome=="replied" else -1.0)))*weight
+    u["runtimeWeights"]["platforms"][plat] = u["runtimeWeights"]["platforms"].get(plat, 0.0) + (1.0 if outcome=="won" else -0.2)
+    await _save_users(client, users)
+    return {"ok": True, "weights": u["runtimeWeights"]}
+
+
+
+EVENT_BUS = asyncio.Queue()
+
+async def publish(evt: dict):
+    try:
+        await EVENT_BUS.put(json.dumps(evt))
+    except Exception:
+        pass
+
+@app.get("/stream/activity")
+async def stream_activity():
+    async def gen():
+        while True:
+            msg = await EVENT_BUS.get()
+            yield f"data: {msg}\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+
+AGENT_WEBHOOKS = {
+    "cfo":   os.getenv("VENTURE_AGENT_URL"),
+    "cmo":   os.getenv("GROWTH_AGENT_URL"),
+    "clo":   os.getenv("REMIX_AGENT_URL"),
+    "cto":   os.getenv("SDK_AGENT_URL"),
+}
+
+async def _broadcast_yield(u, event):
+    try:
+        import httpx
+    except Exception:
+        return
+    payload = {"username": u.get("username") or u.get("consent",{}).get("username"), "event": event, "ts": _now()}
+    async with httpx.AsyncClient(timeout=8.0) as h:
+        for name, url in AGENT_WEBHOOKS.items():
+            if not url: continue
+            try:
+                await h.post(f"{url.rstrip('/')}/autopropagate", json=payload)
+            except Exception:
+                pass
+
+
+PRICE_BANDS = {"sdk": 199, "vault": 149, "remix": 99, "clone": 249}
+_PRICING_CACHE = {"users": [], "ts": 0}
+
+def _parse_ts(ts):
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(ts.replace("Z","+00:00"))
+    except Exception:
+        from datetime import datetime
+        return datetime.utcnow()
+
+def _window_velocity_all(users, kit, hours=24):
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=hours)
+    total = 0
+    for u in users:
+        for e in u.get("purchases", []):
+            if e.get("kit")==kit:
+                t = _parse_ts(e.get("ts",""))
+                if t >= cutoff:
+                    total += 1
+    return total / max(1, hours)
+
+def dynamic_price(kit, base, users):
+    v = _window_velocity_all(users, kit, hours=24)
+    return min(base * (1 + 0.10*v), base*2)
+
+@app.get("/pricing")
+async def pricing():
+    users, client = await _get_users_client()
+    return {k: dynamic_price(k, v, users) for k,v in PRICE_BANDS.items()}
+
+
+
+@app.post("/autonomy/reinvest")
+async def autonomy_reinvest(threshold: float = 500.0):
+    users, client = await _get_users_client()
+    spawned = []
+    for u in users:
+        try:
+            bal = float(u.get("yield", {}).get("aigxEarned", 0))
+        except Exception:
+            bal = 0.0
+        if bal >= threshold and not u.get("autoSpawned"):
+            u["autoSpawned"] = _now()
+            spawned.append(u.get("username") or u.get("consent",{}).get("username"))
+    await _save_users(client, users)
+    # trigger proposals
+    try:
+        for uname in spawned:
+            uu = next((x for x in users if (x.get("username") or x.get("consent",{}).get("username"))==uname), None)
+            if uu:
+                await _broadcast_yield(uu, {"amount":0,"reason":"auto-reinvest"})
+    except Exception:
+        pass
+    return {"ok": True, "spawned": spawned}
+
+
+
+def _verify_signature(body: bytes, ts: str, sign: str):
+    secret = os.getenv("HMAC_SECRET","")
+    if not secret:
+        return True  # disabled if no secret set
+    mac = hmac.new(secret.encode(), (ts+"."+body.decode()).encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(mac, sign)
+
+@app.middleware("http")
+async def hmac_guard(request, call_next):
+    protected = ("/submit_proposal","/aigx/credit","/unlock")
+    if any(request.url.path.startswith(p) for p in protected):
+        ts = request.headers.get("X-Ts"); sign = request.headers.get("X-Sign")
+        body = await request.body()
+        if not _verify_signature(body, ts or "", sign or ""):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error":"bad signature"}, status_code=401)
+        # re-inject body for downstream
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+        request._receive = receive
+    return await call_next(request)
