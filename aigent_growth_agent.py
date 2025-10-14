@@ -14,6 +14,20 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
 
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
+
+
 # --- Optional external delivery (guarded) ---
 try:
     from proposal_delivery import deliver_proposal  # external webhook/email/DM module (optional)
@@ -37,6 +51,8 @@ def _post_json(path: str, payload: dict, timeout: int = 15):
         ok = (r.status_code // 100) == 2
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
+        import traceback
+        emit_both('ERROR', {'flow':'growth','stage':'post_json','err': str(e), 'path': path, 'trace': traceback.format_exc()[:800]})
         return False, {"error": str(e)}
 
 # =========================
@@ -95,11 +111,8 @@ service_offer_registry = [
 AIGENT_SYS_MSG = SystemMessage(
     content=f"""
 You are AiGent Growth, the autonomous growth strategist of the AiGentsy protocol (MetaUpgrade25+26).
-Mission:
-- Maximize growth loops and real-world revenue
-- Design referral/propagation structures
-- Trigger proposals and match partners via MetaBridge
-- Keep privacy/compliance within protocol rules
+Speak as the **CMO** in first person ("I"). Be concise, practical, and action-led.
+When replying, include: (1) the growth play, (2) target + channel(s), (3) 3–5 next steps with owners, (4) simple funnel KPIs, and end with **one** clarifying question.
 
 Traits: {agent_traits}
 Offers: {service_offer_registry}
@@ -256,7 +269,7 @@ async def invoke(state: AgentState) -> dict:
             try:
                 from aigent_growth_metamatch import run_metamatch_campaign
                 if os.getenv("METAMATCH_LIVE", "false").lower() == "true":
-                    print("🧠 MetaMatch triggered…")
+                    emit_both('INTENDED', {'flow':'metamatch','user': username, 'msg': 'triggered'})
                     _ = run_metamatch_campaign({
                         "username": username,
                         "traits": traits,
