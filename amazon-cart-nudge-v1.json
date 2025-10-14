@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "app": "amazon",
+  "slug": "amazon-cart-nudge-v1",
+  "autonomy": "act",
+  "oauth_scopes": [
+    "cart.read",
+    "cart.write",
+    "ads.read",
+    "ads.write"
+  ],
+  "telemetry_contract": [
+    "recoveries",
+    "cvr_uplift",
+    "spend_usd"
+  ],
+  "budget": {
+    "spend_cap_usd": 150,
+    "rate_limit_per_hour": 20
+  },
+  "playbooks": [
+    {
+      "id": "amz-abandon-001",
+      "owner": "CRO",
+      "goal": "checkout-rate",
+      "actions": [
+        {
+          "type": "detect_abandoned_cart",
+          "window_min": 45
+        },
+        {
+          "type": "send_nudge",
+          "channel": "email|sms",
+          "offer": "free-ship|5%-off",
+          "ab_test": true
+        },
+        {
+          "type": "retarget_ads",
+          "cap_usd": 15
+        }
+      ],
+      "kpis": {
+        "recoveries": 5,
+        "cvr_uplift": 0.05
+      },
+      "abort_if": {
+        "bounce_spike": true,
+        "complaints_gt": 0.01
+      }
+    }
+  ],
+  "idempotency_key_strategy": "hash(user_id, cart_id, window_min)"
+}

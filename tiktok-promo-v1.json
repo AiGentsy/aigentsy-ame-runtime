@@ -1,0 +1,74 @@
+{
+  "$schema": "https://aigentsy.dev/schemas/aam.manifest.v1.json",
+  "version": "1.0.0",
+  "app": "tiktok",
+  "slug": "tiktok-promo-v1",
+  "autonomy": "suggest",
+  "oauth_scopes": [
+    "video.upload",
+    "analytics.read"
+  ],
+  "telemetry_contract": [
+    "views",
+    "ctr",
+    "leads"
+  ],
+  "risk_model": {
+    "neg_ratio_gt": 0.3,
+    "brand_flag": true
+  },
+  "budget": {
+    "spend_cap_usd": 0,
+    "rate_limit_per_hour": 3
+  },
+  "triggers": [
+    {
+      "name": "new_product",
+      "source": "shopify",
+      "fields": [
+        "title",
+        "media",
+        "price"
+      ]
+    }
+  ],
+  "playbooks": [
+    {
+      "id": "tk-leadgen-001",
+      "owner": "CMO",
+      "goal": "leadgen",
+      "actions": [
+        {
+          "type": "generate_hook",
+          "model": "copy.short",
+          "guard": "brand_tone"
+        },
+        {
+          "type": "cut_clip",
+          "input": "media",
+          "preset": "9x16_hook"
+        },
+        {
+          "type": "post_video",
+          "cta": "link-in-bio",
+          "time": "best_slot"
+        },
+        {
+          "type": "reply_to_comments",
+          "mode": "semi",
+          "limit": 10
+        }
+      ],
+      "kpis": {
+        "views": 5000,
+        "ctr": 0.02,
+        "leads": 10
+      },
+      "abort_if": {
+        "neg_ratio_gt": 0.3,
+        "brand_flag": true
+      }
+    }
+  ],
+  "idempotency_key_strategy": "hash(user_id, app, playbook_id, payload)"
+}
