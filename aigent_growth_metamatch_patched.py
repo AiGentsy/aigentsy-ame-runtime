@@ -1,9 +1,6 @@
 # aigent_growth_metamatch.py — safe full replacement
 import os, time, json, re
 import requests
-from helpers_net import http_post_json
-from events import emit
-from guardrails import guard_ok
 from bs4 import BeautifulSoup
 from datetime import datetime
 try:
