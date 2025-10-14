@@ -2479,3 +2479,109 @@ async def concierge_triage(text: str):
     scope = "General help with " + (text[:120] if text else "your project")
     suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
     return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
+
+
+# ===== AiGentsy AAM — helpers (idempotent) =====
+import base64, hmac, hashlib, os, json as _json
+
+def _now():
+    import datetime as _dt
+    return _dt.datetime.utcnow().isoformat() + "Z"
+
+def _uid():
+    import uuid as _uuid
+    return str(_uuid.uuid4())
+
+# Generic provider event recorder into your existing JSON store.
+# Reuses your _get_users_client() and _save_users() helpers.
+async def _record_provider_event(provider: str, topic: str, payload: dict):
+    users, client = await _get_users_client()
+    event = {
+        "id": _uid(),
+        "source": provider,
+        "topic": topic,
+        "payload": payload or {},
+        "ts": _now()
+    }
+    # Append to a global bucket; adjust to per-user mapping if desired.
+    # We try to place it on the first record to avoid schema surprises.
+    if not users:
+        return {"ok": False, "reason": "no_user_records"}
+    users[0].setdefault("events", []).append(event)
+    await _save_users(client, users)
+    return {"ok": True, "event_id": event["id"]}
+
+def _shopify_hmac_valid(secret: str, raw_body: bytes, received_hmac: str) -> bool:
+    digest = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+    calc = base64.b64encode(digest).decode("utf-8")
+    return hmac.compare_digest(calc, (received_hmac or "").strip())
+
+
+# ===== AiGentsy AAM — trigger endpoint =====
+from fastapi import Request
+from aam_queue import AAMQueue
+from sdk_aam_executor import execute
+from caio_orchestrator import run_play
+
+# Single global queue instance
+try:
+    QUEUE  # type: ignore
+except NameError:
+    QUEUE = AAMQueue(executor=execute)
+
+@app.post("/aam/run/{app_name}/{slug}")
+async def run_aam(app_name: str, slug: str, req: Request):
+    body = await req.json()
+    user_id  = body.get("user_id") or "demo_user"
+    context  = body.get("context") or {}
+    autonomy = body.get("autonomy") or {"level":"suggest","policy":{"block":[]}}
+    results = run_play(QUEUE, user_id, app_name, slug, context, autonomy)
+    return {"ok": True, "results": results}
+
+
+# ===== AiGentsy AAM — provider webhooks =====
+from fastapi import Request, HTTPException
+
+# Shopify (HMAC-verified)
+@app.post("/webhook/shopify")
+async def webhook_shopify(request: Request):
+    secret = os.getenv("SHOPIFY_API_SECRET") or os.getenv("SHOPIFY_WEBHOOK_SECRET") or ""
+    if not secret:
+        raise HTTPException(status_code=500, detail="SHOPIFY_API_SECRET/SHOPIFY_WEBHOOK_SECRET not configured")
+    topic = request.headers.get("X-Shopify-Topic", "") or "unknown"
+    shop_domain = request.headers.get("X-Shopify-Shop-Domain", "")
+    received_hmac = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    raw = await request.body()
+    if not _shopify_hmac_valid(secret, raw, received_hmac):
+        raise HTTPException(status_code=401, detail="Invalid HMAC")
+    try:
+        payload = _json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        payload = {}
+    payload.setdefault("shop_domain", shop_domain)
+    rec = await _record_provider_event("shopify", topic, payload)
+    return {"ok": True, **(rec or {})}
+
+# TikTok (signature optional / TODO)
+@app.post("/webhook/tiktok")
+async def webhook_tiktok(request: Request):
+    raw = await request.body()
+    try:
+        payload = _json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        payload = {}
+    topic = payload.get("event") or request.headers.get("X-Tt-Event", "unknown")
+    rec = await _record_provider_event("tiktok", topic, payload)
+    return {"ok": True, **(rec or {})}
+
+# Amazon (shared-secret optional / TODO)
+@app.post("/webhook/amazon")
+async def webhook_amazon(request: Request):
+    raw = await request.body()
+    try:
+        payload = _json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        payload = {}
+    topic = payload.get("event") or request.headers.get("X-Amazon-Event", "unknown")
+    rec = await _record_provider_event("amazon", topic, payload)
+    return {"ok": True, **(rec or {})}
