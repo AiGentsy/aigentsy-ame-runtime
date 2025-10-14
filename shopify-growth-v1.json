@@ -1,0 +1,85 @@
+{
+  "$schema": "https://aigentsy.dev/schemas/aam.manifest.v1.json",
+  "version": "1.0.0",
+  "app": "shopify",
+  "slug": "shopify-growth-v1",
+  "autonomy": "suggest",
+  "oauth_scopes": [
+    "read_products",
+    "write_products",
+    "read_orders",
+    "write_marketing_events"
+  ],
+  "telemetry_contract": [
+    "new_visits",
+    "cart_starts",
+    "orders",
+    "rev_usd"
+  ],
+  "risk_model": {
+    "complaints_gt": 0.01,
+    "brand_flag": true
+  },
+  "budget": {
+    "spend_cap_usd": 100,
+    "rate_limit_per_hour": 10
+  },
+  "triggers": [
+    {
+      "name": "new_product",
+      "source": "shopify",
+      "fields": [
+        "title",
+        "media",
+        "price",
+        "tags"
+      ]
+    },
+    {
+      "name": "low_inventory",
+      "source": "shopify",
+      "fields": [
+        "sku",
+        "qty"
+      ]
+    }
+  ],
+  "playbooks": [
+    {
+      "id": "shp-promo-001",
+      "owner": "CMO",
+      "goal": "sales",
+      "actions": [
+        {
+          "type": "create_marketing_event",
+          "channel": "social",
+          "preset": "new_drop"
+        },
+        {
+          "type": "create_discount_code",
+          "amount_pct": 10,
+          "duration_days": 7
+        },
+        {
+          "type": "publish_blog_post",
+          "template": "launch_announcement"
+        },
+        {
+          "type": "send_email_blast",
+          "segment": "engaged_last_90d",
+          "ab_test": true
+        }
+      ],
+      "kpis": {
+        "new_visits": 1000,
+        "orders": 15,
+        "rev_usd": 750
+      },
+      "abort_if": {
+        "complaints_gt": 0.01,
+        "brand_flag": true
+      }
+    }
+  ],
+  "idempotency_key_strategy": "hash(user_id, app, playbook_id, action_id, payload)"
+}
