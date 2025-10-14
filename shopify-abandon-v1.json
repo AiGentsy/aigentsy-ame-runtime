@@ -1,0 +1,60 @@
+{
+  "$schema": "https://aigentsy.dev/schemas/aam.manifest.v1.json",
+  "version": "1.0.0",
+  "app": "shopify",
+  "slug": "shopify-abandon-v1",
+  "autonomy": "act",
+  "oauth_scopes": [
+    "read_checkouts",
+    "read_orders",
+    "write_marketing_events"
+  ],
+  "telemetry_contract": [
+    "abandoned",
+    "recoveries",
+    "rev_usd",
+    "emails",
+    "sms"
+  ],
+  "risk_model": {
+    "complaints_gt": 0.01,
+    "brand_flag": true
+  },
+  "budget": {
+    "spend_cap_usd": 50,
+    "rate_limit_per_hour": 30
+  },
+  "playbooks": [
+    {
+      "id": "shp-abandon-001",
+      "owner": "CRO",
+      "goal": "checkout-recovery",
+      "actions": [
+        {
+          "type": "detect_abandoned_checkout",
+          "window_min": 45
+        },
+        {
+          "type": "send_email_nudge",
+          "template": "abandon_recover",
+          "offer": "free-ship|5%-off",
+          "ab_test": true
+        },
+        {
+          "type": "send_sms_nudge",
+          "template": "short_link",
+          "throttle_min": 5
+        }
+      ],
+      "kpis": {
+        "recoveries": 5,
+        "rev_usd": 300
+      },
+      "abort_if": {
+        "complaints_gt": 0.01,
+        "brand_flag": true
+      }
+    }
+  ],
+  "idempotency_key_strategy": "hash(user_id, app, playbook_id, action_id, payload)"
+}
