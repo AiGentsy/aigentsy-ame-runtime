@@ -37,9 +37,13 @@ def _post_json(path: str, payload: dict, timeout: int = 15):
         ok = (r.status_code // 100) == 2
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+        return False, {"error": str(e)}
+
+# =========================
+# Utility: JSONBin helpers
+# =========================
+def _jsonbin_headers():
+    return {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
 
 def get_jsonbin_record(username: str) -> dict:
     try:
@@ -54,9 +58,8 @@ def get_jsonbin_record(username: str) -> dict:
                 return user
         return {}
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {}
+        print("⚠️ JSONBin fetch failed:", str(e))
+        return {}
 
 def get_all_jsonbin_records() -> List[Dict]:
     try:
@@ -66,9 +69,8 @@ def get_all_jsonbin_records() -> List[Dict]:
         res = HTTP.get(url, headers=_jsonbin_headers(), timeout=10)
         return res.json().get("record", [])
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        []
+        print("⚠️ JSONBin (all-records) fetch failed:", str(e))
+        return []
 
 # =========================
 # Static Config
@@ -90,8 +92,9 @@ service_offer_registry = [
     "Growth Content Generator",
 ]
 
-AIGENT_SYS_MSG = SystemMessage(content=f"""
-You are AiGent Growth, the autonomous growth strategist of the AiGentsy protocol (MetaUpgrade25+26 + '\n\n' + 'You are the CMO. Speak in first person. Pick a growth play, define target, message, channels and 3–5 next actions. Provide simple funnel metrics and end with one clarifying question.').
+AIGENT_SYS_MSG = SystemMessage(
+    content=f"""
+You are AiGent Growth, the autonomous growth strategist of the AiGentsy protocol (MetaUpgrade25+26).
 Mission:
 - Maximize growth loops and real-world revenue
 - Design referral/propagation structures
@@ -191,9 +194,14 @@ def stamp_metagraph_entry(username: str, traits: List[str]):
         HTTP.post(url, json=payload, headers=_jsonbin_headers(), timeout=10)
         print("📊 MetaGraph entry logged.")
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-                headers = _jsonbin_headers() | {"Content-Type": "application/json"}
+        print("MetaGraph log error:", str(e))
+
+def log_revsplit(username: str, matched_with: str, yield_share: float = 0.3):
+    try:
+        bin_url = os.getenv("REV_SPLIT_LOG_URL")
+        if not bin_url:
+            return
+        headers = _jsonbin_headers() | {"Content-Type": "application/json"}
         entry = {
             "username": username,
             "matched_with": matched_with,
@@ -208,9 +216,13 @@ def stamp_metagraph_entry(username: str, traits: List[str]):
         HTTP.put(bin_url, json=existing["record"], headers=headers, timeout=10)
         print("✅ RevSplit log appended.")
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+        print("⚠️ RevSplit logging failed:", str(e))
+
+# ----------------- Core invoke() -----------------
+async def invoke(state: AgentState) -> dict:
+    user_input = state.input or ""
+    if not user_input:
+        return {
             "output": "No input provided.",
             "memory": state.memory,
             "traits": list(agent_traits.keys()),
@@ -252,9 +264,20 @@ def stamp_metagraph_entry(username: str, traits: List[str]):
                     })
                     stamp_metagraph_entry(username, traits)
             except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+                print("⚠️ MetaMatch import/run error:", str(e))
+
+        # If user asks "what am i optimized for"
+        state.memory.append(user_input)
+        if "what am i optimized for" in user_input.lower():
+            trait_str = ", ".join(traits)
+            kit_str = ", ".join(kits)
+            svc_bullets = "\n• " + "\n".join(service_needs)
+            resp = (
+                f"You're optimized for: {trait_str}\n"
+                f"Kits: {kit_str}\n\n"
+                f"📊 Next best moves:{svc_bullets}"
+            )
+            return {
                 "output": resp,
                 "memory": state.memory,
                 "traits": traits,
@@ -301,13 +324,57 @@ def stamp_metagraph_entry(username: str, traits: List[str]):
         }
 
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        sorted(matches, key=lambda m: m["score"], reverse=True)
+        return {"output": f"Agent error: {str(e)}"}
+
+# =========================
+# Matching / Proposal tools
+# =========================
+app = FastAPI()
+
+def metabridge_dual_match_realworld_fulfillment(input_text: str) -> List[Dict]:
+    """
+    Match free-form offer/need text to AiGentsy users by offerings/traits/kits.
+    """
+    try:
+        all_users = get_all_jsonbin_records()
+        matches: List[Dict] = []
+        keywords = (input_text or "").lower().split()
+
+        for user in all_users:
+            score = 0
+            reasons = []
+            offerings = [o.lower() for o in user.get("user_offerings", [])]
+            traits = [t.lower() for t in user.get("traits", [])]
+            kits = list((user.get("kits") or {}).keys())
+            venture = (user.get("ventureID") or "").lower()
+
+            for kw in keywords:
+                if kw in offerings:
+                    score += 4; reasons.append(f"Offering match: {kw}")
+                if kw in traits:
+                    score += 2; reasons.append(f"Trait match: {kw}")
+                if kw in kits:
+                    score += 1; reasons.append("Kit match")
+                if kw and kw in venture:
+                    score += 1; reasons.append("Name match")
+
+            if score > 0:
+                uname = user.get("username") or user.get("consent", {}).get("username")
+                matches.append({
+                    "username": uname,
+                    "venture": user.get("ventureID"),
+                    "traits": traits,
+                    "kits": kits,
+                    "offerings": offerings,
+                    "score": score,
+                    "match_reason": ", ".join(reasons),
+                    "contact_url": user.get("runtimeURL", "#")
+                })
+
+        return sorted(matches, key=lambda m: m["score"], reverse=True)
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        []
+        print("⚠️ MetaBridge match error:", str(e))
+        return []
 
 def proposal_generator(query: str, matches: List[Dict], sender: str) -> List[Dict]:
     """
@@ -346,9 +413,21 @@ def proposal_dispatch_log(sender: str, proposals: List[Dict], match_target: Opti
         HTTP.post(bin_url, json=entry, headers=_jsonbin_headers(), timeout=10)
         print(f"📬 {len(proposals)} proposal(s) logged.")
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {"status": "error", "message": "No text provided."}
+        print("⚠️ Proposal log failed:", str(e))
+
+# =========================
+# Public endpoints
+# =========================
+@app.post("/infer_traits_from_text")
+async def infer_traits_from_text(request: Request):
+    """
+    Infer traits from free text. Falls back to keyword rules if no LLM key.
+    """
+    try:
+        payload = await request.json()
+        raw_text = (payload.get("text") or "").strip()
+        if not raw_text:
+            return {"status": "error", "message": "No text provided."}
 
         if llm is not None and HAS_KEY:
             prompt = f"""
@@ -377,9 +456,19 @@ Return a comma-separated list of traits only.
 
         return {"status": "ok", "inferred_traits": inferred}
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {"status": "error", "message": "No text provided."}
+        return {"status": "error", "message": str(e)}
+
+@app.post("/cold_lead_pitch")
+async def cold_lead_pitch(request: Request):
+    """
+    Extract offer/need from raw text, match partners, generate & persist proposals.
+    """
+    try:
+        payload = await request.json()
+        raw_text = (payload.get("text") or "").strip()
+        originator = payload.get("originator", "growth_default")
+        if not raw_text:
+            return {"status": "error", "message": "No text provided."}
 
         # 1) Extract a short query
         inferred_query = raw_text[:120]
@@ -403,9 +492,11 @@ Return a comma-separated list of traits only.
             try:
                 deliver_proposal(query=inferred_query, matches=matches, originator=originator)
             except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+                print("⚠️ deliver_proposal failed:", str(e))
+        else:
+            proposal_dispatch_log(originator, proposals, match_target=matches[0].get("username") if matches else None)
+
+        return {
             "status": "ok",
             "query": inferred_query,
             "match_count": len(matches),
@@ -413,9 +504,19 @@ Return a comma-separated list of traits only.
             "proposals": proposals
         }
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {"status": "error", "message": "No URL provided."}
+        return {"status": "error", "message": str(e)}
+
+@app.post("/scan_external_content")
+async def scan_external_content(request: Request):
+    """
+    Fetch a URL, extract visible text lightly, infer offer, match, and persist proposals.
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        target_url = payload.get("url")
+        if not target_url:
+            return {"status": "error", "message": "No URL provided."}
 
         page = HTTP.get(target_url, timeout=10)
         raw_text = page.text
@@ -436,9 +537,11 @@ Return a comma-separated list of traits only.
             try:
                 deliver_proposal(query=inferred_offer, matches=matches, originator=username)
             except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+                print("⚠️ deliver_proposal failed:", str(e))
+        else:
+            proposal_dispatch_log(username, proposals, match_target=matches[0].get("username") if matches else None)
+
+        return {
             "status": "ok",
             "url": target_url,
             "detected_offer": inferred_offer,
@@ -447,9 +550,20 @@ Return a comma-separated list of traits only.
             "proposals": proposals
         }
     except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {"status": "error", "message": "No query provided."}
+        return {"status": "error", "message": str(e)}
+
+@app.post("/metabridge")
+async def metabridge(request: Request):
+    """
+    MetaBridge endpoint:
+    - input: { "query": "...", "username": "..." }
+    - output: matches + persisted proposals
+    """
+    payload = await request.json()
+    search_query = (payload.get("query") or "").strip()
+    username = payload.get("username", "growth_default")
+    if not search_query:
+        return {"status": "error", "message": "No query provided."}
 
     matches = metabridge_dual_match_realworld_fulfillment(search_query)
     proposals = proposal_generator(search_query, matches, username)
@@ -463,9 +577,11 @@ Return a comma-separated list of traits only.
         try:
             deliver_proposal(query=search_query, matches=matches, originator=username)
         except Exception as e:
-        import traceback
-        emit('ERROR', {'flow':'growth','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+            print("⚠️ deliver_proposal failed:", str(e))
+    else:
+        proposal_dispatch_log(username, proposals, match_target=matches[0].get("username") if matches else None)
+
+    return {
         "status": "ok",
         "query": search_query,
         "match_count": len(matches),
