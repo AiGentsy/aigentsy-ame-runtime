@@ -1,8 +1,22 @@
 # aigent_growth_metamatch.py — safe full replacement
 import os, time, json, re
 import requests
+from helpers_net import http_post_json
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+from guardrails import guard_ok
 from bs4 import BeautifulSoup
 from datetime import datetime
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
 try:
     from openai import OpenAI
 except Exception:
