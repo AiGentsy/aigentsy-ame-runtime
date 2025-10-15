@@ -1,7 +1,32 @@
-# venture_builder_agent.py — AiGent Venture (CFO / Venture Builder)
+# venture_builder_agent.py — AiGent Venture (CFO / Venture Builder) — FIXED
 from dotenv import load_dotenv
+load_dotenv()
+
+import os
+import requests
+from functools import lru_cache
+from typing import List, Optional
+
+from pydantic import BaseModel
+from langgraph.graph import StateGraph
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+# ---------- Safe import fallbacks for logging ----------
+try:
+    from events import emit  # backend event bus
+except Exception:
+    def emit(*args, **kwargs):  # no-op if events module absent
+        pass
+
+try:
+    from log_to_jsonbin_aam_patched import log_event  # JSONBin dual-log
+except Exception:
+    def log_event(payload: dict):
+        pass
 
 def emit_both(kind: str, data: dict):
+    """Emit to backend + JSONBin; never raise."""
     try:
         emit(kind, data)
     except Exception:
@@ -10,16 +35,6 @@ def emit_both(kind: str, data: dict):
         log_event({"kind": kind, **(data or {})})
     except Exception:
         pass
-load_dotenv()
-
-import os
-from functools import lru_cache
-from typing import List
-
-from pydantic import BaseModel
-from langgraph.graph import StateGraph
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 # =========================
 # Config / Traits / Offers
@@ -41,7 +56,8 @@ service_offer_registry = [
     "MetaHive Deployment for SMBs",
 ]
 
-AIGENT_SYS_MSG = SystemMessage(content=f"""
+AIGENT_SYS_MSG = SystemMessage(content=(
+    f"""
 You are AiGent Venture, a sovereign Venture Builder archetype within the AiGentsy protocol.
 You operate with MetaUpgrade25+26 logic embedded.
 
@@ -59,8 +75,13 @@ You are authorized to:
 
 Your traits: {agent_traits}
 Available offerings: {service_offer_registry}
-Always reply as an autonomous, real-world-ready agent.
-""" + '\n\n' + 'You are the CFO. Speak in first person. Frame pricing/ROI, unit economics, cash implications, and give a concrete financial next step (quote/off-ramp step). End with one clarifying question.')
+
+You are the **CFO**. Speak in first person ("I").
+Frame pricing/ROI, unit economics, and cash implications.
+Give one concrete financial next step (quote or off-ramp step).
+End with exactly one clarifying question.
+"""
+))
 
 # =========================
 # LLM Setup (OpenRouter OK)
@@ -68,53 +89,63 @@ Always reply as an autonomous, real-world-ready agent.
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4o-2024-11-20")
 HAS_KEY = bool(os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"))
 
-llm = None
-if os.getenv("OPENROUTER_API_KEY"):
-    # OpenRouter path
-    llm = ChatOpenAI(
-        model=OPENAI_MODEL,
-        temperature=0.7,
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        base_url="https://openrouter.ai/api/v1",
-    )
-elif os.getenv("OPENAI_API_KEY"):
-    # Direct OpenAI path
-    llm = ChatOpenAI(
-        model=OPENAI_MODEL,
-        temperature=0.7,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
-# If neither key is present, llm stays None; invoke() will use offline fallback.
+llm: Optional[ChatOpenAI] = None
+try:
+    if os.getenv("OPENROUTER_API_KEY"):
+        llm = ChatOpenAI(
+            model=OPENAI_MODEL,
+            temperature=0.7,
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+        )
+    elif os.getenv("OPENAI_API_KEY"):
+        llm = ChatOpenAI(
+            model=OPENAI_MODEL,
+            temperature=0.7,
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+except Exception as e:
+    emit_both("ERROR", {"flow":"venture","stage":"llm_init","err": str(e)})
 
 # =========================
 # Agent State + Graph
 # =========================
 class AgentState(BaseModel):
     input: str
-    output: str | None = None
+    output: Optional[str] = None
     memory: List[str] = []
 
-# ---- PATCHED INVOKE (your requested patch, integrated) ----
+# ---- Core agent node ----
 async def invoke(state: "AgentState") -> dict:
-    user_input = state.input or ""
+    user_input = (state.input or "").strip()
     if not user_input:
         return {
-            "output": "No input provided.",
+            "output": "I didn’t catch a question. What would you like me to price or launch first?",
             "memory": state.memory,
             "traits": agent_traits,
             "offers": service_offer_registry,
         }
     try:
+        # memory
         state.memory.append(user_input)
+
+        # Offline, deterministic fallback
         if not HAS_KEY or llm is None:
-            # Graceful fallback without calling external LLM
-            faux = f"(offline) {service_offer_registry[0]} suggestion: package your current workflow into an SDK module."
+            faux = (
+                "As CFO, here’s a starting point:\n"
+                "• Offer: SDK-as-a-Service @ $149 setup + $19/mo\n"
+                "• Unit economics: infra $3/mo, support $4/mo → ~$12 CM margin\n"
+                "• Next step: connect Stripe off-ramp or request ACH details.\n"
+                "Quick question: do you prefer a one-time setup or subscription model?"
+            )
             return {
                 "output": faux,
                 "memory": state.memory,
                 "traits": agent_traits,
                 "offers": service_offer_registry,
             }
+
+        # Online LLM path
         response = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
         return {
             "output": response.content,
@@ -124,8 +155,17 @@ async def invoke(state: "AgentState") -> dict:
         }
     except Exception as e:
         import traceback
-        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
-        {
+        emit_both("ERROR", {"flow":"venture","stage":"invoke","err": str(e), "trace": traceback.format_exc()[:1000]})
+        return {
+            "output": "I hit a snag generating the venture plan. Want me to default to the $149 setup + $19/mo CFO package?",
+            "memory": state.memory,
+            "traits": agent_traits,
+            "offers": service_offer_registry,
+        }
+
+# Convenience sync wrapper for FastAPI routes that aren't async
+def run_agent(text: str) -> dict:
+    return {
         "output": "(stub) call this via the compiled graph or await invoke()",
         "traits": agent_traits,
         "offers": service_offer_registry,
@@ -135,27 +175,35 @@ async def invoke(state: "AgentState") -> dict:
 # Optional: JSONBin logging
 # =========================
 def log_to_jsonbin(payload: dict):
-    import requests
-from helpers_net import http_post_json
-from events import emit
-from log_to_jsonbin_aam_patched import log_event
-from guardrails import guard_ok
     try:
-        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
-        bin_url = os.getenv("JSONBIN_URL")
+        headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET", "")}
+        bin_url = os.getenv("JSONBIN_URL", "")
         if not bin_url:
             return "No JSONBIN_URL set"
         res = requests.put(bin_url, json=payload, headers=headers, timeout=20)
         return res.status_code
     except Exception as e:
-        import traceback
-        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
-        graph.compile()
-    # ---- Venture: Auto-propagation wiring (paste near bottom) ----
-import requests, os
+        emit_both("ERROR", {"flow":"venture","stage":"jsonbin","err": str(e)})
+        return "Log error"
+
+# =========================
+# Graph compile
+# =========================
+@lru_cache
+def get_agent_graph():
+    graph = StateGraph(AgentState)
+    graph.add_node("agent", invoke)
+    graph.set_entry_point("agent")
+    graph.set_finish_point("agent")
+    return graph.compile()
+
+# ---- Venture: Auto-propagation wiring (module-level, after graph compile) ----
 BACKEND_BASE = (os.getenv("BACKEND_BASE") or "").rstrip("/")
-def _u(path: str) -> str: return f"{BACKEND_BASE}{path}" if BACKEND_BASE else path
-HTTP = requests.Session(); HTTP.headers.update({"User-Agent": "AiGentsy-Venture/1.0"})
+HTTP = requests.Session()
+HTTP.headers.update({"User-Agent": "AiGentsy-Venture/1.0"})
+
+def _u(path: str) -> str:
+    return f"{BACKEND_BASE}{path}" if BACKEND_BASE else path
 
 def _post(path: str, payload: dict, timeout: int = 15):
     try:
@@ -163,14 +211,20 @@ def _post(path: str, payload: dict, timeout: int = 15):
         ok = (r.status_code // 100) == 2
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
-        import traceback
-        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
-        _post("/metabridge", {"username": username, "query": query})
+        emit_both("ERROR", {"flow":"venture","stage":"post","err": str(e)})
+        return False, {"error": str(e)}
+
+def metabridge_probe(username: str, query: str):
+    """Simple MetaBridge probe call; safe even if backend is not configured."""
+    return _post("/metabridge", {"username": username, "query": query})
 
 def run_autopropagate(user_record: dict) -> dict:
     """CFO kick: ask MetaBridge for high-EV quick wins + set starting price band."""
-    username = (user_record.get("username")
-                or user_record.get("consent", {}).get("username")
-                or "unknown")
+    username = (
+        user_record.get("username")
+        or user_record.get("consent", {}).get("username")
+        or "unknown"
+    )
     q = "SMBs needing quick high-EV wins (Branding Blitz, Growth Sprint, SDK Pack). Budget $99–$299."
-    return metabridge_probe(username, q)
+    ok, resp = metabridge_probe(username, q)
+    return {"ok": ok, "resp": resp}
