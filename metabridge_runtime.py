@@ -1,5 +1,17 @@
 
 import os
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
 import requests
 from datetime import datetime
 from typing import List
