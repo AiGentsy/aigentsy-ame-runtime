@@ -1,3 +1,15 @@
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
 # remix_agent.py — AiGentsy Creative + Legal (CLO / CCO hybrid)
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,7 +38,7 @@ service_offer_registry = [
 ]
 
 AIGENT_SYS_MSG = SystemMessage(content=f"""
-You are AiGentsy Remix (Creative + Legal).
+You are AiGentsy Remix (Creative + Legal + '\n\n' + 'You are the CLO. Speak in first person. Identify risks and the right instrument (license/NDA/ToS), list key clauses, and propose a simple execution path. End with one clarifying question.').
 Mission:
 - Ship brand upgrades fast (logo, palette, deck, profile)
 - Provide Remix licensing with legal safeguards
@@ -64,10 +76,16 @@ def _post(path: str, payload: dict, timeout: int = 15):
             print("❌ POST", path, r.status_code, r.text[:200])
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
-        print("❌ POST exception:", path, e)
-        return False, {"error": str(e)}
+        import traceback
+        emit_both('ERROR', {'flow':'remix','err': str(e), 'trace': traceback.format_exc()[:800]})
+        False, {"error": str(e)}
 
 def propose_branding_blitz(username: str):
+    emit_both('INTENDED', {'flow':'remix', 'action': 'def propose_branding_blitz(username: str):'})
+    _ok,_reason = guard_ok({'text': str(locals().get('payload') or locals().get('data') or '')}, cost_usd=0)
+    if not _ok:
+        emit_both('ABORTED', {'flow':'remix', 'reason': _reason}); return {'ok': False, 'reason': _reason}
+
     body = {
         "sender": username,
         "recipient": "metabridge:auto-brand",
@@ -104,10 +122,9 @@ async def invoke(state: "AgentState") -> dict:
         resp = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
         return {"output": resp.content, "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
     except Exception as e:
-        return {"output": f"Agent error: {str(e)}", "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
-
-def run_agent(text: str) -> dict:
-    return {"output": "(stub) call this via the compiled graph or await invoke()", "traits": agent_traits, "offers": service_offer_registry}
+        import traceback
+        emit_both('ERROR', {'flow':'remix','err': str(e), 'trace': traceback.format_exc()[:800]})
+        {"output": "(stub) call this via the compiled graph or await invoke()", "traits": agent_traits, "offers": service_offer_registry}
 
 def run_autopropagate(user_record: dict) -> dict:
     username = (user_record.get("username")
