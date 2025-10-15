@@ -1,5 +1,6 @@
 from typing import Dict, Any
 from aam_queue import AAMJob
+from messaging_adapters import send_email_postmark, send_sms_twilio
 
 # Replace these stubs with your real SDK adapter calls.
 def _tiktok_adapter(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -21,6 +22,27 @@ def _amazon_adapter(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"status":"noop"}
 
 def _shopify_adapter(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    if action == "send_email_nudge" or action == "send_email_blast":
+        # Required fields may include: to, subject, body
+        to = payload.get("to") or "demo@example.com"
+        subject = payload.get("subject") or "We saved your cart"
+        body = payload.get("body") or "Tap to finish checkout."
+        res = send_email_postmark(to, subject, body)
+        return {"status":"ok","kpi":{"emails":1},"adapter":res}
+    if action == "send_sms_nudge":
+        to = payload.get("to") or "+10000000000"
+        text = payload.get("text") or "Finish your checkout: https://example.com/c/abc"
+        res = send_sms_twilio(to, text)
+        return {"status":"ok","kpi":{"sms":1},"adapter":res}
+    if action == "create_marketing_event":
+        return {"status":"ok","kpi":{"event":"created"}}
+    if action == "create_discount_code":
+        return {"status":"ok","kpi":{"discount_pct": payload.get("amount_pct", 0)}}
+    if action == "publish_blog_post":
+        return {"status":"ok","kpi":{"post":"published"}}
+    if action == "send_email_blast":
+        return {"status":"ok","kpi":{"sent": True, "ab_test": bool(payload.get("ab_test"))}}
+    return {"status":"noop"}
     if action == "create_marketing_event":
         return {"status":"ok","kpi":{"event":"created"}}
     if action == "create_discount_code":
