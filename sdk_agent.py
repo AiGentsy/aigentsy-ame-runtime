@@ -1,3 +1,15 @@
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
 # sdk_agent.py — AiGentsy CTO / SDK Agent
 from dotenv import load_dotenv
 load_dotenv()
@@ -30,7 +42,7 @@ service_offer_registry = [
 ]
 
 AIGENT_SYS_MSG = SystemMessage(content=f"""
-You are AiGentsy CTO (SDK Agent).
+You are AiGentsy CTO (SDK Agent + '\n\n' + 'You are the CTO. Speak in first person. Propose a 3–5 step build/integration plan, call out risks and dependencies, and end with one clarifying question.').
 Mission:
 - Convert repeatable work into SDK packs
 - Prepare clone/licensing scaffolds
@@ -78,10 +90,16 @@ def _post(path: str, payload: dict, timeout: int = 15):
             print("❌ POST", path, r.status_code, r.text[:200])
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
-        print("❌ POST exception:", path, e)
-        return False, {"error": str(e)}
+        import traceback
+        emit_both('ERROR', {'flow':'sdk','err': str(e), 'trace': traceback.format_exc()[:800]})
+        False, {"error": str(e)}
 
 def propose_sdk_pack(username: str, title: str, details: str, link: str = ""):
+    emit_both('INTENDED', {'flow':'sdk', 'action': 'def propose_sdk_pack(username: str, title: str, details: str, link: str = ""):'})
+    _ok,_reason = guard_ok({'text': str(locals().get('payload') or locals().get('data') or '')}, cost_usd=0)
+    if not _ok:
+        emit_both('ABORTED', {'flow':'sdk', 'reason': _reason}); return {'ok': False, 'reason': _reason}
+
     body = {
         "sender": username,
         "recipient": "metabridge:auto-sdk",
@@ -117,11 +135,9 @@ async def invoke(state: "AgentState") -> dict:
         resp = await llm.ainvoke([AIGENT_SYS_MSG, HumanMessage(content=user_input)])
         return {"output": resp.content, "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
     except Exception as e:
-        return {"output": f"Agent error: {str(e)}", "memory": state.memory, "traits": agent_traits, "offers": service_offer_registry}
-
-# Convenience sync wrapper
-def run_agent(text: str) -> dict:
-    return {"output": "(stub) call this via the compiled graph or await invoke()", "traits": agent_traits, "offers": service_offer_registry}
+        import traceback
+        emit_both('ERROR', {'flow':'sdk','err': str(e), 'trace': traceback.format_exc()[:800]})
+        {"output": "(stub) call this via the compiled graph or await invoke()", "traits": agent_traits, "offers": service_offer_registry}
 
 # =========================
 # Auto-propagation helpers
