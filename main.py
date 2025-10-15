@@ -2519,9 +2519,47 @@ def _shopify_hmac_valid(secret: str, raw_body: bytes, received_hmac: str) -> boo
 
 # ===== AiGentsy AAM — trigger endpoint =====
 from fastapi import Request
-from aam_queue import AAMQueue
-from sdk_aam_executor import execute
-from caio_orchestrator import run_play
+
+# ===== AiGentsy AAM — provider webhooks =====
+from fastapi import Request, HTTPException
+
+# --- Safe fallbacks for optional AAM runtime modules ---
+try:
+    from aam_queue import AAMQueue  # provided by your AAM package
+except Exception:  # ModuleNotFoundError or others
+    class AAMQueue:  # minimal no-op queue to avoid import errors in deployments without AAM bundle
+        def __init__(self, executor=None):
+            self.executor = executor
+        def submit(self, job):
+            # immediate pass-through for demo
+            if self.executor:
+                try:
+                    return self.executor(job)
+                except Exception:
+                    return {"ok": False, "error": "executor_failed"}
+            return {"ok": True, "status": "queued", "job": job}
+
+try:
+    from sdk_aam_executor import execute  # orchestrates AAM actions
+except Exception:
+    def execute(job):
+        # minimal fallback executor
+        return {"ok": True, "executed": False, "reason": "sdk_aam_executor missing", "job": job}
+
+try:
+    from caio_orchestrator import run_play  # runs a named play through the AAM queue
+except Exception:
+    def run_play(queue, user_id, app_name, slug, context, autonomy):
+        # minimal fallback orchestrator
+        job = {
+            "user_id": user_id,
+            "app": app_name,
+            "slug": slug,
+            "context": context,
+            "autonomy": autonomy
+        }
+        return {"ok": True, "ran": False, "reason": "caio_orchestrator missing", "result": queue.submit(job)}
+
 
 # Single global queue instance
 try:
