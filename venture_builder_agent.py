@@ -1,5 +1,15 @@
 # venture_builder_agent.py — AiGent Venture (CFO / Venture Builder)
 from dotenv import load_dotenv
+
+def emit_both(kind: str, data: dict):
+    try:
+        emit(kind, data)
+    except Exception:
+        pass
+    try:
+        log_event({"kind": kind, **(data or {})})
+    except Exception:
+        pass
 load_dotenv()
 
 import os
@@ -50,7 +60,7 @@ You are authorized to:
 Your traits: {agent_traits}
 Available offerings: {service_offer_registry}
 Always reply as an autonomous, real-world-ready agent.
-""")
+""" + '\n\n' + 'You are the CFO. Speak in first person. Frame pricing/ROI, unit economics, cash implications, and give a concrete financial next step (quote/off-ramp step). End with one clarifying question.')
 
 # =========================
 # LLM Setup (OpenRouter OK)
@@ -113,16 +123,9 @@ async def invoke(state: "AgentState") -> dict:
             "offers": service_offer_registry,
         }
     except Exception as e:
-        return {
-            "output": f"Agent error: {str(e)}",
-            "memory": state.memory,
-            "traits": agent_traits,
-            "offers": service_offer_registry,
-        }
-
-# Convenience sync wrapper for FastAPI routes that aren't async
-def run_agent(text: str) -> dict:
-    return {
+        import traceback
+        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
+        {
         "output": "(stub) call this via the compiled graph or await invoke()",
         "traits": agent_traits,
         "offers": service_offer_registry,
@@ -133,6 +136,10 @@ def run_agent(text: str) -> dict:
 # =========================
 def log_to_jsonbin(payload: dict):
     import requests
+from helpers_net import http_post_json
+from events import emit
+from log_to_jsonbin_aam_patched import log_event
+from guardrails import guard_ok
     try:
         headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
         bin_url = os.getenv("JSONBIN_URL")
@@ -141,18 +148,9 @@ def log_to_jsonbin(payload: dict):
         res = requests.put(bin_url, json=payload, headers=headers, timeout=20)
         return res.status_code
     except Exception as e:
-        return f"Log error: {str(e)}"
-
-# =========================
-# Graph compile
-# =========================
-@lru_cache
-def get_agent_graph():
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", invoke)
-    graph.set_entry_point("agent")
-    graph.set_finish_point("agent")
-    return graph.compile()
+        import traceback
+        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
+        graph.compile()
     # ---- Venture: Auto-propagation wiring (paste near bottom) ----
 import requests, os
 BACKEND_BASE = (os.getenv("BACKEND_BASE") or "").rstrip("/")
@@ -165,10 +163,9 @@ def _post(path: str, payload: dict, timeout: int = 15):
         ok = (r.status_code // 100) == 2
         return ok, (r.json() if ok else {"error": r.text})
     except Exception as e:
-        return False, {"error": str(e)}
-
-def metabridge_probe(username: str, query: str):
-    return _post("/metabridge", {"username": username, "query": query})
+        import traceback
+        emit_both('ERROR', {'flow':'venture','err': str(e), 'trace': traceback.format_exc()[:800]})
+        _post("/metabridge", {"username": username, "query": query})
 
 def run_autopropagate(user_record: dict) -> dict:
     """CFO kick: ask MetaBridge for high-EV quick wins + set starting price band."""
@@ -177,4 +174,3 @@ def run_autopropagate(user_record: dict) -> dict:
                 or "unknown")
     q = "SMBs needing quick high-EV wins (Branding Blitz, Growth Sprint, SDK Pack). Budget $99–$299."
     return metabridge_probe(username, q)
-
