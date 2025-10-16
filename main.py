@@ -1,3 +1,4 @@
+# === PATCH APPLIED ===
 import uuid
 from typing import Literal, Optional, List, Dict
 from fastapi.responses import StreamingResponse
