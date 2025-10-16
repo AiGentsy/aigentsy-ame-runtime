@@ -1,71 +1,57 @@
-"""Outcome Oracle (stub)
-- Consumes external conversion signals (e.g., Shopify order webhook payload)
-- Emits ATTRIBUTED event with confidence
-- On settlement, emits PAID and credits AIGx in JSONBin
-"""
-from typing import Dict, Any
-from datetime import datetime, timezone
-
-from log_to_jsonbin_aam_patched import log_event, _get as jb_get, _put as jb_put
-from events import emit
-
-def emit_both(kind: str, data: dict):
-    try: emit(kind, data)
+import os, time, json, uuid, typing as T, requests, datetime as dt
+def _now(): return dt.datetime.utcnow().isoformat()+"Z"
+def _uid(): return str(uuid.uuid4())
+def _emit(kind, data):
+    try:
+        from events import emit; emit(kind, data)
     except Exception: pass
-    try: log_event({"kind": kind, **(data or {})})
+    try:
+        from log_to_jsonbin_aam_patched import log_event; log_event({"kind":kind, **(data or {})})
     except Exception: pass
-
-def _find_user_record(username: str):
-    data = jb_get()
-    for r in data.get("record", []):
-        uname = (r.get("consent") or {}).get("username") or r.get("username")
-        if uname == username:
-            return r
-    return None
-
-def _save_user_record(updated):
-    data = jb_get()
-    out = []
-    uid = updated.get("id")
-    uname = (updated.get("consent") or {}).get("username") or updated.get("username")
-    for r in data.get("record", []):
-        ru = (r.get("consent") or {}).get("username") or r.get("username")
-        if r.get("id") == uid or ru == uname:
-            out.append(updated)
-        else:
-            out.append(r)
-    jb_put(out)
-    return True
-
-def credit_aigx(username: str, amount: float, meta: Dict[str, Any]) -> bool:
-    rec = _find_user_record(username)
-    if not rec:
-        emit_both("ERROR", {"flow":"oracle","reason":"user_not_found","user_id":username}); return False
-    y = rec.get("yield") or {}
-    y["aigxEarned"] = float(y.get("aigxEarned", 0)) + float(amount)
-    # append transaction
-    tx = rec.get("transactions") or {}
-    events = tx.get("yieldEvents") or []
-    events.append({
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "amount": amount,
-        "meta": meta
-    })
-    tx["yieldEvents"] = events
-    rec["yield"] = y
-    rec["transactions"] = tx
-    _save_user_record(rec)
-    return True
-
-def attribute_shopify_order(username: str, order_id: str, rev_usd: float, cid: str = "") -> Dict[str, Any]:
-    # lazy heuristic: attribute full order revenue to last INTENDED with same user/app within time window (stub)
-    emit_both("ATTRIBUTED", {
-        "flow":"oracle","user_id": username,"app": "shopify","attribution":{"orders":1,"rev_usd": rev_usd,"confidence": 0.85},
-        "cid": cid
-    })
-    return {"ok": True, "orders": 1, "rev_usd": rev_usd, "confidence": 0.85}
-
-def settle_payout(username: str, order_id: str, payout_usd: float, cid: str = "") -> Dict[str, Any]:
-    emit_both("PAID", {"flow":"oracle","user_id": username,"amount_usd": payout_usd,"cid": cid})
-    credit_aigx(username, payout_usd, {"source":"shopify","order_id": order_id, "cid": cid})
-    return {"ok": True, "paid": payout_usd}
+JSONBIN_URL = os.getenv("JSONBIN_URL",""); JSONBIN_SECRET = os.getenv("JSONBIN_SECRET",""); HTTP = requests.Session()
+def _load_users():
+    if not JSONBIN_URL: return []
+    r = HTTP.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET}, timeout=20)
+    try: x=r.json(); return x.get("record") if isinstance(x,dict) else x
+    except Exception: return []
+def _save_users(users):
+    if not JSONBIN_URL: return False
+    r = HTTP.put(JSONBIN_URL, json={"record": users}, headers={"X-Master-Key": JSONBIN_SECRET}, timeout=20)
+    return (r.status_code//100)==2
+def _find_user(users, username):
+    for u in users:
+        un = u.get("username") or u.get("consent",{}).get("username")
+        if un == username: return u
+    return users[0] if users else None
+def credit_aigx(user, amount, reason):
+    y = user.setdefault("yield", {}); y["aigxEarned"] = int(y.get("aigxEarned",0)) + int(amount)
+    user.setdefault("transactions",{}).setdefault("yieldEvents",[]).append({"id":_uid(),"ts":_now(),"amount":amount,"reason":reason})
+    return amount
+def autostake(user, paid_usd):
+    pol = user.setdefault("autoStake_policy", {"ratio":0.25,"weekly_cap_usd":50,"enabled":True})
+    if not pol.get("enabled"): return 0.0
+    amt = min(float(paid_usd)*float(pol.get("ratio",0.25)), float(pol.get("weekly_cap_usd",50)))
+    user.setdefault("wallet",{}); user["wallet"]["staked"]=float(user["wallet"].get("staked",0))+float(amt); return amt
+def on_event(evt: dict):
+    kind = (evt.get("kind") or "").upper()
+    users = _load_users(); user = _find_user(users, evt.get("user") or evt.get("username") or "chatgpt")
+    if not user: return {"ok": False, "err":"no_user"}
+    if kind in ("ATTRIBUTED","PAID"):
+        usd = float(evt.get("value_usd") or evt.get("amount_usd") or 0.0)
+        credit_aigx(user, int(round(usd)), f"{kind}:{evt.get('provider','unknown')}")
+        if kind=="PAID": autostake(user, usd)
+        if evt.get("bundle_id"):
+            b = user.setdefault("bundle_experiments",{}).setdefault(evt["bundle_id"], {"rev_usd":0.0,"events":0})
+            b["rev_usd"] = float(b["rev_usd"]) + usd; b["events"] = int(b["events"]) + 1
+        if evt.get("mesh_session_id"):
+            user.setdefault("mesh",{}).setdefault("sessions",[]).append({"id":evt["mesh_session_id"],"kind":kind,"usd":usd,"ts":_now()})
+    if kind.startswith("INTENT_"):
+        user.setdefault("intents", []).append({"ts": _now(), **evt})
+    if kind.startswith("DEALGRAPH_"):
+        user.setdefault("dealGraph", {"nodes":[], "edges":[], "revSplit":[]}).setdefault("events", []).append({"ts": _now(), **evt})
+    if kind.startswith("FRANCHISE_"):
+        user.setdefault("franchise_packs", []).append({"ts": _now(), **evt})
+    if kind.startswith("R3_"):
+        r3 = user.setdefault("r3", {"budget_usd":0,"last_allocation":None})
+        if kind=="R3_ALLOCATED": r3["last_allocation"]={"ts":_now(),"usd":evt.get("usd",0),"channel":evt.get("channel")}
+    ok=_save_users(users); _emit(kind, evt); return {"ok": ok}
