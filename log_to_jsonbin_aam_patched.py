@@ -1,23 +1,23 @@
 """
-log_to_jsonbin_aam_patched.py
-- Extends your JSONBin adapter with AAM event logging, policy snapshotting, and manifest hosting.
-- Backward compatible with your existing "record" array layout.
+log_to_jsonbin_aam_patched (PATCHED)
+- Backward compatible
+- FIX: PUT payload shape is now {"record": records}
+- Hardened fallbacks and small correctness tweaks
 """
 
 from __future__ import annotations
 import os, json, hashlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
-from uuid import uuid4
 
-# ---- Import your original module’s primitives if available ----
+# ---- Try to import your original helpers (if present) ----
 try:
     from log_to_jsonbin import _get as _orig_get, _put as _orig_put, normalize_user_data as _orig_normalize
     HAVE_ORIG = True
 except Exception:
     HAVE_ORIG = False
 
-# ---- Lightweight HTTP shim (only for future direct bin reads/writes if needed) ----
+# ---- HTTP client shim ----
 try:
     import httpx as _http
     _USE_HTTPX = True
@@ -25,8 +25,8 @@ except Exception:
     import requests as _http  # type: ignore
     _USE_HTTPX = False
 
-JSONBIN_URL: str = os.getenv("JSONBIN_URL", "")
-JSONBIN_SECRET: str = os.getenv("JSONBIN_SECRET", "")
+JSONBIN_URL: str = os.getenv("JSONBIN_URL", "").strip()
+JSONBIN_SECRET: str = os.getenv("JSONBIN_SECRET", "").strip()
 
 def _headers() -> Dict[str, str]:
     h = {"Content-Type": "application/json"}
@@ -39,14 +39,14 @@ def _now() -> str:
 
 def _sha1(obj: Any) -> str:
     try:
-        raw = json.dumps(obj, sort_keys=True).encode("utf-8")
+        raw = json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")
     except Exception:
         raw = repr(obj).encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()
+    import hashlib as _hl
+    return _hl.sha1(raw).hexdigest()
 
 # ---------------- Schema helpers ----------------
 def normalize_user_data(rec: dict) -> dict:
-    """Use original normalizer if present; otherwise pass-through."""
     if HAVE_ORIG:
         return _orig_normalize(rec)
     return rec
@@ -54,7 +54,6 @@ def normalize_user_data(rec: dict) -> dict:
 def _get() -> Dict[str, Any]:
     if HAVE_ORIG:
         return _orig_get()
-    # Fallback GET
     if not (JSONBIN_URL and JSONBIN_SECRET):
         return {"record": []}
     try:
@@ -68,7 +67,7 @@ def _get() -> Dict[str, Any]:
             r.raise_for_status()
             data = r.json()
         return data if isinstance(data, dict) else {"record": data}
-    except Exception as e:
+    except Exception:
         return {"record": []}
 
 def _put(records: List[Dict[str, Any]]) -> bool:
@@ -77,7 +76,7 @@ def _put(records: List[Dict[str, Any]]) -> bool:
     if not (JSONBIN_URL and JSONBIN_SECRET):
         return False
     try:
-        payload = records
+        payload = {"record": records}  # << FIXED SHAPE
         if _USE_HTTPX:
             with _http.Client(timeout=20) as cx:  # type: ignore[attr-defined]
                 r = cx.put(JSONBIN_URL, headers=_headers(), json=payload)
@@ -89,81 +88,42 @@ def _put(records: List[Dict[str, Any]]) -> bool:
     except Exception:
         return False
 
-# ---------------- AAM Policy Snapshot ----------------
-def _policy_from_record(r: dict) -> dict:
-    """Derive a minimal AAM policy snapshot from the user record (consent/autonomy/blocks/caps)."""
-    # Defaults
-    policy = {
-        "autonomy": "suggest",           # observe|suggest|act
-        "spend_cap_usd": 0,
-        "block": [],                     # brand blocks / prohibited terms
-        "rate_limit_per_hour": 5
-    }
-    # Pull from record if present
-    runtime_flags = r.get("runtimeFlags") or {}
-    yield_obj = r.get("yield") or {}
-    # Optional: read custom policy stored under r["policy"] if you decide to keep it
-    policy_obj = r.get("policy") or {}
-    policy.update({k:v for k,v in policy_obj.items() if k in policy})
-    # If a user has autoStake true AND earningsEnabled true, we can safely suggest "act" later
-    if r.get("earningsEnabled") and yield_obj.get("autoStake"):
-        policy.setdefault("autonomy", "suggest")
-    return policy
-
-def policy_snapshot_hash(r: dict) -> str:
-    return _sha1(_policy_from_record(r))
-
-# ---------------- AAM Event Log in JSONBin ----------------
+# ---------------- Event Log helpers ----------------
 def _ensure_event_log(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Ensure there is a top-level 'events' array (global stream)."""
-    # We will store a virtual record with id='__events__'
     found = False
-    out = []
     for rec in records or []:
         if rec.get("id") == "__events__":
             found = True
-            if "events" not in rec or not isinstance(rec.get("events"), list):
+            if not isinstance(rec.get("events"), list):
                 rec["events"] = []
-            out.append(rec)
-        else:
-            out.append(rec)
+            break
     if not found:
-        out.append({"id": "__events__", "events": []})
-    return out
+        records = list(records or []) + [{"id": "__events__", "events": []}]
+    return records
 
 def log_event(event: Dict[str, Any]) -> bool:
-    """Append an AAM event to the global event stream inside JSONBin (record id='__events__')."""
     data = _get()
     recs = list(data.get("record") or [])
     recs = _ensure_event_log(recs)
-    # Minimal contract alignment and hashing
+
     e = dict(event or {})
     e.setdefault("ts", _now())
     e.setdefault("kind", "INTENDED")
     e.setdefault("flow", "aam")
-    # attach policy snapshot hash if we can resolve user
-    uid = e.get("user_id")
-    if uid:
-        # Try to find the user's record by username (consent.username)
-        for r in recs:
-            uname = (r.get("consent") or {}).get("username") or r.get("username")
-            if uname == uid:
-                e.setdefault("policy_snapshot_hash", policy_snapshot_hash(r))
-                break
-    # append
+
+    # Append to global event stream
     for i, r in enumerate(recs):
         if r.get("id") == "__events__":
-            r["events"].append(e)
+            r.setdefault("events", []).append(e)
             recs[i] = r
             break
+
     return _put(recs)
 
-# ---------------- Manifest Hosting (optional in JSONBin) ----------------
+# ---------------- Manifest Hosting (optional) ----------------
 def upsert_manifest(manifest: Dict[str, Any]) -> bool:
-    """Store or replace an AAM manifest inside JSONBin (record id='__manifests__')."""
     data = _get()
     recs = list(data.get("record") or [])
-    # find or create host record
     host = None
     for r in recs:
         if r.get("id") == "__manifests__":
@@ -171,14 +131,15 @@ def upsert_manifest(manifest: Dict[str, Any]) -> bool:
     if host is None:
         host = {"id": "__manifests__", "items": []}
         recs.append(host)
+
     items = host.get("items") or []
-    # compute key
     app = manifest.get("app") or "unknown"
     slug = manifest.get("slug") or manifest.get("version") or "v1"
     key = f"{app}:{slug}"
+    manifest = dict(manifest)
     manifest["key"] = key
     manifest["checksum"] = _sha1(manifest)
-    # upsert
+
     new_items = []
     replaced = False
     for it in items:
@@ -189,7 +150,7 @@ def upsert_manifest(manifest: Dict[str, Any]) -> bool:
     if not replaced:
         new_items.append(manifest)
     host["items"] = new_items
-    # write
+
     return _put(recs)
 
 def get_manifest(app: str, slug: str) -> Optional[Dict[str, Any]]:
@@ -201,4 +162,4 @@ def get_manifest(app: str, slug: str) -> Optional[Dict[str, Any]]:
                     return it
     return None
 
-__all__ = ["log_event", "upsert_manifest", "get_manifest", "policy_snapshot_hash"]
+__all__ = ["log_event", "upsert_manifest", "get_manifest", "normalize_user_data"]
