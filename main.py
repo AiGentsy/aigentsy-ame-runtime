@@ -339,6 +339,38 @@ async def _load_users(client: httpx.AsyncClient) -> List[Dict[str, Any]]:
 async def _save_users(client: httpx.AsyncClient, users: List[Dict[str, Any]]):
     await _jsonbin_put(client, users)
 
+# ---- Shared helpers (added) ----
+async def _get_users_client():
+    client = httpx.AsyncClient(timeout=20)
+    data = await _jsonbin_get(client)
+    users = data.get("record", [])
+    return users, client
+
+def _find_user(users, username: str):
+    uname = (username or "").lower()
+    for u in users:
+        u_un = (u.get("username") or (u.get("consent", {}) or {}).get("username") or "").lower()
+        if u_un == uname:
+            return u
+    return None
+
+def _require_key(users, username: str, provided: str | None):
+    if provided and provided == os.getenv("ADMIN_TOKEN",""):
+        return True
+    u = _find_user(users, username)
+    if not u:
+        raise HTTPException(status_code=404, detail="user not found")
+    keys = [k for k in (u.get("api_keys") or []) if not k.get("revoked")]
+    if not keys:
+        if os.getenv("DEV_ALLOW_NO_API_KEY","").lower() in ("1","true","yes"):
+            return True
+        raise HTTPException(status_code=401, detail="no api keys on file")
+    if not provided:
+        raise HTTPException(status_code=401, detail="missing X-API-Key")
+    if not any(k.get("key")==provided for k in keys):
+        raise HTTPException(status_code=401, detail="invalid api key")
+    return True
+
 def _uname(u: Dict[str, Any]) -> str:
     return u.get("username") or (u.get("consent", {}) or {}).get("username")
 
@@ -1723,7 +1755,7 @@ async def contacts_import(request: Request, x_api_key: str | None = Header(None,
         _require_key(users, username, x_api_key)
         if not u: return {"error":"user not found"}
         _ensure_business(u)
-        u["crm"].extend(new_contacts)
+        u.setdefault("crm", []).extend(new_contacts)
         await _save_users(client, users)
         return {"ok": True, "added": len(new_contacts)}
 
@@ -2484,11 +2516,11 @@ async def concierge_triage(text: str):
 # ===== AiGentsy AAM — helpers (idempotent) =====
 import base64, hmac, hashlib, os, json as _json
 
-def _now():
+def _now_utc():
     import datetime as _dt
     return _dt.datetime.utcnow().isoformat() + "Z"
 
-def _uid():
+def _uid_gen():
     import uuid as _uuid
     return str(_uuid.uuid4())
 
