@@ -1,0 +1,9 @@
+{
+  "name": "growth-retarget-r3-v1",
+  "description": "Allocate growth budget via R\u00b3",
+  "actions": [
+    {
+      "type": "r3.allocate"
+    }
+  ]
+}

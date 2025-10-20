@@ -1,0 +1,16 @@
+{
+  "name": "shopify-inventory-aware-v1",
+  "description": "Offer logic that checks Shopify inventory",
+  "conditions": [
+    {
+      "type": "abort_if.stock_lt",
+      "field": "stock",
+      "lt": 1
+    }
+  ],
+  "actions": [
+    {
+      "type": "offer.present"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "proposal-autoclose-v1",
+  "description": "Nudge proposals and convert to quickpay SKUs",
+  "actions": [
+    {
+      "type": "proposal.nudge"
+    },
+    {
+      "type": "proposal.convert"
+    }
+  ]
+}

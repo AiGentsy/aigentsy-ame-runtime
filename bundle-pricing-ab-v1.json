@@ -1,0 +1,12 @@
+{
+  "name": "bundle-pricing-ab-v1",
+  "description": "Run A/B tests on bundle pricing",
+  "actions": [
+    {
+      "type": "price.arm.start"
+    },
+    {
+      "type": "price.arm.record"
+    }
+  ]
+}

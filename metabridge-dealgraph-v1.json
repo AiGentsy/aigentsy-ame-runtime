@@ -1,0 +1,12 @@
+{
+  "name": "metabridge-dealgraph-v1",
+  "description": "Create + activate deal graphs spanning multiple roles",
+  "actions": [
+    {
+      "type": "dealgraph.create"
+    },
+    {
+      "type": "dealgraph.activate"
+    }
+  ]
+}
