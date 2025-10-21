@@ -1321,6 +1321,49 @@ async def metahive_summary(request: Request):
         enabled = [u for u in users if u.get("metahive", {}).get("enabled")]
         return {"ok": True, "members": len(enabled)}
 
+# === TEMPLATE CATALOG ROUTES (non-destructive) ===
+try:
+    from fastapi import APIRouter
+    from templates_catalog import list_templates, search_templates, get_template
+except Exception:
+    APIRouter = None
+
+_tpl_router = APIRouter() if 'APIRouter' in globals() and APIRouter else None
+
+if _tpl_router:
+    @_tpl_router.get('/templates/list')
+    async def templates_list():
+        try:
+            return {'ok': True, 'templates': list_templates()}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @_tpl_router.get('/templates/search')
+    async def templates_search(q: str = ''):
+        try:
+            return {'ok': True, 'templates': search_templates(q)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @_tpl_router.post('/templates/activate')
+    async def templates_activate(payload: dict):
+        """Activate a template (echo-only for now; frontend also passes context)."""
+        try:
+            tid = payload.get('id') or payload.get('template_id')
+            t = get_template(tid)
+            if not t:
+                return {'ok': False, 'error': 'template_not_found'}
+            return {'ok': True, 'active_template': t}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+try:
+    app  # type: ignore
+    if _tpl_router:
+        app.include_router(_tpl_router)
+except Exception:
+    pass
+
 # ================================
 # >>> Business-in-a-Box: NEW ROUTES <<<
 # ================================
