@@ -2914,3 +2914,9 @@ try:
 except Exception:
     # No FastAPI app found or not constructed yet — safe to skip
     pass
+
+# --- Alias route to match admin requirement (/events/stream) ---
+@app.get("/events/stream")
+async def events_stream():
+    # Reuse the existing SSE generator
+    return await stream_activity()
