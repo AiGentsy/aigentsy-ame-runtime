@@ -1,57 +1,79 @@
-import os, time, json, uuid, typing as T, requests, datetime as dt
-def _now(): return dt.datetime.utcnow().isoformat()+"Z"
-def _uid(): return str(uuid.uuid4())
-def _emit(kind, data):
-    try:
-        from events import emit; emit(kind, data)
-    except Exception: pass
-    try:
-        from log_to_jsonbin_aam_patched import log_event; log_event({"kind":kind, **(data or {})})
-    except Exception: pass
-JSONBIN_URL = os.getenv("JSONBIN_URL",""); JSONBIN_SECRET = os.getenv("JSONBIN_SECRET",""); HTTP = requests.Session()
-def _load_users():
-    if not JSONBIN_URL: return []
-    r = HTTP.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET}, timeout=20)
-    try: x=r.json(); return x.get("record") if isinstance(x,dict) else x
-    except Exception: return []
-def _save_users(users):
-    if not JSONBIN_URL: return False
-    r = HTTP.put(JSONBIN_URL, json={"record": users}, headers={"X-Master-Key": JSONBIN_SECRET}, timeout=20)
-    return (r.status_code//100)==2
-def _find_user(users, username):
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+try:
+    from .jsonbin_client import JSONBinClient
+except Exception:
+    JSONBinClient = None
+try:
+    from .event_bus import publish
+except Exception:
+    def publish(*a, **k): pass
+
+AIGX_PER_DOLLAR = 1.0
+router = APIRouter()
+
+class Event(BaseModel):
+    user_id: str
+    source: str
+    kind: str
+    amount_usd: Optional[float]=0.0
+    metadata: Optional[Dict[str, Any]] = None
+
+def _ensure_user_fields(record:dict, uid:str):
+    users = record.get("users") or record.get("Users") or []
+    target = None
     for u in users:
-        un = u.get("username") or u.get("consent",{}).get("username")
-        if un == username: return u
-    return users[0] if users else None
-def credit_aigx(user, amount, reason):
-    y = user.setdefault("yield", {}); y["aigxEarned"] = int(y.get("aigxEarned",0)) + int(amount)
-    user.setdefault("transactions",{}).setdefault("yieldEvents",[]).append({"id":_uid(),"ts":_now(),"amount":amount,"reason":reason})
-    return amount
-def autostake(user, paid_usd):
-    pol = user.setdefault("autoStake_policy", {"ratio":0.25,"weekly_cap_usd":50,"enabled":True})
-    if not pol.get("enabled"): return 0.0
-    amt = min(float(paid_usd)*float(pol.get("ratio",0.25)), float(pol.get("weekly_cap_usd",50)))
-    user.setdefault("wallet",{}); user["wallet"]["staked"]=float(user["wallet"].get("staked",0))+float(amt); return amt
-def on_event(evt: dict):
-    kind = (evt.get("kind") or "").upper()
-    users = _load_users(); user = _find_user(users, evt.get("user") or evt.get("username") or "chatgpt")
-    if not user: return {"ok": False, "err":"no_user"}
-    if kind in ("ATTRIBUTED","PAID"):
-        usd = float(evt.get("value_usd") or evt.get("amount_usd") or 0.0)
-        credit_aigx(user, int(round(usd)), f"{kind}:{evt.get('provider','unknown')}")
-        if kind=="PAID": autostake(user, usd)
-        if evt.get("bundle_id"):
-            b = user.setdefault("bundle_experiments",{}).setdefault(evt["bundle_id"], {"rev_usd":0.0,"events":0})
-            b["rev_usd"] = float(b["rev_usd"]) + usd; b["events"] = int(b["events"]) + 1
-        if evt.get("mesh_session_id"):
-            user.setdefault("mesh",{}).setdefault("sessions",[]).append({"id":evt["mesh_session_id"],"kind":kind,"usd":usd,"ts":_now()})
-    if kind.startswith("INTENT_"):
-        user.setdefault("intents", []).append({"ts": _now(), **evt})
-    if kind.startswith("DEALGRAPH_"):
-        user.setdefault("dealGraph", {"nodes":[], "edges":[], "revSplit":[]}).setdefault("events", []).append({"ts": _now(), **evt})
-    if kind.startswith("FRANCHISE_"):
-        user.setdefault("franchise_packs", []).append({"ts": _now(), **evt})
-    if kind.startswith("R3_"):
-        r3 = user.setdefault("r3", {"budget_usd":0,"last_allocation":None})
-        if kind=="R3_ALLOCATED": r3["last_allocation"]={"ts":_now(),"usd":evt.get("usd",0),"channel":evt.get("channel")}
-    ok=_save_users(users); _emit(kind, evt); return {"ok": ok}
+        if u.get("id")==uid or u.get("consent",{}).get("username")==uid:
+            target = u; break
+    if not target:
+        target = {"id": uid}
+        users.append(target)
+        record["users"] = users
+    target.setdefault("dealGraph", {"nodes": [], "edges": [], "revSplit": []})
+    target.setdefault("intents", [])
+    target.setdefault("r3", {"budget_usd": 0, "last_allocation": None})
+    target.setdefault("mesh", {"sessions": []})
+    target.setdefault("coop", {"pool_usd": 0, "sponsors": []})
+    target.setdefault("autoStake_policy", {"ratio": 0.25, "weekly_cap_usd": 50, "enabled": True})
+    target.setdefault("franchise_packs", [])
+    target.setdefault("risk", {"complaints_rate": 0, "riskScore": 0, "region": "US"})
+    target.setdefault("channel_pacing", [{"channel":"tiktok","min":0,"max":50}])
+    target.setdefault("skills", [])
+    target.setdefault("bounties_seen", [])
+    target.setdefault("assets_published", [])
+    target.setdefault("reactivation", {"last_run": None, "outcomes": []})
+    target.setdefault("wallet", {}).setdefault("aigx", 0)
+    target.setdefault("kpis", {"paid_events":0,"gmv_usd":0.0,"earnings_week_usd":0.0})
+    return record, target
+
+@router.post("/event")
+def receive_event(event: Event):
+    data = {}
+    if JSONBinClient:
+        try:
+            jb = JSONBinClient(); data = jb.get_latest().get("record") or {}
+        except Exception: data = {}
+    data, user = _ensure_user_fields(data, event.user_id)
+
+    if event.kind in ("PURCHASED","PAID","PAID_ESCROW","REUSE_FEE_PAID","NETTED_PROFIT"):
+        user["wallet"]["aigx"] = round(float(user["wallet"].get("aigx",0)) + float(event.amount_usd or 0)*AIGX_PER_DOLLAR, 2)
+        user["kpis"]["gmv_usd"] = round(float(user["kpis"].get("gmv_usd",0.0)) + float(event.amount_usd or 0), 2)
+        if event.kind in ("PAID","PAID_ESCROW"):
+            user["kpis"]["paid_events"] = int(user["kpis"].get("paid_events",0)) + 1
+            publish("PAID", {"user_id":event.user_id,"amount_usd":event.amount_usd})
+            pol = user.get("autoStake_policy", {})
+            if pol.get("enabled"):
+                ratio = float(pol.get("ratio",0.25))
+                budget = round((event.amount_usd or 0.0) * ratio, 2)
+                publish("R3_ENQUEUE", {"user_id":event.user_id,"budget_usd":budget})
+
+    if event.kind in ("PROPOSAL_STALLED","ABANDONED_CART","REACTIVATION_SENT","FLASH_SALE_FIRED"):
+        publish(event.kind, {"user_id":event.user_id, "meta":event.metadata or {}})
+
+    user["kpis"]["earnings_week_usd"] = round(float(user["kpis"].get("earnings_week_usd",0.0)) + float(event.amount_usd or 0), 2)
+
+    if JSONBinClient:
+        try: jb.put_record(data)
+        except Exception: pass
+    return {"ok": True, "user": event.user_id}
