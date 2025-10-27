@@ -1,4 +1,21 @@
+from fastapi import APIRouter
+from pydantic import BaseModel
 
-# proposal_autoclose.py
-def nudge(proposal_id: str) -> dict: return {"ok": True, "proposal_id": proposal_id, "event": "PROPOSAL_NUDGED"}
-def convert_to_quickpay(proposal_id: str) -> dict: return {"ok": True, "proposal_id": proposal_id, "event": "PROPOSAL_CONVERTED"}
+router = APIRouter()
+
+class NudgeReq(BaseModel):
+    user_id: str
+    proposal_id: str
+
+class ConvertReq(BaseModel):
+    user_id: str
+    proposal_id: str
+
+@router.post("/proposal/nudge")
+def nudge(req: NudgeReq):
+    return {"ok": True, "nudged": req.proposal_id}
+
+@router.post("/proposal/convert")
+def convert(req: ConvertReq):
+    url = f"https://shop.quick/{req.proposal_id}"
+    return {"ok": True, "converted": req.proposal_id, "url": url}
