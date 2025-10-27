@@ -1,14 +1,29 @@
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import List
+from .jsonbin_client import JSONBinClient
 
-# franchise.py
-from typing import List, Dict, Any
-from uuid import uuid4
-_PACKS: Dict[str, Dict[str,Any]] = {}
-def publish_pack(author: str, manifests: List[str], fee_pct: float) -> Dict[str,Any]:
-    pid = str(uuid4())
-    _PACKS[pid] = {"id": pid, "author": author, "manifests": manifests, "fee_pct": float(fee_pct), "active_users": []}
-    return _PACKS[pid]
-def activate_pack(user: str, pack_id: str) -> Dict[str,Any]:
-    p = _PACKS.get(pack_id)
-    if not p: raise ValueError("pack not found")
-    if user not in p["active_users"]: p["active_users"].append(user)
-    return {"ok": True, "pack": p}
+router = APIRouter()
+
+class PublishPack(BaseModel):
+    author: str
+    manifests: List[str]
+    fee_pct: float
+
+class ActivatePack(BaseModel):
+    user: str
+    pack_id: str
+
+@router.post("/publish_pack")
+def publish_pack(req: PublishPack):
+    jb = JSONBinClient()
+    data = jb.get_latest().get("record") or {}
+    fps = data.setdefault("franchise_packs", [])
+    pid = f"fp_{len(fps)+1}"
+    fps.append({"id":pid,"author":req.author,"manifests":req.manifests,"fee_pct":req.fee_pct})
+    jb.put_record(data)
+    return {"ok": True, "pack_id": pid}
+
+@router.post("/activate_pack")
+def activate_pack(req: ActivatePack):
+    return {"ok": True, "activated": req.pack_id, "user": req.user}
