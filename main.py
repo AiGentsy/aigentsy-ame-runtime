@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 import asyncio
 import hashlib
 import hmac
+import time as _time
 # ============================
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
@@ -32,6 +33,14 @@ import os, logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
+# --- internal signing for trusted backend calls ---
+def _sign_payload(body_bytes: bytes) -> dict:
+    secret = os.getenv("HMAC_SECRET", "")
+    if not secret:
+        return {}
+    ts = str(int(_time.time()))
+    sig = hmac.new(secret.encode(), (ts + "." + body_bytes.decode()).encode(), hashlib.sha256).hexdigest()
+    return {"X-Ts": ts, "X-Sign": sig}
 
 app = FastAPI()
 
@@ -953,18 +962,19 @@ async def revenue_split(request: Request, x_api_key: str | None = Header(None, a
 
         mesh = origin.get("jvMesh", []) or []
         targets = []
+        # resolve targets
         if jvId:
             jv = _find_in(mesh, "id", jvId)
-            if not jv: return {"error":"jv not found"}
-            split = jv.get("split", {"a":0.5,"b":0.5})
-            # assume A is origin for simplicity; for real use, include explicit usernames in JV entry
-            targets = [(username, split.get("a",0.5)), ("partner", split.get("b",0.5))]
-        else:
-            if not mesh:
+            if not jv:
+                return {"error": "jv not found"}
+            jv_split = jv.get("split") or []
+            if not jv_split:
                 targets = [(username, 1.0)]
             else:
-                eq = 1.0/len(mesh)
-                targets = [(username, eq) for _ in mesh]
+                targets = [(name, float(frac)) for name, frac in jv_split if float(frac) > 0]
+        else:
+            targets = [(username, 1.0)]
+
 
         for uname, frac in targets:
             u = find_user(uname) or origin
