@@ -1321,6 +1321,49 @@ async def metahive_summary(request: Request):
         enabled = [u for u in users if u.get("metahive", {}).get("enabled")]
         return {"ok": True, "members": len(enabled)}
 
+# === TEMPLATE CATALOG ROUTES (non-destructive) ===
+try:
+    from fastapi import APIRouter
+    from templates_catalog import list_templates, search_templates, get_template
+except Exception:
+    APIRouter = None
+
+_tpl_router = APIRouter() if 'APIRouter' in globals() and APIRouter else None
+
+if _tpl_router:
+    @_tpl_router.get('/templates/list')
+    async def templates_list():
+        try:
+            return {'ok': True, 'templates': list_templates()}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @_tpl_router.get('/templates/search')
+    async def templates_search(q: str = ''):
+        try:
+            return {'ok': True, 'templates': search_templates(q)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @_tpl_router.post('/templates/activate')
+    async def templates_activate(payload: dict):
+        """Activate a template (echo-only for now; frontend also passes context)."""
+        try:
+            tid = payload.get('id') or payload.get('template_id')
+            t = get_template(tid)
+            if not t:
+                return {'ok': False, 'error': 'template_not_found'}
+            return {'ok': True, 'active_template': t}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+try:
+    app  # type: ignore
+    if _tpl_router:
+        app.include_router(_tpl_router)
+except Exception:
+    pass
+
 # ================================
 # >>> Business-in-a-Box: NEW ROUTES <<<
 # ================================
@@ -2656,3 +2699,342 @@ async def webhook_amazon(request: Request):
     topic = payload.get("event") or request.headers.get("X-Amazon-Event", "unknown")
     rec = await _record_provider_event("amazon", topic, payload)
     return {"ok": True, **(rec or {})}
+
+
+# === AIGENTSY EXPANSION ROUTES (non-destructive) ===
+try:
+    from fastapi import APIRouter, Request
+except Exception:
+    APIRouter = None
+    Request = None
+
+# Create a router to avoid touching your existing app routes.
+_expansion_router = APIRouter() if 'APIRouter' in globals() and APIRouter else None
+
+def _safe_json(obj):
+    try:
+        import json
+        json.dumps(obj)
+        return obj
+    except Exception:
+        return {"ok": False, "error": "unserializable_response"}
+
+def _event_emit(kind: str, data: dict):
+    try:
+        from events import emit as _emit
+        _emit(kind, data or {})
+    except Exception:
+        pass
+    try:
+        from log_to_jsonbin_aam_patched import log_event as _log
+        _log({"kind": kind, **(data or {})})
+    except Exception:
+        pass
+
+# ----- MetaBridge DealGraph -----
+if _expansion_router:
+    @_expansion_router.post("/metabridge/dealgraph/create")
+    async def metabridge_dealgraph_create(payload: dict):
+        try:
+            from metabridge_dealgraph import create_dealgraph
+            opportunity = payload.get("opportunity") or {}
+            roles = payload.get("roles") or payload.get("roles_needed") or []
+            rev_split = payload.get("rev_split") or []
+            graph = create_dealgraph(opportunity, roles, rev_split)
+            _event_emit("DEALGRAPH_CREATED", {"graph_id": graph.get("id"), **opportunity})
+            return _safe_json({"ok": True, "graph": graph})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @_expansion_router.post("/metabridge/dealgraph/activate")
+    async def metabridge_dealgraph_activate(payload: dict):
+        try:
+            from metabridge_dealgraph import activate
+            gid = payload.get("graph_id") or payload.get("id")
+            res = activate(gid)
+            _event_emit("DEALGRAPH_ACTIVATED", {"graph_id": gid})
+            return _safe_json({"ok": True, "result": res})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- Pricing A/B Arm -----
+if _expansion_router:
+    @_expansion_router.post("/pricing/arm")
+    async def pricing_arm_endpoint(payload: dict):
+        try:
+            from pricing_arm import start_bundle_test, next_arm, record_outcome, best_arm
+            op = (payload.get("op") or "").lower()
+            username = payload.get("username") or payload.get("user") or "chatgpt"
+            if payload.get("bundles") and not op:
+                op = "start"
+            if payload.get("bundle_id") and "revenue_usd" in payload and not op:
+                op = "record"
+
+            if op == "start":
+                bundles = payload.get("bundles") or []
+                epsilon = float(payload.get("epsilon", 0.15))
+                exp = await start_bundle_test(username, bundles, epsilon)
+                return _safe_json({"ok": True, "experiment": exp})
+            elif op == "next":
+                exp_id = payload.get("exp_id")
+                arm = await next_arm(username, exp_id)
+                return _safe_json({"ok": True, "choice": arm})
+            elif op == "record":
+                exp_id = payload.get("exp_id")
+                bundle_id = payload.get("bundle_id")
+                revenue = float(payload.get("revenue_usd", 0))
+                out = await record_outcome(username, exp_id, bundle_id, revenue)
+                _event_emit("PAID", {"user": username, "value_usd": revenue, "bundle_id": bundle_id})
+                return _safe_json(out)
+            elif op == "best":
+                exp_id = payload.get("exp_id")
+                out = await best_arm(username, exp_id)
+                return _safe_json({"ok": True, "best": out})
+            else:
+                return {"ok": False, "error": "unknown_op", "hint": "use op=start|next|record|best"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- Intent Exchange -----
+if _expansion_router:
+    @_expansion_router.post("/intents/publish")
+    async def intents_publish(payload: dict):
+        try:
+            from intent_exchange import publish
+            res = publish(payload.get("intent") or payload)
+            _event_emit("INTENT_PUBLISHED", {"id": res.get("id")})
+            return _safe_json({"ok": True, "intent": res})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @_expansion_router.post("/intents/claim")
+    async def intents_claim(payload: dict):
+        try:
+            from intent_exchange import claim
+            iid = payload.get("intent_id") or payload.get("id")
+            agent = payload.get("agent") or payload.get("username")
+            res = claim(iid, agent)
+            _event_emit("INTENT_CLAIMED", {"id": iid, "agent": agent})
+            return _safe_json({"ok": True, "intent": res})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @_expansion_router.post("/intents/settle")
+    async def intents_settle(payload: dict):
+        try:
+            from intent_exchange import settle
+            iid = payload.get("intent_id") or payload.get("id")
+            outcome = payload.get("outcome") or {}
+            res = settle(iid, outcome)
+            _event_emit("INTENT_SETTLED", {"id": iid})
+            return _safe_json({"ok": True, "intent": res})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- R³ allocation -----
+if _expansion_router:
+    @_expansion_router.post("/r3/allocate")
+    async def r3_allocate(payload: dict):
+        try:
+            from r3_router import allocate
+            user = payload.get("user") or {"id": payload.get("username") or "chatgpt", "channel_pacing": payload.get("channel_pacing") or []}
+            budget = float(payload.get("budget_usd", 0))
+            res = allocate(user, budget)
+            for a in res.get("allocations", []):
+                _event_emit("R3_ALLOCATED", {"user": res.get("user"), "usd": a.get("usd"), "channel": a.get("channel")})
+            return _safe_json({"ok": True, **res})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- Shopify inventory proxy -----
+if _expansion_router:
+    @_expansion_router.get("/inventory/get")
+    async def inventory_get(product_id: str):
+        try:
+            from shopify_inventory_proxy import get_stock
+            return _safe_json({"ok": True, **get_stock(product_id)})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- Co-op sponsors -----
+if _expansion_router:
+    @_expansion_router.post("/coop/sponsor")
+    async def coop_sponsor(payload: dict):
+        try:
+            from coop_sponsors import sponsor_add, state
+            name = payload.get("name") or "anon"
+            cap = float(payload.get("spend_cap_usd", 0))
+            sponsor_add(name, cap)
+            return _safe_json({"ok": True, "state": state()})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- LTV predictor -----
+if _expansion_router:
+    @_expansion_router.post("/ltv/predict")
+    async def ltv_predict(payload: dict):
+        try:
+            from ltv_forecaster import predict
+            user = payload.get("user") or {}
+            channel = payload.get("channel") or "tiktok"
+            val = predict(user, channel)
+            return _safe_json({"ok": True, "ltv": float(val)})
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ----- Proposal auto-close -----
+if _expansion_router:
+    @_expansion_router.post("/proposal/nudge")
+    async def proposal_nudge(payload: dict):
+        try:
+            from proposal_autoclose import nudge
+            pid = payload.get("proposal_id") or payload.get("id")
+            res = nudge(pid)
+            _event_emit("PROPOSAL_NUDGED", {"proposal_id": pid})
+            return _safe_json(res)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @_expansion_router.post("/proposal/convert")
+    async def proposal_convert(payload: dict):
+        try:
+            from proposal_autoclose import convert_to_quickpay
+            pid = payload.get("proposal_id") or payload.get("id")
+            res = convert_to_quickpay(pid)
+            _event_emit("PROPOSAL_CONVERTED", {"proposal_id": pid})
+            return _safe_json(res)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+# ---- Mount the router if an app exists ----
+try:
+    app  # type: ignore  # check if app is already defined in your file
+    if _expansion_router:
+        app.include_router(_expansion_router)
+except Exception:
+    # No FastAPI app found or not constructed yet — safe to skip
+    pass
+
+# --- Alias route to match admin requirement (/events/stream) ---
+@app.get("/events/stream")
+async def events_stream():
+    # Reuse the existing SSE generator
+    return await stream_activity()
+
+# === Expansion router (ensures required endpoints exist) ===
+from fastapi import APIRouter, Request, HTTPException
+_expansion_router = APIRouter()
+
+@_expansion_router.post("/pricing/arm")
+async def _exp_pricing_arm(payload: dict):
+    try:
+        from pricing_arm import start_bundle_test, next_arm, record_outcome, best_arm
+        op = (payload.get("op") or "").lower()
+        if payload.get("bundles") and not op: op = "start"
+        if payload.get("bundle_id") and "revenue_usd" in payload and not op: op = "record"
+        if op == "start":
+            return {"ok": True, "experiment": await start_bundle_test(payload.get("username","sys"), payload.get("bundles"), float(payload.get("epsilon",0.15)))}
+        if op == "next":
+            return {"ok": True, "choice": await next_arm(payload.get("username","sys"), payload.get("exp_id"))}
+        if op == "record":
+            out = await record_outcome(payload.get("username","sys"), payload.get("exp_id"), payload.get("bundle_id"), float(payload.get("revenue_usd",0)))
+            return {"ok": True, **out}
+        if op == "best":
+            return {"ok": True, "best": await best_arm(payload.get("username","sys"), payload.get("exp_id"))}
+        return {"ok": False, "error": "unknown_op"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/intents/publish")
+async def _exp_intents_publish(payload: dict):
+    try:
+        from intent_exchange import publish
+        return {"ok": True, "intent": publish(payload.get("intent") or payload)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/intents/claim")
+async def _exp_intents_claim(payload: dict):
+    try:
+        from intent_exchange import claim
+        return {"ok": True, "intent": claim(payload.get("intent_id") or payload.get("id"), payload.get("agent") or payload.get("username"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/intents/settle")
+async def _exp_intents_settle(payload: dict):
+    try:
+        from intent_exchange import settle
+        return {"ok": True, "intent": settle(payload.get("intent_id") or payload.get("id"), payload.get("outcome") or {})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/r3/allocate")
+async def _exp_r3_allocate(payload: dict):
+    try:
+        from r3_router import allocate
+        return {"ok": True, **allocate(payload.get("user") or {}, float(payload.get("budget_usd",0)))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.get("/inventory/get")
+async def _exp_inventory_get(product_id: str):
+    try:
+        from shopify_inventory_proxy import get_stock
+        return {"ok": True, **get_stock(product_id)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/coop/sponsor")
+async def _exp_coop_sponsor(payload: dict):
+    try:
+        from coop_sponsors import sponsor_add, state
+        sponsor_add(payload.get("name") or "anon", float(payload.get("spend_cap_usd",0)))
+        return {"ok": True, "state": state()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/ltv/predict")
+async def _exp_ltv_predict(payload: dict):
+    try:
+        from ltv_forecaster import predict
+        return {"ok": True, "ltv": float(predict(payload.get("user") or {}, payload.get("channel") or "tiktok"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/proposal/nudge")
+async def _exp_proposal_nudge(payload: dict):
+    try:
+        from proposal_autoclose import nudge
+        return nudge(payload.get("proposal_id") or payload.get("id"))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/proposal/convert")
+async def _exp_proposal_convert(payload: dict):
+    try:
+        from proposal_autoclose import convert_to_quickpay
+        return convert_to_quickpay(payload.get("proposal_id") or payload.get("id"))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/metabridge/dealgraph/create")
+async def _exp_dg_create(payload: dict):
+    try:
+        from metabridge_dealgraph import create_dealgraph
+        return {"ok": True, "graph": create_dealgraph(payload.get("opportunity") or {}, payload.get("roles") or payload.get("roles_needed") or [], payload.get("rev_split") or [])}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@_expansion_router.post("/metabridge/dealgraph/activate")
+async def _exp_dg_activate(payload: dict):
+    try:
+        from metabridge_dealgraph import activate
+        return {"ok": True, "result": activate(payload.get("graph_id") or payload.get("id"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+try:
+    app.include_router(_expansion_router)
+except Exception:
+    pass
