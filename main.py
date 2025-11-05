@@ -823,7 +823,29 @@ async def metrics():
             "revenue": round(rev,2), "platform_fees": round(fee,2),
             "payouts": round(payouts,2), "invoices_open": round(invoices_open,2)
         }}
+# Add to main.py after your existing /user endpoint
 
+@app.get("/users/all")
+async def get_all_users(limit: int = 100):
+    """
+    Return all users (for matching). Paginate in production.
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])[:limit]
+        
+        # Strip sensitive data
+        safe_users = []
+        for u in users:
+            safe_users.append({
+                "username": u.get("username") or u.get("consent", {}).get("username"),
+                "traits": u.get("traits", []),
+                "outcomeScore": u.get("outcomeScore", 0),
+                "kits": list(u.get("kits", {}).keys()),
+                "meta_role": u.get("meta_role", ""),
+            })
+        
+        return {"ok": True, "users": safe_users, "count": len(safe_users)}
  # ---------- ALGO HINTS + SCHEDULER ----------
 @app.post("/algo/hints/upsert")
 async def algo_hints_upsert(body: Dict = Body(...)):
