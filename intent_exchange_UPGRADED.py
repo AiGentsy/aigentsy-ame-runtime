@@ -183,20 +183,38 @@ async def settle_intent(req: Settle):
     })
     
     escrow = float(it.get("escrow_usd") or 0.0)
-    if escrow > 0 and it.get("claimed_by"):
+    winner = it.get("claimed_by")
+    
+    if escrow > 0 and winner:
         async with httpx.AsyncClient(timeout=10) as client:
+            # Credit winner
             try:
                 await client.post(
                     "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
                     json={
-                        "username": it["claimed_by"],
+                        "username": winner,
                         "amount": escrow,
                         "basis": "intent_settlement",
                         "ref": req.intent_id
                     }
                 )
+                print(f"✅ Credited ${escrow} to {winner}")
             except Exception as e:
                 print(f"Failed to credit winner: {e}")
+            
+            # Auto-reallocate 20% to next campaign
+            try:
+                realloc_budget = round(escrow * 0.2, 2)
+                await client.post(
+                    "https://aigentsy-ame-runtime.onrender.com/r3/allocate",
+                    json={
+                        "user_id": winner,
+                        "budget_usd": realloc_budget
+                    }
+                )
+                print(f"✅ Auto-reallocated ${realloc_budget} for {winner}")
+            except Exception as e:
+                print(f"R³ reallocation failed: {e}")
     
     return {"ok": True, "escrow_released": escrow}
 
