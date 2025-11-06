@@ -3187,7 +3187,10 @@ async def _exp_intents_settle(payload: dict):
         return {"ok": True, "intent": settle(payload.get("intent_id") or payload.get("id"), payload.get("outcome") or {})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
+   
+# Mount it
+if r3_router:
+    app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
 @_expansion_router.post("/r3/allocate")
 async def _exp_r3_allocate(payload: dict):
     try:
@@ -3196,6 +3199,9 @@ async def _exp_r3_allocate(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+# Mount it
+if r3_router:
+    app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
 @_expansion_router.get("/inventory/get")
 async def _exp_inventory_get(product_id: str):
     try:
