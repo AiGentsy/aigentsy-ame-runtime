@@ -1221,13 +1221,69 @@ async def run_agent(request: Request):
     try:
         data = await request.json()
         user_input = data.get("input","")
-        if not user_input: return {"error":"No input provided."}
-        initial_state = {"input": user_input, "memory": []}
+        role = data.get("role", "CFO")  # CFO is venture_builder_agent (default)
+        username = data.get("username", "guest")
+        
+        if not user_input:
+            return {"error": "No input provided."}
+        
+        # Role-specific enforcement
+        ROLE_INSTRUCTIONS = {
+            "CFO": f"""CRITICAL: You are the CFO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CFO" or "the agent" — you ARE the CFO.
+Start with: "💰 CFO here —"
+Give 2-3 concrete financial next steps with ROI/pricing.
+End with ONE clarifying question.""",
+            
+            "CMO": f"""CRITICAL: You are the CMO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CMO" or "the growth agent" — you ARE the CMO.
+Start with: "📣 CMO here —"
+Give 2-3 concrete growth plays with channels/targets.
+End with ONE clarifying question.""",
+            
+            "CTO": f"""CRITICAL: You are the CTO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CTO" or "the SDK agent" — you ARE the CTO.
+Start with: "🧬 CTO here —"
+Give 2-3 concrete technical steps with build/integration plan.
+End with ONE clarifying question.""",
+            
+            "CLO": f"""CRITICAL: You are the CLO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CLO" or "the legal agent" — you ARE the CLO.
+Start with: "📜 CLO here —"
+Give 2-3 concrete legal/branding steps with risk mitigation.
+End with ONE clarifying question.""",
+        }
+        
+        # Inject role instruction into input
+        role_instruction = ROLE_INSTRUCTIONS.get(role, ROLE_INSTRUCTIONS["CFO"])
+        enhanced_input = f"{role_instruction}\n\nUser question: {user_input}"
+        
+        initial_state = {
+            "input": enhanced_input,
+            "memory": data.get("memory", [])
+        }
+        
         result = await agent_graph.ainvoke(initial_state)
-        return {"output": result.get("output","No output returned.")}
+        output = result.get("output", "No output returned.")
+        
+        # Safety filter: Remove third-person references
+        output = output.replace("your CFO", "I")
+        output = output.replace("your CMO", "I")
+        output = output.replace("your CTO", "I")
+        output = output.replace("your CLO", "I")
+        output = output.replace("the CFO", "I")
+        output = output.replace("the CMO", "I")
+        output = output.replace("the CTO", "I")
+        output = output.replace("the CLO", "I")
+        output = output.replace("AiGent Growth", "I")
+        output = output.replace("AiGent Venture", "I")
+        output = output.replace("AiGentsy SDK", "I")
+        output = output.replace("AiGentsy Remix", "I")
+        
+        return {"output": output, "role": role}
+        
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
-
 # ---- Existing router/decide (intent orchestrator) retained ----
 @app.post("/router/decide")
 async def router_decide(request: Request):
@@ -1514,7 +1570,73 @@ async def intent_auto_bid(background_tasks: BackgroundTasks):
                 print(f"Failed to bid for {username} on {iid}: {e}")
     
     return {"ok": True, "bids_submitted": bids_submitted}
+
+@app.post("/intent/auto_bid")
+async def intent_auto_bid():
+    """
+    Cron job (runs every 30s via Render cron or external trigger).
+    Growth agents auto-bid on matching intents.
+    """
+    users, client = await _get_users_client()
     
+    # Fetch all open intents from the upgraded router
+    try:
+        r = await client.get("https://aigentsy-ame-runtime.onrender.com/intents/list?status=AUCTION")
+        intents = r.json().get("intents", [])
+    except Exception as e:
+        return {"ok": False, "error": f"failed to fetch intents: {e}"}
+    
+    bids_submitted = []
+    
+    for intent in intents:
+        iid = intent["id"]
+        brief = intent["intent"].get("brief", "").lower()
+        budget = float(intent.get("escrow_usd", 0))
+        
+        # Match users who can fulfill this
+        for u in users:
+            username = _username_of(u)
+            traits = u.get("traits", [])
+            
+            # Matching logic
+            can_fulfill = False
+            if "marketing" in brief and "marketing" in traits:
+                can_fulfill = True
+            elif "video" in brief and "marketing" in traits:
+                can_fulfill = True
+            elif "sdk" in brief and "sdk" in traits:
+                can_fulfill = True
+            elif "legal" in brief and "legal" in traits:
+                can_fulfill = True
+            elif "branding" in brief and "branding" in traits:
+                can_fulfill = True
+            
+            if not can_fulfill:
+                continue
+            
+            # Calculate competitive bid (10-20% discount)
+            import random
+            discount = random.uniform(0.10, 0.20)
+            bid_price = round(budget * (1 - discount), 2)
+            delivery_hours = 24 if "urgent" in brief else 48
+            
+            # Submit bid
+            try:
+                await client.post(
+                    "https://aigentsy-ame-runtime.onrender.com/intents/bid",
+                    json={
+                        "intent_id": iid,
+                        "agent": username,
+                        "price_usd": bid_price,
+                        "delivery_hours": delivery_hours,
+                        "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."
+                    }
+                )
+                bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
+            except Exception as e:
+                print(f"Failed to bid for {username} on {iid}: {e}")
+    
+    return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
 @app.post("/invoice/create")
 async def invoice_create(body: Dict = Body(...)):
     username = body.get("username"); oid = body.get("orderId")
