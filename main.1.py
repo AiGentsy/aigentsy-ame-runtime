@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 import asyncio
 import hashlib
 import hmac
+import time as _time
 # ============================
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
@@ -13,7 +14,7 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
+from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,12 +27,24 @@ from log_to_jsonbin_merged import (
 )
 # Admin normalize uses the classic module (keep both available)
 from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
-
+# Intent Exchange (upgraded with auction system)
+try:
+    from intent_exchange_UPGRADED import router as intent_router
+except Exception:
+    intent_router = None
 # ---- App, logging, CORS (single block) ----
 import os, logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
+# --- internal signing for trusted backend calls ---
+def _sign_payload(body_bytes: bytes) -> dict:
+    secret = os.getenv("HMAC_SECRET", "")
+    if not secret:
+        return {}
+    ts = str(int(_time.time()))
+    sig = hmac.new(secret.encode(), (ts + "." + body_bytes.decode()).encode(), hashlib.sha256).hexdigest()
+    return {"X-Ts": ts, "X-Sign": sig}
 
 app = FastAPI()
 
@@ -814,7 +827,29 @@ async def metrics():
             "revenue": round(rev,2), "platform_fees": round(fee,2),
             "payouts": round(payouts,2), "invoices_open": round(invoices_open,2)
         }}
+# Add to main.py after your existing /user endpoint
 
+@app.get("/users/all")
+async def get_all_users(limit: int = 100):
+    """
+    Return all users (for matching). Paginate in production.
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _jsonbin_get(client)
+        users = data.get("record", [])[:limit]
+        
+        # Strip sensitive data
+        safe_users = []
+        for u in users:
+            safe_users.append({
+                "username": u.get("username") or u.get("consent", {}).get("username"),
+                "traits": u.get("traits", []),
+                "outcomeScore": u.get("outcomeScore", 0),
+                "kits": list(u.get("kits", {}).keys()),
+                "meta_role": u.get("meta_role", ""),
+            })
+        
+        return {"ok": True, "users": safe_users, "count": len(safe_users)}
  # ---------- ALGO HINTS + SCHEDULER ----------
 @app.post("/algo/hints/upsert")
 async def algo_hints_upsert(body: Dict = Body(...)):
@@ -953,18 +988,19 @@ async def revenue_split(request: Request, x_api_key: str | None = Header(None, a
 
         mesh = origin.get("jvMesh", []) or []
         targets = []
+        # resolve targets
         if jvId:
             jv = _find_in(mesh, "id", jvId)
-            if not jv: return {"error":"jv not found"}
-            split = jv.get("split", {"a":0.5,"b":0.5})
-            # assume A is origin for simplicity; for real use, include explicit usernames in JV entry
-            targets = [(username, split.get("a",0.5)), ("partner", split.get("b",0.5))]
-        else:
-            if not mesh:
+            if not jv:
+                return {"error": "jv not found"}
+            jv_split = jv.get("split") or []
+            if not jv_split:
                 targets = [(username, 1.0)]
             else:
-                eq = 1.0/len(mesh)
-                targets = [(username, eq) for _ in mesh]
+                targets = [(name, float(frac)) for name, frac in jv_split if float(frac) > 0]
+        else:
+            targets = [(username, 1.0)]
+
 
         for uname, frac in targets:
             u = find_user(uname) or origin
@@ -1412,6 +1448,73 @@ async def order_accept(body: Dict = Body(...)):
         await _save_users(client, users)
         return {"ok": True, "order": order}
 
+# Add to main.py
+
+@app.post("/intent/auto_bid")
+async def intent_auto_bid(background_tasks: BackgroundTasks):
+    """
+    Cron job (runs every 30s).
+    Growth agents auto-bid on matching intents.
+    """
+    users, client = await _get_users_client()
+    
+    # Fetch all open intents
+    try:
+        r = await client.get("http://localhost:8000/intents/list?status=AUCTION")
+        intents = r.json().get("intents", [])
+    except Exception:
+        return {"ok": False, "error": "failed to fetch intents"}
+    
+    bids_submitted = []
+    
+    for intent in intents:
+        iid = intent["id"]
+        brief = intent["intent"].get("brief", "").lower()
+        budget = float(intent.get("escrow_usd", 0))
+        
+        # Match users who can fulfill this
+        for u in users:
+            username = _username_of(u)
+            traits = u.get("traits", [])
+            
+            # Simple matching logic
+            can_fulfill = False
+            if "marketing" in brief and "marketing" in traits:
+                can_fulfill = True
+            elif "video" in brief and "marketing" in traits:
+                can_fulfill = True
+            elif "sdk" in brief and "sdk" in traits:
+                can_fulfill = True
+            elif "legal" in brief and "legal" in traits:
+                can_fulfill = True
+            
+            if not can_fulfill:
+                continue
+            
+            # Calculate competitive bid (underbid budget by 10-20%)
+            import random
+            discount = random.uniform(0.10, 0.20)
+            bid_price = round(budget * (1 - discount), 2)
+            delivery_hours = 48 if "urgent" not in brief else 24
+            
+            # Submit bid
+            try:
+                await client.post(
+                    "http://localhost:8000/intents/bid",
+                    json={
+                        "intent_id": iid,
+                        "agent": username,
+                        "price_usd": bid_price,
+                        "delivery_hours": delivery_hours,
+                        "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."
+                    }
+                )
+                bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
+            except Exception as e:
+                print(f"Failed to bid for {username} on {iid}: {e}")
+    
+    return {"ok": True, "bids_submitted": bids_submitted}
+    
 @app.post("/invoice/create")
 async def invoice_create(body: Dict = Body(...)):
     username = body.get("username"); oid = body.get("orderId")
@@ -2368,7 +2471,7 @@ async def get_outcome_score(username: str):
     if not u: return {"error":"user not found"}
     return {"ok": True, "score": int(u.get("outcomeScore", 0))}
 
-@app.post("/intent/create")
+#@app.post("/intent/create")
 async def intent_create(buyer: str, brief: str, budget: float):
     users, client = await _get_users_client()
     u = _find_user(users, buyer)
@@ -2382,7 +2485,7 @@ async def intent_create(buyer: str, brief: str, budget: float):
         pass
     return {"ok": True, "intent": intent}
 
-@app.post("/intent/bid")
+#@app.post("/intent/bid")
 async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
     users, client = await _get_users_client()
     buyer_user, intent = _global_find_intent(users, intent_id)
@@ -2397,7 +2500,7 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
         pass
     return {"ok": True, "bid": bid}
 
-@app.post("/intent/award")
+#@app.post("/intent/award")
 async def intent_award(intent_id: str, bid_id: str = None):
     users, client = await _get_users_client()
     buyer_user, intent = _global_find_intent(users, intent_id)
@@ -2914,7 +3017,9 @@ try:
 except Exception:
     # No FastAPI app found or not constructed yet — safe to skip
     pass
-
+# Mount Intent Exchange router
+if intent_router:
+    app.include_router(intent_router, prefix="/intents", tags=["Intent Exchange"])
 # --- Alias route to match admin requirement (/events/stream) ---
 @app.get("/events/stream")
 async def events_stream():
@@ -2942,14 +3047,6 @@ async def _exp_pricing_arm(payload: dict):
         if op == "best":
             return {"ok": True, "best": await best_arm(payload.get("username","sys"), payload.get("exp_id"))}
         return {"ok": False, "error": "unknown_op"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-@_expansion_router.post("/intents/publish")
-async def _exp_intents_publish(payload: dict):
-    try:
-        from intent_exchange import publish
-        return {"ok": True, "intent": publish(payload.get("intent") or payload)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
