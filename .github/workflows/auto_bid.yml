@@ -1,0 +1,15 @@
+name: Auto-Bid Cron
+
+on:
+  schedule:
+    # Runs every 5 minutes (GitHub Actions minimum)
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  auto-bid:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Auto-Bid
+        run: |
+          curl -X POST https://aigentsy-ame-runtime.onrender.com/intent/auto_bid
