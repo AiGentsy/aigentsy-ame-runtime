@@ -14,7 +14,7 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, Request, Body, Path, HTTPException, Header
+from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
