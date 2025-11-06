@@ -1677,6 +1677,68 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         await _save_users(client, users)
         return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
 
+@app.post("/outcome/attribute")
+async def outcome_attribute(body: Dict = Body(...)):
+    """
+    Called when revenue is attributed to a channel.
+    Updates Outcome Oracle + triggers R³ reallocation.
+    """
+    username = body.get("username")
+    channel = body.get("channel")
+    revenue = float(body.get("revenue_usd", 0))
+    spend = float(body.get("spend_usd", 0))
+    
+    if not (username and channel and revenue):
+        return {"error": "username, channel, revenue_usd required"}
+    
+    # Calculate ROAS
+    roas = round(revenue / spend, 2) if spend > 0 else 0.0
+    cpa = round(spend / revenue, 2) if revenue > 0 else 0.0
+    
+    # Update Outcome Oracle
+    try:
+        from outcome_oracle_MAX import on_event
+        on_event({
+            "kind": "ATTRIBUTED",
+            "username": username,
+            "value_usd": revenue,
+            "channel": channel,
+            "provider": channel
+        })
+    except Exception as e:
+        print(f"Oracle update failed: {e}")
+    
+    # Update R³ channel pacing
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/r3/pacing/update",
+                json={
+                    "user_id": username,
+                    "channel": channel,
+                    "performance": {
+                        "roas": roas,
+                        "cpa": cpa,
+                        "revenue": revenue,
+                        "spend": spend
+                    }
+                }
+            )
+        except Exception as e:
+            print(f"R³ pacing update failed: {e}")
+    
+    return {
+        "ok": True,
+        "attribution": {
+            "user": username,
+            "channel": channel,
+            "revenue": revenue,
+            "spend": spend,
+            "roas": roas,
+            "cpa": cpa
+        }
+    }
+    
 @app.post("/budget/spend")
 async def budget_spend(body: Dict = Body(...)):
     username = body.get("username"); amount = float(body.get("amount", 0))
