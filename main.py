@@ -27,7 +27,11 @@ from log_to_jsonbin_merged import (
 )
 # Admin normalize uses the classic module (keep both available)
 from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
-
+# Intent Exchange (upgraded with auction system)
+try:
+    from intent_exchange_UPGRADED import router as intent_router
+except Exception:
+    intent_router = None
 # ---- App, logging, CORS (single block) ----
 import os, logging
 from fastapi import FastAPI
@@ -2467,7 +2471,7 @@ async def get_outcome_score(username: str):
     if not u: return {"error":"user not found"}
     return {"ok": True, "score": int(u.get("outcomeScore", 0))}
 
-@app.post("/intent/create")
+#@app.post("/intent/create")
 async def intent_create(buyer: str, brief: str, budget: float):
     users, client = await _get_users_client()
     u = _find_user(users, buyer)
@@ -2481,7 +2485,7 @@ async def intent_create(buyer: str, brief: str, budget: float):
         pass
     return {"ok": True, "intent": intent}
 
-@app.post("/intent/bid")
+#@app.post("/intent/bid")
 async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
     users, client = await _get_users_client()
     buyer_user, intent = _global_find_intent(users, intent_id)
@@ -2496,7 +2500,7 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
         pass
     return {"ok": True, "bid": bid}
 
-@app.post("/intent/award")
+#@app.post("/intent/award")
 async def intent_award(intent_id: str, bid_id: str = None):
     users, client = await _get_users_client()
     buyer_user, intent = _global_find_intent(users, intent_id)
@@ -3013,7 +3017,9 @@ try:
 except Exception:
     # No FastAPI app found or not constructed yet — safe to skip
     pass
-
+# Mount Intent Exchange router
+if intent_router:
+    app.include_router(intent_router, prefix="/intents", tags=["Intent Exchange"])
 # --- Alias route to match admin requirement (/events/stream) ---
 @app.get("/events/stream")
 async def events_stream():
@@ -3041,14 +3047,6 @@ async def _exp_pricing_arm(payload: dict):
         if op == "best":
             return {"ok": True, "best": await best_arm(payload.get("username","sys"), payload.get("exp_id"))}
         return {"ok": False, "error": "unknown_op"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-@_expansion_router.post("/intents/publish")
-async def _exp_intents_publish(payload: dict):
-    try:
-        from intent_exchange import publish
-        return {"ok": True, "intent": publish(payload.get("intent") or payload)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
