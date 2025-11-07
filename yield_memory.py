@@ -126,41 +126,38 @@ def find_similar_patterns(
 def calculate_context_similarity(ctx1: Dict[str, Any], ctx2: Dict[str, Any]) -> float:
     """Calculate similarity between two contexts (0.0 to 1.0)"""
     
-    # Simple heuristic: match on key dimensions
     matches = 0
     total = 0
     
-    # Channel match
     if ctx1.get("channel") and ctx2.get("channel"):
         total += 1
         if ctx1["channel"] == ctx2["channel"]:
             matches += 1
     
-    # Audience match
     if ctx1.get("audience") and ctx2.get("audience"):
         total += 1
         if ctx1["audience"] == ctx2["audience"]:
             matches += 1
     
-    # Time of day match (within 3 hours)
     if ctx1.get("hour") and ctx2.get("hour"):
         total += 1
         if abs(int(ctx1["hour"]) - int(ctx2["hour"])) <= 3:
             matches += 1
     
-    # Budget tier match
     if ctx1.get("budget_tier") and ctx2.get("budget_tier"):
         total += 1
         if ctx1["budget_tier"] == ctx2["budget_tier"]:
             matches += 1
     
-    # Day of week match
     if ctx1.get("day_of_week") and ctx2.get("day_of_week"):
         total += 1
         if ctx1["day_of_week"] == ctx2["day_of_week"]:
             matches += 1
     
-    return round(matches / total, 2) if total > 0 else 0.0
+    if total > 0:
+        return round(matches / total, 2)
+    else:
+        return 0.0
 
 
 def get_best_action(
