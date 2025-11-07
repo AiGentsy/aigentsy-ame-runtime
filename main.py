@@ -1645,29 +1645,20 @@ async def order_accept(body: Dict = Body(...)):
 
 @app.post("/intent/auto_bid")
 async def intent_auto_bid():
-    """
-    Cron job (runs every 30s via Render cron or external trigger).
-    Growth agents auto-bid on matching intents.
-    """
     users, client = await _get_users_client()
-    
     try:
         r = await client.get("https://aigentsy-ame-runtime.onrender.com/intents/list?status=AUCTION")
         intents = r.json().get("intents", [])
     except Exception as e:
         return {"ok": False, "error": f"failed to fetch intents: {e}"}
-    
     bids_submitted = []
-    
     for intent in intents:
         iid = intent["id"]
         brief = intent["intent"].get("brief", "").lower()
         budget = float(intent.get("escrow_usd", 0))
-        
         for u in users:
             username = _username_of(u)
             traits = u.get("traits", [])
-            
             can_fulfill = False
             if "marketing" in brief and "marketing" in traits:
                 can_fulfill = True
@@ -1679,77 +1670,21 @@ async def intent_auto_bid():
                 can_fulfill = True
             elif "branding" in brief and "branding" in traits:
                 can_fulfill = True
-            
             if not can_fulfill:
                 continue
-            
             import random
             discount = random.uniform(0.10, 0.20)
             bid_price = round(budget * (1 - discount), 2)
             delivery_hours = 24 if "urgent" in brief else 48
-            
             try:
-                await client.post(
-                    "https://aigentsy-ame-runtime.onrender.com/intents/bid",
-                    json={
-                        "intent_id": iid,
-                        "agent": username,
-                        "price_usd": bid_price,
-                        "delivery_hours": delivery_hours,
-                        "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."
-                    }
-                )
+                await client.post("https://aigentsy-ame-runtime.onrender.com/intents/bid", json={"intent_id": iid, "agent": username, "price_usd": bid_price, "delivery_hours": delivery_hours, "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."})
                 bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
-                
                 try:
                     await publish({"type":"bid","agent":username,"intent_id":iid,"price":bid_price})
                 except:
                     pass
-                    
             except Exception as e:
                 print(f"Failed to bid for {username} on {iid}: {e}")
-    
-    return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
-
-    
-            # Matching logic
-            can_fulfill = False
-            if "marketing" in brief and "marketing" in traits:
-                can_fulfill = True
-            elif "video" in brief and "marketing" in traits:
-                can_fulfill = True
-            elif "sdk" in brief and "sdk" in traits:
-                can_fulfill = True
-            elif "legal" in brief and "legal" in traits:
-                can_fulfill = True
-            elif "branding" in brief and "branding" in traits:
-                can_fulfill = True
-            
-            if not can_fulfill:
-                continue
-            
-            # Calculate competitive bid (10-20% discount)
-            import random
-            discount = random.uniform(0.10, 0.20)
-            bid_price = round(budget * (1 - discount), 2)
-            delivery_hours = 24 if "urgent" in brief else 48
-            
-            # Submit bid
-            try:
-                await client.post(
-                    "https://aigentsy-ame-runtime.onrender.com/intents/bid",
-                    json={
-                        "intent_id": iid,
-                        "agent": username,
-                        "price_usd": bid_price,
-                        "delivery_hours": delivery_hours,
-                        "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."
-                    }
-                )
-                bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
-            except Exception as e:
-                print(f"Failed to bid for {username} on {iid}: {e}")
-    
     return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
 
 @app.post("/invoice/create")
