@@ -2855,6 +2855,23 @@ async def intent_create(buyer: str, brief: str, budget: float):
         pass
     return {"ok": True, "intent": intent}
 
+from revenue_flows import register_clone_lineage
+
+@app.post("/clone/register")
+async def clone_register(
+    clone_owner: str,
+    clone_id: str,
+    original_owner: str,
+    generation: int = 1
+):
+    """Register clone with multi-gen lineage tracking"""
+    result = await register_clone_lineage(
+        clone_owner=clone_owner,
+        clone_id=clone_id,
+        original_owner=original_owner,
+        generation=generation
+    )
+    return result
 #@app.post("/intent/bid")
 async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
     users, client = await _get_users_client()
