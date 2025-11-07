@@ -3565,6 +3565,79 @@ async def _exp_inventory_get(product_id: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from yield_memory import (
+    store_pattern,
+    find_similar_patterns,
+    get_best_action,
+    get_patterns_to_avoid,
+    get_memory_stats,
+    export_memory,
+    import_memory
+)
+
+@app.post("/memory/store")
+async def memory_store(
+    username: str,
+    pattern_type: str,
+    context: Dict[str, Any],
+    action: Dict[str, Any],
+    outcome: Dict[str, Any]
+):
+    """Store a yield pattern"""
+    result = store_pattern(
+        username=username,
+        pattern_type=pattern_type,
+        context=context,
+        action=action,
+        outcome=outcome
+    )
+    return result
+
+@app.post("/memory/recommend")
+async def memory_recommend(
+    username: str,
+    context: Dict[str, Any],
+    pattern_type: str = None
+):
+    """Get recommended action based on memory"""
+    result = get_best_action(
+        username=username,
+        context=context,
+        pattern_type=pattern_type
+    )
+    return result
+
+@app.post("/memory/avoid")
+async def memory_avoid(
+    username: str,
+    context: Dict[str, Any],
+    pattern_type: str = None
+):
+    """Get patterns to avoid"""
+    result = get_patterns_to_avoid(
+        username=username,
+        context=context,
+        pattern_type=pattern_type
+    )
+    return result
+
+@app.get("/memory/stats/{username}")
+async def memory_stats(username: str):
+    """Get memory statistics"""
+    return get_memory_stats(username)
+
+@app.get("/memory/export/{username}")
+async def memory_export(username: str):
+    """Export memory as JSON"""
+    json_data = export_memory(username)
+    return {"ok": True, "json": json_data}
+
+@app.post("/memory/import")
+async def memory_import(username: str, json_data: str):
+    """Import memory from JSON"""
+    result = import_memory(username, json_data)
+    return result
+    
 @_expansion_router.post("/coop/sponsor")
 async def _exp_coop_sponsor(payload: dict):
     try:
