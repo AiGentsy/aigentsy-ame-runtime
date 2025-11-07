@@ -2700,7 +2700,63 @@ async def poo_issue(username: str, title: str, metrics: dict = None, evidence_ur
         print(f"Publish error: {e}")
     
     return {"ok": True, "outcome": entry, "score": u["outcomeScore"]}
-    
+from outcome_oracle import (
+    issue_poo as issue_poo_oracle,
+    verify_poo as verify_poo_oracle,
+    get_poo,
+    list_poos,
+    get_agent_poo_stats
+)
+
+@app.post("/poo/submit")
+async def poo_submit(
+    username: str,
+    intent_id: str,
+    title: str,
+    evidence_urls: List[str] = None,
+    metrics: Dict[str, Any] = None,
+    description: str = ""
+):
+    result = await issue_poo_oracle(
+        username=username,
+        intent_id=intent_id,
+        title=title,
+        evidence_urls=evidence_urls,
+        metrics=metrics,
+        description=description
+    )
+    return result
+
+@app.post("/poo/verify")
+async def poo_verify(
+    poo_id: str,
+    buyer_username: str,
+    approved: bool,
+    feedback: str = ""
+):
+    result = await verify_poo_oracle(
+        poo_id=poo_id,
+        buyer_username=buyer_username,
+        approved=approved,
+        feedback=feedback
+    )
+    return result
+
+@app.get("/poo/{poo_id}")
+async def poo_get(poo_id: str):
+    return get_poo(poo_id)
+
+@app.get("/poo/list")
+async def poo_list(
+    agent: str = None,
+    intent_id: str = None,
+    status: str = None
+):
+    return list_poos(agent=agent, intent_id=intent_id, status=status)
+
+@app.get("/poo/stats/{username}")
+async def poo_stats(username: str):
+    return get_agent_poo_stats(username)    
 @app.get("/score/outcome")
 async def get_outcome_score(username: str):
     users, client = await _get_users_client()
