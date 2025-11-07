@@ -5,8 +5,8 @@ import json
 
 _YIELD_MEMORY: Dict[str, List[Dict[str, Any]]] = {}
 MAX_PATTERNS_PER_USER = 100
-SUCCESS_THRESHOLD = 1.5  # ROAS > 1.5 = success
-FAILURE_THRESHOLD = 0.5  # ROAS < 0.5 = failure
+SUCCESS_THRESHOLD = 1.5
+FAILURE_THRESHOLD = 0.5
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat() + "Z"
@@ -23,7 +23,6 @@ def store_pattern(
     
     pattern_id = f"pat_{uuid4().hex[:8]}"
     
-    # Calculate success score
     roas = float(outcome.get("roas", 0))
     revenue = float(outcome.get("revenue_usd", 0))
     cost = float(outcome.get("cost_usd", 0))
@@ -51,13 +50,11 @@ def store_pattern(
         "last_replayed": None
     }
     
-    # Add to user's memory
     if username not in _YIELD_MEMORY:
         _YIELD_MEMORY[username] = []
     
     _YIELD_MEMORY[username].append(pattern)
     
-    # Compress if over limit
     if len(_YIELD_MEMORY[username]) > MAX_PATTERNS_PER_USER:
         compress_memory(username)
     
@@ -71,13 +68,11 @@ def compress_memory(username: str):
     
     patterns = _YIELD_MEMORY[username]
     
-    # Sort by score (success) and replay_count (proven utility)
     patterns.sort(
         key=lambda p: (p["score"] * 0.7 + p["replay_count"] * 0.3),
         reverse=True
     )
     
-    # Keep top 100
     _YIELD_MEMORY[username] = patterns[:MAX_PATTERNS_PER_USER]
     
     return {"ok": True, "kept": len(_YIELD_MEMORY[username]), "discarded": len(patterns) - MAX_PATTERNS_PER_USER}
@@ -97,14 +92,12 @@ def find_similar_patterns(
     
     patterns = _YIELD_MEMORY[username]
     
-    # Filter by type and category
     filtered = [
         p for p in patterns
         if (not pattern_type or p["type"] == pattern_type)
         and p["category"] == category
     ]
     
-    # Score similarity
     scored = []
     for pattern in filtered:
         similarity = calculate_context_similarity(context, pattern["context"])
@@ -114,10 +107,8 @@ def find_similar_patterns(
             "combined_score": pattern["score"] * similarity
         })
     
-    # Sort by combined score
     scored.sort(key=lambda x: x["combined_score"], reverse=True)
     
-    # Return top matches
     results = [s["pattern"] for s in scored[:limit]]
     
     return {"ok": True, "patterns": results, "count": len(results)}
@@ -180,10 +171,8 @@ def get_best_action(
     if not patterns:
         return {"ok": False, "error": "no_patterns_found"}
     
-    # Return top pattern's action
     best_pattern = patterns[0]
     
-    # Increment replay count
     best_pattern["replay_count"] += 1
     best_pattern["last_replayed"] = now_iso()
     
@@ -244,7 +233,6 @@ def get_memory_stats(username: str) -> Dict[str, Any]:
     
     avg_success_roas = sum(p["score"] for p in success) / len(success) if success else 0.0
     
-    # Pattern types breakdown
     types = {}
     for p in patterns:
         ptype = p["type"]
@@ -270,4 +258,14 @@ def export_memory(username: str) -> str:
     return json.dumps({"patterns": _YIELD_MEMORY[username]}, indent=2)
 
 
-def import_me
+def import_memory(username: str, json_data: str) -> Dict[str, Any]:
+    """Import memory from JSON"""
+    try:
+        data = json.loads(json_data)
+        patterns = data.get("patterns", [])
+        
+        _YIELD_MEMORY[username] = patterns
+        
+        return {"ok": True, "imported": len(patterns)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
