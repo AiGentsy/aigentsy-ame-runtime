@@ -3721,7 +3721,84 @@ async def hive_top(
         sort_by=sort_by,
         limit=limit
     )
-    
+
+from jv_mesh import (
+    create_jv_proposal,
+    vote_on_jv,
+    dissolve_jv,
+    get_jv_proposal,
+    get_active_jv,
+    list_jv_proposals,
+    list_active_jvs
+)
+
+@app.post("/jv/propose")
+async def jv_propose(
+    proposer: str,
+    partner: str,
+    title: str,
+    description: str,
+    revenue_split: Dict[str, float],
+    duration_days: int = 90,
+    terms: Dict[str, Any] = None
+):
+    """Create JV proposal"""
+    result = await create_jv_proposal(
+        proposer=proposer,
+        partner=partner,
+        title=title,
+        description=description,
+        revenue_split=revenue_split,
+        duration_days=duration_days,
+        terms=terms
+    )
+    return result
+
+@app.post("/jv/vote")
+async def jv_vote(
+    proposal_id: str,
+    voter: str,
+    vote: str,
+    feedback: str = ""
+):
+    """Vote on JV proposal"""
+    result = await vote_on_jv(
+        proposal_id=proposal_id,
+        voter=voter,
+        vote=vote,
+        feedback=feedback
+    )
+    return result
+
+@app.post("/jv/dissolve")
+async def jv_dissolve(
+    jv_id: str,
+    requester: str,
+    reason: str = ""
+):
+    """Dissolve JV"""
+    result = await dissolve_jv(
+        jv_id=jv_id,
+        requester=requester,
+        reason=reason
+    )
+    return result
+
+@app.get("/jv/proposals/{proposal_id}")
+async def jv_proposal_get(proposal_id: str):
+    return get_jv_proposal(proposal_id)
+
+@app.get("/jv/{jv_id}")
+async def jv_get(jv_id: str):
+    return get_active_jv(jv_id)
+
+@app.get("/jv/proposals/list")
+async def jv_proposals_list(party: str = None, status: str = None):
+    return list_jv_proposals(party=party, status=status)
+
+@app.get("/jv/list")
+async def jv_list(party: str = None):
+    return list_active_jvs(party=party)
 @_expansion_router.post("/coop/sponsor")
 async def _exp_coop_sponsor(payload: dict):
     try:
