@@ -370,7 +370,7 @@ async def distribute_clone_royalty(username: str, amount_usd: float, clone_id: s
 # ============ EARNINGS SUMMARY ============
 
 def get_earnings_summary(username: str) -> Dict[str, Any]:
-    """Get breakdown of all earnings sources"""
+    """Get breakdown of all earnings sources with 7-day holdback"""
     try:
         user = get_user(username)
         if not user:
@@ -378,62 +378,112 @@ def get_earnings_summary(username: str) -> Dict[str, Any]:
         
         ledger = user.get("ownership", {}).get("ledger", [])
         
+        # Calculate holdback cutoff (7 days ago)
+        from datetime import datetime, timedelta, timezone
+        holdback_days = 7
+        cutoff = datetime.now(timezone.utc) - timedelta(days=holdback_days)
+        
         # Aggregate by source
         sources = {
-            "shopify": 0.0,
-            "tiktok_affiliate": 0.0,
-            "amazon_affiliate": 0.0,
-            "youtube_cpm": 0.0,
-            "tiktok_cpm": 0.0,
-            "service": 0.0,
-            "staking": 0.0,
-            "jv": 0.0,
-            "clone_royalty": 0.0
+            "shopify": {"total": 0.0, "eligible": 0.0},
+            "tiktok_affiliate": {"total": 0.0, "eligible": 0.0},
+            "amazon_affiliate": {"total": 0.0, "eligible": 0.0},
+            "youtube_cpm": {"total": 0.0, "eligible": 0.0},
+            "tiktok_cpm": {"total": 0.0, "eligible": 0.0},
+            "service": {"total": 0.0, "eligible": 0.0},
+            "staking": {"total": 0.0, "eligible": 0.0},
+            "jv": {"total": 0.0, "eligible": 0.0},
+            "clone_royalty": {"total": 0.0, "eligible": 0.0}
         }
         
         for entry in ledger:
             event = entry.get("event", "")
             amount = entry.get("user_net") or entry.get("amount") or 0
             
+            # Parse timestamp
+            ts_str = entry.get("ts", "")
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            except:
+                ts = datetime.now(timezone.utc)
+            
+            is_eligible = ts < cutoff
+            
+            # Categorize by event type
             if "shopify" in event:
-                sources["shopify"] += amount
+                sources["shopify"]["total"] += amount
+                if is_eligible:
+                    sources["shopify"]["eligible"] += amount
             elif "tiktok_affiliate" in event:
-                sources["tiktok_affiliate"] += amount
+                sources["tiktok_affiliate"]["total"] += amount
+                if is_eligible:
+                    sources["tiktok_affiliate"]["eligible"] += amount
             elif "amazon_affiliate" in event:
-                sources["amazon_affiliate"] += amount
+                sources["amazon_affiliate"]["total"] += amount
+                if is_eligible:
+                    sources["amazon_affiliate"]["eligible"] += amount
             elif "youtube_cpm" in event:
-                sources["youtube_cpm"] += amount
+                sources["youtube_cpm"]["total"] += amount
+                if is_eligible:
+                    sources["youtube_cpm"]["eligible"] += amount
             elif "tiktok_cpm" in event:
-                sources["tiktok_cpm"] += amount
+                sources["tiktok_cpm"]["total"] += amount
+                if is_eligible:
+                    sources["tiktok_cpm"]["eligible"] += amount
             elif "service" in event:
-                sources["service"] += amount
+                sources["service"]["total"] += amount
+                if is_eligible:
+                    sources["service"]["eligible"] += amount
             elif "staking" in event:
-                sources["staking"] += amount
+                sources["staking"]["total"] += amount
+                if is_eligible:
+                    sources["staking"]["eligible"] += amount
             elif "jv" in event:
-                sources["jv"] += amount
+                sources["jv"]["total"] += amount
+                if is_eligible:
+                    sources["jv"]["eligible"] += amount
             elif "clone_royalty" in event:
-                sources["clone_royalty"] += amount
+                sources["clone_royalty"]["total"] += amount
+                if is_eligible:
+                    sources["clone_royalty"]["eligible"] += amount
         
-        total = sum(sources.values())
+        # Calculate totals
+        total_earned = sum(s["total"] for s in sources.values())
+        eligible_earned = sum(s["eligible"] for s in sources.values())
+        held_back = total_earned - eligible_earned
         
         # Merge affiliate sources
-        affiliate_total = sources["tiktok_affiliate"] + sources["amazon_affiliate"]
+        affiliate_total = sources["tiktok_affiliate"]["total"] + sources["amazon_affiliate"]["total"]
+        affiliate_eligible = sources["tiktok_affiliate"]["eligible"] + sources["amazon_affiliate"]["eligible"]
         
         # Merge CPM sources
-        content_cpm_total = sources["youtube_cpm"] + sources["tiktok_cpm"]
+        content_cpm_total = sources["youtube_cpm"]["total"] + sources["tiktok_cpm"]["total"]
+        content_cpm_eligible = sources["youtube_cpm"]["eligible"] + sources["tiktok_cpm"]["eligible"]
         
         return {
             "ok": True,
             "username": username,
-            "total_earned": round(total, 2),
+            "total_earned": round(total_earned, 2),
+            "eligible_earned": round(eligible_earned, 2),
+            "held_back": round(held_back, 2),
+            "holdback_days": holdback_days,
             "sources": {
-                "service": round(sources["service"], 2),
-                "shopify": round(sources["shopify"], 2),
+                "service": round(sources["service"]["eligible"], 2),
+                "shopify": round(sources["shopify"]["eligible"], 2),
+                "affiliate": round(affiliate_eligible, 2),
+                "content_cpm": round(content_cpm_eligible, 2),
+                "staking": round(sources["staking"]["eligible"], 2),
+                "jv": round(sources["jv"]["eligible"], 2),
+                "clone_royalty": round(sources["clone_royalty"]["eligible"], 2)
+            },
+            "sources_total": {
+                "service": round(sources["service"]["total"], 2),
+                "shopify": round(sources["shopify"]["total"], 2),
                 "affiliate": round(affiliate_total, 2),
                 "content_cpm": round(content_cpm_total, 2),
-                "staking": round(sources["staking"], 2),
-                "jv": round(sources["jv"], 2),
-                "clone_royalty": round(sources["clone_royalty"], 2)
+                "staking": round(sources["staking"]["total"], 2),
+                "jv": round(sources["jv"]["total"], 2),
+                "clone_royalty": round(sources["clone_royalty"]["total"], 2)
             },
             "aigx_balance": user.get("yield", {}).get("aigxEarned", 0)
         }
