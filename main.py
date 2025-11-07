@@ -114,12 +114,6 @@ async def startup_event():
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
-ALLOW_ORIGINS = [
-
-SELF_URL=https://aigentsy-ame-runtime.onrender.com
-
-logger = logging.getLogger("aigentsy")
-logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
 ALLOW_ORIGINS = [
     os.getenv("FRONTEND_ORIGIN", "https://aigentsy.com"),
