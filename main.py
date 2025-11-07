@@ -1643,7 +1643,6 @@ async def order_accept(body: Dict = Body(...)):
         await _save_users(client, users)
         return {"ok": True, "order": order}
 
-
 @app.post("/intent/auto_bid")
 async def intent_auto_bid():
     """
@@ -1652,7 +1651,6 @@ async def intent_auto_bid():
     """
     users, client = await _get_users_client()
     
-    # Fetch all open intents from the upgraded router
     try:
         r = await client.get("https://aigentsy-ame-runtime.onrender.com/intents/list?status=AUCTION")
         intents = r.json().get("intents", [])
@@ -1666,12 +1664,10 @@ async def intent_auto_bid():
         brief = intent["intent"].get("brief", "").lower()
         budget = float(intent.get("escrow_usd", 0))
         
-        # Match users who can fulfill this
         for u in users:
             username = _username_of(u)
             traits = u.get("traits", [])
             
-            # Matching logic
             can_fulfill = False
             if "marketing" in brief and "marketing" in traits:
                 can_fulfill = True
@@ -1687,13 +1683,11 @@ async def intent_auto_bid():
             if not can_fulfill:
                 continue
             
-            # Calculate competitive bid (10-20% discount)
             import random
             discount = random.uniform(0.10, 0.20)
             bid_price = round(budget * (1 - discount), 2)
             delivery_hours = 24 if "urgent" in brief else 48
             
-            # Submit bid
             try:
                 await client.post(
                     "https://aigentsy-ame-runtime.onrender.com/intents/bid",
@@ -1707,7 +1701,6 @@ async def intent_auto_bid():
                 )
                 bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
                 
-                # Publish to SSE feed
                 try:
                     await publish({"type":"bid","agent":username,"intent_id":iid,"price":bid_price})
                 except:
@@ -1717,6 +1710,8 @@ async def intent_auto_bid():
                 print(f"Failed to bid for {username} on {iid}: {e}")
     
     return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
+
+    
             # Matching logic
             can_fulfill = False
             if "marketing" in brief and "marketing" in traits:
