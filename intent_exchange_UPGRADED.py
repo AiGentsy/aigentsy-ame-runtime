@@ -9,6 +9,7 @@ import httpx
 router = APIRouter()
 _INTENTS: Dict[str, Dict[str, Any]] = {}
 _BIDS: Dict[str, List[Dict[str, Any]]] = {}
+_ESCROW: Dict[str, Dict[str, Any]] = {}
 
 def now_iso():
     return datetime.utcnow().isoformat() + "Z"
@@ -30,6 +31,110 @@ class Settle(BaseModel):
     intent_id: str
     outcome: Dict[str, Any]
 
+class VerifyPoO(BaseModel):
+    intent_id: str
+    poo_id: str
+    approved: bool
+    feedback: Optional[str] = ""
+
+async def _lock_escrow(user_id: str, intent_id: str, amount: float):
+    """Lock buyer's funds in escrow"""
+    escrow_id = f"esc_{uuid4().hex[:8]}"
+    
+    _ESCROW[escrow_id] = {
+        "id": escrow_id,
+        "intent_id": intent_id,
+        "buyer": user_id,
+        "amount": amount,
+        "status": "LOCKED",
+        "locked_at": now_iso(),
+        "released_to": None,
+        "released_at": None,
+        "events": [{"type": "ESCROW_LOCKED", "at": now_iso()}]
+    }
+    
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/budget/spend",
+                json={
+                    "username": user_id,
+                    "amount": amount,
+                    "basis": "escrow_lock",
+                    "ref": intent_id
+                }
+            )
+            print(f"Locked ${amount} escrow for {user_id}")
+        except Exception as e:
+            print(f"Escrow lock failed: {e}")
+            raise HTTPException(status_code=402, detail="insufficient_funds")
+    
+    return escrow_id
+
+async def _release_escrow(intent_id: str, recipient: str):
+    """Release escrow to winning agent"""
+    escrow = next((e for e in _ESCROW.values() if e["intent_id"] == intent_id and e["status"] == "LOCKED"), None)
+    
+    if not escrow:
+        print(f"No locked escrow found for intent {intent_id}")
+        return 0.0
+    
+    amount = escrow["amount"]
+    escrow["status"] = "RELEASED"
+    escrow["released_to"] = recipient
+    escrow["released_at"] = now_iso()
+    escrow["events"].append({"type": "ESCROW_RELEASED", "to": recipient, "at": now_iso()})
+    
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
+                json={
+                    "username": recipient,
+                    "amount": amount,
+                    "basis": "intent_settlement",
+                    "ref": intent_id
+                }
+            )
+            print(f"Released ${amount} to {recipient}")
+        except Exception as e:
+            print(f"Escrow release failed: {e}")
+    
+    return amount
+
+async def _refund_escrow(intent_id: str, reason: str):
+    """Refund escrow to buyer (dispute or expiry)"""
+    escrow = next((e for e in _ESCROW.values() if e["intent_id"] == intent_id and e["status"] == "LOCKED"), None)
+    
+    if not escrow:
+        print(f"No locked escrow found for intent {intent_id}")
+        return 0.0
+    
+    amount = escrow["amount"]
+    buyer = escrow["buyer"]
+    
+    escrow["status"] = "REFUNDED"
+    escrow["refund_reason"] = reason
+    escrow["refunded_at"] = now_iso()
+    escrow["events"].append({"type": "ESCROW_REFUNDED", "reason": reason, "at": now_iso()})
+    
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
+                json={
+                    "username": buyer,
+                    "amount": amount,
+                    "basis": "escrow_refund",
+                    "ref": intent_id
+                }
+            )
+            print(f"Refunded ${amount} to {buyer}")
+        except Exception as e:
+            print(f"Escrow refund failed: {e}")
+    
+    return amount
+
 async def _auto_award_after_auction(intent_id: str, duration: int):
     await asyncio.sleep(duration)
     it = _INTENTS.get(intent_id)
@@ -40,6 +145,7 @@ async def _auto_award_after_auction(intent_id: str, duration: int):
     if not bids:
         it["status"] = "EXPIRED"
         it["events"].append({"type": "INTENT_EXPIRED", "reason": "no_bids", "at": now_iso()})
+        await _refund_escrow(intent_id, "no_bids")
         return
     
     def score_bid(bid):
@@ -79,7 +185,7 @@ async def _send_award_proposal(intent: Dict, winning_bid: Dict):
 Price: ${winning_bid['price_usd']}
 Delivery: {winning_bid['delivery_hours']} hours
 
-Escrow of ${intent.get('escrow_usd', 0)} locked.""",
+Escrow of ${intent.get('escrow_usd', 0)} locked. Will release when you verify Proof of Outcome.""",
         "amount": winning_bid["price_usd"],
         "meta": {"intent_id": intent["id"], "winning_bid": True},
         "status": "sent",
@@ -98,8 +204,18 @@ Escrow of ${intent.get('escrow_usd', 0)} locked.""",
 
 @router.post("/publish")
 async def publish_intent(req: Intent, background_tasks: BackgroundTasks):
+    if req.escrow_usd <= 0:
+        raise HTTPException(status_code=400, detail="escrow_required: must deposit funds to create intent")
+    
     iid = str(uuid4())
     duration = req.auction_duration or 90
+    
+    try:
+        escrow_id = await _lock_escrow(req.user_id, iid, req.escrow_usd)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"escrow_lock_failed: {e}")
     
     payload = {
         "id": iid,
@@ -111,8 +227,10 @@ async def publish_intent(req: Intent, background_tasks: BackgroundTasks):
         "claimed_by": None,
         "winning_bid": None,
         "settlement": None,
-        "escrow_usd": float(req.escrow_usd or 0.0),
-        "created_at": now_iso()
+        "escrow_usd": float(req.escrow_usd),
+        "escrow_id": escrow_id,
+        "created_at": now_iso(),
+        "poo_verified": False
     }
     
     _INTENTS[iid] = payload
@@ -123,9 +241,10 @@ async def publish_intent(req: Intent, background_tasks: BackgroundTasks):
     return {
         "ok": True,
         "intent_id": iid,
+        "escrow_id": escrow_id,
         "escrow_usd": payload["escrow_usd"],
         "auction_ends_at": payload["auction_ends_at"],
-        "message": f"Auction started. Auto-award in {duration}s."
+        "message": f"Escrow locked. Auction started. Auto-award in {duration}s."
     }
 
 @router.post("/bid")
@@ -165,58 +284,171 @@ async def bid_on_intent(req: Bid):
         "message": "Bid submitted. Winner auto-selected when auction ends."
     }
 
-@router.post("/settle")
-async def settle_intent(req: Settle):
+@router.post("/verify_poo")
+async def verify_proof_of_outcome(req: VerifyPoO):
+    """Buyer verifies agent's Proof of Outcome and releases escrow"""
     it = _INTENTS.get(req.intent_id)
     if not it:
         raise HTTPException(status_code=404, detail="intent not found")
     
-    if it["status"] not in ["AWARDED", "IN_PROGRESS"]:
-        raise HTTPException(status_code=400, detail=f"cannot settle intent in status {it['status']}")
+    if it["status"] != "AWARDED":
+        raise HTTPException(status_code=400, detail=f"cannot verify PoO for intent in status {it['status']}")
+    
+    if not req.approved:
+        it["status"] = "DISPUTED"
+        it["poo_verified"] = False
+        it["dispute_reason"] = req.feedback or "buyer_rejected_poo"
+        it["events"].append({
+            "type": "POO_REJECTED",
+            "poo_id": req.poo_id,
+            "feedback": req.feedback,
+            "at": now_iso()
+        })
+        
+        return {
+            "ok": False,
+            "message": "PoO rejected. Dispute opened. Escrow held pending resolution."
+        }
     
     it["status"] = "SETTLED"
-    it["settlement"] = req.outcome or {}
+    it["poo_verified"] = True
+    it["poo_id"] = req.poo_id
+    it["settlement"] = {"verified": True, "feedback": req.feedback}
     it["events"].append({
-        "type": "INTENT_SETTLED",
-        "outcome": req.outcome,
+        "type": "POO_VERIFIED",
+        "poo_id": req.poo_id,
         "at": now_iso()
     })
     
-    escrow = float(it.get("escrow_usd") or 0.0)
     winner = it.get("claimed_by")
+    if not winner:
+        raise HTTPException(status_code=500, detail="no_winner_found")
     
-    if escrow > 0 and winner:
+    released = await _release_escrow(req.intent_id, winner)
+    
+    try:
+        realloc_budget = round(released * 0.2, 2)
         async with httpx.AsyncClient(timeout=10) as client:
-            # Credit winner
-            try:
-                await client.post(
-                    "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
-                    json={
-                        "username": winner,
-                        "amount": escrow,
-                        "basis": "intent_settlement",
-                        "ref": req.intent_id
-                    }
-                )
-                print(f"✅ Credited ${escrow} to {winner}")
-            except Exception as e:
-                print(f"Failed to credit winner: {e}")
-            
-            # Auto-reallocate 20% to next campaign
-            try:
-                realloc_budget = round(escrow * 0.2, 2)
-                await client.post(
-                    "https://aigentsy-ame-runtime.onrender.com/r3/allocate",
-                    json={
-                        "user_id": winner,
-                        "budget_usd": realloc_budget
-                    }
-                )
-                print(f"✅ Auto-reallocated ${realloc_budget} for {winner}")
-            except Exception as e:
-                print(f"R³ reallocation failed: {e}")
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/r3/allocate",
+                json={
+                    "user_id": winner,
+                    "budget_usd": realloc_budget
+                }
+            )
+            print(f"Auto-reallocated ${realloc_budget} for {winner}")
+    except Exception as e:
+        print(f"R3 reallocation failed: {e}")
     
-    return {"ok": True, "escrow_released": escrow}
+    return {
+        "ok": True,
+        "escrow_released": released,
+        "message": f"PoO verified. ${released} released to {winner}."
+    }
+
+@router.post("/settle")
+async def settle_intent(req: Settle):
+    """DEPRECATED: Use /verify_poo instead"""
+    it = _INTENTS.get(req.intent_id)
+    if not it:
+        raise HTTPException(status_code=404, detail="intent not found")
+    
+    return {
+        "ok": False,
+        "message": "settle endpoint deprecated. Use /verify_poo to approve agent's Proof of Outcome."
+    }
+
+@router.post("/dispute")
+async def dispute_intent(intent_id: str, reason: str):
+    """Buyer disputes agent's work and triggers manual review"""
+    it = _INTENTS.get(intent_id)
+    if not it:
+        raise HTTPException(status_code=404, detail="intent not found")
+    
+    it["status"] = "DISPUTED"
+    it["dispute_reason"] = reason
+    it["events"].append({
+        "type": "DISPUTE_OPENED",
+        "reason": reason,
+        "at": now_iso()
+    })
+    
+    return {
+        "ok": True,
+        "message": "Dispute opened. Escrow held. Admin will review within 48 hours."
+    }
+
+@router.post("/resolve_dispute")
+async def resolve_dispute(intent_id: str, resolution: str, refund_pct: float = 0.0):
+    """Admin resolves dispute (release to agent, refund to buyer, or split)"""
+    it = _INTENTS.get(intent_id)
+    if not it:
+        raise HTTPException(status_code=404, detail="intent not found")
+    
+    if it["status"] != "DISPUTED":
+        raise HTTPException(status_code=400, detail="intent not disputed")
+    
+    escrow = next((e for e in _ESCROW.values() if e["intent_id"] == intent_id and e["status"] == "LOCKED"), None)
+    if not escrow:
+        raise HTTPException(status_code=404, detail="escrow not found")
+    
+    amount = escrow["amount"]
+    winner = it.get("claimed_by")
+    buyer = it.get("from")
+    
+    if refund_pct == 1.0:
+        await _refund_escrow(intent_id, "dispute_resolved_refund")
+        it["status"] = "REFUNDED"
+    elif refund_pct == 0.0:
+        await _release_escrow(intent_id, winner)
+        it["status"] = "SETTLED"
+    else:
+        refund_amt = round(amount * refund_pct, 2)
+        release_amt = round(amount * (1 - refund_pct), 2)
+        
+        escrow["status"] = "SPLIT"
+        escrow["events"].append({
+            "type": "DISPUTE_RESOLVED_SPLIT",
+            "refund_pct": refund_pct,
+            "at": now_iso()
+        })
+        
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
+                json={
+                    "username": buyer,
+                    "amount": refund_amt,
+                    "basis": "dispute_refund",
+                    "ref": intent_id
+                }
+            )
+            
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
+                json={
+                    "username": winner,
+                    "amount": release_amt,
+                    "basis": "dispute_partial_payment",
+                    "ref": intent_id
+                }
+            )
+        
+        it["status"] = "RESOLVED_SPLIT"
+    
+    it["resolution"] = resolution
+    it["events"].append({
+        "type": "DISPUTE_RESOLVED",
+        "resolution": resolution,
+        "refund_pct": refund_pct,
+        "at": now_iso()
+    })
+    
+    return {
+        "ok": True,
+        "resolution": resolution,
+        "refund_pct": refund_pct
+    }
 
 @router.get("/list")
 async def list_intents(status: Optional[str] = None):
@@ -236,10 +468,22 @@ async def get_intent(intent_id: str):
         raise HTTPException(status_code=404, detail="intent not found")
     
     bids = _BIDS.get(intent_id, [])
+    escrow = next((e for e in _ESCROW.values() if e["intent_id"] == intent_id), None)
     
     return {
         "ok": True,
         "intent": it,
         "bids": bids,
-        "bid_count": len(bids)
+        "bid_count": len(bids),
+        "escrow": escrow
     }
+
+@router.get("/escrow/{intent_id}")
+async def get_escrow_status(intent_id: str):
+    """Check escrow status for an intent"""
+    escrow = next((e for e in _ESCROW.values() if e["intent_id"] == intent_id), None)
+    
+    if not escrow:
+        raise HTTPException(status_code=404, detail="escrow not found")
+    
+    return {"ok": True, "escrow": escrow}
