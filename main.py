@@ -81,23 +81,29 @@ except Exception:
 
 app = FastAPI()
 
-# ========== ADD THIS BLOCK HERE ==========
 async def auto_bid_background():
     """Runs in background forever"""
     base_url = os.getenv("SELF_URL", "http://localhost:8000")
-    await asyncio.sleep(60)  # Wait 60s for server to be ready
+    await asyncio.sleep(60)
     
     while True:
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(f"{base_url}/intent/auto_bid")
                 result = r.json()
-                print(f"✅ Auto-bid: {result.get('count', 0)} bids submitted")
+                print(f"Auto-bid: {result.get('count', 0)} bids submitted")
         except Exception as e:
-            print(f"⚠️ Auto-bid error: {e}")
+            print(f"Auto-bid error: {e}")
         
-        await asyncio.sleep(30)  # Run every 30 seconds
+        await asyncio.sleep(30)
 
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    print("Auto-bid background task started")
+
+logger = logging.getLogger("aigentsy")
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks"""
