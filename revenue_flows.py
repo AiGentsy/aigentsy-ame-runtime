@@ -311,61 +311,151 @@ async def split_jv_revenue(username: str, amount_usd: float, jv_id: str):
 # ============ CLONE ROYALTY ============
 
 async def distribute_clone_royalty(username: str, amount_usd: float, clone_id: str):
-    """Pay 30% royalty to original owner when clone earns"""
+    """Pay multi-generation royalties to clone lineage (30% → 10% → 3%)"""
     try:
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Find original owner in cloneLineage
         lineage = user.get("cloneLineage", [])
-        original_owner = None
         
+        # Build lineage chain
+        chain = []
         for entry in lineage:
             if entry.get("cloneId") == clone_id:
-                original_owner = entry.get("originalOwner")
+                chain.append({
+                    "generation": 1,
+                    "owner": entry.get("originalOwner"),
+                    "rate": 0.30
+                })
+                
+                # Check if original owner has lineage (grandparent)
+                grandparent = entry.get("grandparent")
+                if grandparent:
+                    chain.append({
+                        "generation": 2,
+                        "owner": grandparent,
+                        "rate": 0.10
+                    })
+                
+                # Check for great-grandparent
+                great_grandparent = entry.get("great_grandparent")
+                if great_grandparent:
+                    chain.append({
+                        "generation": 3,
+                        "owner": great_grandparent,
+                        "rate": 0.03
+                    })
+                
                 break
         
-        if not original_owner:
-            return {"ok": False, "error": "original_owner_not_found"}
+        if not chain:
+            return {"ok": False, "error": "lineage_not_found"}
         
-        # Calculate 30% royalty
-        royalty = round(amount_usd * CLONE_ROYALTY, 2)
-        user_keeps = round(amount_usd - royalty, 2)
+        # Calculate payouts
+        distributions = []
+        total_royalty = 0.0
         
-        # Credit original owner
-        credit_aigx(original_owner, royalty, {
-            "source": "clone_royalty",
-            "clone_id": clone_id,
-            "clone_owner": username
-        })
+        for ancestor in chain:
+            royalty = round(amount_usd * ancestor["rate"], 2)
+            total_royalty += royalty
+            
+            # Credit ancestor
+            credit_aigx(ancestor["owner"], royalty, {
+                "source": "clone_royalty",
+                "clone_id": clone_id,
+                "clone_owner": username,
+                "generation": ancestor["generation"]
+            })
+            
+            distributions.append({
+                "generation": ancestor["generation"],
+                "owner": ancestor["owner"],
+                "royalty": royalty,
+                "rate": ancestor["rate"]
+            })
         
-        # Credit clone owner (keeps 70%)
-        credit_aigx(username, user_keeps, {
+        # Clone owner keeps remainder
+        clone_keeps = round(amount_usd - total_royalty, 2)
+        credit_aigx(username, clone_keeps, {
             "source": "clone_earnings",
             "clone_id": clone_id
         })
         
         # Post ledger
         append_intent_ledger(username, {
-            "event": "clone_royalty_paid",
+            "event": "clone_royalty_paid_multi_gen",
             "clone_id": clone_id,
             "total": amount_usd,
-            "royalty_to_owner": royalty,
-            "clone_keeps": user_keeps,
-            "original_owner": original_owner,
+            "distributions": distributions,
+            "clone_keeps": clone_keeps,
             "ts": now_iso()
         })
         
         return {
             "ok": True,
-            "royalty": royalty,
-            "clone_keeps": user_keeps,
-            "original_owner": original_owner
+            "total_royalty": round(total_royalty, 2),
+            "clone_keeps": clone_keeps,
+            "distributions": distributions
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+async def register_clone_lineage(
+    clone_owner: str,
+    clone_id: str,
+    original_owner: str,
+    generation: int = 1
+) -> Dict[str, Any]:
+    """Register clone with multi-generation lineage tracking"""
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        clone_user = get_user(clone_owner)
+        if not clone_user:
+            return {"ok": False, "error": "clone_owner_not_found"}
+        
+        # Get original owner's lineage to build chain
+        original_user = get_user(original_owner)
+        grandparent = None
+        great_grandparent = None
+        
+        if original_user and generation == 1:
+            # Check if original is also a clone (has lineage)
+            orig_lineage = original_user.get("cloneLineage", [])
+            if orig_lineage:
+                # Original owner is a clone, so clone owner is generation 2+
+                parent_entry = orig_lineage[0]  # First entry is immediate parent
+                grandparent = parent_entry.get("originalOwner")
+                great_grandparent = parent_entry.get("grandparent")
+        
+        # Add lineage entry
+        lineage_entry = {
+            "cloneId": clone_id,
+            "originalOwner": original_owner,
+            "generation": generation,
+            "grandparent": grandparent,
+            "great_grandparent": great_grandparent,
+            "clonedAt": now_iso()
+        }
+        
+        clone_user.setdefault("cloneLineage", []).append(lineage_entry)
+        
+        # Update clone user
+        log_agent_update(clone_user)
+        
+        return {
+            "ok": True,
+            "lineage_entry": lineage_entry,
+            "royalty_chain": [
+                {"generation": 1, "owner": original_owner, "rate": 0.30},
+                {"generation": 2, "owner": grandparent, "rate": 0.10} if grandparent else None,
+                {"generation": 3, "owner": great_grandparent, "rate": 0.03} if great_grandparent else None
+            ]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 # ============ EARNINGS SUMMARY ============
 
