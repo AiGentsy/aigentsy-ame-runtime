@@ -19,7 +19,6 @@ async def create_jv_proposal(
     duration_days: int = 90,
     terms: Dict[str, Any] = None
 ) -> Dict[str, Any]:
-    """Create a JV proposal"""
     
     if proposer == partner:
         return {"ok": False, "error": "cannot_propose_to_self"}
@@ -51,7 +50,6 @@ async def create_jv_proposal(
     
     _JV_PROPOSALS[proposal_id] = proposal
     
-    # Notify partner
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             await client.post(
@@ -61,16 +59,7 @@ async def create_jv_proposal(
                     "sender": proposer,
                     "recipient": partner,
                     "title": f"JV Proposal: {title}",
-                    "body": f"""{proposer} is proposing a joint venture.
-
-{description}
-
-Revenue Split:
-{chr(10).join(f'- {k}: {int(v*100)}%' for k,v in revenue_split.items())}
-
-Duration: {duration_days} days
-
-Review at: /jv/proposals/{proposal_id}""",
+                    "body": f"{proposer} proposing JV. Review at /jv/proposals/{proposal_id}",
                     "meta": {"jv_proposal_id": proposal_id},
                     "status": "sent",
                     "timestamp": now_iso()
@@ -88,7 +77,6 @@ async def vote_on_jv(
     vote: str,
     feedback: str = ""
 ) -> Dict[str, Any]:
-    """Vote on a JV proposal (APPROVED or REJECTED)"""
     
     proposal = _JV_PROPOSALS.get(proposal_id)
     if not proposal:
@@ -103,7 +91,6 @@ async def vote_on_jv(
     if vote.upper() not in ["APPROVED", "REJECTED"]:
         return {"ok": False, "error": "vote_must_be_APPROVED_or_REJECTED"}
     
-    # Record vote
     proposal["votes"][voter] = vote.upper()
     proposal["events"].append({
         "type": f"VOTE_{vote.upper()}",
@@ -112,12 +99,10 @@ async def vote_on_jv(
         "at": now_iso()
     })
     
-    # Check if both voted
     proposer_vote = proposal["votes"][proposal["proposer"]]
     partner_vote = proposal["votes"][proposal["partner"]]
     
     if proposer_vote == "APPROVED" and partner_vote == "APPROVED":
-        # Both approved - activate JV
         proposal["status"] = "APPROVED"
         jv = await activate_jv(proposal)
         
@@ -129,7 +114,6 @@ async def vote_on_jv(
         }
     
     elif "REJECTED" in [proposer_vote, partner_vote]:
-        # Either party rejected
         proposal["status"] = "REJECTED"
         proposal["rejection_reason"] = feedback
         
@@ -139,7 +123,6 @@ async def vote_on_jv(
             "message": "JV proposal rejected"
         }
     
-    # Still pending
     return {
         "ok": True,
         "status": "PENDING",
@@ -148,7 +131,6 @@ async def vote_on_jv(
 
 
 async def activate_jv(proposal: Dict[str, Any]) -> Dict[str, Any]:
-    """Activate an approved JV"""
     
     jv_id = f"jv_{uuid4().hex[:8]}"
     
@@ -170,7 +152,6 @@ async def activate_jv(proposal: Dict[str, Any]) -> Dict[str, Any]:
     
     _ACTIVE_JVS[jv_id] = jv
     
-    # Add to both users' JV mesh via main.py
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             await client.post(
@@ -184,32 +165,7 @@ async def activate_jv(proposal: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
         except Exception as e:
-            print(f"Failed to register JV in user records: {e}")
-    
-    # Notify both parties
-    for party in jv["parties"]:
-        try:
-            await client.post(
-                "https://aigentsy-ame-runtime.onrender.com/submit_proposal",
-                json={
-                    "id": f"jv_active_{uuid4().hex[:8]}",
-                    "sender": "system",
-                    "recipient": party,
-                    "title": f"JV Activated: {jv['title']}",
-                    "body": f"""Your joint venture is now active.
-
-JV ID: {jv_id}
-Duration: {jv['duration_days']} days
-Revenue Split: {jv['revenue_split']}
-
-All revenue will be automatically split according to agreed terms.""",
-                    "meta": {"jv_id": jv_id},
-                    "status": "sent",
-                    "timestamp": now_iso()
-                }
-            )
-        except Exception as e:
-            print(f"Failed to notify party: {e}")
+            print(f"Failed to register JV: {e}")
     
     return {"ok": True, "jv_id": jv_id, "jv": jv}
 
@@ -219,8 +175,65 @@ async def dissolve_jv(
     requester: str,
     reason: str = ""
 ) -> Dict[str, Any]:
-    """Dissolve a JV (30-day notice)"""
     
     jv = _ACTIVE_JVS.get(jv_id)
     if not jv:
         return {"ok": False, "error": "jv_not_found"}
+    
+    if requester not in jv["parties"]:
+        return {"ok": False, "error": "requester_not_party_to_jv"}
+    
+    if jv["status"] != "ACTIVE":
+        return {"ok": False, "error": f"jv_already_{jv['status'].lower()}"}
+    
+    jv["status"] = "DISSOLVING"
+    jv["dissolution_requested_by"] = requester
+    jv["dissolution_reason"] = reason
+    jv["dissolution_effective_at"] = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat() + "Z"
+    jv["events"].append({
+        "type": "DISSOLUTION_REQUESTED",
+        "by": requester,
+        "reason": reason,
+        "at": now_iso()
+    })
+    
+    return {"ok": True, "jv": jv, "effective_at": jv["dissolution_effective_at"]}
+
+
+def get_jv_proposal(proposal_id: str) -> Dict[str, Any]:
+    proposal = _JV_PROPOSALS.get(proposal_id)
+    if not proposal:
+        return {"ok": False, "error": "proposal_not_found"}
+    return {"ok": True, "proposal": proposal}
+
+
+def get_active_jv(jv_id: str) -> Dict[str, Any]:
+    jv = _ACTIVE_JVS.get(jv_id)
+    if not jv:
+        return {"ok": False, "error": "jv_not_found"}
+    return {"ok": True, "jv": jv}
+
+
+def list_jv_proposals(party: str = None, status: str = None) -> Dict[str, Any]:
+    proposals = list(_JV_PROPOSALS.values())
+    
+    if party:
+        proposals = [p for p in proposals if party in [p["proposer"], p["partner"]]]
+    
+    if status:
+        proposals = [p for p in proposals if p["status"] == status.upper()]
+    
+    proposals.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return {"ok": True, "proposals": proposals, "count": len(proposals)}
+
+
+def list_active_jvs(party: str = None) -> Dict[str, Any]:
+    jvs = list(_ACTIVE_JVS.values())
+    
+    if party:
+        jvs = [j for j in jvs if party in j["parties"]]
+    
+    jvs.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return {"ok": True, "jvs": jvs, "count": len(jvs)}
