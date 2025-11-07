@@ -45,7 +45,24 @@ def _sign_payload(body_bytes: bytes) -> dict:
     ts = str(int(_time.time()))
     sig = hmac.new(secret.encode(), (ts + "." + body_bytes.decode()).encode(), hashlib.sha256).hexdigest()
     return {"X-Ts": ts, "X-Sign": sig}
+# Intent Exchange (upgraded with auction system)
+try:
+    from intent_exchange_UPGRADED import router as intent_router
+except Exception:
+    intent_router = None
 
+# MetaBridge DealGraph (upgraded with real matching)
+try:
+    from metabridge_dealgraph_UPGRADED import router as dealgraph_router
+except Exception:
+    dealgraph_router = None
+
+# R³ Budget Router (upgraded with ROI prediction)
+try:
+    from r3_router_UPGRADED import router as r3_router
+except Exception:
+    r3_router = None
+    
 app = FastAPI()
 
 logger = logging.getLogger("aigentsy")
@@ -1221,13 +1238,69 @@ async def run_agent(request: Request):
     try:
         data = await request.json()
         user_input = data.get("input","")
-        if not user_input: return {"error":"No input provided."}
-        initial_state = {"input": user_input, "memory": []}
+        role = data.get("role", "CFO")  # CFO is venture_builder_agent (default)
+        username = data.get("username", "guest")
+        
+        if not user_input:
+            return {"error": "No input provided."}
+        
+        # Role-specific enforcement
+        ROLE_INSTRUCTIONS = {
+            "CFO": f"""CRITICAL: You are the CFO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CFO" or "the agent" — you ARE the CFO.
+Start with: "💰 CFO here —"
+Give 2-3 concrete financial next steps with ROI/pricing.
+End with ONE clarifying question.""",
+            
+            "CMO": f"""CRITICAL: You are the CMO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CMO" or "the growth agent" — you ARE the CMO.
+Start with: "📣 CMO here —"
+Give 2-3 concrete growth plays with channels/targets.
+End with ONE clarifying question.""",
+            
+            "CTO": f"""CRITICAL: You are the CTO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CTO" or "the SDK agent" — you ARE the CTO.
+Start with: "🧬 CTO here —"
+Give 2-3 concrete technical steps with build/integration plan.
+End with ONE clarifying question.""",
+            
+            "CLO": f"""CRITICAL: You are the CLO of {username}'s business. Speak ONLY in first person.
+NEVER say "your CLO" or "the legal agent" — you ARE the CLO.
+Start with: "📜 CLO here —"
+Give 2-3 concrete legal/branding steps with risk mitigation.
+End with ONE clarifying question.""",
+        }
+        
+        # Inject role instruction into input
+        role_instruction = ROLE_INSTRUCTIONS.get(role, ROLE_INSTRUCTIONS["CFO"])
+        enhanced_input = f"{role_instruction}\n\nUser question: {user_input}"
+        
+        initial_state = {
+            "input": enhanced_input,
+            "memory": data.get("memory", [])
+        }
+        
         result = await agent_graph.ainvoke(initial_state)
-        return {"output": result.get("output","No output returned.")}
+        output = result.get("output", "No output returned.")
+        
+        # Safety filter: Remove third-person references
+        output = output.replace("your CFO", "I")
+        output = output.replace("your CMO", "I")
+        output = output.replace("your CTO", "I")
+        output = output.replace("your CLO", "I")
+        output = output.replace("the CFO", "I")
+        output = output.replace("the CMO", "I")
+        output = output.replace("the CTO", "I")
+        output = output.replace("the CLO", "I")
+        output = output.replace("AiGent Growth", "I")
+        output = output.replace("AiGent Venture", "I")
+        output = output.replace("AiGentsy SDK", "I")
+        output = output.replace("AiGentsy Remix", "I")
+        
+        return {"output": output, "role": role}
+        
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
-
 # ---- Existing router/decide (intent orchestrator) retained ----
 @app.post("/router/decide")
 async def router_decide(request: Request):
@@ -1448,22 +1521,21 @@ async def order_accept(body: Dict = Body(...)):
         await _save_users(client, users)
         return {"ok": True, "order": order}
 
-# Add to main.py
 
 @app.post("/intent/auto_bid")
-async def intent_auto_bid(background_tasks: BackgroundTasks):
+async def intent_auto_bid():
     """
-    Cron job (runs every 30s).
+    Cron job (runs every 30s via Render cron or external trigger).
     Growth agents auto-bid on matching intents.
     """
     users, client = await _get_users_client()
     
-    # Fetch all open intents
+    # Fetch all open intents from the upgraded router
     try:
-        r = await client.get("http://localhost:8000/intents/list?status=AUCTION")
+        r = await client.get("https://aigentsy-ame-runtime.onrender.com/intents/list?status=AUCTION")
         intents = r.json().get("intents", [])
-    except Exception:
-        return {"ok": False, "error": "failed to fetch intents"}
+    except Exception as e:
+        return {"ok": False, "error": f"failed to fetch intents: {e}"}
     
     bids_submitted = []
     
@@ -1477,7 +1549,7 @@ async def intent_auto_bid(background_tasks: BackgroundTasks):
             username = _username_of(u)
             traits = u.get("traits", [])
             
-            # Simple matching logic
+            # Matching logic
             can_fulfill = False
             if "marketing" in brief and "marketing" in traits:
                 can_fulfill = True
@@ -1487,20 +1559,22 @@ async def intent_auto_bid(background_tasks: BackgroundTasks):
                 can_fulfill = True
             elif "legal" in brief and "legal" in traits:
                 can_fulfill = True
+            elif "branding" in brief and "branding" in traits:
+                can_fulfill = True
             
             if not can_fulfill:
                 continue
             
-            # Calculate competitive bid (underbid budget by 10-20%)
+            # Calculate competitive bid (10-20% discount)
             import random
             discount = random.uniform(0.10, 0.20)
             bid_price = round(budget * (1 - discount), 2)
-            delivery_hours = 48 if "urgent" not in brief else 24
+            delivery_hours = 24 if "urgent" in brief else 48
             
             # Submit bid
             try:
                 await client.post(
-                    "http://localhost:8000/intents/bid",
+                    "https://aigentsy-ame-runtime.onrender.com/intents/bid",
                     json={
                         "intent_id": iid,
                         "agent": username,
@@ -1513,8 +1587,7 @@ async def intent_auto_bid(background_tasks: BackgroundTasks):
             except Exception as e:
                 print(f"Failed to bid for {username} on {iid}: {e}")
     
-    return {"ok": True, "bids_submitted": bids_submitted}
-    
+    return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
 @app.post("/invoice/create")
 async def invoice_create(body: Dict = Body(...)):
     username = body.get("username"); oid = body.get("orderId")
@@ -1604,6 +1677,68 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         await _save_users(client, users)
         return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
 
+@app.post("/outcome/attribute")
+async def outcome_attribute(body: Dict = Body(...)):
+    """
+    Called when revenue is attributed to a channel.
+    Updates Outcome Oracle + triggers R³ reallocation.
+    """
+    username = body.get("username")
+    channel = body.get("channel")
+    revenue = float(body.get("revenue_usd", 0))
+    spend = float(body.get("spend_usd", 0))
+    
+    if not (username and channel and revenue):
+        return {"error": "username, channel, revenue_usd required"}
+    
+    # Calculate ROAS
+    roas = round(revenue / spend, 2) if spend > 0 else 0.0
+    cpa = round(spend / revenue, 2) if revenue > 0 else 0.0
+    
+    # Update Outcome Oracle
+    try:
+        from outcome_oracle_MAX import on_event
+        on_event({
+            "kind": "ATTRIBUTED",
+            "username": username,
+            "value_usd": revenue,
+            "channel": channel,
+            "provider": channel
+        })
+    except Exception as e:
+        print(f"Oracle update failed: {e}")
+    
+    # Update R³ channel pacing
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/r3/pacing/update",
+                json={
+                    "user_id": username,
+                    "channel": channel,
+                    "performance": {
+                        "roas": roas,
+                        "cpa": cpa,
+                        "revenue": revenue,
+                        "spend": spend
+                    }
+                }
+            )
+        except Exception as e:
+            print(f"R³ pacing update failed: {e}")
+    
+    return {
+        "ok": True,
+        "attribution": {
+            "user": username,
+            "channel": channel,
+            "revenue": revenue,
+            "spend": spend,
+            "roas": roas,
+            "cpa": cpa
+        }
+    }
+    
 @app.post("/budget/spend")
 async def budget_spend(body: Dict = Body(...)):
     username = body.get("username"); amount = float(body.get("amount", 0))
@@ -2898,56 +3033,6 @@ if _expansion_router:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-# ----- Intent Exchange -----
-if _expansion_router:
-    @_expansion_router.post("/intents/publish")
-    async def intents_publish(payload: dict):
-        try:
-            from intent_exchange import publish
-            res = publish(payload.get("intent") or payload)
-            _event_emit("INTENT_PUBLISHED", {"id": res.get("id")})
-            return _safe_json({"ok": True, "intent": res})
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    @_expansion_router.post("/intents/claim")
-    async def intents_claim(payload: dict):
-        try:
-            from intent_exchange import claim
-            iid = payload.get("intent_id") or payload.get("id")
-            agent = payload.get("agent") or payload.get("username")
-            res = claim(iid, agent)
-            _event_emit("INTENT_CLAIMED", {"id": iid, "agent": agent})
-            return _safe_json({"ok": True, "intent": res})
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    @_expansion_router.post("/intents/settle")
-    async def intents_settle(payload: dict):
-        try:
-            from intent_exchange import settle
-            iid = payload.get("intent_id") or payload.get("id")
-            outcome = payload.get("outcome") or {}
-            res = settle(iid, outcome)
-            _event_emit("INTENT_SETTLED", {"id": iid})
-            return _safe_json({"ok": True, "intent": res})
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-# ----- R³ allocation -----
-if _expansion_router:
-    @_expansion_router.post("/r3/allocate")
-    async def r3_allocate(payload: dict):
-        try:
-            from r3_router import allocate
-            user = payload.get("user") or {"id": payload.get("username") or "chatgpt", "channel_pacing": payload.get("channel_pacing") or []}
-            budget = float(payload.get("budget_usd", 0))
-            res = allocate(user, budget)
-            for a in res.get("allocations", []):
-                _event_emit("R3_ALLOCATED", {"user": res.get("user"), "usd": a.get("usd"), "channel": a.get("channel")})
-            return _safe_json({"ok": True, **res})
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
 
 # ----- Shopify inventory proxy -----
 if _expansion_router:
@@ -3017,10 +3102,21 @@ try:
 except Exception:
     # No FastAPI app found or not constructed yet — safe to skip
     pass
-# Mount Intent Exchange router
+# ===== MOUNT ALL UPGRADED ROUTERS =====
 if intent_router:
     app.include_router(intent_router, prefix="/intents", tags=["Intent Exchange"])
-# --- Alias route to match admin requirement (/events/stream) ---
+
+if dealgraph_router:
+    app.include_router(dealgraph_router, prefix="/dealgraph", tags=["MetaBridge"])
+
+if r3_router:
+    app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
+
+# Mount expansion router (for any remaining stubs)
+try:
+    app.include_router(_expansion_router)
+except Exception:
+    pass
 @app.get("/events/stream")
 async def events_stream():
     # Reuse the existing SSE generator
@@ -3065,7 +3161,10 @@ async def _exp_intents_settle(payload: dict):
         return {"ok": True, "intent": settle(payload.get("intent_id") or payload.get("id"), payload.get("outcome") or {})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
+   
+# Mount it
+if r3_router:
+    app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
 @_expansion_router.post("/r3/allocate")
 async def _exp_r3_allocate(payload: dict):
     try:
@@ -3074,6 +3173,9 @@ async def _exp_r3_allocate(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+# Mount it
+if r3_router:
+    app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
 @_expansion_router.get("/inventory/get")
 async def _exp_inventory_get(product_id: str):
     try:
