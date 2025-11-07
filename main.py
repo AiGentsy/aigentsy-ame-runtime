@@ -2764,6 +2764,83 @@ async def get_outcome_score(username: str):
     if not u: return {"error":"user not found"}
     return {"ok": True, "score": int(u.get("outcomeScore", 0))}
 
+from disputes import (
+    open_dispute as open_dispute_system,
+    submit_evidence,
+    auto_resolve_dispute,
+    resolve_dispute as resolve_dispute_system,
+    get_dispute,
+    list_disputes,
+    get_party_dispute_stats
+)
+
+@app.post("/disputes/open")
+async def dispute_open(
+    intent_id: str,
+    opener: str,
+    reason: str,
+    evidence_urls: List[str] = None,
+    description: str = ""
+):
+    result = await open_dispute_system(
+        intent_id=intent_id,
+        opener=opener,
+        reason=reason,
+        evidence_urls=evidence_urls,
+        description=description
+    )
+    return result
+
+@app.post("/disputes/evidence")
+async def dispute_evidence(
+    dispute_id: str,
+    party: str,
+    evidence_urls: List[str],
+    statement: str = ""
+):
+    result = await submit_evidence(
+        dispute_id=dispute_id,
+        party=party,
+        evidence_urls=evidence_urls,
+        statement=statement
+    )
+    return result
+
+@app.post("/disputes/auto_resolve")
+async def dispute_auto_resolve(dispute_id: str):
+    result = await auto_resolve_dispute(dispute_id)
+    return result
+
+@app.post("/disputes/resolve")
+async def dispute_resolve(
+    dispute_id: str,
+    resolver: str,
+    resolution: str,
+    refund_pct: float
+):
+    result = await resolve_dispute_system(
+        dispute_id=dispute_id,
+        resolver=resolver,
+        resolution=resolution,
+        refund_pct=refund_pct
+    )
+    return result
+
+@app.get("/disputes/{dispute_id}")
+async def dispute_get(dispute_id: str):
+    return get_dispute(dispute_id)
+
+@app.get("/disputes/list")
+async def dispute_list(
+    status: str = None,
+    tier: str = None,
+    party: str = None
+):
+    return list_disputes(status=status, tier=tier, party=party)
+
+@app.get("/disputes/stats/{party}")
+async def dispute_stats(party: str):
+    return get_party_dispute_stats(party)
 #@app.post("/intent/create")
 async def intent_create(buyer: str, brief: str, budget: float):
     users, client = await _get_users_client()
