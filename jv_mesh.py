@@ -223,4 +223,4 @@ async def dissolve_jv(
     
     jv = _ACTIVE_JVS.get(jv_id)
     if not jv:
-        return {"ok": False, "error": "jv_not_foun
+        return {"ok": False, "error": "jv_not_found"}
