@@ -14,6 +14,22 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
+from revenue_flows import (
+    ingest_shopify_order,
+    ingest_affiliate_commission,
+    ingest_content_cpm,
+    ingest_service_payment,
+    distribute_staking_returns,
+    split_jv_revenue,
+    distribute_clone_royalty,
+    get_earnings_summary
+)
+from agent_spending import (
+    check_spending_capacity,
+    execute_agent_spend,
+    agent_to_agent_payment,
+    get_spending_summary
+)
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,11 +78,42 @@ try:
     from r3_router_UPGRADED import router as r3_router
 except Exception:
     r3_router = None
-    
+
 app = FastAPI()
+
+async def auto_bid_background():
+    """Runs in background forever"""
+    base_url = os.getenv("SELF_URL", "http://localhost:8000")
+    await asyncio.sleep(60)
+    
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(f"{base_url}/intent/auto_bid")
+                result = r.json()
+                print(f"Auto-bid: {result.get('count', 0)} bids submitted")
+        except Exception as e:
+            print(f"Auto-bid error: {e}")
+        
+        await asyncio.sleep(30)
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    print("Auto-bid background task started")
+
+logger = logging.getLogger("aigentsy")
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    print("Auto-bid background task started")
+# ========== END BLOCK ==========
 
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
+
 
 ALLOW_ORIGINS = [
     os.getenv("FRONTEND_ORIGIN", "https://aigentsy.com"),
@@ -87,10 +134,45 @@ app.add_middleware(
     max_age=86400,
 )
 
-# ---- Simple health check ----
 @app.get("/healthz")
 async def healthz():
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
+
+# ========== ADD THESE 3 ENDPOINTS HERE ==========
+@app.get("/revenue/summary")
+async def revenue_summary_get(username: str):
+    """Frontend expects this endpoint"""
+    result = get_earnings_summary(username)
+    return result
+
+@app.get("/score/outcome") 
+async def get_outcome_score_query(username: str):
+    """Frontend polls this"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        return {"ok": True, "score": int(u.get("outcomeScore", 0))}
+
+@app.get("/metrics/summary")
+async def metrics_summary_get(username: str):
+    """Compact snapshot for dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        return {
+            "ok": True,
+            "proposals": len(u.get("proposals", [])),
+            "intents": len(u.get("intents", [])),
+            "quotes": len(u.get("quotes", [])),
+            "escrow": len([e for e in u.get("escrow", []) if e.get("status") == "held"]),
+            "aigx": float(u.get("yield", {}).get("aigxEarned", 0))
+        }
+# ========== END BLOCK ==========
 
 # ---- Env ----
 JSONBIN_URL     = os.getenv("JSONBIN_URL")
@@ -624,7 +706,47 @@ async def money_summary(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         return {"ok": True, "summary": _money_summary(u)}
+@app.get("/revenue/summary")
+async def revenue_summary_get(username: str):
+    """Frontend expects this endpoint"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        # Call your revenue_flows.py function
+        from revenue_flows import get_earnings_summary
+        result = get_earnings_summary(username)
+        return result
 
+@app.get("/score/outcome") 
+async def get_outcome_score_query(username: str):
+    """Frontend polls this"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        return {"ok": True, "score": int(u.get("outcomeScore", 0))}
+
+@app.get("/metrics/summary")
+async def metrics_summary_get(username: str):
+    """Compact snapshot for dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        return {
+            "ok": True,
+            "proposals": len(u.get("proposals", [])),
+            "intents": len(u.get("intents", [])),
+            "quotes": len(u.get("quotes", [])),
+            "escrow": len([e for e in u.get("escrow", []) if e.get("status") == "held"]),
+            "aigx": float(u.get("yield", {}).get("aigxEarned", 0))
+        }
 # ===== Referral credit (double-sided friendly) =====
 @app.post("/referral/credit")
 async def referral_credit(body: Dict = Body(...)):
@@ -1521,35 +1643,22 @@ async def order_accept(body: Dict = Body(...)):
         await _save_users(client, users)
         return {"ok": True, "order": order}
 
-
 @app.post("/intent/auto_bid")
 async def intent_auto_bid():
-    """
-    Cron job (runs every 30s via Render cron or external trigger).
-    Growth agents auto-bid on matching intents.
-    """
     users, client = await _get_users_client()
-    
-    # Fetch all open intents from the upgraded router
     try:
         r = await client.get("https://aigentsy-ame-runtime.onrender.com/intents/list?status=AUCTION")
         intents = r.json().get("intents", [])
     except Exception as e:
         return {"ok": False, "error": f"failed to fetch intents: {e}"}
-    
     bids_submitted = []
-    
     for intent in intents:
         iid = intent["id"]
         brief = intent["intent"].get("brief", "").lower()
         budget = float(intent.get("escrow_usd", 0))
-        
-        # Match users who can fulfill this
         for u in users:
             username = _username_of(u)
             traits = u.get("traits", [])
-            
-            # Matching logic
             can_fulfill = False
             if "marketing" in brief and "marketing" in traits:
                 can_fulfill = True
@@ -1561,33 +1670,23 @@ async def intent_auto_bid():
                 can_fulfill = True
             elif "branding" in brief and "branding" in traits:
                 can_fulfill = True
-            
             if not can_fulfill:
                 continue
-            
-            # Calculate competitive bid (10-20% discount)
             import random
             discount = random.uniform(0.10, 0.20)
             bid_price = round(budget * (1 - discount), 2)
             delivery_hours = 24 if "urgent" in brief else 48
-            
-            # Submit bid
             try:
-                await client.post(
-                    "https://aigentsy-ame-runtime.onrender.com/intents/bid",
-                    json={
-                        "intent_id": iid,
-                        "agent": username,
-                        "price_usd": bid_price,
-                        "delivery_hours": delivery_hours,
-                        "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."
-                    }
-                )
+                await client.post("https://aigentsy-ame-runtime.onrender.com/intents/bid", json={"intent_id": iid, "agent": username, "price_usd": bid_price, "delivery_hours": delivery_hours, "message": f"I can deliver this within {delivery_hours}h for ${bid_price}."})
                 bids_submitted.append({"intent": iid, "agent": username, "price": bid_price})
+                try:
+                    await publish({"type":"bid","agent":username,"intent_id":iid,"price":bid_price})
+                except:
+                    pass
             except Exception as e:
                 print(f"Failed to bid for {username} on {iid}: {e}")
-    
     return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
+
 @app.post("/invoice/create")
 async def invoice_create(body: Dict = Body(...)):
     username = body.get("username"); oid = body.get("orderId")
@@ -2593,12 +2692,71 @@ async def poo_issue(username: str, title: str, metrics: dict = None, evidence_ur
     score = int(u.get("outcomeScore", 0)) + 3
     u["outcomeScore"] = max(0, min(100, score))
     await _save_users(client, users)
+    
+    # ADD THIS:
     try:
-        await publish({"type":"poo","user":username,"title":title})
-    except Exception:
-        pass
+        await publish({"type":"poo","user":username,"title":title,"score":score})
+    except Exception as e:
+        print(f"Publish error: {e}")
+    
     return {"ok": True, "outcome": entry, "score": u["outcomeScore"]}
+from outcome_oracle import (
+    issue_poo as issue_poo_oracle,
+    verify_poo as verify_poo_oracle,
+    get_poo,
+    list_poos,
+    get_agent_poo_stats
+)
 
+@app.post("/poo/submit")
+async def poo_submit(
+    username: str,
+    intent_id: str,
+    title: str,
+    evidence_urls: List[str] = None,
+    metrics: Dict[str, Any] = None,
+    description: str = ""
+):
+    result = await issue_poo_oracle(
+        username=username,
+        intent_id=intent_id,
+        title=title,
+        evidence_urls=evidence_urls,
+        metrics=metrics,
+        description=description
+    )
+    return result
+
+@app.post("/poo/verify")
+async def poo_verify(
+    poo_id: str,
+    buyer_username: str,
+    approved: bool,
+    feedback: str = ""
+):
+    result = await verify_poo_oracle(
+        poo_id=poo_id,
+        buyer_username=buyer_username,
+        approved=approved,
+        feedback=feedback
+    )
+    return result
+
+@app.get("/poo/{poo_id}")
+async def poo_get(poo_id: str):
+    return get_poo(poo_id)
+
+@app.get("/poo/list")
+async def poo_list(
+    agent: str = None,
+    intent_id: str = None,
+    status: str = None
+):
+    return list_poos(agent=agent, intent_id=intent_id, status=status)
+
+@app.get("/poo/stats/{username}")
+async def poo_stats(username: str):
+    return get_agent_poo_stats(username)    
 @app.get("/score/outcome")
 async def get_outcome_score(username: str):
     users, client = await _get_users_client()
@@ -2606,6 +2764,83 @@ async def get_outcome_score(username: str):
     if not u: return {"error":"user not found"}
     return {"ok": True, "score": int(u.get("outcomeScore", 0))}
 
+from disputes import (
+    open_dispute as open_dispute_system,
+    submit_evidence,
+    auto_resolve_dispute,
+    resolve_dispute as resolve_dispute_system,
+    get_dispute,
+    list_disputes,
+    get_party_dispute_stats
+)
+
+@app.post("/disputes/open")
+async def dispute_open(
+    intent_id: str,
+    opener: str,
+    reason: str,
+    evidence_urls: List[str] = None,
+    description: str = ""
+):
+    result = await open_dispute_system(
+        intent_id=intent_id,
+        opener=opener,
+        reason=reason,
+        evidence_urls=evidence_urls,
+        description=description
+    )
+    return result
+
+@app.post("/disputes/evidence")
+async def dispute_evidence(
+    dispute_id: str,
+    party: str,
+    evidence_urls: List[str],
+    statement: str = ""
+):
+    result = await submit_evidence(
+        dispute_id=dispute_id,
+        party=party,
+        evidence_urls=evidence_urls,
+        statement=statement
+    )
+    return result
+
+@app.post("/disputes/auto_resolve")
+async def dispute_auto_resolve(dispute_id: str):
+    result = await auto_resolve_dispute(dispute_id)
+    return result
+
+@app.post("/disputes/resolve")
+async def dispute_resolve(
+    dispute_id: str,
+    resolver: str,
+    resolution: str,
+    refund_pct: float
+):
+    result = await resolve_dispute_system(
+        dispute_id=dispute_id,
+        resolver=resolver,
+        resolution=resolution,
+        refund_pct=refund_pct
+    )
+    return result
+
+@app.get("/disputes/{dispute_id}")
+async def dispute_get(dispute_id: str):
+    return get_dispute(dispute_id)
+
+@app.get("/disputes/list")
+async def dispute_list(
+    status: str = None,
+    tier: str = None,
+    party: str = None
+):
+    return list_disputes(status=status, tier=tier, party=party)
+
+@app.get("/disputes/stats/{party}")
+async def dispute_stats(party: str):
+    return get_party_dispute_stats(party)
 #@app.post("/intent/create")
 async def intent_create(buyer: str, brief: str, budget: float):
     users, client = await _get_users_client()
@@ -2794,7 +3029,136 @@ async def concierge_triage(text: str):
     suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
     return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
 
+# ============ REVENUE INGESTION ENDPOINTS ============
 
+@app.post("/webhooks/shopify")
+async def shopify_webhook(request: Request):
+    """Shopify order webhook"""
+    # Get headers
+    topic = request.headers.get("X-Shopify-Topic", "")
+    shop_domain = request.headers.get("X-Shopify-Shop-Domain", "")
+    received_hmac = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    
+    # Get raw body for HMAC verification
+    raw_body = await request.body()
+    
+    # Verify HMAC (you need to implement this based on your Shopify secret)
+    # For now, we'll skip verification in development
+    
+    # Parse payload
+    try:
+        payload = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Map shop domain to username (you need to configure this)
+    # For now, use a default username
+    username = os.getenv("SHOPIFY_USERNAME", "demo_user")
+    
+    # Extract order details
+    order_id = str(payload.get("id", ""))
+    revenue_usd = float(payload.get("total_price") or payload.get("current_total_price") or 0)
+    
+    # Ingest revenue
+    result = await ingest_shopify_order(username, order_id, revenue_usd)
+    
+    return result
+
+
+@app.post("/revenue/affiliate")
+async def affiliate_commission(
+    username: str,
+    source: str,  # "tiktok" or "amazon"
+    revenue_usd: float,
+    product_id: Optional[str] = None
+):
+    """Ingest affiliate commission"""
+    result = await ingest_affiliate_commission(username, source, revenue_usd, product_id)
+    return result
+
+
+@app.post("/revenue/cpm")
+async def content_cpm(
+    username: str,
+    platform: str,  # "youtube" or "tiktok"
+    views: int,
+    cpm_rate: float
+):
+    """Ingest content CPM revenue"""
+    result = await ingest_content_cpm(username, platform, views, cpm_rate)
+    return result
+
+
+@app.post("/revenue/service")
+async def service_payment(
+    username: str,
+    invoice_id: str,
+    amount_usd: float
+):
+    """Ingest service payment"""
+    result = await ingest_service_payment(username, invoice_id, amount_usd)
+    return result
+
+
+@app.post("/revenue/staking")
+async def staking_returns(username: str, amount_usd: float):
+    """Distribute staking returns"""
+    result = await distribute_staking_returns(username, amount_usd)
+    return result
+
+
+@app.get("/revenue/summary")
+async def earnings_summary(username: str):
+    """Get earnings breakdown"""
+    result = get_earnings_summary(username)
+    return result
+
+
+# ============ JV & ROYALTY ENDPOINTS ============
+
+@app.post("/revenue/jv_split")
+async def jv_split(username: str, amount_usd: float, jv_id: str):
+    """Split revenue with JV partner"""
+    result = await split_jv_revenue(username, amount_usd, jv_id)
+    return result
+
+
+@app.post("/revenue/clone_royalty")
+async def clone_royalty(username: str, amount_usd: float, clone_id: str):
+    """Pay clone royalty to original owner"""
+    result = await distribute_clone_royalty(username, amount_usd, clone_id)
+    return result
+
+
+# ============ AGENT SPENDING ENDPOINTS ============
+
+@app.post("/agent/check_spend")
+async def check_spend(username: str, amount_usd: float):
+    """Check if agent can spend amount"""
+    result = await check_spending_capacity(username, amount_usd)
+    return result
+
+
+@app.post("/agent/spend")
+async def agent_spend(username: str, amount_usd: float, basis: str, ref: Optional[str] = None):
+    """Execute agent spending"""
+    result = await execute_agent_spend(username, amount_usd, basis, ref)
+    return result
+
+
+@app.post("/agent/pay")
+async def agent_pay(from_user: str, to_user: str, amount_usd: float, reason: str):
+    """Agent-to-agent payment"""
+    result = await agent_to_agent_payment(from_user, to_user, amount_usd, reason)
+    return result
+
+
+@app.get("/agent/spending")
+async def spending_summary(username: str):
+    """Get agent spending analytics"""
+    result = get_spending_summary(username)
+    return result
+    
 # ===== AiGentsy AAM — helpers (idempotent) =====
 import base64, hmac, hashlib, os, json as _json
 
