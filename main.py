@@ -3637,6 +3637,90 @@ async def memory_import(username: str, json_data: str):
     """Import memory from JSON"""
     result = import_memory(username, json_data)
     return result
+
+@app.post("/memory/import")
+async def memory_import(username: str, json_data: str):
+    """Import memory from JSON"""
+    result = import_memory(username, json_data)
+    return result
+
+# ADD HIVE ENDPOINTS HERE
+
+from metahive_brain import (
+    contribute_to_hive,
+    query_hive,
+    report_pattern_usage,
+    get_hive_stats,
+    get_top_patterns
+)
+
+@app.post("/hive/contribute")
+async def hive_contribute(
+    username: str,
+    pattern_type: str,
+    context: Dict[str, Any],
+    action: Dict[str, Any],
+    outcome: Dict[str, Any],
+    anonymize: bool = True
+):
+    """Contribute pattern to hive"""
+    result = await contribute_to_hive(
+        username=username,
+        pattern_type=pattern_type,
+        context=context,
+        action=action,
+        outcome=outcome,
+        anonymize=anonymize
+    )
+    return result
+
+@app.post("/hive/query")
+async def hive_query(
+    context: Dict[str, Any],
+    pattern_type: str = None,
+    min_weight: float = 1.0,
+    limit: int = 5
+):
+    """Query hive for patterns"""
+    result = query_hive(
+        context=context,
+        pattern_type=pattern_type,
+        min_weight=min_weight,
+        limit=limit
+    )
+    return result
+
+@app.post("/hive/report")
+async def hive_report(
+    pattern_id: str,
+    success: bool,
+    actual_roas: float = None
+):
+    """Report pattern usage"""
+    result = report_pattern_usage(
+        pattern_id=pattern_id,
+        success=success,
+        actual_roas=actual_roas
+    )
+    return result
+
+@app.get("/hive/stats")
+async def hive_stats():
+    """Get hive statistics"""
+    return get_hive_stats()
+
+@app.get("/hive/top")
+async def hive_top(
+    pattern_type: str = None,
+    sort_by: str = "weight",
+    limit: int = 20
+):
+    """Get top patterns"""
+    return get_top_patterns(
+        pattern_type=pattern_type,
+        sort_by=sort_by,
+        limit=limit
+    )
     
 @_expansion_router.post("/coop/sponsor")
 async def _exp_coop_sponsor(payload: dict):
