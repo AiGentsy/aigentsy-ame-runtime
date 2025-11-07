@@ -416,11 +416,25 @@ def get_earnings_summary(username: str) -> Dict[str, Any]:
         
         total = sum(sources.values())
         
+        # Merge affiliate sources
+        affiliate_total = sources["tiktok_affiliate"] + sources["amazon_affiliate"]
+        
+        # Merge CPM sources
+        content_cpm_total = sources["youtube_cpm"] + sources["tiktok_cpm"]
+        
         return {
             "ok": True,
             "username": username,
             "total_earned": round(total, 2),
-            "sources": {k: round(v, 2) for k, v in sources.items()},
+            "sources": {
+                "service": round(sources["service"], 2),
+                "shopify": round(sources["shopify"], 2),
+                "affiliate": round(affiliate_total, 2),
+                "content_cpm": round(content_cpm_total, 2),
+                "staking": round(sources["staking"], 2),
+                "jv": round(sources["jv"], 2),
+                "clone_royalty": round(sources["clone_royalty"], 2)
+            },
             "aigx_balance": user.get("yield", {}).get("aigxEarned", 0)
         }
     except Exception as e:
