@@ -81,6 +81,47 @@ except Exception:
 
 app = FastAPI()
 
+# ========== ADD THIS BLOCK HERE ==========
+async def auto_bid_background():
+    """Runs in background forever"""
+    base_url = os.getenv("SELF_URL", "http://localhost:8000")
+    await asyncio.sleep(60)  # Wait 60s for server to be ready
+    
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(f"{base_url}/intent/auto_bid")
+                result = r.json()
+                print(f"✅ Auto-bid: {result.get('count', 0)} bids submitted")
+        except Exception as e:
+            print(f"⚠️ Auto-bid error: {e}")
+        
+        await asyncio.sleep(30)  # Run every 30 seconds
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    print("🚀 Auto-bid background task started")
+# ========== END BLOCK ==========
+
+logger = logging.getLogger("aigentsy")
+logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
+
+ALLOW_ORIGINS = [
+    # ... rest of your code
+```
+
+**Changes I made:**
+1. ✅ Added `base_url` from environment (so it works on Render)
+2. ✅ Added 60s initial delay (so server finishes starting)
+3. ✅ Added logging so you can see it working
+4. ✅ Changed localhost to use `SELF_URL` env var
+
+**Set in Render dashboard:**
+```
+SELF_URL=https://aigentsy-ame-runtime.onrender.com
+
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
@@ -640,7 +681,47 @@ async def money_summary(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         return {"ok": True, "summary": _money_summary(u)}
+@app.get("/revenue/summary")
+async def revenue_summary_get(username: str):
+    """Frontend expects this endpoint"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        # Call your revenue_flows.py function
+        from revenue_flows import get_earnings_summary
+        result = get_earnings_summary(username)
+        return result
 
+@app.get("/score/outcome") 
+async def get_outcome_score_query(username: str):
+    """Frontend polls this"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        return {"ok": True, "score": int(u.get("outcomeScore", 0))}
+
+@app.get("/metrics/summary")
+async def metrics_summary_get(username: str):
+    """Compact snapshot for dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        return {
+            "ok": True,
+            "proposals": len(u.get("proposals", [])),
+            "intents": len(u.get("intents", [])),
+            "quotes": len(u.get("quotes", [])),
+            "escrow": len([e for e in u.get("escrow", []) if e.get("status") == "held"]),
+            "aigx": float(u.get("yield", {}).get("aigxEarned", 0))
+        }
 # ===== Referral credit (double-sided friendly) =====
 @app.post("/referral/credit")
 async def referral_credit(body: Dict = Body(...)):
