@@ -2810,7 +2810,136 @@ async def concierge_triage(text: str):
     suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
     return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
 
+# ============ REVENUE INGESTION ENDPOINTS ============
 
+@app.post("/webhooks/shopify")
+async def shopify_webhook(request: Request):
+    """Shopify order webhook"""
+    # Get headers
+    topic = request.headers.get("X-Shopify-Topic", "")
+    shop_domain = request.headers.get("X-Shopify-Shop-Domain", "")
+    received_hmac = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    
+    # Get raw body for HMAC verification
+    raw_body = await request.body()
+    
+    # Verify HMAC (you need to implement this based on your Shopify secret)
+    # For now, we'll skip verification in development
+    
+    # Parse payload
+    try:
+        payload = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Map shop domain to username (you need to configure this)
+    # For now, use a default username
+    username = os.getenv("SHOPIFY_USERNAME", "demo_user")
+    
+    # Extract order details
+    order_id = str(payload.get("id", ""))
+    revenue_usd = float(payload.get("total_price") or payload.get("current_total_price") or 0)
+    
+    # Ingest revenue
+    result = await ingest_shopify_order(username, order_id, revenue_usd)
+    
+    return result
+
+
+@app.post("/revenue/affiliate")
+async def affiliate_commission(
+    username: str,
+    source: str,  # "tiktok" or "amazon"
+    revenue_usd: float,
+    product_id: Optional[str] = None
+):
+    """Ingest affiliate commission"""
+    result = await ingest_affiliate_commission(username, source, revenue_usd, product_id)
+    return result
+
+
+@app.post("/revenue/cpm")
+async def content_cpm(
+    username: str,
+    platform: str,  # "youtube" or "tiktok"
+    views: int,
+    cpm_rate: float
+):
+    """Ingest content CPM revenue"""
+    result = await ingest_content_cpm(username, platform, views, cpm_rate)
+    return result
+
+
+@app.post("/revenue/service")
+async def service_payment(
+    username: str,
+    invoice_id: str,
+    amount_usd: float
+):
+    """Ingest service payment"""
+    result = await ingest_service_payment(username, invoice_id, amount_usd)
+    return result
+
+
+@app.post("/revenue/staking")
+async def staking_returns(username: str, amount_usd: float):
+    """Distribute staking returns"""
+    result = await distribute_staking_returns(username, amount_usd)
+    return result
+
+
+@app.get("/revenue/summary")
+async def earnings_summary(username: str):
+    """Get earnings breakdown"""
+    result = get_earnings_summary(username)
+    return result
+
+
+# ============ JV & ROYALTY ENDPOINTS ============
+
+@app.post("/revenue/jv_split")
+async def jv_split(username: str, amount_usd: float, jv_id: str):
+    """Split revenue with JV partner"""
+    result = await split_jv_revenue(username, amount_usd, jv_id)
+    return result
+
+
+@app.post("/revenue/clone_royalty")
+async def clone_royalty(username: str, amount_usd: float, clone_id: str):
+    """Pay clone royalty to original owner"""
+    result = await distribute_clone_royalty(username, amount_usd, clone_id)
+    return result
+
+
+# ============ AGENT SPENDING ENDPOINTS ============
+
+@app.post("/agent/check_spend")
+async def check_spend(username: str, amount_usd: float):
+    """Check if agent can spend amount"""
+    result = await check_spending_capacity(username, amount_usd)
+    return result
+
+
+@app.post("/agent/spend")
+async def agent_spend(username: str, amount_usd: float, basis: str, ref: Optional[str] = None):
+    """Execute agent spending"""
+    result = await execute_agent_spend(username, amount_usd, basis, ref)
+    return result
+
+
+@app.post("/agent/pay")
+async def agent_pay(from_user: str, to_user: str, amount_usd: float, reason: str):
+    """Agent-to-agent payment"""
+    result = await agent_to_agent_payment(from_user, to_user, amount_usd, reason)
+    return result
+
+
+@app.get("/agent/spending")
+async def spending_summary(username: str):
+    """Get agent spending analytics"""
+    result = get_spending_summary(username)
+    return result
+    
 # ===== AiGentsy AAM — helpers (idempotent) =====
 import base64, hmac, hashlib, os, json as _json
 
