@@ -144,10 +144,45 @@ app.add_middleware(
     max_age=86400,
 )
 
-# ---- Simple health check ----
 @app.get("/healthz")
 async def healthz():
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
+
+# ========== ADD THESE 3 ENDPOINTS HERE ==========
+@app.get("/revenue/summary")
+async def revenue_summary_get(username: str):
+    """Frontend expects this endpoint"""
+    result = get_earnings_summary(username)
+    return result
+
+@app.get("/score/outcome") 
+async def get_outcome_score_query(username: str):
+    """Frontend polls this"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        return {"ok": True, "score": int(u.get("outcomeScore", 0))}
+
+@app.get("/metrics/summary")
+async def metrics_summary_get(username: str):
+    """Compact snapshot for dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = next((x for x in users if _uname(x) == username), None)
+        if not u:
+            return {"error": "user not found"}
+        
+        return {
+            "ok": True,
+            "proposals": len(u.get("proposals", [])),
+            "intents": len(u.get("intents", [])),
+            "quotes": len(u.get("quotes", [])),
+            "escrow": len([e for e in u.get("escrow", []) if e.get("status") == "held"]),
+            "aigx": float(u.get("yield", {}).get("aigxEarned", 0))
+        }
+# ========== END BLOCK ==========
 
 # ---- Env ----
 JSONBIN_URL     = os.getenv("JSONBIN_URL")
@@ -1640,7 +1675,16 @@ async def intent_auto_bid():
         iid = intent["id"]
         brief = intent["intent"].get("brief", "").lower()
         budget = float(intent.get("escrow_usd", 0))
-        
+        # ADD THIS:
+            try:
+                await publish({"type":"bid","agent":username,"intent_id":iid,"price":bid_price})
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"Failed to bid for {username} on {iid}: {e}")
+    
+    return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
         # Match users who can fulfill this
         for u in users:
             username = _username_of(u)
@@ -1685,6 +1729,7 @@ async def intent_auto_bid():
                 print(f"Failed to bid for {username} on {iid}: {e}")
     
     return {"ok": True, "bids_submitted": bids_submitted, "count": len(bids_submitted)}
+
 @app.post("/invoice/create")
 async def invoice_create(body: Dict = Body(...)):
     username = body.get("username"); oid = body.get("orderId")
@@ -2690,12 +2735,15 @@ async def poo_issue(username: str, title: str, metrics: dict = None, evidence_ur
     score = int(u.get("outcomeScore", 0)) + 3
     u["outcomeScore"] = max(0, min(100, score))
     await _save_users(client, users)
+    
+    # ADD THIS:
     try:
-        await publish({"type":"poo","user":username,"title":title})
-    except Exception:
-        pass
+        await publish({"type":"poo","user":username,"title":title,"score":score})
+    except Exception as e:
+        print(f"Publish error: {e}")
+    
     return {"ok": True, "outcome": entry, "score": u["outcomeScore"]}
-
+    
 @app.get("/score/outcome")
 async def get_outcome_score(username: str):
     users, client = await _get_users_client()
