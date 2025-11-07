@@ -108,24 +108,14 @@ logger = logging.getLogger("aigentsy")
 async def startup_event():
     """Start background tasks"""
     asyncio.create_task(auto_bid_background())
-    print("🚀 Auto-bid background task started")
+    print("Auto-bid background task started")
 # ========== END BLOCK ==========
 
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
 ALLOW_ORIGINS = [
-    # ... rest of your code
-```
 
-**Changes I made:**
-1. ✅ Added `base_url` from environment (so it works on Render)
-2. ✅ Added 60s initial delay (so server finishes starting)
-3. ✅ Added logging so you can see it working
-4. ✅ Changed localhost to use `SELF_URL` env var
-
-**Set in Render dashboard:**
-```
 SELF_URL=https://aigentsy-ame-runtime.onrender.com
 
 logger = logging.getLogger("aigentsy")
