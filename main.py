@@ -14,6 +14,22 @@ import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
+from revenue_flows import (
+    ingest_shopify_order,
+    ingest_affiliate_commission,
+    ingest_content_cpm,
+    ingest_service_payment,
+    distribute_staking_returns,
+    split_jv_revenue,
+    distribute_clone_royalty,
+    get_earnings_summary
+)
+from agent_spending import (
+    check_spending_capacity,
+    execute_agent_spend,
+    agent_to_agent_payment,
+    get_spending_summary
+)
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,23 +78,6 @@ try:
     from r3_router_UPGRADED import router as r3_router
 except Exception:
     r3_router = None
-
-from revenue_flows import (
-    ingest_shopify_order,
-    ingest_affiliate_commission,
-    ingest_content_cpm,
-    ingest_service_payment,
-    distribute_staking_returns,
-    split_jv_revenue,
-    distribute_clone_royalty,
-    get_earnings_summary
-)
-from agent_spending import (
-    check_spending_capacity,
-    execute_agent_spend,
-    agent_to_agent_payment,
-    get_spending_summary
-)
 
 app = FastAPI()
 
