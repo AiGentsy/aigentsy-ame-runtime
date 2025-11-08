@@ -386,4 +386,22 @@ def list_disputes(
 
 
 def get_dispute_stats() -> Dict[str, Any]:
-    """Get
+    """Get dispute statistics"""
+    
+    total = len(_DISPUTES)
+    filed = len([d for d in _DISPUTES.values() if d["status"] == "FILED"])
+    settled = len([d for d in _DISPUTES.values() if d["status"] == "SETTLED"])
+    arbitrated = len([d for d in _DISPUTES.values() if d["status"] == "ARBITRATED"])
+    
+    total_escrow = sum(_ESCROW.values())
+    
+    return {
+        "ok": True,
+        "disputes": {
+            "total": total,
+            "filed": filed,
+            "settled": settled,
+            "arbitrated": arbitrated
+        },
+        "escrow_held": round(total_escrow, 2)
+    }
