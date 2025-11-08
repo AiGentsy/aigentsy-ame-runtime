@@ -2919,6 +2919,70 @@ async def sars_list(status: str = None):
 @app.get("/compliance/stats")
 async def compliance_stats():
     return get_compliance_stats()
+
+from aigentsy_conductor import (
+    register_device,
+    scan_opportunities,
+    create_execution_plan,
+    approve_execution_plan,
+    execute_plan,
+    set_user_policy,
+    get_device_dashboard
+)
+
+@app.post("/conductor/register")
+async def conductor_register(
+    username: str,
+    device_id: str,
+    connected_apps: List[Dict[str, Any]],
+    capabilities: List[str]
+):
+    """Register device"""
+    result = await register_device(username, device_id, connected_apps, capabilities)
+    return result
+
+@app.post("/conductor/scan")
+async def conductor_scan(username: str, device_id: str):
+    """Scan for opportunities"""
+    result = await scan_opportunities(username, device_id)
+    return result
+
+@app.post("/conductor/plan")
+async def conductor_plan(
+    username: str,
+    device_id: str,
+    opportunities: List[Dict[str, Any]],
+    max_actions: int = 10
+):
+    """Create execution plan"""
+    result = await create_execution_plan(username, device_id, opportunities, max_actions)
+    return result
+
+@app.post("/conductor/approve")
+async def conductor_approve(
+    plan_id: str,
+    username: str,
+    approved_action_ids: List[str] = None
+):
+    """Approve plan"""
+    result = await approve_execution_plan(plan_id, username, approved_action_ids)
+    return result
+
+@app.post("/conductor/execute")
+async def conductor_execute(plan_id: str):
+    """Execute plan"""
+    result = await execute_plan(plan_id)
+    return result
+
+@app.post("/conductor/policy")
+async def conductor_policy(username: str, policy: Dict[str, Any]):
+    """Set user policy"""
+    result = set_user_policy(username, policy)
+    return result
+
+@app.get("/conductor/dashboard/{username}/{device_id}")
+async def conductor_dashboard(username: str, device_id: str):
+    return get_device_dashboard(username, device_id)
     
 @app.post("/clone/register")
 async def clone_register(
