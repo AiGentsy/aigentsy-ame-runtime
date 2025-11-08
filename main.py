@@ -2983,6 +2983,66 @@ async def conductor_policy(username: str, policy: Dict[str, Any]):
 @app.get("/conductor/dashboard/{username}/{device_id}")
 async def conductor_dashboard(username: str, device_id: str):
     return get_device_dashboard(username, device_id)
+
+from device_oauth_connector import (
+    initiate_oauth,
+    complete_oauth,
+    create_post,
+    approve_post,
+    reject_post,
+    get_connected_platforms,
+    get_pending_posts,
+    disconnect_platform
+)
+
+@app.post("/oauth/initiate")
+async def oauth_initiate(username: str, platform: str, redirect_uri: str):
+    """Initiate OAuth"""
+    result = await initiate_oauth(username, platform, redirect_uri)
+    return result
+
+@app.post("/oauth/complete")
+async def oauth_complete(username: str, platform: str, code: str, redirect_uri: str):
+    """Complete OAuth"""
+    result = await complete_oauth(username, platform, code, redirect_uri)
+    return result
+
+@app.post("/oauth/post")
+async def oauth_post(
+    username: str,
+    platform: str,
+    content: Dict[str, Any],
+    schedule_for: str = None
+):
+    """Create post"""
+    result = await create_post(username, platform, content, schedule_for)
+    return result
+
+@app.post("/oauth/post/{post_id}/approve")
+async def oauth_approve(post_id: str, username: str):
+    """Approve post"""
+    result = await approve_post(post_id, username)
+    return result
+
+@app.post("/oauth/post/{post_id}/reject")
+async def oauth_reject(post_id: str, username: str, reason: str = ""):
+    """Reject post"""
+    result = await reject_post(post_id, username, reason)
+    return result
+
+@app.get("/oauth/platforms/{username}")
+async def oauth_platforms(username: str):
+    return get_connected_platforms(username)
+
+@app.get("/oauth/pending/{username}")
+async def oauth_pending(username: str):
+    return get_pending_posts(username)
+
+@app.post("/oauth/disconnect")
+async def oauth_disconnect(username: str, platform: str):
+    """Disconnect platform"""
+    result = await disconnect_platform(username, platform)
+    return result
     
 @app.post("/clone/register")
 async def clone_register(
