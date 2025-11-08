@@ -3346,6 +3346,41 @@ async def webhook_stripe(request: Request):
     
     return result
 
+from pricing_oracle import (
+    calculate_dynamic_price,
+    suggest_optimal_pricing,
+    get_competitive_pricing
+)
+
+@app.post("/pricing/dynamic")
+async def pricing_dynamic(
+    base_price: float,
+    agent: str,
+    context: Dict[str, Any] = None
+):
+    """Calculate dynamic price"""
+    result = await calculate_dynamic_price(base_price, agent, context)
+    return result
+
+@app.post("/pricing/optimize")
+async def pricing_optimize(
+    service_type: str,
+    agent: str,
+    target_conversion_rate: float = 0.50
+):
+    """Get optimal pricing suggestion"""
+    result = await suggest_optimal_pricing(service_type, agent, target_conversion_rate)
+    return result
+
+@app.get("/pricing/competitive")
+async def pricing_competitive(
+    service_type: str,
+    quality_tier: str = "standard"
+):
+    """Get competitive market pricing"""
+    result = await get_competitive_pricing(service_type, quality_tier)
+    return result
+    
 # === AIGENTSY EXPANSION ROUTES (non-destructive) ===
 try:
     from fastapi import APIRouter, Request
