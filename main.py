@@ -3808,6 +3808,95 @@ async def _exp_coop_sponsor(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from bundle_engine import (
+    create_bundle,
+    record_bundle_sale,
+    assign_bundle_roles,
+    update_bundle_status,
+    get_bundle,
+    list_bundles,
+    get_bundle_performance_stats
+)
+
+@app.post("/bundles/create")
+async def bundle_create(
+    lead_agent: str,
+    agents: List[str],
+    title: str,
+    description: str,
+    services: List[Dict[str, Any]],
+    pricing: Dict[str, Any]
+):
+    """Create multi-agent bundle"""
+    result = await create_bundle(
+        lead_agent=lead_agent,
+        agents=agents,
+        title=title,
+        description=description,
+        services=services,
+        pricing=pricing
+    )
+    return result
+
+@app.post("/bundles/sale")
+async def bundle_sale(
+    bundle_id: str,
+    buyer: str,
+    amount_usd: float,
+    delivery_hours: int = None,
+    satisfaction_score: float = None
+):
+    """Record bundle sale"""
+    result = await record_bundle_sale(
+        bundle_id=bundle_id,
+        buyer=buyer,
+        amount_usd=amount_usd,
+        delivery_hours=delivery_hours,
+        satisfaction_score=satisfaction_score
+    )
+    return result
+
+@app.post("/bundles/roles")
+async def bundle_roles(
+    bundle_id: str,
+    role_assignments: Dict[str, str]
+):
+    """Assign roles to agents"""
+    result = await assign_bundle_roles(
+        bundle_id=bundle_id,
+        role_assignments=role_assignments
+    )
+    return result
+
+@app.post("/bundles/status")
+async def bundle_status(
+    bundle_id: str,
+    status: str,
+    reason: str = ""
+):
+    """Update bundle status"""
+    result = update_bundle_status(
+        bundle_id=bundle_id,
+        status=status,
+        reason=reason
+    )
+    return result
+
+@app.get("/bundles/{bundle_id}")
+async def bundle_get(bundle_id: str):
+    return get_bundle(bundle_id)
+
+@app.get("/bundles/list")
+async def bundle_list(
+    agent: str = None,
+    status: str = None,
+    sort_by: str = "performance"
+):
+    return list_bundles(agent=agent, status=status, sort_by=sort_by)
+
+@app.get("/bundles/stats/{bundle_id}")
+async def bundle_stats(bundle_id: str):
+    return get_bundle_performance_stats(bundle_id)
 @_expansion_router.post("/ltv/predict")
 async def _exp_ltv_predict(payload: dict):
     try:
