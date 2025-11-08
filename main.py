@@ -2857,6 +2857,69 @@ async def intent_create(buyer: str, brief: str, budget: float):
 
 from revenue_flows import register_clone_lineage
 
+from compliance_oracle import (
+    submit_kyc,
+    approve_kyc,
+    reject_kyc,
+    check_transaction_allowed,
+    get_kyc_status,
+    list_pending_kyc,
+    list_sars,
+    get_compliance_stats
+)
+
+@app.post("/compliance/kyc/submit")
+async def kyc_submit(
+    username: str,
+    level: str,
+    full_name: str,
+    date_of_birth: str,
+    country: str,
+    documents: List[Dict[str, Any]] = None
+):
+    """Submit KYC"""
+    result = await submit_kyc(username, level, full_name, date_of_birth, country, documents)
+    return result
+
+@app.post("/compliance/kyc/approve")
+async def kyc_approve(username: str, reviewer: str, notes: str = ""):
+    """Approve KYC"""
+    result = approve_kyc(username, reviewer, notes)
+    return result
+
+@app.post("/compliance/kyc/reject")
+async def kyc_reject(username: str, reviewer: str, reason: str):
+    """Reject KYC"""
+    result = reject_kyc(username, reviewer, reason)
+    return result
+
+@app.post("/compliance/check")
+async def compliance_check(
+    username: str,
+    transaction_type: str,
+    amount: float,
+    destination: str = None
+):
+    """Check transaction compliance"""
+    result = await check_transaction_allowed(username, transaction_type, amount, destination)
+    return result
+
+@app.get("/compliance/kyc/{username}")
+async def kyc_status(username: str):
+    return get_kyc_status(username)
+
+@app.get("/compliance/kyc/pending")
+async def kyc_pending():
+    return list_pending_kyc()
+
+@app.get("/compliance/sars")
+async def sars_list(status: str = None):
+    return list_sars(status)
+
+@app.get("/compliance/stats")
+async def compliance_stats():
+    return get_compliance_stats()
+    
 @app.post("/clone/register")
 async def clone_register(
     clone_owner: str,
