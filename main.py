@@ -3905,6 +3905,71 @@ async def _exp_ltv_predict(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from metahive_rewards import (
+    join_hive as join_hive_rewards,
+    leave_hive,
+    record_contribution,
+    record_hive_revenue,
+    distribute_hive_rewards,
+    get_hive_member,
+    list_hive_members,
+    get_hive_treasury_stats,
+    get_member_projected_earnings
+)
+
+@app.post("/hive/join")
+async def hive_join(username: str, opt_in_data_sharing: bool = True):
+    """Join MetaHive"""
+    result = await join_hive_rewards(username, opt_in_data_sharing)
+    return result
+
+@app.post("/hive/leave")
+async def hive_leave(username: str):
+    """Leave MetaHive"""
+    result = leave_hive(username)
+    return result
+
+@app.post("/hive/contribution")
+async def hive_contribution(
+    username: str,
+    contribution_type: str,
+    value: float = 1.0
+):
+    """Record contribution"""
+    result = record_contribution(username, contribution_type, value)
+    return result
+
+@app.post("/hive/revenue")
+async def hive_revenue(
+    source: str,
+    amount_usd: float,
+    metadata: Dict[str, Any] = None
+):
+    """Record hive revenue"""
+    result = await record_hive_revenue(source, amount_usd, metadata)
+    return result
+
+@app.post("/hive/distribute")
+async def hive_distribute():
+    """Distribute rewards"""
+    result = await distribute_hive_rewards()
+    return result
+
+@app.get("/hive/member/{username}")
+async def hive_member(username: str):
+    return get_hive_member(username)
+
+@app.get("/hive/members")
+async def hive_members(status: str = None):
+    return list_hive_members(status)
+
+@app.get("/hive/treasury")
+async def hive_treasury():
+    return get_hive_treasury_stats()
+
+@app.get("/hive/projected/{username}")
+async def hive_projected(username: str):
+    return get_member_projected_earnings(username)
 @_expansion_router.post("/proposal/nudge")
 async def _exp_proposal_nudge(payload: dict):
     try:
