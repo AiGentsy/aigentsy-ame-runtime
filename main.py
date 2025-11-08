@@ -3938,6 +3938,94 @@ async def fraud_profile(username: str):
 @app.get("/fraud/stats")
 async def fraud_stats():
     return get_fraud_stats()
+
+from dispute_resolution import (
+    file_dispute,
+    respond_to_dispute,
+    make_settlement_offer,
+    accept_settlement,
+    escalate_to_arbitration,
+    arbitrate_dispute,
+    get_dispute,
+    list_disputes,
+    get_dispute_stats
+)
+
+@app.post("/disputes/file")
+async def dispute_file(
+    claimant: str,
+    respondent: str,
+    dispute_type: str,
+    amount_usd: float,
+    description: str,
+    evidence: List[Dict[str, Any]] = None
+):
+    """File dispute"""
+    result = await file_dispute(claimant, respondent, dispute_type, amount_usd, description, evidence)
+    return result
+
+@app.post("/disputes/respond")
+async def dispute_respond(
+    dispute_id: str,
+    respondent: str,
+    response: str,
+    counter_evidence: List[Dict[str, Any]] = None
+):
+    """Respond to dispute"""
+    result = respond_to_dispute(dispute_id, respondent, response, counter_evidence)
+    return result
+
+@app.post("/disputes/offer")
+async def dispute_offer(
+    dispute_id: str,
+    offerer: str,
+    offer_type: str,
+    offer_amount: float = None,
+    offer_terms: str = ""
+):
+    """Make settlement offer"""
+    result = make_settlement_offer(dispute_id, offerer, offer_type, offer_amount, offer_terms)
+    return result
+
+@app.post("/disputes/accept")
+async def dispute_accept(
+    dispute_id: str,
+    offer_id: str,
+    accepter: str
+):
+    """Accept settlement"""
+    result = await accept_settlement(dispute_id, offer_id, accepter)
+    return result
+
+@app.post("/disputes/escalate")
+async def dispute_escalate(dispute_id: str):
+    """Escalate to arbitration"""
+    result = escalate_to_arbitration(dispute_id)
+    return result
+
+@app.post("/disputes/arbitrate")
+async def dispute_arbitrate(
+    dispute_id: str,
+    ruling: str,
+    claimant_award: float,
+    respondent_award: float,
+    rationale: str
+):
+    """Arbitrate dispute"""
+    result = await arbitrate_dispute(dispute_id, ruling, claimant_award, respondent_award, rationale)
+    return result
+
+@app.get("/disputes/{dispute_id}")
+async def dispute_get(dispute_id: str):
+    return get_dispute(dispute_id)
+
+@app.get("/disputes/list")
+async def dispute_list(username: str = None, status: str = None):
+    return list_disputes(username, status)
+
+@app.get("/disputes/stats")
+async def dispute_stats():
+    return get_dispute_stats()
     
 from bundle_engine import (
     create_bundle,
