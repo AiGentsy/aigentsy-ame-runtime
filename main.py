@@ -3043,6 +3043,67 @@ async def oauth_disconnect(username: str, platform: str):
     """Disconnect platform"""
     result = await disconnect_platform(username, platform)
     return result
+
+from value_chain_engine import (
+    discover_value_chain,
+    create_value_chain,
+    approve_chain_participation,
+    execute_chain_action,
+    get_chain,
+    get_user_chains,
+    get_chain_performance,
+    get_chain_stats
+)
+
+@app.post("/chains/discover")
+async def chain_discover(
+    initiator: str,
+    initiator_capability: str,
+    target_outcome: str,
+    max_hops: int = 4
+):
+    """Discover value chains"""
+    result = await discover_value_chain(initiator, initiator_capability, target_outcome, max_hops)
+    return result
+
+@app.post("/chains/create")
+async def chain_create(initiator: str, chain_config: Dict[str, Any]):
+    """Create value chain"""
+    result = await create_value_chain(initiator, chain_config)
+    return result
+
+@app.post("/chains/{chain_id}/approve")
+async def chain_approve(chain_id: str, username: str):
+    """Approve chain participation"""
+    result = await approve_chain_participation(chain_id, username)
+    return result
+
+@app.post("/chains/{chain_id}/execute")
+async def chain_execute(
+    chain_id: str,
+    action_type: str,
+    action_data: Dict[str, Any],
+    executed_by: str
+):
+    """Execute chain action"""
+    result = await execute_chain_action(chain_id, action_type, action_data, executed_by)
+    return result
+
+@app.get("/chains/{chain_id}")
+async def chain_get(chain_id: str):
+    return get_chain(chain_id)
+
+@app.get("/chains/user/{username}")
+async def chain_user(username: str):
+    return get_user_chains(username)
+
+@app.get("/chains/{chain_id}/performance")
+async def chain_performance(chain_id: str):
+    return get_chain_performance(chain_id)
+
+@app.get("/chains/stats")
+async def chain_stats():
+    return get_chain_stats()
     
 @app.post("/clone/register")
 async def clone_register(
