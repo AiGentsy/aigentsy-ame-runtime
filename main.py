@@ -3320,6 +3320,32 @@ async def webhook_amazon(request: Request):
     return {"ok": True, **(rec or {})}
 
 
+import os
+from aam_stripe import verify_stripe_signature, process_stripe_webhook
+
+@app.post("/webhook/stripe")
+async def webhook_stripe(request: Request):
+    """Stripe webhook handler"""
+    
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    
+    stripe_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    
+    if stripe_secret and not verify_stripe_signature(payload, signature, stripe_secret):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    try:
+        event = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    event_type = event.get("type")
+    
+    result = await process_stripe_webhook(event_type, event)
+    
+    return result
+
 # === AIGENTSY EXPANSION ROUTES (non-destructive) ===
 try:
     from fastapi import APIRouter, Request
