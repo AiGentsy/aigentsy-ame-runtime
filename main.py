@@ -3869,6 +3869,76 @@ async def _exp_coop_sponsor(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from fraud_detector import (
+    check_fraud_signals,
+    suspend_account,
+    report_fraud,
+    resolve_fraud_case,
+    get_fraud_case,
+    list_fraud_cases,
+    get_user_risk_profile,
+    get_fraud_stats
+)
+
+@app.post("/fraud/check")
+async def fraud_check(
+    username: str,
+    action_type: str,
+    metadata: Dict[str, Any] = None
+):
+    """Check for fraud signals"""
+    result = await check_fraud_signals(username, action_type, metadata)
+    return result
+
+@app.post("/fraud/suspend")
+async def fraud_suspend(
+    username: str,
+    reason: str,
+    evidence: List[str]
+):
+    """Suspend account"""
+    result = await suspend_account(username, reason, evidence)
+    return result
+
+@app.post("/fraud/report")
+async def fraud_report(
+    reporter: str,
+    reported_user: str,
+    fraud_type: str,
+    description: str,
+    evidence: Dict[str, Any] = None
+):
+    """Report fraud"""
+    result = report_fraud(reporter, reported_user, fraud_type, description, evidence)
+    return result
+
+@app.post("/fraud/resolve")
+async def fraud_resolve(
+    case_id: str,
+    resolution: str,
+    action: str,
+    notes: str = ""
+):
+    """Resolve fraud case"""
+    result = resolve_fraud_case(case_id, resolution, action, notes)
+    return result
+
+@app.get("/fraud/case/{case_id}")
+async def fraud_case(case_id: str):
+    return get_fraud_case(case_id)
+
+@app.get("/fraud/cases")
+async def fraud_cases(username: str = None, status: str = None):
+    return list_fraud_cases(username, status)
+
+@app.get("/fraud/profile/{username}")
+async def fraud_profile(username: str):
+    return get_user_risk_profile(username)
+
+@app.get("/fraud/stats")
+async def fraud_stats():
+    return get_fraud_stats()
+    
 from bundle_engine import (
     create_bundle,
     record_bundle_sale,
