@@ -303,7 +303,7 @@ def make_canonical_record(username: str, company_type: str = "general", referral
         "remixUnlocked": False,
         "cloneLicenseUnlocked": False,
         "sdkAccess_eligible": False,
-        "autonomyLevel": "AL1",  # default safe mode
+        "autonomyLevel": "AL1",
     }
     runtime_flags.update(preset["flags"])
 
@@ -349,25 +349,23 @@ def make_canonical_record(username: str, company_type: str = "general", referral
         "referral": referral,
         "mintTime": _now(),
         "created": _now(),
-        # NEW: upgradable surfaces
-        "amg": {"apps": [], "capabilities": [], "lastSync": None},  # App Monetization Graph
-        "ownership": {"aigx": 0, "royalties": 0, "ledger": []},    # AIGx & royalties ledger
-        "jvMesh": [],                                               # micro-JVs (cap tables)
-        "contacts": {"sources": [], "counts": {}, "lastSync": None} # privacy-first contacts
+        "amg": {"apps": [], "capabilities": [], "lastSync": None},
+        "ownership": {"aigx": 0, "royalties": 0, "ledger": []},
+        "jvMesh": [],
+        "contacts": {"sources": [], "counts": {}, "lastSync": None},  # ✅ COMMA ADDED
         "ocl": {
-            "limit": 10.0,              # Base $10 credit
-            "used": 0.0,                # Current usage
-            "available": 10.0,          # Remaining credit
-            "poo_multiplier": 5.0,      # $5 per verified PoO
-            "max_limit": 200.0,         # Cap at $200
+            "limit": 10.0,
+            "used": 0.0,
+            "available": 10.0,
+            "poo_multiplier": 5.0,
+            "max_limit": 200.0,
             "last_updated": _now(),
-            "auto_repay": True,         # Auto-deduct from earnings
-            "repayment_schedule": [],   # Track repayments
-            "expansion_events": []      # Track OCL expansions
+            "auto_repay": True,
+            "repayment_schedule": [],
+            "expansion_events": []
         }
     }
-   
-    # ensure default chart-friendly flags
+    
     user["runtimeFlags"]["vaultAccess"] = user["runtimeFlags"]["vaultAccess"] or user["kits"]["universal"]["unlocked"]
     return user
 
