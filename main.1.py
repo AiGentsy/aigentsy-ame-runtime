@@ -2855,6 +2855,271 @@ async def intent_create(buyer: str, brief: str, budget: float):
         pass
     return {"ok": True, "intent": intent}
 
+from revenue_flows import register_clone_lineage
+
+from compliance_oracle import (
+    submit_kyc,
+    approve_kyc,
+    reject_kyc,
+    check_transaction_allowed,
+    get_kyc_status,
+    list_pending_kyc,
+    list_sars,
+    get_compliance_stats
+)
+
+@app.post("/compliance/kyc/submit")
+async def kyc_submit(
+    username: str,
+    level: str,
+    full_name: str,
+    date_of_birth: str,
+    country: str,
+    documents: List[Dict[str, Any]] = None
+):
+    """Submit KYC"""
+    result = await submit_kyc(username, level, full_name, date_of_birth, country, documents)
+    return result
+
+@app.post("/compliance/kyc/approve")
+async def kyc_approve(username: str, reviewer: str, notes: str = ""):
+    """Approve KYC"""
+    result = approve_kyc(username, reviewer, notes)
+    return result
+
+@app.post("/compliance/kyc/reject")
+async def kyc_reject(username: str, reviewer: str, reason: str):
+    """Reject KYC"""
+    result = reject_kyc(username, reviewer, reason)
+    return result
+
+@app.post("/compliance/check")
+async def compliance_check(
+    username: str,
+    transaction_type: str,
+    amount: float,
+    destination: str = None
+):
+    """Check transaction compliance"""
+    result = await check_transaction_allowed(username, transaction_type, amount, destination)
+    return result
+
+@app.get("/compliance/kyc/{username}")
+async def kyc_status(username: str):
+    return get_kyc_status(username)
+
+@app.get("/compliance/kyc/pending")
+async def kyc_pending():
+    return list_pending_kyc()
+
+@app.get("/compliance/sars")
+async def sars_list(status: str = None):
+    return list_sars(status)
+
+@app.get("/compliance/stats")
+async def compliance_stats():
+    return get_compliance_stats()
+
+from aigentsy_conductor import (
+    register_device,
+    scan_opportunities,
+    create_execution_plan,
+    approve_execution_plan,
+    execute_plan,
+    set_user_policy,
+    get_device_dashboard
+)
+
+@app.post("/conductor/register")
+async def conductor_register(
+    username: str,
+    device_id: str,
+    connected_apps: List[Dict[str, Any]],
+    capabilities: List[str]
+):
+    """Register device"""
+    result = await register_device(username, device_id, connected_apps, capabilities)
+    return result
+
+@app.post("/conductor/scan")
+async def conductor_scan(username: str, device_id: str):
+    """Scan for opportunities"""
+    result = await scan_opportunities(username, device_id)
+    return result
+
+@app.post("/conductor/plan")
+async def conductor_plan(
+    username: str,
+    device_id: str,
+    opportunities: List[Dict[str, Any]],
+    max_actions: int = 10
+):
+    """Create execution plan"""
+    result = await create_execution_plan(username, device_id, opportunities, max_actions)
+    return result
+
+@app.post("/conductor/approve")
+async def conductor_approve(
+    plan_id: str,
+    username: str,
+    approved_action_ids: List[str] = None
+):
+    """Approve plan"""
+    result = await approve_execution_plan(plan_id, username, approved_action_ids)
+    return result
+
+@app.post("/conductor/execute")
+async def conductor_execute(plan_id: str):
+    """Execute plan"""
+    result = await execute_plan(plan_id)
+    return result
+
+@app.post("/conductor/policy")
+async def conductor_policy(username: str, policy: Dict[str, Any]):
+    """Set user policy"""
+    result = set_user_policy(username, policy)
+    return result
+
+@app.get("/conductor/dashboard/{username}/{device_id}")
+async def conductor_dashboard(username: str, device_id: str):
+    return get_device_dashboard(username, device_id)
+
+from device_oauth_connector import (
+    initiate_oauth,
+    complete_oauth,
+    create_post,
+    approve_post,
+    reject_post,
+    get_connected_platforms,
+    get_pending_posts,
+    disconnect_platform
+)
+
+@app.post("/oauth/initiate")
+async def oauth_initiate(username: str, platform: str, redirect_uri: str):
+    """Initiate OAuth"""
+    result = await initiate_oauth(username, platform, redirect_uri)
+    return result
+
+@app.post("/oauth/complete")
+async def oauth_complete(username: str, platform: str, code: str, redirect_uri: str):
+    """Complete OAuth"""
+    result = await complete_oauth(username, platform, code, redirect_uri)
+    return result
+
+@app.post("/oauth/post")
+async def oauth_post(
+    username: str,
+    platform: str,
+    content: Dict[str, Any],
+    schedule_for: str = None
+):
+    """Create post"""
+    result = await create_post(username, platform, content, schedule_for)
+    return result
+
+@app.post("/oauth/post/{post_id}/approve")
+async def oauth_approve(post_id: str, username: str):
+    """Approve post"""
+    result = await approve_post(post_id, username)
+    return result
+
+@app.post("/oauth/post/{post_id}/reject")
+async def oauth_reject(post_id: str, username: str, reason: str = ""):
+    """Reject post"""
+    result = await reject_post(post_id, username, reason)
+    return result
+
+@app.get("/oauth/platforms/{username}")
+async def oauth_platforms(username: str):
+    return get_connected_platforms(username)
+
+@app.get("/oauth/pending/{username}")
+async def oauth_pending(username: str):
+    return get_pending_posts(username)
+
+@app.post("/oauth/disconnect")
+async def oauth_disconnect(username: str, platform: str):
+    """Disconnect platform"""
+    result = await disconnect_platform(username, platform)
+    return result
+
+from value_chain_engine import (
+    discover_value_chain,
+    create_value_chain,
+    approve_chain_participation,
+    execute_chain_action,
+    get_chain,
+    get_user_chains,
+    get_chain_performance,
+    get_chain_stats
+)
+
+@app.post("/chains/discover")
+async def chain_discover(
+    initiator: str,
+    initiator_capability: str,
+    target_outcome: str,
+    max_hops: int = 4
+):
+    """Discover value chains"""
+    result = await discover_value_chain(initiator, initiator_capability, target_outcome, max_hops)
+    return result
+
+@app.post("/chains/create")
+async def chain_create(initiator: str, chain_config: Dict[str, Any]):
+    """Create value chain"""
+    result = await create_value_chain(initiator, chain_config)
+    return result
+
+@app.post("/chains/{chain_id}/approve")
+async def chain_approve(chain_id: str, username: str):
+    """Approve chain participation"""
+    result = await approve_chain_participation(chain_id, username)
+    return result
+
+@app.post("/chains/{chain_id}/execute")
+async def chain_execute(
+    chain_id: str,
+    action_type: str,
+    action_data: Dict[str, Any],
+    executed_by: str
+):
+    """Execute chain action"""
+    result = await execute_chain_action(chain_id, action_type, action_data, executed_by)
+    return result
+
+@app.get("/chains/{chain_id}")
+async def chain_get(chain_id: str):
+    return get_chain(chain_id)
+
+@app.get("/chains/user/{username}")
+async def chain_user(username: str):
+    return get_user_chains(username)
+
+@app.get("/chains/{chain_id}/performance")
+async def chain_performance(chain_id: str):
+    return get_chain_performance(chain_id)
+
+@app.get("/chains/stats")
+async def chain_stats():
+    return get_chain_stats()
+    
+@app.post("/clone/register")
+async def clone_register(
+    clone_owner: str,
+    clone_id: str,
+    original_owner: str,
+    generation: int = 1
+):
+    """Register clone with multi-gen lineage tracking"""
+    result = await register_clone_lineage(
+        clone_owner=clone_owner,
+        clone_id=clone_id,
+        original_owner=original_owner,
+        generation=generation
+    )
+    return result
 #@app.post("/intent/bid")
 async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
     users, client = await _get_users_client()
@@ -3303,6 +3568,67 @@ async def webhook_amazon(request: Request):
     return {"ok": True, **(rec or {})}
 
 
+import os
+from aam_stripe import verify_stripe_signature, process_stripe_webhook
+
+@app.post("/webhook/stripe")
+async def webhook_stripe(request: Request):
+    """Stripe webhook handler"""
+    
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    
+    stripe_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    
+    if stripe_secret and not verify_stripe_signature(payload, signature, stripe_secret):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    try:
+        event = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    event_type = event.get("type")
+    
+    result = await process_stripe_webhook(event_type, event)
+    
+    return result
+
+from pricing_oracle import (
+    calculate_dynamic_price,
+    suggest_optimal_pricing,
+    get_competitive_pricing
+)
+
+@app.post("/pricing/dynamic")
+async def pricing_dynamic(
+    base_price: float,
+    agent: str,
+    context: Dict[str, Any] = None
+):
+    """Calculate dynamic price"""
+    result = await calculate_dynamic_price(base_price, agent, context)
+    return result
+
+@app.post("/pricing/optimize")
+async def pricing_optimize(
+    service_type: str,
+    agent: str,
+    target_conversion_rate: float = 0.50
+):
+    """Get optimal pricing suggestion"""
+    result = await suggest_optimal_pricing(service_type, agent, target_conversion_rate)
+    return result
+
+@app.get("/pricing/competitive")
+async def pricing_competitive(
+    service_type: str,
+    quality_tier: str = "standard"
+):
+    """Get competitive market pricing"""
+    result = await get_competitive_pricing(service_type, quality_tier)
+    return result
+    
 # === AIGENTSY EXPANSION ROUTES (non-destructive) ===
 try:
     from fastapi import APIRouter, Request
@@ -3548,6 +3874,240 @@ async def _exp_inventory_get(product_id: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from yield_memory import (
+    store_pattern,
+    find_similar_patterns,
+    get_best_action,
+    get_patterns_to_avoid,
+    get_memory_stats,
+    export_memory,
+    import_memory
+)
+
+@app.post("/memory/store")
+async def memory_store(
+    username: str,
+    pattern_type: str,
+    context: Dict[str, Any],
+    action: Dict[str, Any],
+    outcome: Dict[str, Any]
+):
+    """Store a yield pattern"""
+    result = store_pattern(
+        username=username,
+        pattern_type=pattern_type,
+        context=context,
+        action=action,
+        outcome=outcome
+    )
+    return result
+
+@app.post("/memory/recommend")
+async def memory_recommend(
+    username: str,
+    context: Dict[str, Any],
+    pattern_type: str = None
+):
+    """Get recommended action based on memory"""
+    result = get_best_action(
+        username=username,
+        context=context,
+        pattern_type=pattern_type
+    )
+    return result
+
+@app.post("/memory/avoid")
+async def memory_avoid(
+    username: str,
+    context: Dict[str, Any],
+    pattern_type: str = None
+):
+    """Get patterns to avoid"""
+    result = get_patterns_to_avoid(
+        username=username,
+        context=context,
+        pattern_type=pattern_type
+    )
+    return result
+
+@app.get("/memory/stats/{username}")
+async def memory_stats(username: str):
+    """Get memory statistics"""
+    return get_memory_stats(username)
+
+@app.get("/memory/export/{username}")
+async def memory_export(username: str):
+    """Export memory as JSON"""
+    json_data = export_memory(username)
+    return {"ok": True, "json": json_data}
+
+@app.post("/memory/import")
+async def memory_import(username: str, json_data: str):
+    """Import memory from JSON"""
+    result = import_memory(username, json_data)
+    return result
+
+@app.post("/memory/import")
+async def memory_import(username: str, json_data: str):
+    """Import memory from JSON"""
+    result = import_memory(username, json_data)
+    return result
+
+# ADD HIVE ENDPOINTS HERE
+
+from metahive_brain import (
+    contribute_to_hive,
+    query_hive,
+    report_pattern_usage,
+    get_hive_stats,
+    get_top_patterns
+)
+
+@app.post("/hive/contribute")
+async def hive_contribute(
+    username: str,
+    pattern_type: str,
+    context: Dict[str, Any],
+    action: Dict[str, Any],
+    outcome: Dict[str, Any],
+    anonymize: bool = True
+):
+    """Contribute pattern to hive"""
+    result = await contribute_to_hive(
+        username=username,
+        pattern_type=pattern_type,
+        context=context,
+        action=action,
+        outcome=outcome,
+        anonymize=anonymize
+    )
+    return result
+
+@app.post("/hive/query")
+async def hive_query(
+    context: Dict[str, Any],
+    pattern_type: str = None,
+    min_weight: float = 1.0,
+    limit: int = 5
+):
+    """Query hive for patterns"""
+    result = query_hive(
+        context=context,
+        pattern_type=pattern_type,
+        min_weight=min_weight,
+        limit=limit
+    )
+    return result
+
+@app.post("/hive/report")
+async def hive_report(
+    pattern_id: str,
+    success: bool,
+    actual_roas: float = None
+):
+    """Report pattern usage"""
+    result = report_pattern_usage(
+        pattern_id=pattern_id,
+        success=success,
+        actual_roas=actual_roas
+    )
+    return result
+
+@app.get("/hive/stats")
+async def hive_stats():
+    """Get hive statistics"""
+    return get_hive_stats()
+
+@app.get("/hive/top")
+async def hive_top(
+    pattern_type: str = None,
+    sort_by: str = "weight",
+    limit: int = 20
+):
+    """Get top patterns"""
+    return get_top_patterns(
+        pattern_type=pattern_type,
+        sort_by=sort_by,
+        limit=limit
+    )
+
+from jv_mesh import (
+    create_jv_proposal,
+    vote_on_jv,
+    dissolve_jv,
+    get_jv_proposal,
+    get_active_jv,
+    list_jv_proposals,
+    list_active_jvs
+)
+
+@app.post("/jv/propose")
+async def jv_propose(
+    proposer: str,
+    partner: str,
+    title: str,
+    description: str,
+    revenue_split: Dict[str, float],
+    duration_days: int = 90,
+    terms: Dict[str, Any] = None
+):
+    """Create JV proposal"""
+    result = await create_jv_proposal(
+        proposer=proposer,
+        partner=partner,
+        title=title,
+        description=description,
+        revenue_split=revenue_split,
+        duration_days=duration_days,
+        terms=terms
+    )
+    return result
+
+@app.post("/jv/vote")
+async def jv_vote(
+    proposal_id: str,
+    voter: str,
+    vote: str,
+    feedback: str = ""
+):
+    """Vote on JV proposal"""
+    result = await vote_on_jv(
+        proposal_id=proposal_id,
+        voter=voter,
+        vote=vote,
+        feedback=feedback
+    )
+    return result
+
+@app.post("/jv/dissolve")
+async def jv_dissolve(
+    jv_id: str,
+    requester: str,
+    reason: str = ""
+):
+    """Dissolve JV"""
+    result = await dissolve_jv(
+        jv_id=jv_id,
+        requester=requester,
+        reason=reason
+    )
+    return result
+
+@app.get("/jv/proposals/{proposal_id}")
+async def jv_proposal_get(proposal_id: str):
+    return get_jv_proposal(proposal_id)
+
+@app.get("/jv/{jv_id}")
+async def jv_get(jv_id: str):
+    return get_active_jv(jv_id)
+
+@app.get("/jv/proposals/list")
+async def jv_proposals_list(party: str = None, status: str = None):
+    return list_jv_proposals(party=party, status=status)
+
+@app.get("/jv/list")
+async def jv_list(party: str = None):
+    return list_active_jvs(party=party)
 @_expansion_router.post("/coop/sponsor")
 async def _exp_coop_sponsor(payload: dict):
     try:
@@ -3557,6 +4117,253 @@ async def _exp_coop_sponsor(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from fraud_detector import (
+    check_fraud_signals,
+    suspend_account,
+    report_fraud,
+    resolve_fraud_case,
+    get_fraud_case,
+    list_fraud_cases,
+    get_user_risk_profile,
+    get_fraud_stats
+)
+
+@app.post("/fraud/check")
+async def fraud_check(
+    username: str,
+    action_type: str,
+    metadata: Dict[str, Any] = None
+):
+    """Check for fraud signals"""
+    result = await check_fraud_signals(username, action_type, metadata)
+    return result
+
+@app.post("/fraud/suspend")
+async def fraud_suspend(
+    username: str,
+    reason: str,
+    evidence: List[str]
+):
+    """Suspend account"""
+    result = await suspend_account(username, reason, evidence)
+    return result
+
+@app.post("/fraud/report")
+async def fraud_report(
+    reporter: str,
+    reported_user: str,
+    fraud_type: str,
+    description: str,
+    evidence: Dict[str, Any] = None
+):
+    """Report fraud"""
+    result = report_fraud(reporter, reported_user, fraud_type, description, evidence)
+    return result
+
+@app.post("/fraud/resolve")
+async def fraud_resolve(
+    case_id: str,
+    resolution: str,
+    action: str,
+    notes: str = ""
+):
+    """Resolve fraud case"""
+    result = resolve_fraud_case(case_id, resolution, action, notes)
+    return result
+
+@app.get("/fraud/case/{case_id}")
+async def fraud_case(case_id: str):
+    return get_fraud_case(case_id)
+
+@app.get("/fraud/cases")
+async def fraud_cases(username: str = None, status: str = None):
+    return list_fraud_cases(username, status)
+
+@app.get("/fraud/profile/{username}")
+async def fraud_profile(username: str):
+    return get_user_risk_profile(username)
+
+@app.get("/fraud/stats")
+async def fraud_stats():
+    return get_fraud_stats()
+
+from dispute_resolution import (
+    file_dispute,
+    respond_to_dispute,
+    make_settlement_offer,
+    accept_settlement,
+    escalate_to_arbitration,
+    arbitrate_dispute,
+    get_dispute,
+    list_disputes,
+    get_dispute_stats
+)
+
+@app.post("/disputes/file")
+async def dispute_file(
+    claimant: str,
+    respondent: str,
+    dispute_type: str,
+    amount_usd: float,
+    description: str,
+    evidence: List[Dict[str, Any]] = None
+):
+    """File dispute"""
+    result = await file_dispute(claimant, respondent, dispute_type, amount_usd, description, evidence)
+    return result
+
+@app.post("/disputes/respond")
+async def dispute_respond(
+    dispute_id: str,
+    respondent: str,
+    response: str,
+    counter_evidence: List[Dict[str, Any]] = None
+):
+    """Respond to dispute"""
+    result = respond_to_dispute(dispute_id, respondent, response, counter_evidence)
+    return result
+
+@app.post("/disputes/offer")
+async def dispute_offer(
+    dispute_id: str,
+    offerer: str,
+    offer_type: str,
+    offer_amount: float = None,
+    offer_terms: str = ""
+):
+    """Make settlement offer"""
+    result = make_settlement_offer(dispute_id, offerer, offer_type, offer_amount, offer_terms)
+    return result
+
+@app.post("/disputes/accept")
+async def dispute_accept(
+    dispute_id: str,
+    offer_id: str,
+    accepter: str
+):
+    """Accept settlement"""
+    result = await accept_settlement(dispute_id, offer_id, accepter)
+    return result
+
+@app.post("/disputes/escalate")
+async def dispute_escalate(dispute_id: str):
+    """Escalate to arbitration"""
+    result = escalate_to_arbitration(dispute_id)
+    return result
+
+@app.post("/disputes/arbitrate")
+async def dispute_arbitrate(
+    dispute_id: str,
+    ruling: str,
+    claimant_award: float,
+    respondent_award: float,
+    rationale: str
+):
+    """Arbitrate dispute"""
+    result = await arbitrate_dispute(dispute_id, ruling, claimant_award, respondent_award, rationale)
+    return result
+
+@app.get("/disputes/{dispute_id}")
+async def dispute_get(dispute_id: str):
+    return get_dispute(dispute_id)
+
+@app.get("/disputes/list")
+async def dispute_list(username: str = None, status: str = None):
+    return list_disputes(username, status)
+
+@app.get("/disputes/stats")
+async def dispute_stats():
+    return get_dispute_stats()
+    
+from bundle_engine import (
+    create_bundle,
+    record_bundle_sale,
+    assign_bundle_roles,
+    update_bundle_status,
+    get_bundle,
+    list_bundles,
+    get_bundle_performance_stats
+)
+
+@app.post("/bundles/create")
+async def bundle_create(
+    lead_agent: str,
+    agents: List[str],
+    title: str,
+    description: str,
+    services: List[Dict[str, Any]],
+    pricing: Dict[str, Any]
+):
+    """Create multi-agent bundle"""
+    result = await create_bundle(
+        lead_agent=lead_agent,
+        agents=agents,
+        title=title,
+        description=description,
+        services=services,
+        pricing=pricing
+    )
+    return result
+
+@app.post("/bundles/sale")
+async def bundle_sale(
+    bundle_id: str,
+    buyer: str,
+    amount_usd: float,
+    delivery_hours: int = None,
+    satisfaction_score: float = None
+):
+    """Record bundle sale"""
+    result = await record_bundle_sale(
+        bundle_id=bundle_id,
+        buyer=buyer,
+        amount_usd=amount_usd,
+        delivery_hours=delivery_hours,
+        satisfaction_score=satisfaction_score
+    )
+    return result
+
+@app.post("/bundles/roles")
+async def bundle_roles(
+    bundle_id: str,
+    role_assignments: Dict[str, str]
+):
+    """Assign roles to agents"""
+    result = await assign_bundle_roles(
+        bundle_id=bundle_id,
+        role_assignments=role_assignments
+    )
+    return result
+
+@app.post("/bundles/status")
+async def bundle_status(
+    bundle_id: str,
+    status: str,
+    reason: str = ""
+):
+    """Update bundle status"""
+    result = update_bundle_status(
+        bundle_id=bundle_id,
+        status=status,
+        reason=reason
+    )
+    return result
+
+@app.get("/bundles/{bundle_id}")
+async def bundle_get(bundle_id: str):
+    return get_bundle(bundle_id)
+
+@app.get("/bundles/list")
+async def bundle_list(
+    agent: str = None,
+    status: str = None,
+    sort_by: str = "performance"
+):
+    return list_bundles(agent=agent, status=status, sort_by=sort_by)
+
+@app.get("/bundles/stats/{bundle_id}")
+async def bundle_stats(bundle_id: str):
+    return get_bundle_performance_stats(bundle_id)
 @_expansion_router.post("/ltv/predict")
 async def _exp_ltv_predict(payload: dict):
     try:
@@ -3565,6 +4372,71 @@ async def _exp_ltv_predict(payload: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+from metahive_rewards import (
+    join_hive as join_hive_rewards,
+    leave_hive,
+    record_contribution,
+    record_hive_revenue,
+    distribute_hive_rewards,
+    get_hive_member,
+    list_hive_members,
+    get_hive_treasury_stats,
+    get_member_projected_earnings
+)
+
+@app.post("/hive/join")
+async def hive_join(username: str, opt_in_data_sharing: bool = True):
+    """Join MetaHive"""
+    result = await join_hive_rewards(username, opt_in_data_sharing)
+    return result
+
+@app.post("/hive/leave")
+async def hive_leave(username: str):
+    """Leave MetaHive"""
+    result = leave_hive(username)
+    return result
+
+@app.post("/hive/contribution")
+async def hive_contribution(
+    username: str,
+    contribution_type: str,
+    value: float = 1.0
+):
+    """Record contribution"""
+    result = record_contribution(username, contribution_type, value)
+    return result
+
+@app.post("/hive/revenue")
+async def hive_revenue(
+    source: str,
+    amount_usd: float,
+    metadata: Dict[str, Any] = None
+):
+    """Record hive revenue"""
+    result = await record_hive_revenue(source, amount_usd, metadata)
+    return result
+
+@app.post("/hive/distribute")
+async def hive_distribute():
+    """Distribute rewards"""
+    result = await distribute_hive_rewards()
+    return result
+
+@app.get("/hive/member/{username}")
+async def hive_member(username: str):
+    return get_hive_member(username)
+
+@app.get("/hive/members")
+async def hive_members(status: str = None):
+    return list_hive_members(status)
+
+@app.get("/hive/treasury")
+async def hive_treasury():
+    return get_hive_treasury_stats()
+
+@app.get("/hive/projected/{username}")
+async def hive_projected(username: str):
+    return get_member_projected_earnings(username)
 @_expansion_router.post("/proposal/nudge")
 async def _exp_proposal_nudge(payload: dict):
     try:
