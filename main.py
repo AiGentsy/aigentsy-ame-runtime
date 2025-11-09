@@ -366,7 +366,7 @@ def make_canonical_record(username: str, company_type: str = "general", referral
             "expansion_events": []      # Track OCL expansions
         }
     }
-    }
+   
     # ensure default chart-friendly flags
     user["runtimeFlags"]["vaultAccess"] = user["runtimeFlags"]["vaultAccess"] or user["kits"]["universal"]["unlocked"]
     return user
