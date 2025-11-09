@@ -1768,12 +1768,12 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         amt      = float(invoice.get("amount", 0))
         currency = invoice.get("currency", "USD")
 
-        # platform fee (single source of truth)
-        fee_rate = _platform_fee_rate(u)             # e.g. 0.05
-        fee_amt  = round(amt * fee_rate, 2)          # positive
+        # platform fee
+        fee_rate = _platform_fee_rate(u)
+        fee_amt  = round(amt * fee_rate, 2)
         net_amt  = round(amt - fee_amt, 2)
 
-        # ledger entries: revenue (+), platform fee (-)
+        # ledger entries
         u["ownership"]["ledger"].append({
             "ts": _now(), "amount": amt, "currency": currency, "basis": "revenue", "ref": inv_id
         })
@@ -1781,23 +1781,26 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
             "ts": _now(), "amount": -fee_amt, "currency": currency, "basis": "platform_fee", "ref": inv_id
         })
 
-        # reflect in balances
+        # update balances
         u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned", 0)) + net_amt
         u["ownership"]["aigx"]   = float(u["ownership"].get("aigx", 0)) + net_amt
 
+        # ✅ AUTO-REPAY OCL from earnings (CORRECT INDENTATION)
         repay_result = None
-    if net_amt > 0:
-        repay_result = await auto_repay_ocl(u, net_amt)
-        if repay_result.get("repaid", 0) > 0:
-            await _save_users(client, users)  # Save again if repayment happened
-    
-    return {
-        "ok": True, 
-        "invoice": invoice, 
-        "fee": {"rate": fee_rate, "amount": fee_amt}, 
-        "net": net_amt,
-        "ocl_repayment": repay_result  # ✅ Include repayment info
-    }
+        if net_amt > 0:
+            repay_result = await auto_repay_ocl(u, net_amt)
+        
+        # ✅ SAVE USERS (CORRECT INDENTATION - SAME LEVEL AS OTHER CODE)
+        await _save_users(client, users)
+        
+        # ✅ RETURN (CORRECT INDENTATION)
+        return {
+            "ok": True, 
+            "invoice": invoice, 
+            "fee": {"rate": fee_rate, "amount": fee_amt}, 
+            "net": net_amt,
+            "ocl_repayment": repay_result
+        }
 
         await _save_users(client, users)
         return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
