@@ -81,7 +81,97 @@ except Exception:
 
 from ocl_engine import calculate_ocl_limit, spend_ocl, auto_repay_ocl, expand_ocl_on_poo
 
+# ============ PERFORMANCE BONDS ============
+try:
+    from performance_bonds import (
+        stake_bond,
+        return_bond,
+        calculate_sla_bonus,
+        award_sla_bonus,
+        slash_bond,
+        calculate_bond_amount
+    )
+except Exception as e:
+    print(f" performance_bonds import failed: {e}")
+    async def stake_bond(u, i): return {"ok": False}
+    async def return_bond(u, i): return {"ok": False}
+    async def award_sla_bonus(u, i): return {"ok": False}
+    async def slash_bond(u, i, s): return {"ok": False}
+    def calculate_bond_amount(v): return {"amount": 0}
+
+# ============ INSURANCE POOL ============
+try:
+    from insurance_pool import (
+        calculate_insurance_fee,
+        collect_insurance,
+        get_pool_balance,
+        payout_from_pool,
+        calculate_dispute_rate,
+        calculate_annual_refund,
+        issue_annual_refund
+    )
+except Exception as e:
+    print(f" insurance_pool import failed: {e}")
+    async def collect_insurance(u, i, v): return {"ok": False, "fee": 0}
+    async def get_pool_balance(p): return 0
+
+# ============ AGENT FACTORING ============
+try:
+    from agent_factoring import (
+        request_factoring_advance,
+        settle_factoring,
+        calculate_factoring_eligibility,
+        calculate_factoring_tier,
+        calculate_outstanding_factoring
+    )
+except Exception as e:
+    print(f" agent_factoring import failed: {e}")
+    async def request_factoring_advance(u, i): return {"ok": False, "net_advance": 0}
+    async def settle_factoring(u, i, p): return {"ok": False}
+
+# ============ REPUTATION PRICING (ARM) ============
+try:
+    from reputation_pricing import (
+        calculate_pricing_tier,
+        calculate_reputation_price,
+        calculate_arm_price_range,
+        calculate_dynamic_bid_price,
+        update_outcome_score_weighted,
+        calculate_pricing_impact,
+        PRICING_TIERS
+    )
+except Exception as e:
+    print(f" reputation_pricing import failed: {e}")
+    def calculate_pricing_tier(outcome_score: int):
+        return {"tier": "novice", "multiplier": 0.70, "outcome_score": outcome_score, "description": "New agent"}
+    def calculate_reputation_price(base_price: float, outcome_score: int, apply_guardrails: bool = True):
+        return {"base_price": base_price, "adjusted_price": base_price * 0.70, "discount_or_premium": -base_price * 0.30, "tier": "novice", "multiplier": 0.70}
+    def calculate_arm_price_range(service_type: str, outcome_score: int, market_demand: float = 1.0):
+        return {"recommended_price": 200.0, "pricing_tier": "novice", "reputation_multiplier": 0.70, "price_range": {"min": 180, "max": 220}}
+    def calculate_dynamic_bid_price(intent, agent_outcome_score: int, existing_bids=None):
+        return {"recommended_bid": 140.0, "adjustment": "standard", "rationale": "Default pricing"}
+    def update_outcome_score_weighted(current_score: int, new_outcome_result: str, weight: float = 0.1):
+        return current_score + 10
+    def calculate_pricing_impact(current_score: int, new_score: int, base_price: float):
+        return {"score_change": new_score - current_score, "price_change": 0, "current_tier": "novice", "new_tier": "novice"}
+    PRICING_TIERS = {}
+
+# ============ ESCROW LITE (STRIPE) ============
+try:
+    from escrow_lite import (
+        create_payment_intent,
+        capture_payment_intent,
+        refund_payment_intent,
+        auto_capture_on_delivered
+    )
+except Exception as e:
+    print(f" escrow_lite import failed: {e}")
+    async def create_payment_intent(a, b, i, m): return {"ok": False}
+    async def capture_payment_intent(p): return {"ok": False}
+    async def auto_capture_on_delivered(i): return {"ok": False}
+
 app = FastAPI()
+
 
 async def auto_bid_background():
     """Runs in background forever"""
