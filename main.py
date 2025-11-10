@@ -300,7 +300,7 @@ try:
         REPUTATION_TIERS
     )
 except Exception as e:
-    print(f"⚠️ dark_pool import failed: {e}")
+    print(f" dark_pool import failed: {e}")
     def anonymize_agent(a, auc): return "agent_anonymous"
     def get_reputation_tier(s): return {"tier": "silver", "badge": "🥈"}
     def create_dark_pool_auction(i, m="silver", d=24, r=True): return {"ok": False}
@@ -5233,6 +5233,391 @@ async def get_upgrades_dashboard():
             "deployed_upgrades": deployed,
             "next_suggestion": suggestion,
             "upgrade_types": UPGRADE_TYPES,
+            "dashboard_generated_at": _now()
+        }
+
+        # ============ DARK-POOL PERFORMANCE AUCTIONS ============
+
+@app.get("/darkpool/tiers")
+async def get_reputation_tiers():
+    """Get reputation tier definitions"""
+    return {
+        "ok": True,
+        "tiers": REPUTATION_TIERS,
+        "description": "Reputation tiers for dark pool matching"
+    }
+
+@app.get("/darkpool/tier/{username}")
+async def get_agent_reputation_tier(username: str):
+    """Get agent's reputation tier"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        tier = get_reputation_tier(outcome_score)
+        
+        return {"ok": True, "username": username, **tier}
+
+@app.post("/darkpool/auction/create")
+async def create_dark_pool_auction_endpoint(body: Dict = Body(...)):
+    """
+    Create a dark pool auction for an intent
+    
+    Body:
+    {
+        "intent_id": "intent_123",
+        "min_reputation_tier": "silver",
+        "auction_duration_hours": 24,
+        "reveal_reputation": true
+    }
+    """
+    intent_id = body.get("intent_id")
+    min_reputation_tier = body.get("min_reputation_tier", "silver")
+    auction_duration_hours = int(body.get("auction_duration_hours", 24))
+    reveal_reputation = body.get("reveal_reputation", True)
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Create auction
+        auction = create_dark_pool_auction(
+            intent,
+            min_reputation_tier,
+            auction_duration_hours,
+            reveal_reputation
+        )
+        
+        # Store auction
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            system_user = {
+                "username": "system_darkpool",
+                "role": "system",
+                "auctions": [],
+                "created_at": _now()
+            }
+            users.append(system_user)
+        
+        system_user.setdefault("auctions", []).append(auction)
+        
+        # Mark intent as in dark pool auction
+        intent["auction_type"] = "dark_pool"
+        intent["auction_id"] = auction["id"]
+        intent["status"] = "auction"
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "auction": auction}
+
+@app.get("/darkpool/auction/{auction_id}")
+async def get_dark_pool_auction(auction_id: str):
+    """Get dark pool auction details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "no_auctions_found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction_not_found", "auction_id": auction_id}
+        
+        # Hide real agent identities if auction is open
+        if auction["status"] == "open":
+            sanitized_bids = [
+                {
+                    "anonymous_id": b["anonymous_id"],
+                    "reputation": b["reputation"],
+                    "performance_metrics": b["performance_metrics"],
+                    "submitted_at": b["submitted_at"],
+                    "is_sealed": b["is_sealed"]
+                    # bid_amount hidden until close
+                }
+                for b in auction.get("bids", [])
+            ]
+            
+            auction_view = auction.copy()
+            auction_view["bids"] = sanitized_bids
+            auction_view["bid_count"] = len(sanitized_bids)
+            
+            return {"ok": True, "auction": auction_view}
+        
+        return {"ok": True, "auction": auction}
+
+@app.get("/darkpool/auction/list")
+async def list_dark_pool_auctions(status: str = None):
+    """
+    List dark pool auctions
+    
+    status: open | closed | expired | all
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"ok": True, "auctions": [], "count": 0}
+        
+        auctions = system_user.get("auctions", [])
+        
+        if status and status != "all":
+            auctions = [a for a in auctions if a.get("status") == status]
+        
+        return {
+            "ok": True,
+            "auctions": auctions,
+            "count": len(auctions)
+        }
+
+@app.post("/darkpool/bid")
+async def submit_dark_pool_bid_endpoint(body: Dict = Body(...)):
+    """
+    Submit anonymous bid to dark pool auction
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "username": "agent1",
+        "bid_amount": 150,
+        "delivery_hours": 48,
+        "proposal_summary": "Brief description"
+    }
+    """
+    auction_id = body.get("auction_id")
+    username = body.get("username")
+    bid_amount = float(body.get("bid_amount", 0))
+    delivery_hours = int(body.get("delivery_hours", 48))
+    proposal_summary = body.get("proposal_summary", "")
+    
+    if not all([auction_id, username, bid_amount]):
+        return {"error": "auction_id, username, and bid_amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find agent
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Find auction
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found", "auction_id": auction_id}
+        
+        # Submit bid
+        result = submit_dark_pool_bid(
+            auction,
+            agent_user,
+            bid_amount,
+            delivery_hours,
+            proposal_summary
+        )
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/darkpool/auction/close")
+async def close_dark_pool_auction_endpoint(body: Dict = Body(...)):
+    """
+    Close dark pool auction and select winner
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "matching_algorithm": "reputation_weighted_price"
+    }
+    
+    matching_algorithm options:
+    - reputation_weighted_price (default): Balance quality and price
+    - lowest_price: Cheapest qualified bid
+    - highest_reputation: Best reputation
+    - best_value: Optimize value score
+    """
+    auction_id = body.get("auction_id")
+    matching_algorithm = body.get("matching_algorithm", "reputation_weighted_price")
+    
+    if not auction_id:
+        return {"error": "auction_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found", "auction_id": auction_id}
+        
+        # Close auction
+        result = close_dark_pool_auction(auction, matching_algorithm)
+        
+        if result["ok"]:
+            # Update related intent
+            intent_id = auction.get("intent_id")
+            
+            for user in users:
+                for intent in user.get("intents", []):
+                    if intent.get("id") == intent_id:
+                        intent["status"] = "ACCEPTED"
+                        intent["agent"] = auction["winner"]["real_agent"]
+                        intent["awarded_bid"] = auction["winner"]
+                        intent["awarded_at"] = _now()
+                        break
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/darkpool/reveal")
+async def reveal_agent_identity_endpoint(body: Dict = Body(...)):
+    """
+    Reveal agent identity (only after auction closes)
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "anonymous_id": "agent_xyz789",
+        "requester": "buyer1"
+    }
+    """
+    auction_id = body.get("auction_id")
+    anonymous_id = body.get("anonymous_id")
+    requester = body.get("requester")
+    
+    if not all([auction_id, anonymous_id, requester]):
+        return {"error": "auction_id, anonymous_id, and requester required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found"}
+        
+        result = reveal_agent_identity(auction, anonymous_id, requester)
+        
+        return result
+
+@app.get("/darkpool/metrics")
+async def get_dark_pool_metrics():
+    """Get dark pool performance metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_auctions": 0,
+                "message": "No dark pool auctions yet"
+            }
+        
+        auctions = system_user.get("auctions", [])
+        metrics = calculate_dark_pool_metrics(auctions)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/darkpool/agent/history")
+async def get_agent_dark_pool_history_endpoint(username: str):
+    """Get agent's dark pool bidding history"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "agent": username,
+                "total_bids": 0,
+                "wins": 0,
+                "bids": []
+            }
+        
+        auctions = system_user.get("auctions", [])
+        history = get_agent_dark_pool_history(username, auctions)
+        
+        return {"ok": True, **history}
+
+@app.get("/darkpool/dashboard")
+async def get_dark_pool_dashboard():
+    """Get dark pool dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_auctions": 0,
+                "open_auctions": 0,
+                "message": "No dark pool activity yet"
+            }
+        
+        auctions = system_user.get("auctions", [])
+        
+        open_auctions = [a for a in auctions if a.get("status") == "open"]
+        closed_auctions = [a for a in auctions if a.get("status") == "closed"]
+        
+        metrics = calculate_dark_pool_metrics(auctions)
+        
+        return {
+            "ok": True,
+            "total_auctions": len(auctions),
+            "open_auctions": len(open_auctions),
+            "closed_auctions": len(closed_auctions),
+            "metrics": metrics,
+            "reputation_tiers": REPUTATION_TIERS,
             "dashboard_generated_at": _now()
         }
         
