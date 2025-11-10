@@ -311,7 +311,36 @@ except Exception as e:
     def calculate_dark_pool_metrics(aucs): return {"ok": False}
     def get_agent_dark_pool_history(a, aucs): return {"ok": False}
     REPUTATION_TIERS = {}
-    
+
+# ============ JV MESH (AUTONOMOUS + MANUAL) ============
+try:
+    from jv_mesh import (
+        create_jv_proposal,
+        vote_on_jv,
+        dissolve_jv,
+        get_jv_proposal,
+        get_active_jv,
+        list_jv_proposals,
+        list_active_jvs,
+        calculate_compatibility_score,
+        suggest_jv_partners,
+        auto_propose_jv,
+        evaluate_jv_performance
+    )
+except Exception as e:
+    print(f"⚠️ jv_mesh import failed: {e}")
+    async def create_jv_proposal(p, part, t, d, r, dur=90, ter=None): return {"ok": False}
+    async def vote_on_jv(p, v, vote, f=""): return {"ok": False}
+    async def dissolve_jv(j, r, reason=""): return {"ok": False}
+    def get_jv_proposal(p): return {"ok": False}
+    def get_active_jv(j): return {"ok": False}
+    def list_jv_proposals(p=None, s=None): return {"ok": False}
+    def list_active_jvs(p=None): return {"ok": False}
+    def calculate_compatibility_score(a1, a2): return {"ok": False}
+    def suggest_jv_partners(a, all_a, m=0.6, l=5): return {"ok": False}
+    async def auto_propose_jv(a, s, all_a): return {"ok": False}
+    def evaluate_jv_performance(j, u): return {"ok": False}
+        
 app = FastAPI()
 
 
@@ -5620,6 +5649,188 @@ async def get_dark_pool_dashboard():
             "reputation_tiers": REPUTATION_TIERS,
             "dashboard_generated_at": _now()
         }
+
+    # ============ JV MESH (AUTONOMOUS + MANUAL) ============
+
+@app.post("/jv/propose")
+async def propose_jv_endpoint(body: Dict = Body(...)):
+    """
+    Propose a JV partnership
+    
+    Body:
+    {
+        "proposer": "agent1",
+        "partner": "agent2",
+        "title": "Design + Dev Partnership",
+        "description": "...",
+        "revenue_split": {"agent1": 0.6, "agent2": 0.4},
+        "duration_days": 90
+    }
+    """
+    result = await create_jv_proposal(
+        proposer=body.get("proposer"),
+        partner=body.get("partner"),
+        title=body.get("title"),
+        description=body.get("description"),
+        revenue_split=body.get("revenue_split"),
+        duration_days=body.get("duration_days", 90),
+        terms=body.get("terms")
+    )
+    
+    return result
+
+@app.post("/jv/vote")
+async def vote_on_jv_endpoint(body: Dict = Body(...)):
+    """
+    Vote on JV proposal
+    
+    Body:
+    {
+        "proposal_id": "jvp_abc123",
+        "voter": "agent2",
+        "vote": "APPROVED",
+        "feedback": "optional"
+    }
+    """
+    result = await vote_on_jv(
+        proposal_id=body.get("proposal_id"),
+        voter=body.get("voter"),
+        vote=body.get("vote"),
+        feedback=body.get("feedback", "")
+    )
+    
+    return result
+
+@app.get("/jv/proposals")
+async def list_jv_proposals_endpoint(party: str = None, status: str = None):
+    """List JV proposals"""
+    result = list_jv_proposals(party, status)
+    return result
+
+@app.get("/jv/active")
+async def list_active_jvs_endpoint(party: str = None):
+    """List active JV partnerships"""
+    result = list_active_jvs(party)
+    return result
+
+@app.get("/jv/proposal/{proposal_id}")
+async def get_jv_proposal_endpoint(proposal_id: str):
+    """Get specific JV proposal"""
+    result = get_jv_proposal(proposal_id)
+    return result
+
+@app.get("/jv/{jv_id}")
+async def get_active_jv_endpoint(jv_id: str):
+    """Get active JV details"""
+    result = get_active_jv(jv_id)
+    return result
+
+@app.post("/jv/dissolve")
+async def dissolve_jv_endpoint(body: Dict = Body(...)):
+    """
+    Dissolve a JV partnership
+    
+    Body:
+    {
+        "jv_id": "jv_abc123",
+        "requester": "agent1",
+        "reason": "mutual agreement"
+    }
+    """
+    result = await dissolve_jv(
+        jv_id=body.get("jv_id"),
+        requester=body.get("requester"),
+        reason=body.get("reason", "")
+    )
+    
+    return result
+
+# ============ AUTONOMOUS JV FEATURES ============
+
+@app.get("/jv/suggest/{username}")
+async def suggest_jv_partners_endpoint(username: str, min_score: float = 0.6, limit: int = 5):
+    """AI suggests compatible JV partners"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent = _find_user(users, username)
+        if not agent:
+            return {"error": "user not found"}
+        
+        suggestions = suggest_jv_partners(agent, users, min_score, limit)
+        
+        return suggestions
+
+@app.post("/jv/auto_propose")
+async def auto_propose_jv_endpoint(body: Dict = Body(...)):
+    """
+    Automatically propose JV to AI-suggested partner
+    
+    Body:
+    {
+        "agent_username": "agent1",
+        "partner_username": "agent2"
+    }
+    """
+    agent_username = body.get("agent_username")
+    partner_username = body.get("partner_username")
+    
+    if not all([agent_username, partner_username]):
+        return {"error": "agent_username and partner_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Get compatibility
+        agent = _find_user(users, agent_username)
+        partner = _find_user(users, partner_username)
+        
+        if not agent or not partner:
+            return {"error": "user not found"}
+        
+        compatibility = calculate_compatibility_score(agent, partner)
+        
+        suggested_partner = {
+            "username": partner_username,
+            "compatibility": compatibility
+        }
+        
+        result = await auto_propose_jv(agent_username, suggested_partner, users)
+        
+        return result
+
+@app.get("/jv/compatibility")
+async def check_compatibility(agent1: str, agent2: str):
+    """Check compatibility between two agents"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        user1 = _find_user(users, agent1)
+        user2 = _find_user(users, agent2)
+        
+        if not user1 or not user2:
+            return {"error": "user not found"}
+        
+        compatibility = calculate_compatibility_score(user1, user2)
+        
+        return {"ok": True, "agent1": agent1, "agent2": agent2, **compatibility}
+
+@app.get("/jv/performance/{jv_id}")
+async def get_jv_performance(jv_id: str):
+    """Evaluate JV partnership performance"""
+    jv_result = get_active_jv(jv_id)
+    
+    if not jv_result.get("ok"):
+        return jv_result
+    
+    jv = jv_result["jv"]
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        performance = evaluate_jv_performance(jv, users)
+        
+        return {"ok": True, **performance}
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
