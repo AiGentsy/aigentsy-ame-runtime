@@ -2774,6 +2774,216 @@ async def ocl_repay_endpoint(body: Dict = Body(...)):
         
         limits = await calculate_ocl_limit(u)
         return {"ok": True, "repaid": amount, **limits}
+
+# ============ ESCROW-LITE (AUTH→CAPTURE) ============
+
+from escrow_lite import (
+    create_payment_intent,
+    capture_payment,
+    cancel_payment,
+    get_payment_status,
+    auto_capture_on_delivered,
+    auto_timeout_release,
+    partial_refund_on_dispute
+)
+
+@app.post("/escrow/create_intent")
+async def create_escrow_intent(body: Dict = Body(...)):
+    """
+    Create payment intent (authorize but don't capture)
+    Called when buyer accepts a quote
+    """
+    buyer = body.get("buyer")
+    amount = float(body.get("amount", 0))
+    intent_id = body.get("intent_id")
+    buyer_email = body.get("buyer_email", f"{buyer}@aigentsy.com")
+    
+    if not all([buyer, amount, intent_id]):
+        return {"error": "buyer, amount, intent_id required"}
+    
+    # Create Stripe PaymentIntent
+    result = await create_payment_intent(
+        amount=amount,
+        buyer_email=buyer_email,
+        intent_id=intent_id,
+        metadata={"buyer": buyer}
+    )
+    
+    if result["ok"]:
+        # Store payment intent ID with the intent
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            # Find buyer's intent
+            buyer_user = _find_user(users, buyer)
+            if buyer_user:
+                for intent in buyer_user.get("intents", []):
+                    if intent.get("id") == intent_id:
+                        intent["payment_intent_id"] = result["payment_intent_id"]
+                        intent["escrow_status"] = "authorized"
+                        intent["escrow_created_at"] = _now()
+                        break
+                
+                await _save_users(client, users)
+    
+    return result
+
+@app.post("/escrow/capture")
+async def capture_escrow(body: Dict = Body(...)):
+    """
+    Capture authorized payment (called on DELIVERED)
+    """
+    intent_id = body.get("intent_id")
+    partial_amount = body.get("amount")  # Optional: for partial captures
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent with payment_intent_id
+        payment_intent_id = None
+        intent_owner = None
+        target_intent = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    intent_owner = user
+                    target_intent = intent
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Check for disputes
+        result = await auto_capture_on_delivered(target_intent)
+        
+        if result["ok"]:
+            # Update intent status
+            target_intent["payment_captured"] = True
+            target_intent["payment_captured_at"] = _now()
+            target_intent["escrow_status"] = "captured"
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/escrow/cancel")
+async def cancel_escrow(body: Dict = Body(...)):
+    """
+    Cancel authorized payment (dispute or timeout)
+    """
+    intent_id = body.get("intent_id")
+    reason = body.get("reason", "dispute")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find payment intent
+        payment_intent_id = None
+        target_intent = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    target_intent = intent
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Cancel payment
+        result = await cancel_payment(payment_intent_id)
+        
+        if result["ok"]:
+            target_intent["escrow_status"] = "cancelled"
+            target_intent["escrow_cancelled_at"] = _now()
+            target_intent["escrow_cancel_reason"] = reason
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/escrow/status")
+async def escrow_status(intent_id: str):
+    """
+    Check escrow/payment status
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    
+                    if payment_intent_id:
+                        stripe_status = await get_payment_status(payment_intent_id)
+                        
+                        return {
+                            "ok": True,
+                            "intent_id": intent_id,
+                            "escrow_status": intent.get("escrow_status"),
+                            "stripe_status": stripe_status
+                        }
+                    else:
+                        return {
+                            "ok": True,
+                            "intent_id": intent_id,
+                            "escrow_status": "not_created"
+                        }
+        
+        return {"error": "intent not found"}
+
+@app.post("/escrow/refund")
+async def escrow_refund(body: Dict = Body(...)):
+    """
+    Issue partial refund for dispute resolution
+    """
+    intent_id = body.get("intent_id")
+    refund_amount = float(body.get("amount", 0))
+    reason = body.get("reason", "dispute_resolution")
+    
+    if not all([intent_id, refund_amount]):
+        return {"error": "intent_id and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find payment intent
+        payment_intent_id = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Issue refund
+        result = await partial_refund_on_dispute(
+            payment_intent_id=payment_intent_id,
+            refund_amount=refund_amount,
+            reason=reason
+        )
+        
+        return result
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
