@@ -1,6 +1,14 @@
-# ============ AUTONOMOUS MATCHING (NEW) ============
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone, timedelta
+from uuid import uuid4
+import httpx
 
-from typing import Set
+_JV_PROPOSALS: Dict[str, Dict[str, Any]] = {}
+_ACTIVE_JVS: Dict[str, Dict[str, Any]] = {}
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat() + "Z"
+
 
 SKILL_CATEGORIES = [
     "design", "development", "copywriting", "marketing",
