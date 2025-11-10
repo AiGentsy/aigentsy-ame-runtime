@@ -3707,7 +3707,7 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
 
 @app.post("/intent/award")
 async def intent_award(body: Dict = Body(...)):
-    """Award intent + create escrow automatically"""
+    """Award intent + create escrow + stake bond"""
     intent_id = body.get("intent_id")
     bid_id = body.get("bid_id")
     
@@ -3741,13 +3741,30 @@ async def intent_award(body: Dict = Body(...)):
         if not chosen_bid:
             return {"error": "no valid bid found"}
         
+        # Find agent
+        agent_username = chosen_bid.get("agent")
+        agent_user = _find_user(users, agent_username)
+        
+        if not agent_user:
+            return {"error": "agent not found"}
+        
         # Update intent
         intent["status"] = "ACCEPTED"
         intent["awarded_bid"] = chosen_bid
         intent["awarded_at"] = _now()
-        intent["agent"] = chosen_bid.get("agent")
+        intent["accepted_at"] = _now()  
+        intent["agent"] = agent_username
+        intent["delivery_hours"] = chosen_bid.get("delivery_hours", 48)
+        intent["price_usd"] = chosen_bid.get("price", 0)
         
-        # ✅ AUTO-CREATE ESCROW
+        #  AUTO-STAKE BOND
+        bond_result = await stake_bond(agent_user, intent)
+        
+        if not bond_result["ok"]:
+            # Don't block award if bond fails, just warn
+            bond_result["warning"] = "Agent needs more AIGx for performance bond"
+        
+        #  AUTO-CREATE ESCROW
         buyer_email = buyer_user.get("consent", {}).get("username") + "@aigentsy.com"
         escrow_result = await create_payment_intent(
             amount=float(chosen_bid.get("price", 0)),
@@ -3755,7 +3772,7 @@ async def intent_award(body: Dict = Body(...)):
             intent_id=intent_id,
             metadata={
                 "buyer": _uname(buyer_user),
-                "agent": chosen_bid.get("agent")
+                "agent": agent_username
             }
         )
         
@@ -3771,9 +3788,11 @@ async def intent_award(body: Dict = Body(...)):
             await publish({
                 "type": "intent_award",
                 "intent_id": intent_id,
-                "agent": chosen_bid["agent"],
+                "agent": agent_username,
                 "buyer": _uname(buyer_user),
-                "escrow_created": escrow_result["ok"]
+                "escrow_created": escrow_result["ok"],
+                "bond_staked": bond_result.get("ok", False),
+                "bond_amount": bond_result.get("bond_amount", 0)
             })
         except:
             pass
@@ -3781,7 +3800,8 @@ async def intent_award(body: Dict = Body(...)):
         return {
             "ok": True,
             "award": chosen_bid,
-            "escrow": escrow_result
+            "escrow": escrow_result,
+            "bond": bond_result
         }
 
 @app.post("/productize")
