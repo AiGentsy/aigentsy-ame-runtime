@@ -257,6 +257,33 @@ except Exception as e:
     def get_autopilot_recommendations(u, c=None): return {"ok": False}
     AUTOPILOT_TIERS = {}
     CHANNELS = {}
+
+# ============ AUTONOMOUS LOGIC UPGRADES ============
+try:
+    from autonomous_upgrades import (
+        create_logic_variant,
+        create_ab_test,
+        assign_to_test_group,
+        record_test_outcome,
+        analyze_ab_test,
+        deploy_logic_upgrade,
+        rollback_logic_upgrade,
+        get_active_tests,
+        suggest_next_upgrade,
+        UPGRADE_TYPES
+    )
+except Exception as e:
+    print(f" autonomous_upgrades import failed: {e}")
+    def create_logic_variant(u, b, m=0.2): return {"ok": False}
+    def create_ab_test(u, c, t=14, s=100): return {"ok": False}
+    def assign_to_test_group(a, agent_id): return "control"
+    def record_test_outcome(a, g, m): return {"ok": False}
+    def analyze_ab_test(a, m=30): return {"ok": False}
+    def deploy_logic_upgrade(a, u): return {"ok": False}
+    def rollback_logic_upgrade(u, users, r=None): return {"ok": False}
+    def get_active_tests(t): return []
+    def suggest_next_upgrade(u, e): return {"ok": False}
+    UPGRADE_TYPES = {}
     
 app = FastAPI()
 
@@ -4782,6 +4809,404 @@ async def get_autopilot_performance(username: str):
                 "actual_roi": round(actual_roi, 2)
             },
             "status": strategy["status"]
+        }
+
+# ============ AUTONOMOUS LOGIC UPGRADES ============
+
+@app.get("/upgrades/types")
+async def get_upgrade_types():
+    """Get available logic upgrade types"""
+    return {
+        "ok": True,
+        "upgrade_types": UPGRADE_TYPES
+    }
+
+@app.post("/upgrades/test/create")
+async def create_ab_test_endpoint(body: Dict = Body(...)):
+    """
+    Create an A/B test for a logic upgrade
+    
+    Body:
+    {
+        "upgrade_type": "pricing_strategy",
+        "control_logic": {...},
+        "test_duration_days": 14,
+        "sample_size": 100
+    }
+    """
+    upgrade_type = body.get("upgrade_type")
+    control_logic = body.get("control_logic", {})
+    test_duration_days = int(body.get("test_duration_days", 14))
+    sample_size = int(body.get("sample_size", 100))
+    
+    if not upgrade_type:
+        return {"error": "upgrade_type required"}
+    
+    if upgrade_type not in UPGRADE_TYPES:
+        return {
+            "error": "invalid_upgrade_type",
+            "valid_types": list(UPGRADE_TYPES.keys())
+        }
+    
+    # Create test
+    ab_test = create_ab_test(upgrade_type, control_logic, test_duration_days, sample_size)
+    
+    # Store test (in production, would store in database)
+    # For now, store in a special system user
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find or create system user for tests
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            system_user = {
+                "username": "system_tests",
+                "role": "system",
+                "ab_tests": [],
+                "created_at": _now()
+            }
+            users.append(system_user)
+        
+        system_user.setdefault("ab_tests", []).append(ab_test)
+        
+        await _save_users(client, users)
+    
+    return {"ok": True, "ab_test": ab_test}
+
+@app.get("/upgrades/test/list")
+async def list_ab_tests(status: str = None):
+    """
+    List all A/B tests
+    
+    status: active | completed | deployed | all
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"ok": True, "tests": [], "count": 0}
+        
+        tests = system_user.get("ab_tests", [])
+        
+        if status and status != "all":
+            tests = [t for t in tests if t.get("status") == status]
+        
+        return {
+            "ok": True,
+            "tests": tests,
+            "count": len(tests),
+            "active_count": len([t for t in tests if t.get("status") == "active"])
+        }
+
+@app.get("/upgrades/test/{test_id}")
+async def get_ab_test(test_id: str):
+    """Get specific A/B test details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "no_tests_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        return {"ok": True, "test": test}
+
+@app.post("/upgrades/test/assign")
+async def assign_agent_to_test(body: Dict = Body(...)):
+    """
+    Assign agent to A/B test group
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "agent_id": "agent1"
+    }
+    """
+    test_id = body.get("test_id")
+    agent_id = body.get("agent_id")
+    
+    if not all([test_id, agent_id]):
+        return {"error": "test_id and agent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Assign to group
+        group = assign_to_test_group(test, agent_id)
+        
+        # Get logic for assigned group
+        logic = test[group]["logic"]
+        
+        return {
+            "ok": True,
+            "test_id": test_id,
+            "agent_id": agent_id,
+            "assigned_group": group,
+            "logic": logic
+        }
+
+@app.post("/upgrades/test/record")
+async def record_test_outcome_endpoint(body: Dict = Body(...)):
+    """
+    Record outcome for an A/B test sample
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "group": "variant",
+        "metrics": {
+            "win_rate": 0.35,
+            "avg_margin": 0.15,
+            "conversion_rate": 0.28
+        }
+    }
+    """
+    test_id = body.get("test_id")
+    group = body.get("group")
+    metrics = body.get("metrics", {})
+    
+    if not all([test_id, group]):
+        return {"error": "test_id and group required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Record outcome
+        result = record_test_outcome(test, group, metrics)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/upgrades/test/analyze")
+async def analyze_ab_test_endpoint(body: Dict = Body(...)):
+    """
+    Analyze A/B test results
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "min_sample_size": 30
+    }
+    """
+    test_id = body.get("test_id")
+    min_sample_size = int(body.get("min_sample_size", 30))
+    
+    if not test_id:
+        return {"error": "test_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Analyze
+        analysis = analyze_ab_test(test, min_sample_size)
+        
+        if analysis.get("ok"):
+            # Update test status
+            if analysis.get("is_significant"):
+                test["status"] = "completed"
+            
+            await _save_users(client, users)
+        
+        return analysis
+
+@app.post("/upgrades/deploy")
+async def deploy_upgrade_endpoint(body: Dict = Body(...)):
+    """
+    Deploy winning logic upgrade to all agents
+    
+    Body:
+    {
+        "test_id": "test_abc123"
+    }
+    """
+    test_id = body.get("test_id")
+    
+    if not test_id:
+        return {"error": "test_id required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Deploy
+        result = deploy_logic_upgrade(test, users)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/upgrades/rollback")
+async def rollback_upgrade_endpoint(body: Dict = Body(...)):
+    """
+    Rollback a logic upgrade
+    
+    Body:
+    {
+        "upgrade_type": "pricing_strategy",
+        "rollback_to_version": "var_abc123" (optional)
+    }
+    """
+    upgrade_type = body.get("upgrade_type")
+    rollback_to_version = body.get("rollback_to_version")
+    
+    if not upgrade_type:
+        return {"error": "upgrade_type required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = rollback_logic_upgrade(upgrade_type, users, rollback_to_version)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/upgrades/suggest")
+async def suggest_next_upgrade_endpoint():
+    """Suggest next logic upgrade to test based on platform needs"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Get existing tests
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        existing_tests = system_user.get("ab_tests", []) if system_user else []
+        
+        suggestion = suggest_next_upgrade(users, existing_tests)
+        
+        return suggestion
+
+@app.get("/upgrades/agent/history")
+async def get_agent_upgrade_history(username: str):
+    """Get agent's logic upgrade history"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        logic_upgrades = user.get("logic_upgrades", [])
+        current_logic = user.get("logic", {})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "current_logic": current_logic,
+            "upgrade_history": logic_upgrades,
+            "total_upgrades": len(logic_upgrades)
+        }
+
+@app.get("/upgrades/active")
+async def get_active_tests_endpoint():
+    """Get all active A/B tests"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"ok": True, "active_tests": [], "count": 0}
+        
+        all_tests = system_user.get("ab_tests", [])
+        active = get_active_tests(all_tests)
+        
+        return {
+            "ok": True,
+            "active_tests": active,
+            "count": len(active)
+        }
+
+@app.get("/upgrades/dashboard")
+async def get_upgrades_dashboard():
+    """Get autonomous upgrades dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_tests": 0,
+                "active_tests": 0,
+                "completed_tests": 0,
+                "deployed_upgrades": 0
+            }
+        
+        all_tests = system_user.get("ab_tests", [])
+        
+        active = len([t for t in all_tests if t.get("status") == "active"])
+        completed = len([t for t in all_tests if t.get("status") == "completed"])
+        deployed = len([t for t in all_tests if t.get("status") == "deployed"])
+        
+        # Get suggestion
+        suggestion = suggest_next_upgrade(users, all_tests)
+        
+        return {
+            "ok": True,
+            "total_tests": len(all_tests),
+            "active_tests": active,
+            "completed_tests": completed,
+            "deployed_upgrades": deployed,
+            "next_suggestion": suggestion,
+            "upgrade_types": UPGRADE_TYPES,
+            "dashboard_generated_at": _now()
         }
         
 @app.post("/poo/issue")
