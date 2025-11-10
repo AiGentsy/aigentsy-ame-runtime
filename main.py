@@ -1774,10 +1774,13 @@ async def pay_link(body: Dict = Body(...)):
 @app.post("/revenue/recognize")
 async def revenue_recognize(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
     body = await request.json()
-    username = body.get("username"); inv_id = body.get("invoiceId")
+    username = body.get("username")
+    inv_id = body.get("invoiceId")
+    intent_id = body.get("intent_id")  # ✅ ADD THIS - needed for factoring settlement
+    
     if not (username and inv_id):
         return {"error": "username & invoiceId required"}
-
+    
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client)
         _require_key(users, username, x_api_key)
@@ -1785,60 +1788,94 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         if not u:
             return {"error": "user not found"}
         _ensure_business(u)
-
+        
         invoice = _find_in(u["invoices"], "id", inv_id)
         if not invoice:
             return {"error": "invoice not found"}
-
-        # mark paid
-        invoice["status"]  = "paid"
+        
+        # Mark paid
+        invoice["status"] = "paid"
         invoice["paid_ts"] = _now()
-
-        # mark related payment paid
+        
+        # Mark related payment paid
         for p in u.get("payments", []):
             if p.get("invoiceId") == inv_id:
-                p["status"]  = "paid"
+                p["status"] = "paid"
                 p["paid_ts"] = _now()
-
-        amt      = float(invoice.get("amount", 0))
+        
+        amt = float(invoice.get("amount", 0))
         currency = invoice.get("currency", "USD")
-
-        # platform fee
+        
+        # Platform fee
         fee_rate = _platform_fee_rate(u)
-        fee_amt  = round(amt * fee_rate, 2)
-        net_amt  = round(amt - fee_amt, 2)
-
-        # ledger entries
+        fee_amt = round(amt * fee_rate, 2)
+        net_amt = round(amt - fee_amt, 2)
+        
+        # Ledger entries
         u["ownership"]["ledger"].append({
-            "ts": _now(), "amount": amt, "currency": currency, "basis": "revenue", "ref": inv_id
+            "ts": _now(),
+            "amount": amt,
+            "currency": currency,
+            "basis": "revenue",
+            "ref": inv_id
         })
         u["ownership"]["ledger"].append({
-            "ts": _now(), "amount": -fee_amt, "currency": currency, "basis": "platform_fee", "ref": inv_id
+            "ts": _now(),
+            "amount": -fee_amt,
+            "currency": currency,
+            "basis": "platform_fee",
+            "ref": inv_id
         })
-
-        # update balances
+        
+        # Update balances
         u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned", 0)) + net_amt
-        u["ownership"]["aigx"]   = float(u["ownership"].get("aigx", 0)) + net_amt
-
-        # ✅ AUTO-REPAY OCL from earnings (CORRECT INDENTATION)
+        u["ownership"]["aigx"] = float(u["ownership"].get("aigx", 0)) + net_amt
+        
+        # ✅ 1. SETTLE FACTORING (if intent_id provided)
+        factoring_result = None
+        if intent_id:
+            try:
+                # Find intent
+                intent = None
+                for user in users:
+                    for i in user.get("intents", []):
+                        if i.get("id") == intent_id:
+                            intent = i
+                            break
+                    if intent:
+                        break
+                
+                if intent and intent.get("factoring"):
+                    factoring_result = await settle_factoring(u, intent, amt)
+                    
+                    if factoring_result.get("ok"):
+                        print(f" Settled factoring: agent receives ${factoring_result.get('agent_payout')} holdback")
+            except Exception as e:
+                print(f" Factoring settlement failed: {e}")
+                factoring_result = {"ok": False, "error": str(e)}
+        
+        # ✅ 2. AUTO-REPAY OCL from earnings
         repay_result = None
         if net_amt > 0:
-            repay_result = await auto_repay_ocl(u, net_amt)
+            try:
+                repay_result = await auto_repay_ocl(u, net_amt)
+            except Exception as e:
+                print(f"⚠️ OCL repayment failed: {e}")
+                repay_result = {"ok": False, "error": str(e)}
         
-        # ✅ SAVE USERS (CORRECT INDENTATION - SAME LEVEL AS OTHER CODE)
+        # ✅ SAVE USERS
         await _save_users(client, users)
         
-        # ✅ RETURN (CORRECT INDENTATION)
+        # ✅ RETURN
         return {
-            "ok": True, 
-            "invoice": invoice, 
-            "fee": {"rate": fee_rate, "amount": fee_amt}, 
+            "ok": True,
+            "invoice": invoice,
+            "fee": {"rate": fee_rate, "amount": fee_amt},
             "net": net_amt,
+            "factoring_settlement": factoring_result,
             "ocl_repayment": repay_result
         }
-
-        await _save_users(client, users)
-        return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
+        
 
 @app.post("/outcome/attribute")
 async def outcome_attribute(body: Dict = Body(...)):
