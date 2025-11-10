@@ -3581,7 +3581,179 @@ async def settle_factoring_endpoint(body: Dict = Body(...)):
             await _save_users(client, users)
         
         return result
+
+# ============ REPUTATION-INDEXED PRICING (ARM) ============
+
+from reputation_pricing import (
+    calculate_pricing_tier,
+    calculate_reputation_price,
+    calculate_arm_price_range,
+    calculate_dynamic_bid_price,
+    update_outcome_score_weighted,
+    calculate_pricing_impact
+)
+
+@app.get("/pricing/tier")
+async def get_pricing_tier(username: str):
+    """Get agent's current pricing tier based on OutcomeScore"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
         
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        tier_info = calculate_pricing_tier(outcome_score)
+        
+        return {"ok": True, **tier_info}
+
+@app.get("/pricing/calculate")
+async def calculate_price(
+    username: str,
+    base_price: float,
+    service_type: str = "custom"
+):
+    """Calculate reputation-adjusted price for a service"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        
+        # Get ARM pricing
+        arm_pricing = calculate_arm_price_range(service_type, outcome_score)
+        
+        # Also calculate for custom base price
+        custom_pricing = calculate_reputation_price(base_price, outcome_score)
+        
+        return {
+            "ok": True,
+            "arm_pricing": arm_pricing,
+            "custom_base_pricing": custom_pricing
+        }
+
+@app.post("/pricing/recommend_bid")
+async def recommend_bid_price(body: Dict = Body(...)):
+    """
+    Recommend optimal bid price for an intent
+    Takes into account agent reputation + existing bids
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        existing_bids = intent.get("bids", [])
+        
+        # Calculate optimal bid
+        recommendation = calculate_dynamic_bid_price(
+            intent=intent,
+            agent_outcome_score=outcome_score,
+            existing_bids=existing_bids
+        )
+        
+        return {"ok": True, **recommendation}
+
+@app.post("/pricing/update_score")
+async def update_pricing_score(body: Dict = Body(...)):
+    """
+    Update agent's OutcomeScore after job completion
+    Auto-called by PoO verification
+    """
+    username = body.get("username")
+    outcome_result = body.get("outcome_result")  # excellent | good | satisfactory | poor | failed
+    
+    if not all([username, outcome_result]):
+        return {"error": "username and outcome_result required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        current_score = int(user.get("outcomeScore", 0))
+        new_score = update_outcome_score_weighted(current_score, outcome_result)
+        
+        # Calculate pricing impact
+        impact = calculate_pricing_impact(current_score, new_score, base_price=200)
+        
+        # Update score
+        user["outcomeScore"] = new_score
+        
+        # Log score change
+        user.setdefault("ownership", {}).setdefault("ledger", []).append({
+            "ts": _now(),
+            "amount": 0,
+            "currency": "SCORE",
+            "basis": "outcome_score_update",
+            "old_score": current_score,
+            "new_score": new_score,
+            "outcome_result": outcome_result
+        })
+        
+        await _save_users(client, users)
+        
+        return {
+            "ok": True,
+            "old_score": current_score,
+            "new_score": new_score,
+            "score_change": new_score - current_score,
+            "pricing_impact": impact
+        }
+
+@app.get("/pricing/market_rates")
+async def get_market_rates(service_type: str = "custom"):
+    """Get current market rates by reputation tier"""
+    
+    tiers_pricing = {}
+    
+    for tier_name, tier_info in PRICING_TIERS.items():
+        # Use mid-point of score range
+        mid_score = (tier_info["min_score"] + tier_info["max_score"]) // 2
+        
+        arm_pricing = calculate_arm_price_range(service_type, mid_score)
+        
+        tiers_pricing[tier_name] = {
+            "score_range": f"{tier_info['min_score']}-{tier_info['max_score']}",
+            "multiplier": tier_info["multiplier"],
+            "price_range": arm_pricing["price_range"],
+            "recommended_price": arm_pricing["recommended_price"]
+        }
+    
+    return {
+        "ok": True,
+        "service_type": service_type,
+        "tiers": tiers_pricing
+    }
+    
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
@@ -3635,6 +3807,7 @@ async def poo_verify(
     buyer_username: str,
     approved: bool,
     feedback: str = ""
+    outcome_rating: str = "good" 
 ):
     """Verify PoO + auto-capture escrow + return bond + award bonus"""
     result = await verify_poo_oracle(
@@ -3687,7 +3860,42 @@ async def poo_verify(
                 expansion = await expand_ocl_on_poo(agent_user, poo_id)
                 result["ocl_expansion"] = expansion
             
-            # Save all changes
+            # ✅ UPDATE OUTCOMESCORE
+            if agent_user:
+                # Determine outcome rating from delivery speed + feedback
+                outcome_result = outcome_rating  # Default from param
+                
+                # Auto-determine if not explicitly provided
+                if outcome_rating == "good":
+                    # Check SLA performance
+                    if intent and intent.get("accepted_at") and intent.get("delivered_at"):
+                        from performance_bonds import _hours_between
+                        delivery_hours = _hours_between(intent["accepted_at"], intent["delivered_at"])
+                        sla_hours = intent.get("delivery_hours", 48)
+                        
+                        if delivery_hours < (sla_hours * 0.5):
+                            outcome_result = "excellent"
+                        elif delivery_hours > sla_hours:
+                            outcome_result = "satisfactory"
+                
+                # Update score
+                current_score = int(agent_user.get("outcomeScore", 0))
+                new_score = update_outcome_score_weighted(current_score, outcome_result)
+                
+                agent_user["outcomeScore"] = new_score
+                
+                # Calculate pricing impact
+                pricing_impact = calculate_pricing_impact(current_score, new_score, base_price=200)
+                
+                result["score_update"] = {
+                    "old_score": current_score,
+                    "new_score": new_score,
+                    "outcome_result": outcome_result,
+                    "pricing_impact": pricing_impact
+                }
+                
+                print(f" Updated {agent} OutcomeScore: {current_score} → {new_score}")
+            
             await _save_users(client, users)
     
     return result
