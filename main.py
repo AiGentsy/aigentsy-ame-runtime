@@ -170,6 +170,27 @@ except Exception as e:
     async def capture_payment_intent(p): return {"ok": False}
     async def auto_capture_on_delivered(i): return {"ok": False}
 
+# ============ MULTI-CURRENCY ENGINE ============
+try:
+    from currency_engine import (
+        convert_currency,
+        get_user_balance,
+        credit_currency,
+        debit_currency,
+        transfer_with_conversion,
+        fetch_live_rates,
+        SUPPORTED_CURRENCIES
+    )
+except Exception as e:
+    print(f"⚠️ currency_engine import failed: {e}")
+    def convert_currency(a, f, t, r=None): return {"ok": False, "error": "not_available"}
+    def get_user_balance(u, c="USD"): return {"ok": False, "error": "not_available"}
+    def credit_currency(u, a, c, r=""): return {"ok": False, "error": "not_available"}
+    def debit_currency(u, a, c, r=""): return {"ok": False, "error": "not_available"}
+    def transfer_with_conversion(f, t, a, fc, tc, r=""): return {"ok": False, "error": "not_available"}
+    async def fetch_live_rates(): return {}
+    SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "AIGx", "CREDITS"]
+    
 app = FastAPI()
 
 
