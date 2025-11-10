@@ -3200,7 +3200,229 @@ async def calculate_bond(order_value: float):
     from performance_bonds import calculate_bond_amount
     result = calculate_bond_amount(order_value)
     return {"ok": True, **result}
+
+# ============ PERFORMANCE INSURANCE POOL ============
+
+from insurance_pool import (
+    calculate_insurance_fee,
+    collect_insurance,
+    get_pool_balance,
+    payout_from_pool,
+    calculate_dispute_rate,
+    calculate_annual_refund,
+    issue_annual_refund
+)
+
+@app.get("/insurance/pool/balance")
+async def insurance_pool_balance():
+    """Get current insurance pool balance"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find or create pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        
+        if not pool_user:
+            # Create pool user
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
+            }
+            users.append(pool_user)
+            await _save_users(client, users)
+        
+        balance = await get_pool_balance(pool_user)
+        
+        # Calculate stats
+        ledger = pool_user.get("ownership", {}).get("ledger", [])
+        
+        total_collected = sum([
+            abs(float(e.get("amount", 0)))
+            for e in ledger
+            if e.get("basis") == "insurance_premium"
+        ])
+        
+        total_paid_out = sum([
+            abs(float(e.get("amount", 0)))
+            for e in ledger
+            if e.get("basis") == "insurance_payout"
+        ])
+        
+        return {
+            "ok": True,
+            "balance": balance,
+            "total_collected": round(total_collected, 2),
+            "total_paid_out": round(total_paid_out, 2),
+            "transaction_count": len(ledger)
+        }
+
+@app.post("/insurance/collect")
+async def collect_insurance_fee(body: Dict = Body(...)):
+    """
+    Collect insurance fee when intent is awarded
+    Auto-called by /intent/award
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    order_value = float(body.get("order_value", 0))
     
+    if not all([username, intent_id, order_value]):
+        return {"error": "username, intent_id, order_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find agent
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Find or create pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
+            }
+            users.append(pool_user)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Collect insurance
+        result = await collect_insurance(agent_user, intent, order_value)
+        
+        if result["ok"]:
+            # Credit pool
+            fee = result["fee"]
+            pool_user["ownership"]["aigx"] = float(pool_user["ownership"].get("aigx", 0)) + fee
+            
+            pool_user["ownership"].setdefault("ledger", []).append({
+                "ts": _now(),
+                "amount": fee,
+                "currency": "AIGx",
+                "basis": "insurance_premium",
+                "agent": username,
+                "ref": intent_id
+            })
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/insurance/payout")
+async def insurance_payout(body: Dict = Body(...)):
+    """
+    Pay out from insurance pool on dispute resolution
+    Called by dispute resolution system
+    """
+    dispute_id = body.get("dispute_id")
+    intent_id = body.get("intent_id")
+    buyer = body.get("buyer")
+    agent = body.get("agent")
+    payout_amount = float(body.get("payout_amount", 0))
+    
+    if not all([dispute_id, intent_id, buyer, payout_amount]):
+        return {"error": "dispute_id, intent_id, buyer, payout_amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            return {"error": "insurance_pool not found"}
+        
+        # Find buyer
+        buyer_user = _find_user(users, buyer)
+        if not buyer_user:
+            return {"error": "buyer not found"}
+        
+        # Payout from pool
+        dispute = {
+            "dispute_id": dispute_id,
+            "intent_id": intent_id,
+            "buyer": buyer,
+            "agent": agent
+        }
+        
+        result = await payout_from_pool(pool_user, dispute, payout_amount)
+        
+        if result["ok"]:
+            # Credit buyer
+            buyer_user["ownership"]["aigx"] = float(buyer_user["ownership"].get("aigx", 0)) + result["payout"]
+            
+            buyer_user["ownership"].setdefault("ledger", []).append({
+                "ts": _now(),
+                "amount": result["payout"],
+                "currency": "AIGx",
+                "basis": "insurance_payout",
+                "ref": dispute_id
+            })
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/insurance/dispute_rate")
+async def get_dispute_rate(username: str, days: int = 365):
+    """Check agent's dispute rate"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = await calculate_dispute_rate(user, days)
+        return {"ok": True, **result}
+
+@app.post("/insurance/claim_refund")
+async def claim_annual_refund(username: str):
+    """
+    Claim annual insurance refund (for low-dispute agents)
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        user = _find_user(users, username)
+        if not user:
+            return {"error": "user not found"}
+        
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            return {"error": "insurance_pool not found"}
+        
+        # Check eligibility
+        refund_calc = await calculate_annual_refund(user, pool_user)
+        
+        if not refund_calc.get("eligible"):
+            return refund_calc
+        
+        # Issue refund
+        result = await issue_annual_refund(user, pool_user, refund_calc["refund_amount"])
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
