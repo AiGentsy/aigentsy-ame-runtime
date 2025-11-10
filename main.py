@@ -328,7 +328,7 @@ try:
         evaluate_jv_performance
     )
 except Exception as e:
-    print(f"⚠️ jv_mesh import failed: {e}")
+    print(f" jv_mesh import failed: {e}")
     async def create_jv_proposal(p, part, t, d, r, dur=90, ter=None): return {"ok": False}
     async def vote_on_jv(p, v, vote, f=""): return {"ok": False}
     async def dissolve_jv(j, r, reason=""): return {"ok": False}
