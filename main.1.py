@@ -81,7 +81,268 @@ except Exception:
 
 from ocl_engine import calculate_ocl_limit, spend_ocl, auto_repay_ocl, expand_ocl_on_poo
 
+# ============ PERFORMANCE BONDS ============
+try:
+    from performance_bonds import (
+        stake_bond,
+        return_bond,
+        calculate_sla_bonus,
+        award_sla_bonus,
+        slash_bond,
+        calculate_bond_amount
+    )
+except Exception as e:
+    print(f" performance_bonds import failed: {e}")
+    async def stake_bond(u, i): return {"ok": False}
+    async def return_bond(u, i): return {"ok": False}
+    async def award_sla_bonus(u, i): return {"ok": False}
+    async def slash_bond(u, i, s): return {"ok": False}
+    def calculate_bond_amount(v): return {"amount": 0}
+
+# ============ INSURANCE POOL ============
+try:
+    from insurance_pool import (
+        calculate_insurance_fee,
+        collect_insurance,
+        get_pool_balance,
+        payout_from_pool,
+        calculate_dispute_rate,
+        calculate_annual_refund,
+        issue_annual_refund
+    )
+except Exception as e:
+    print(f" insurance_pool import failed: {e}")
+    async def collect_insurance(u, i, v): return {"ok": False, "fee": 0}
+    async def get_pool_balance(p): return 0
+
+# ============ AGENT FACTORING ============
+try:
+    from agent_factoring import (
+        request_factoring_advance,
+        settle_factoring,
+        calculate_factoring_eligibility,
+        calculate_factoring_tier,
+        calculate_outstanding_factoring
+    )
+except Exception as e:
+    print(f" agent_factoring import failed: {e}")
+    async def request_factoring_advance(u, i): return {"ok": False, "net_advance": 0}
+    async def settle_factoring(u, i, p): return {"ok": False}
+
+# ============ REPUTATION PRICING (ARM) ============
+try:
+    from reputation_pricing import (
+        calculate_pricing_tier,
+        calculate_reputation_price,
+        calculate_arm_price_range,
+        calculate_dynamic_bid_price,
+        update_outcome_score_weighted,
+        calculate_pricing_impact,
+        PRICING_TIERS
+    )
+except Exception as e:
+    print(f" reputation_pricing import failed: {e}")
+    def calculate_pricing_tier(outcome_score: int):
+        return {"tier": "novice", "multiplier": 0.70, "outcome_score": outcome_score, "description": "New agent"}
+    def calculate_reputation_price(base_price: float, outcome_score: int, apply_guardrails: bool = True):
+        return {"base_price": base_price, "adjusted_price": base_price * 0.70, "discount_or_premium": -base_price * 0.30, "tier": "novice", "multiplier": 0.70}
+    def calculate_arm_price_range(service_type: str, outcome_score: int, market_demand: float = 1.0):
+        return {"recommended_price": 200.0, "pricing_tier": "novice", "reputation_multiplier": 0.70, "price_range": {"min": 180, "max": 220}}
+    def calculate_dynamic_bid_price(intent, agent_outcome_score: int, existing_bids=None):
+        return {"recommended_bid": 140.0, "adjustment": "standard", "rationale": "Default pricing"}
+    def update_outcome_score_weighted(current_score: int, new_outcome_result: str, weight: float = 0.1):
+        return current_score + 10
+    def calculate_pricing_impact(current_score: int, new_score: int, base_price: float):
+        return {"score_change": new_score - current_score, "price_change": 0, "current_tier": "novice", "new_tier": "novice"}
+    PRICING_TIERS = {}
+
+# ============ ESCROW LITE (STRIPE) ============
+try:
+    from escrow_lite import (
+        create_payment_intent,
+        capture_payment_intent,
+        refund_payment_intent,
+        auto_capture_on_delivered
+    )
+except Exception as e:
+    print(f" escrow_lite import failed: {e}")
+    async def create_payment_intent(a, b, i, m): return {"ok": False}
+    async def capture_payment_intent(p): return {"ok": False}
+    async def auto_capture_on_delivered(i): return {"ok": False}
+
+# ============ MULTI-CURRENCY ENGINE ============
+try:
+    from currency_engine import (
+        convert_currency,
+        get_user_balance,
+        credit_currency,
+        debit_currency,
+        transfer_with_conversion,
+        fetch_live_rates,
+        SUPPORTED_CURRENCIES
+    )
+except Exception as e:
+    print(f" currency_engine import failed: {e}")
+    def convert_currency(a, f, t, r=None): return {"ok": False, "error": "not_available"}
+    def get_user_balance(u, c="USD"): return {"ok": False, "error": "not_available"}
+    def credit_currency(u, a, c, r=""): return {"ok": False, "error": "not_available"}
+    def debit_currency(u, a, c, r=""): return {"ok": False, "error": "not_available"}
+    def transfer_with_conversion(f, t, a, fc, tc, r=""): return {"ok": False, "error": "not_available"}
+    async def fetch_live_rates(): return {}
+    SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "AIGx", "CREDITS"]
+
+# ============ BATCH PAYMENT PROCESSING ============
+try:
+    from batch_payments import (
+        create_batch_payment,
+        execute_batch_payment,
+        generate_bulk_invoices,
+        batch_revenue_recognition,
+        schedule_recurring_payment,
+        generate_payment_report,
+        retry_failed_payments
+    )
+except Exception as e:
+    print(f" batch_payments import failed: {e}")
+    async def create_batch_payment(p, b=None, d=""): return {"ok": False}
+    async def execute_batch_payment(b, u, c): return {"ok": False}
+    async def generate_bulk_invoices(i, b=None): return {"ok": False}
+    async def batch_revenue_recognition(i, u, p=0.05): return {"ok": False}
+    async def schedule_recurring_payment(p, s="monthly", d=None): return {"ok": False}
+    def generate_payment_report(b, f="summary"): return {"ok": False}
+    async def retry_failed_payments(b, u, c): return {"ok": False}
+
+# ============ AUTOMATED TAX REPORTING ============
+try:
+    from tax_reporting import (
+        calculate_annual_earnings,
+        generate_1099_nec,
+        calculate_estimated_taxes,
+        generate_quarterly_report,
+        calculate_vat_liability,
+        generate_annual_tax_summary,
+        batch_generate_1099s,
+        export_tax_csv
+    )
+except Exception as e:
+    print(f" tax_reporting import failed: {e}")
+    def calculate_annual_earnings(u, y=None): return {"ok": False}
+    def generate_1099_nec(u, y=None, p=None): return {"ok": False}
+    def calculate_estimated_taxes(e, r="US"): return {"ok": False}
+    def generate_quarterly_report(u, y, q): return {"ok": False}
+    def calculate_vat_liability(u, y, q=None): return {"ok": False}
+    def generate_annual_tax_summary(u, y=None): return {"ok": False}
+    def batch_generate_1099s(u, y=None): return {"ok": False}
+    def export_tax_csv(u, y=None): return {"ok": False}
+
+# ============ R³ AUTOPILOT (KEEP-ME-GROWING) ============
+try:
+    from r3_autopilot import (
+        create_autopilot_strategy,
+        calculate_budget_allocation,
+        predict_roi,
+        execute_autopilot_spend,
+        rebalance_autopilot,
+        get_autopilot_recommendations,
+        AUTOPILOT_TIERS,
+        CHANNELS
+    )
+except Exception as e:
+    print(f" r3_autopilot import failed: {e}")
+    def create_autopilot_strategy(u, t="balanced", m=500): return {"ok": False}
+    def calculate_budget_allocation(b, t, h=None): return {"ok": False}
+    def predict_roi(c, s, h=None): return {"ok": False}
+    def execute_autopilot_spend(s, u): return {"ok": False}
+    def rebalance_autopilot(s, a=None): return {"ok": False}
+    def get_autopilot_recommendations(u, c=None): return {"ok": False}
+    AUTOPILOT_TIERS = {}
+    CHANNELS = {}
+
+# ============ AUTONOMOUS LOGIC UPGRADES ============
+try:
+    from autonomous_upgrades import (
+        create_logic_variant,
+        create_ab_test,
+        assign_to_test_group,
+        record_test_outcome,
+        analyze_ab_test,
+        deploy_logic_upgrade,
+        rollback_logic_upgrade,
+        get_active_tests,
+        suggest_next_upgrade,
+        UPGRADE_TYPES
+    )
+except Exception as e:
+    print(f" autonomous_upgrades import failed: {e}")
+    def create_logic_variant(u, b, m=0.2): return {"ok": False}
+    def create_ab_test(u, c, t=14, s=100): return {"ok": False}
+    def assign_to_test_group(a, agent_id): return "control"
+    def record_test_outcome(a, g, m): return {"ok": False}
+    def analyze_ab_test(a, m=30): return {"ok": False}
+    def deploy_logic_upgrade(a, u): return {"ok": False}
+    def rollback_logic_upgrade(u, users, r=None): return {"ok": False}
+    def get_active_tests(t): return []
+    def suggest_next_upgrade(u, e): return {"ok": False}
+    UPGRADE_TYPES = {}
+
+# ============ DARK-POOL PERFORMANCE AUCTIONS ============
+try:
+    from dark_pool import (
+        anonymize_agent,
+        get_reputation_tier,
+        create_dark_pool_auction,
+        submit_dark_pool_bid,
+        calculate_bid_score,
+        close_dark_pool_auction,
+        reveal_agent_identity,
+        calculate_dark_pool_metrics,
+        get_agent_dark_pool_history,
+        REPUTATION_TIERS
+    )
+except Exception as e:
+    print(f" dark_pool import failed: {e}")
+    def anonymize_agent(a, auc): return "agent_anonymous"
+    def get_reputation_tier(s): return {"tier": "silver", "badge": "🥈"}
+    def create_dark_pool_auction(i, m="silver", d=24, r=True): return {"ok": False}
+    def submit_dark_pool_bid(auc, u, b, d, p=""): return {"ok": False}
+    def calculate_bid_score(b, w=None): return 0.5
+    def close_dark_pool_auction(auc, m="reputation_weighted_price"): return {"ok": False}
+    def reveal_agent_identity(auc, anon, req): return {"ok": False}
+    def calculate_dark_pool_metrics(aucs): return {"ok": False}
+    def get_agent_dark_pool_history(a, aucs): return {"ok": False}
+    REPUTATION_TIERS = {}
+
+# ============ JV MESH (AUTONOMOUS + MANUAL) ============
+try:
+    from jv_mesh import (
+        create_jv_proposal,
+        vote_on_jv,
+        dissolve_jv,
+        get_jv_proposal,
+        get_active_jv,
+        list_jv_proposals,
+        list_active_jvs,
+        calculate_compatibility_score,
+        suggest_jv_partners,
+        auto_propose_jv,
+        evaluate_jv_performance
+    )
+except Exception as e:
+    print(f" jv_mesh import failed: {e}")
+    async def create_jv_proposal(p, part, t, d, r, dur=90, ter=None): return {"ok": False}
+    async def vote_on_jv(p, v, vote, f=""): return {"ok": False}
+    async def dissolve_jv(j, r, reason=""): return {"ok": False}
+    def get_jv_proposal(p): return {"ok": False}
+    def get_active_jv(j): return {"ok": False}
+    def list_jv_proposals(p=None, s=None): return {"ok": False}
+    def list_active_jvs(p=None): return {"ok": False}
+    def calculate_compatibility_score(a1, a2): return {"ok": False}
+    def suggest_jv_partners(a, all_a, m=0.6, l=5): return {"ok": False}
+    async def auto_propose_jv(a, s, all_a): return {"ok": False}
+    def evaluate_jv_performance(j, u): return {"ok": False}
+        
 app = FastAPI()
+
 
 async def auto_bid_background():
     """Runs in background forever"""
@@ -112,7 +373,42 @@ async def startup_event():
     asyncio.create_task(auto_bid_background())
     print("Auto-bid background task started")
 # ========== END BLOCK ==========
+async def auto_release_escrows_job():
+    """
+    Runs every 6 hours
+    Auto-releases escrows after 7-day timeout with no disputes
+    """
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                users = await _load_users(client)
+                
+                for user in users:
+                    for intent in user.get("intents", []):
+                        if intent.get("status") == "DELIVERED" and \
+                           intent.get("payment_intent_id") and \
+                           not intent.get("payment_captured"):
+                            
+                            # Check timeout
+                            result = await auto_timeout_release(intent, timeout_days=7)
+                            
+                            if result.get("ok"):
+                                print(f"Auto-released escrow for intent {intent.get('id')}")
+                
+                await _save_users(client, users)
+        except Exception as e:
+            print(f" Auto-release job error: {e}")
+        
+        # Run every 6 hours
+        await asyncio.sleep(6 * 3600)
 
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    asyncio.create_task(auto_release_escrows_job())  # ADD THIS
+    print("Background tasks started: auto-bid, auto-release")
+    
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
@@ -1739,10 +2035,13 @@ async def pay_link(body: Dict = Body(...)):
 @app.post("/revenue/recognize")
 async def revenue_recognize(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
     body = await request.json()
-    username = body.get("username"); inv_id = body.get("invoiceId")
+    username = body.get("username")
+    inv_id = body.get("invoiceId")
+    intent_id = body.get("intent_id")  # ✅ ADD THIS - needed for factoring settlement
+    
     if not (username and inv_id):
         return {"error": "username & invoiceId required"}
-
+    
     async with httpx.AsyncClient(timeout=20) as client:
         users = await _load_users(client)
         _require_key(users, username, x_api_key)
@@ -1750,60 +2049,94 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         if not u:
             return {"error": "user not found"}
         _ensure_business(u)
-
+        
         invoice = _find_in(u["invoices"], "id", inv_id)
         if not invoice:
             return {"error": "invoice not found"}
-
-        # mark paid
-        invoice["status"]  = "paid"
+        
+        # Mark paid
+        invoice["status"] = "paid"
         invoice["paid_ts"] = _now()
-
-        # mark related payment paid
+        
+        # Mark related payment paid
         for p in u.get("payments", []):
             if p.get("invoiceId") == inv_id:
-                p["status"]  = "paid"
+                p["status"] = "paid"
                 p["paid_ts"] = _now()
-
-        amt      = float(invoice.get("amount", 0))
+        
+        amt = float(invoice.get("amount", 0))
         currency = invoice.get("currency", "USD")
-
-        # platform fee
+        
+        # Platform fee
         fee_rate = _platform_fee_rate(u)
-        fee_amt  = round(amt * fee_rate, 2)
-        net_amt  = round(amt - fee_amt, 2)
-
-        # ledger entries
+        fee_amt = round(amt * fee_rate, 2)
+        net_amt = round(amt - fee_amt, 2)
+        
+        # Ledger entries
         u["ownership"]["ledger"].append({
-            "ts": _now(), "amount": amt, "currency": currency, "basis": "revenue", "ref": inv_id
+            "ts": _now(),
+            "amount": amt,
+            "currency": currency,
+            "basis": "revenue",
+            "ref": inv_id
         })
         u["ownership"]["ledger"].append({
-            "ts": _now(), "amount": -fee_amt, "currency": currency, "basis": "platform_fee", "ref": inv_id
+            "ts": _now(),
+            "amount": -fee_amt,
+            "currency": currency,
+            "basis": "platform_fee",
+            "ref": inv_id
         })
-
-        # update balances
+        
+        # Update balances
         u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned", 0)) + net_amt
-        u["ownership"]["aigx"]   = float(u["ownership"].get("aigx", 0)) + net_amt
-
-        # ✅ AUTO-REPAY OCL from earnings (CORRECT INDENTATION)
+        u["ownership"]["aigx"] = float(u["ownership"].get("aigx", 0)) + net_amt
+        
+        # ✅ 1. SETTLE FACTORING (if intent_id provided)
+        factoring_result = None
+        if intent_id:
+            try:
+                # Find intent
+                intent = None
+                for user in users:
+                    for i in user.get("intents", []):
+                        if i.get("id") == intent_id:
+                            intent = i
+                            break
+                    if intent:
+                        break
+                
+                if intent and intent.get("factoring"):
+                    factoring_result = await settle_factoring(u, intent, amt)
+                    
+                    if factoring_result.get("ok"):
+                        print(f" Settled factoring: agent receives ${factoring_result.get('agent_payout')} holdback")
+            except Exception as e:
+                print(f" Factoring settlement failed: {e}")
+                factoring_result = {"ok": False, "error": str(e)}
+        
+        # ✅ 2. AUTO-REPAY OCL from earnings
         repay_result = None
         if net_amt > 0:
-            repay_result = await auto_repay_ocl(u, net_amt)
+            try:
+                repay_result = await auto_repay_ocl(u, net_amt)
+            except Exception as e:
+                print(f"⚠️ OCL repayment failed: {e}")
+                repay_result = {"ok": False, "error": str(e)}
         
-        # ✅ SAVE USERS (CORRECT INDENTATION - SAME LEVEL AS OTHER CODE)
+        # ✅ SAVE USERS
         await _save_users(client, users)
         
-        # ✅ RETURN (CORRECT INDENTATION)
+        # ✅ RETURN
         return {
-            "ok": True, 
-            "invoice": invoice, 
-            "fee": {"rate": fee_rate, "amount": fee_amt}, 
+            "ok": True,
+            "invoice": invoice,
+            "fee": {"rate": fee_rate, "amount": fee_amt},
             "net": net_amt,
+            "factoring_settlement": factoring_result,
             "ocl_repayment": repay_result
         }
-
-        await _save_users(client, users)
-        return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
+        
 
 @app.post("/outcome/attribute")
 async def outcome_attribute(body: Dict = Body(...)):
@@ -2774,6 +3107,2730 @@ async def ocl_repay_endpoint(body: Dict = Body(...)):
         
         limits = await calculate_ocl_limit(u)
         return {"ok": True, "repaid": amount, **limits}
+
+# ============ ESCROW-LITE (AUTH→CAPTURE) ============
+
+from escrow_lite import (
+    create_payment_intent,
+    capture_payment,
+    cancel_payment,
+    get_payment_status,
+    auto_capture_on_delivered,
+    auto_timeout_release,
+    partial_refund_on_dispute
+)
+
+@app.post("/escrow/create_intent")
+async def create_escrow_intent(body: Dict = Body(...)):
+    """
+    Create payment intent (authorize but don't capture)
+    Called when buyer accepts a quote
+    """
+    buyer = body.get("buyer")
+    amount = float(body.get("amount", 0))
+    intent_id = body.get("intent_id")
+    buyer_email = body.get("buyer_email", f"{buyer}@aigentsy.com")
+    
+    if not all([buyer, amount, intent_id]):
+        return {"error": "buyer, amount, intent_id required"}
+    
+    # Create Stripe PaymentIntent
+    result = await create_payment_intent(
+        amount=amount,
+        buyer_email=buyer_email,
+        intent_id=intent_id,
+        metadata={"buyer": buyer}
+    )
+    
+    if result["ok"]:
+        # Store payment intent ID with the intent
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            # Find buyer's intent
+            buyer_user = _find_user(users, buyer)
+            if buyer_user:
+                for intent in buyer_user.get("intents", []):
+                    if intent.get("id") == intent_id:
+                        intent["payment_intent_id"] = result["payment_intent_id"]
+                        intent["escrow_status"] = "authorized"
+                        intent["escrow_created_at"] = _now()
+                        break
+                
+                await _save_users(client, users)
+    
+    return result
+
+@app.post("/escrow/capture")
+async def capture_escrow(body: Dict = Body(...)):
+    """
+    Capture authorized payment (called on DELIVERED)
+    """
+    intent_id = body.get("intent_id")
+    partial_amount = body.get("amount")  # Optional: for partial captures
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent with payment_intent_id
+        payment_intent_id = None
+        intent_owner = None
+        target_intent = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    intent_owner = user
+                    target_intent = intent
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Check for disputes
+        result = await auto_capture_on_delivered(target_intent)
+        
+        if result["ok"]:
+            # Update intent status
+            target_intent["payment_captured"] = True
+            target_intent["payment_captured_at"] = _now()
+            target_intent["escrow_status"] = "captured"
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/escrow/cancel")
+async def cancel_escrow(body: Dict = Body(...)):
+    """
+    Cancel authorized payment (dispute or timeout)
+    """
+    intent_id = body.get("intent_id")
+    reason = body.get("reason", "dispute")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find payment intent
+        payment_intent_id = None
+        target_intent = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    target_intent = intent
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Cancel payment
+        result = await cancel_payment(payment_intent_id)
+        
+        if result["ok"]:
+            target_intent["escrow_status"] = "cancelled"
+            target_intent["escrow_cancelled_at"] = _now()
+            target_intent["escrow_cancel_reason"] = reason
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/escrow/status")
+async def escrow_status(intent_id: str):
+    """
+    Check escrow/payment status
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    
+                    if payment_intent_id:
+                        stripe_status = await get_payment_status(payment_intent_id)
+                        
+                        return {
+                            "ok": True,
+                            "intent_id": intent_id,
+                            "escrow_status": intent.get("escrow_status"),
+                            "stripe_status": stripe_status
+                        }
+                    else:
+                        return {
+                            "ok": True,
+                            "intent_id": intent_id,
+                            "escrow_status": "not_created"
+                        }
+        
+        return {"error": "intent not found"}
+
+@app.post("/escrow/refund")
+async def escrow_refund(body: Dict = Body(...)):
+    """
+    Issue partial refund for dispute resolution
+    """
+    intent_id = body.get("intent_id")
+    refund_amount = float(body.get("amount", 0))
+    reason = body.get("reason", "dispute_resolution")
+    
+    if not all([intent_id, refund_amount]):
+        return {"error": "intent_id and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find payment intent
+        payment_intent_id = None
+        
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") == intent_id:
+                    payment_intent_id = intent.get("payment_intent_id")
+                    break
+            if payment_intent_id:
+                break
+        
+        if not payment_intent_id:
+            return {"error": "payment_intent not found"}
+        
+        # Issue refund
+        result = await partial_refund_on_dispute(
+            payment_intent_id=payment_intent_id,
+            refund_amount=refund_amount,
+            reason=reason
+        )
+        
+        return result
+
+# ============ PERFORMANCE BONDS + SLA BONUS ============
+
+from performance_bonds import (
+    stake_bond,
+    return_bond,
+    calculate_sla_bonus,
+    award_sla_bonus,
+    slash_bond,
+    calculate_bond_amount
+)
+
+@app.post("/bond/stake")
+async def stake_performance_bond(body: Dict = Body(...)):
+    """
+    Stake performance bond when accepting intent
+    Auto-called on intent acceptance
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Stake bond
+        result = await stake_bond(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/return")
+async def return_performance_bond(body: Dict = Body(...)):
+    """
+    Return bond on successful delivery
+    Auto-called on PoO verification
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Return bond
+        result = await return_bond(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/award_bonus")
+async def award_bonus(body: Dict = Body(...)):
+    """
+    Award SLA bonus for early delivery
+    Auto-called on PoO verification
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Award bonus
+        result = await award_sla_bonus(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/slash")
+async def slash_performance_bond(body: Dict = Body(...)):
+    """
+    Slash bond on dispute loss
+    Called by dispute resolution system
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    severity = body.get("severity", "moderate")  # minor | moderate | major
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Slash bond
+        result = await slash_bond(user, intent, severity)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/bond/calculate")
+async def calculate_bond(order_value: float):
+    """
+    Calculate required bond for an order value
+    """
+    from performance_bonds import calculate_bond_amount
+    result = calculate_bond_amount(order_value)
+    return {"ok": True, **result}
+
+# ============ PERFORMANCE INSURANCE POOL ============
+
+from insurance_pool import (
+    calculate_insurance_fee,
+    collect_insurance,
+    get_pool_balance,
+    payout_from_pool,
+    calculate_dispute_rate,
+    calculate_annual_refund,
+    issue_annual_refund
+)
+
+@app.get("/insurance/pool/balance")
+async def insurance_pool_balance():
+    """Get current insurance pool balance"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find or create pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        
+        if not pool_user:
+            # Create pool user
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
+            }
+            users.append(pool_user)
+            await _save_users(client, users)
+        
+        balance = await get_pool_balance(pool_user)
+        
+        # Calculate stats
+        ledger = pool_user.get("ownership", {}).get("ledger", [])
+        
+        total_collected = sum([
+            abs(float(e.get("amount", 0)))
+            for e in ledger
+            if e.get("basis") == "insurance_premium"
+        ])
+        
+        total_paid_out = sum([
+            abs(float(e.get("amount", 0)))
+            for e in ledger
+            if e.get("basis") == "insurance_payout"
+        ])
+        
+        return {
+            "ok": True,
+            "balance": balance,
+            "total_collected": round(total_collected, 2),
+            "total_paid_out": round(total_paid_out, 2),
+            "transaction_count": len(ledger)
+        }
+
+@app.post("/insurance/collect")
+async def collect_insurance_fee(body: Dict = Body(...)):
+    """
+    Collect insurance fee when intent is awarded
+    Auto-called by /intent/award
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    order_value = float(body.get("order_value", 0))
+    
+    if not all([username, intent_id, order_value]):
+        return {"error": "username, intent_id, order_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find agent
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Find or create pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
+            }
+            users.append(pool_user)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Collect insurance
+        result = await collect_insurance(agent_user, intent, order_value)
+        
+        if result["ok"]:
+            # Credit pool
+            fee = result["fee"]
+            pool_user["ownership"]["aigx"] = float(pool_user["ownership"].get("aigx", 0)) + fee
+            
+            pool_user["ownership"].setdefault("ledger", []).append({
+                "ts": _now(),
+                "amount": fee,
+                "currency": "AIGx",
+                "basis": "insurance_premium",
+                "agent": username,
+                "ref": intent_id
+            })
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/insurance/payout")
+async def insurance_payout(body: Dict = Body(...)):
+    """
+    Pay out from insurance pool on dispute resolution
+    Called by dispute resolution system
+    """
+    dispute_id = body.get("dispute_id")
+    intent_id = body.get("intent_id")
+    buyer = body.get("buyer")
+    agent = body.get("agent")
+    payout_amount = float(body.get("payout_amount", 0))
+    
+    if not all([dispute_id, intent_id, buyer, payout_amount]):
+        return {"error": "dispute_id, intent_id, buyer, payout_amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find pool user
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            return {"error": "insurance_pool not found"}
+        
+        # Find buyer
+        buyer_user = _find_user(users, buyer)
+        if not buyer_user:
+            return {"error": "buyer not found"}
+        
+        # Payout from pool
+        dispute = {
+            "dispute_id": dispute_id,
+            "intent_id": intent_id,
+            "buyer": buyer,
+            "agent": agent
+        }
+        
+        result = await payout_from_pool(pool_user, dispute, payout_amount)
+        
+        if result["ok"]:
+            # Credit buyer
+            buyer_user["ownership"]["aigx"] = float(buyer_user["ownership"].get("aigx", 0)) + result["payout"]
+            
+            buyer_user["ownership"].setdefault("ledger", []).append({
+                "ts": _now(),
+                "amount": result["payout"],
+                "currency": "AIGx",
+                "basis": "insurance_payout",
+                "ref": dispute_id
+            })
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/insurance/dispute_rate")
+async def get_dispute_rate(username: str, days: int = 365):
+    """Check agent's dispute rate"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = await calculate_dispute_rate(user, days)
+        return {"ok": True, **result}
+
+@app.post("/insurance/claim_refund")
+async def claim_annual_refund(username: str):
+    """
+    Claim annual insurance refund (for low-dispute agents)
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        user = _find_user(users, username)
+        if not user:
+            return {"error": "user not found"}
+        
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            return {"error": "insurance_pool not found"}
+        
+        # Check eligibility
+        refund_calc = await calculate_annual_refund(user, pool_user)
+        
+        if not refund_calc.get("eligible"):
+            return refund_calc
+        
+        # Issue refund
+        result = await issue_annual_refund(user, pool_user, refund_calc["refund_amount"])
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+# ============ AGENT FACTORING LINE ============
+
+from agent_factoring import (
+    request_factoring_advance,
+    settle_factoring,
+    calculate_factoring_eligibility,
+    calculate_factoring_tier,
+    calculate_outstanding_factoring
+)
+
+@app.get("/factoring/eligibility")
+async def factoring_eligibility(username: str):
+    """Check agent's factoring eligibility and tier"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = await calculate_factoring_eligibility(user)
+        return result
+
+@app.get("/factoring/outstanding")
+async def factoring_outstanding(username: str):
+    """Get agent's outstanding factoring balance"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outstanding = calculate_outstanding_factoring(user)
+        tier_info = calculate_factoring_tier(user)
+        
+        return {
+            "ok": True,
+            "outstanding": outstanding,
+            "tier": tier_info["tier"],
+            "rate": tier_info["rate"]
+        }
+
+@app.post("/factoring/request")
+async def request_factoring(body: Dict = Body(...)):
+    """
+    Request factoring advance (auto-called on intent award)
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Request advance
+        result = await request_factoring_advance(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/factoring/settle")
+async def settle_factoring_endpoint(body: Dict = Body(...)):
+    """
+    Settle factoring when buyer pays (auto-called on revenue recognition)
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    payment_received = float(body.get("payment_received", 0))
+    
+    if not all([username, intent_id, payment_received]):
+        return {"error": "username, intent_id, payment_received required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Settle factoring
+        result = await settle_factoring(user, intent, payment_received)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+# ============ REPUTATION-INDEXED PRICING (ARM) ============
+
+from reputation_pricing import (
+    calculate_pricing_tier,
+    calculate_reputation_price,
+    calculate_arm_price_range,
+    calculate_dynamic_bid_price,
+    update_outcome_score_weighted,
+    calculate_pricing_impact
+)
+
+@app.get("/pricing/tier")
+async def get_pricing_tier(username: str):
+    """Get agent's current pricing tier based on OutcomeScore"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        tier_info = calculate_pricing_tier(outcome_score)
+        
+        return {"ok": True, **tier_info}
+
+@app.get("/pricing/calculate")
+async def calculate_price(
+    username: str,
+    base_price: float,
+    service_type: str = "custom"
+):
+    """Calculate reputation-adjusted price for a service"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        
+        # Get ARM pricing
+        arm_pricing = calculate_arm_price_range(service_type, outcome_score)
+        
+        # Also calculate for custom base price
+        custom_pricing = calculate_reputation_price(base_price, outcome_score)
+        
+        return {
+            "ok": True,
+            "arm_pricing": arm_pricing,
+            "custom_base_pricing": custom_pricing
+        }
+
+@app.post("/pricing/recommend_bid")
+async def recommend_bid_price(body: Dict = Body(...)):
+    """
+    Recommend optimal bid price for an intent
+    Takes into account agent reputation + existing bids
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        existing_bids = intent.get("bids", [])
+        
+        # Calculate optimal bid
+        recommendation = calculate_dynamic_bid_price(
+            intent=intent,
+            agent_outcome_score=outcome_score,
+            existing_bids=existing_bids
+        )
+        
+        return {"ok": True, **recommendation}
+
+@app.post("/pricing/update_score")
+async def update_pricing_score(body: Dict = Body(...)):
+    """
+    Update agent's OutcomeScore after job completion
+    Auto-called by PoO verification
+    """
+    username = body.get("username")
+    outcome_result = body.get("outcome_result")  # excellent | good | satisfactory | poor | failed
+    
+    if not all([username, outcome_result]):
+        return {"error": "username and outcome_result required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        current_score = int(user.get("outcomeScore", 0))
+        new_score = update_outcome_score_weighted(current_score, outcome_result)
+        
+        # Calculate pricing impact
+        impact = calculate_pricing_impact(current_score, new_score, base_price=200)
+        
+        # Update score
+        user["outcomeScore"] = new_score
+        
+        # Log score change
+        user.setdefault("ownership", {}).setdefault("ledger", []).append({
+            "ts": _now(),
+            "amount": 0,
+            "currency": "SCORE",
+            "basis": "outcome_score_update",
+            "old_score": current_score,
+            "new_score": new_score,
+            "outcome_result": outcome_result
+        })
+        
+        await _save_users(client, users)
+        
+        return {
+            "ok": True,
+            "old_score": current_score,
+            "new_score": new_score,
+            "score_change": new_score - current_score,
+            "pricing_impact": impact
+        }
+
+@app.get("/pricing/market_rates")
+async def get_market_rates(service_type: str = "custom"):
+    """Get current market rates by reputation tier"""
+    
+    tiers_pricing = {}
+    
+    for tier_name, tier_info in PRICING_TIERS.items():
+        # Use mid-point of score range
+        mid_score = (tier_info["min_score"] + tier_info["max_score"]) // 2
+        
+        arm_pricing = calculate_arm_price_range(service_type, mid_score)
+        
+        tiers_pricing[tier_name] = {
+            "score_range": f"{tier_info['min_score']}-{tier_info['max_score']}",
+            "multiplier": tier_info["multiplier"],
+            "price_range": arm_pricing["price_range"],
+            "recommended_price": arm_pricing["recommended_price"]
+        }
+    
+    return {
+        "ok": True,
+        "service_type": service_type,
+        "tiers": tiers_pricing
+    }
+
+# ============ MULTI-CURRENCY SUPPORT ============
+
+@app.get("/currency/rates")
+async def get_exchange_rates():
+    """Get current exchange rates"""
+    live_rates = await fetch_live_rates()
+    
+    return {
+        "ok": True,
+        "rates": live_rates,
+        "supported_currencies": SUPPORTED_CURRENCIES,
+        "aigx_rates": {
+            "USD": 1.0,
+            "EUR": 0.92,
+            "GBP": 0.79,
+            "CREDITS": 100
+        }
+    }
+
+@app.post("/currency/convert")
+async def convert_currency_endpoint(body: Dict = Body(...)):
+    """Convert amount from one currency to another"""
+    amount = float(body.get("amount", 0))
+    from_currency = body.get("from_currency", "USD")
+    to_currency = body.get("to_currency", "USD")
+    
+    if amount <= 0:
+        return {"error": "invalid_amount", "amount": amount}
+    
+    result = convert_currency(amount, from_currency, to_currency)
+    return result
+
+@app.get("/currency/balance")
+async def get_currency_balance(username: str, currency: str = "USD"):
+    """Get user's balance in specified currency"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = get_user_balance(user, currency)
+        return result
+
+@app.post("/currency/credit")
+async def credit_user_currency(body: Dict = Body(...)):
+    """Credit user's account in any supported currency"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    currency = body.get("currency", "USD")
+    reason = body.get("reason", "credit")
+    
+    if not all([username, amount]):
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = credit_currency(user, amount, currency, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/currency/debit")
+async def debit_user_currency(body: Dict = Body(...)):
+    """Debit user's account in any supported currency"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    currency = body.get("currency", "USD")
+    reason = body.get("reason", "debit")
+    
+    if not all([username, amount]):
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = debit_currency(user, amount, currency, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/currency/transfer")
+async def transfer_between_users(body: Dict = Body(...)):
+    """Transfer funds between users with currency conversion"""
+    from_username = body.get("from_username")
+    to_username = body.get("to_username")
+    amount = float(body.get("amount", 0))
+    from_currency = body.get("from_currency", "USD")
+    to_currency = body.get("to_currency", "USD")
+    reason = body.get("reason", "transfer")
+    
+    if not all([from_username, to_username, amount]):
+        return {"error": "from_username, to_username, and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        from_user = _find_user(users, from_username)
+        to_user = _find_user(users, to_username)
+        
+        if not from_user:
+            return {"error": "from_user not found"}
+        
+        if not to_user:
+            return {"error": "to_user not found"}
+        
+        result = transfer_with_conversion(
+            from_user, to_user, amount,
+            from_currency, to_currency, reason
+        )
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+# ============ BATCH PAYMENT PROCESSING ============
+
+@app.post("/batch/payment/create")
+async def create_batch_payment_endpoint(body: Dict = Body(...)):
+    """
+    Create a batch payment for multiple agents
+    
+    Body:
+    {
+        "payments": [
+            {"username": "agent1", "amount": 100, "currency": "USD", "reason": "job_123"},
+            {"username": "agent2", "amount": 50, "currency": "EUR", "reason": "job_456"}
+        ],
+        "description": "Weekly agent payouts"
+    }
+    """
+    payments = body.get("payments", [])
+    description = body.get("description", "")
+    batch_id = body.get("batch_id")
+    
+    if not payments:
+        return {"error": "no_payments_provided"}
+    
+    batch = await create_batch_payment(payments, batch_id, description)
+    
+    return {"ok": True, "batch": batch}
+
+@app.post("/batch/payment/execute")
+async def execute_batch_payment_endpoint(body: Dict = Body(...)):
+    """Execute a batch payment - credit all agents"""
+    batch_id = body.get("batch_id")
+    batch = body.get("batch")
+    
+    if not batch:
+        return {"error": "batch_required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        # Execute batch
+        result = await execute_batch_payment(batch, users, credit_currency)
+        
+        # Save users
+        await _save_users(client, users)
+        
+        return result
+
+@app.post("/batch/invoices/generate")
+async def generate_bulk_invoices_endpoint(body: Dict = Body(...)):
+    """
+    Generate invoices for multiple completed intents
+    
+    Body:
+    {
+        "intent_ids": ["intent_123", "intent_456"]
+    }
+    """
+    intent_ids = body.get("intent_ids", [])
+    batch_id = body.get("batch_id")
+    
+    if not intent_ids:
+        return {"error": "no_intent_ids_provided"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find all intents
+        intents = []
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") in intent_ids:
+                    intents.append(intent)
+        
+        # Generate invoices
+        result = await generate_bulk_invoices(intents, batch_id)
+        
+        return result
+
+@app.post("/batch/revenue/recognize")
+async def batch_revenue_recognition_endpoint(body: Dict = Body(...)):
+    """
+    Process revenue recognition for multiple invoices at once
+    
+    Body:
+    {
+        "invoice_ids": ["inv_123", "inv_456"],
+        "platform_fee_rate": 0.05
+    }
+    """
+    invoice_ids = body.get("invoice_ids", [])
+    platform_fee_rate = float(body.get("platform_fee_rate", 0.05))
+    
+    if not invoice_ids:
+        return {"error": "no_invoice_ids_provided"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        # Find all invoices
+        invoices = []
+        for user in users:
+            for invoice in user.get("invoices", []):
+                if invoice.get("id") in invoice_ids:
+                    invoices.append(invoice)
+        
+        # Process batch revenue recognition
+        result = await batch_revenue_recognition(invoices, users, platform_fee_rate)
+        
+        # Save users
+        await _save_users(client, users)
+        
+        return result
+
+@app.post("/batch/payment/schedule")
+async def schedule_recurring_payment_endpoint(body: Dict = Body(...)):
+    """
+    Schedule recurring payment (monthly stipends, etc.)
+    
+    Body:
+    {
+        "payment_template": {
+            "username": "agent1",
+            "amount": 1000,
+            "currency": "USD",
+            "reason": "monthly_stipend"
+        },
+        "schedule": "monthly",
+        "start_date": "2025-12-01T00:00:00Z"
+    }
+    """
+    payment_template = body.get("payment_template")
+    schedule = body.get("schedule", "monthly")
+    start_date = body.get("start_date")
+    
+    if not payment_template:
+        return {"error": "payment_template_required"}
+    
+    result = await schedule_recurring_payment(payment_template, schedule, start_date)
+    
+    return result
+
+@app.get("/batch/payment/report")
+async def get_batch_payment_report(batch_id: str, format: str = "summary"):
+    """
+    Get payment report for a batch
+    
+    format: summary | detailed | csv
+    """
+    # This is a simplified version - in production, you'd load batch from database
+    return {
+        "ok": True,
+        "message": "In production, load batch from storage",
+        "batch_id": batch_id,
+        "format": format
+    }
+
+@app.post("/batch/payment/retry")
+async def retry_failed_payments_endpoint(body: Dict = Body(...)):
+    """Retry all failed payments from a batch"""
+    batch = body.get("batch")
+    
+    if not batch:
+        return {"error": "batch_required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = await retry_failed_payments(batch, users, credit_currency)
+        
+        await _save_users(client, users)
+        
+        return result
+
+# ============ FINANCIAL ANALYTICS DASHBOARD ============
+
+@app.get("/analytics/revenue")
+async def get_revenue_analytics(period_days: int = 30):
+    """Get platform revenue metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        metrics = calculate_revenue_metrics(users, period_days)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/analytics/revenue/by_currency")
+async def get_revenue_by_currency(period_days: int = 30):
+    """Get revenue broken down by currency"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = calculate_revenue_by_currency(users, period_days)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/revenue/forecast")
+async def get_revenue_forecast(historical_days: int = 30, forecast_days: int = 30):
+    """Forecast future revenue based on historical data"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        historical = calculate_revenue_metrics(users, historical_days)
+        forecast = forecast_revenue(historical, forecast_days)
+        
+        return {"ok": True, "historical": historical, "forecast": forecast}
+
+@app.get("/analytics/agent")
+async def get_agent_analytics(username: str, period_days: int = 30):
+    """Get individual agent performance metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        metrics = calculate_agent_metrics(user, period_days)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/analytics/leaderboard")
+async def get_agent_leaderboard(metric: str = "total_earned", limit: int = 10):
+    """
+    Get agent leaderboard
+    
+    metric options: total_earned, completed_jobs, outcome_score, on_time_rate
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = rank_agents_by_performance(users, metric, limit)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/health")
+async def get_platform_health():
+    """Get overall platform financial health score"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        health = calculate_platform_health(users)
+        
+        return {"ok": True, **health}
+
+@app.get("/analytics/cohorts")
+async def get_cohort_analysis(cohort_by: str = "signup_month"):
+    """
+    Analyze user cohorts
+    
+    cohort_by options: signup_month, outcome_score_tier, revenue_tier
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = generate_cohort_analysis(users, cohort_by)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/alerts")
+async def get_financial_alerts():
+    """Get financial health alerts and recommendations"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        health = calculate_platform_health(users)
+        revenue = calculate_revenue_metrics(users, period_days=30)
+        
+        alerts = detect_financial_alerts(health, revenue)
+        
+        return {
+            "ok": True,
+            "alert_count": len(alerts),
+            "alerts": alerts,
+            "platform_status": health["status"]
+        }
+
+@app.get("/analytics/dashboard")
+async def get_analytics_dashboard():
+    """Get complete analytics dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Calculate all metrics
+        revenue_30d = calculate_revenue_metrics(users, period_days=30)
+        revenue_7d = calculate_revenue_metrics(users, period_days=7)
+        health = calculate_platform_health(users)
+        top_agents = rank_agents_by_performance(users, "total_earned", 5)
+        alerts = detect_financial_alerts(health, revenue_30d)
+        
+        return {
+            "ok": True,
+            "revenue_30d": revenue_30d,
+            "revenue_7d": revenue_7d,
+            "platform_health": health,
+            "top_agents": top_agents["top_agents"],
+            "alerts": alerts,
+            "dashboard_generated_at": _now()
+        }
+
+# ============ AUTOMATED TAX REPORTING ============
+
+@app.get("/tax/earnings")
+async def get_annual_earnings(username: str, year: int = None):
+    """Get agent's annual earnings for tax purposes"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        earnings = calculate_annual_earnings(user, year)
+        
+        return {"ok": True, **earnings}
+
+@app.get("/tax/1099")
+async def get_1099_nec(username: str, year: int = None):
+    """Generate 1099-NEC form for agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = generate_1099_nec(user, year)
+        
+        return result
+
+@app.get("/tax/estimated")
+async def get_estimated_taxes(username: str, year: int = None, region: str = "US"):
+    """Calculate estimated tax liability"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        earnings = calculate_annual_earnings(user, year)
+        taxes = calculate_estimated_taxes(earnings, region)
+        
+        return taxes
+
+@app.get("/tax/quarterly")
+async def get_quarterly_report(username: str, year: int, quarter: int):
+    """
+    Generate quarterly tax report
+    
+    quarter: 1, 2, 3, or 4
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        report = generate_quarterly_report(user, year, quarter)
+        
+        return {"ok": True, **report}
+
+@app.get("/tax/vat")
+async def get_vat_liability(username: str, year: int, quarter: int = None):
+    """Calculate VAT liability for EU/UK agents"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        vat = calculate_vat_liability(user, year, quarter)
+        
+        return {"ok": True, **vat}
+
+@app.get("/tax/summary")
+async def get_annual_tax_summary_endpoint(username: str, year: int = None):
+    """Get comprehensive annual tax summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        summary = generate_annual_tax_summary(user, year)
+        
+        return {"ok": True, **summary}
+
+@app.get("/tax/batch_1099")
+async def batch_generate_1099s_endpoint(year: int = None):
+    """
+    Generate 1099s for all eligible agents
+    Admin only
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = batch_generate_1099s(users, year)
+        
+        return result
+
+@app.get("/tax/export_csv")
+async def export_tax_csv_endpoint(username: str, year: int = None):
+    """Export tax data as CSV for accountant"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        csv_data = export_tax_csv(user, year)
+        
+        return csv_data
+
+        # ============ R³ AUTOPILOT (KEEP-ME-GROWING) ============
+
+@app.get("/r3/autopilot/tiers")
+async def get_autopilot_tiers():
+    """Get available autopilot tiers"""
+    return {
+        "ok": True,
+        "tiers": AUTOPILOT_TIERS,
+        "channels": CHANNELS
+    }
+
+@app.get("/r3/autopilot/recommend")
+async def recommend_autopilot_tier(username: str):
+    """Get personalized autopilot recommendations"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        recommendations = get_autopilot_recommendations(user)
+        
+        return recommendations
+
+@app.post("/r3/autopilot/create")
+async def create_autopilot_strategy_endpoint(body: Dict = Body(...)):
+    """
+    Create an autopilot budget strategy
+    
+    Body:
+    {
+        "username": "agent1",
+        "tier": "balanced",
+        "monthly_budget": 500
+    }
+    """
+    username = body.get("username")
+    tier = body.get("tier", "balanced")
+    monthly_budget = float(body.get("monthly_budget", 500))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Create strategy
+        result = create_autopilot_strategy(user, tier, monthly_budget)
+        
+        if result["ok"]:
+            # Store strategy in user record
+            user.setdefault("r3_autopilot", {})
+            user["r3_autopilot"]["strategy"] = result["strategy"]
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/r3/autopilot/strategy")
+async def get_autopilot_strategy(username: str):
+    """Get user's current autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found", "message": "User has not created an autopilot strategy"}
+        
+        return {"ok": True, "strategy": strategy}
+
+@app.post("/r3/autopilot/allocate")
+async def calculate_allocation_endpoint(body: Dict = Body(...)):
+    """
+    Calculate optimal budget allocation
+    
+    Body:
+    {
+        "budget": 500,
+        "tier": "balanced",
+        "historical_performance": {...}
+    }
+    """
+    budget = float(body.get("budget", 500))
+    tier = body.get("tier", "balanced")
+    historical_performance = body.get("historical_performance")
+    
+    if tier not in AUTOPILOT_TIERS:
+        return {"error": "invalid_tier", "valid_tiers": list(AUTOPILOT_TIERS.keys())}
+    
+    tier_config = AUTOPILOT_TIERS[tier]
+    
+    allocation = calculate_budget_allocation(budget, tier_config, historical_performance)
+    
+    return {"ok": True, "allocation": allocation}
+
+@app.post("/r3/autopilot/predict")
+async def predict_channel_roi(body: Dict = Body(...)):
+    """
+    Predict ROI for a specific channel
+    
+    Body:
+    {
+        "channel": "google_ads",
+        "spend_amount": 200,
+        "historical_data": {...}
+    }
+    """
+    channel_id = body.get("channel")
+    spend_amount = float(body.get("spend_amount", 0))
+    historical_data = body.get("historical_data")
+    
+    if not channel_id:
+        return {"error": "channel required"}
+    
+    prediction = predict_roi(channel_id, spend_amount, historical_data)
+    
+    return prediction
+
+@app.post("/r3/autopilot/execute")
+async def execute_autopilot_spend_endpoint(body: Dict = Body(...)):
+    """
+    Execute the autopilot spend for current period
+    
+    Body:
+    {
+        "username": "agent1"
+    }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Get strategy
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        # Execute spend
+        result = execute_autopilot_spend(strategy, user)
+        
+        if result["ok"]:
+            # Update user record
+            user["r3_autopilot"]["strategy"] = strategy
+            user["r3_autopilot"]["last_execution"] = _now()
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/r3/autopilot/rebalance")
+async def rebalance_autopilot_endpoint(body: Dict = Body(...)):
+    """
+    Rebalance autopilot strategy based on performance
+    
+    Body:
+    {
+        "username": "agent1",
+        "actual_performance": {
+            "google_ads": {"roi": 2.1, "revenue": 420},
+            "facebook_ads": {"roi": 1.4, "revenue": 168}
+        }
+    }
+    """
+    username = body.get("username")
+    actual_performance = body.get("actual_performance")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Get strategy
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        # Rebalance
+        result = rebalance_autopilot(strategy, actual_performance)
+        
+        if result["ok"]:
+            # Update user record
+            user["r3_autopilot"]["strategy"] = strategy
+            user["r3_autopilot"]["last_rebalance"] = _now()
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/r3/autopilot/pause")
+async def pause_autopilot(username: str):
+    """Pause autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        strategy["status"] = "paused"
+        strategy["paused_at"] = _now()
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "message": "Autopilot paused", "strategy": strategy}
+
+@app.post("/r3/autopilot/resume")
+async def resume_autopilot(username: str):
+    """Resume paused autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        strategy["status"] = "active"
+        strategy["resumed_at"] = _now()
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "message": "Autopilot resumed", "strategy": strategy}
+
+@app.get("/r3/autopilot/performance")
+async def get_autopilot_performance(username: str):
+    """Get autopilot performance summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        performance = strategy.get("performance", {})
+        
+        # Calculate actual ROI from ledger
+        ledger = user.get("ownership", {}).get("ledger", [])
+        
+        total_autopilot_spend = 0.0
+        total_autopilot_revenue = 0.0
+        
+        for entry in ledger:
+            basis = entry.get("basis", "")
+            
+            if basis == "r3_autopilot_spend":
+                total_autopilot_spend += abs(float(entry.get("amount", 0)))
+            
+            # Revenue from autopilot campaigns (would need tracking)
+            if basis == "revenue" and entry.get("source") == "r3_autopilot":
+                total_autopilot_revenue += float(entry.get("amount", 0))
+        
+        actual_roi = (total_autopilot_revenue / total_autopilot_spend) if total_autopilot_spend > 0 else 0
+        
+        return {
+            "ok": True,
+            "strategy_id": strategy["id"],
+            "tier": strategy["tier"],
+            "performance": {
+                **performance,
+                "total_spend": round(total_autopilot_spend, 2),
+                "total_revenue": round(total_autopilot_revenue, 2),
+                "actual_roi": round(actual_roi, 2)
+            },
+            "status": strategy["status"]
+        }
+
+# ============ AUTONOMOUS LOGIC UPGRADES ============
+
+@app.get("/upgrades/types")
+async def get_upgrade_types():
+    """Get available logic upgrade types"""
+    return {
+        "ok": True,
+        "upgrade_types": UPGRADE_TYPES
+    }
+
+@app.post("/upgrades/test/create")
+async def create_ab_test_endpoint(body: Dict = Body(...)):
+    """
+    Create an A/B test for a logic upgrade
+    
+    Body:
+    {
+        "upgrade_type": "pricing_strategy",
+        "control_logic": {...},
+        "test_duration_days": 14,
+        "sample_size": 100
+    }
+    """
+    upgrade_type = body.get("upgrade_type")
+    control_logic = body.get("control_logic", {})
+    test_duration_days = int(body.get("test_duration_days", 14))
+    sample_size = int(body.get("sample_size", 100))
+    
+    if not upgrade_type:
+        return {"error": "upgrade_type required"}
+    
+    if upgrade_type not in UPGRADE_TYPES:
+        return {
+            "error": "invalid_upgrade_type",
+            "valid_types": list(UPGRADE_TYPES.keys())
+        }
+    
+    # Create test
+    ab_test = create_ab_test(upgrade_type, control_logic, test_duration_days, sample_size)
+    
+    # Store test (in production, would store in database)
+    # For now, store in a special system user
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find or create system user for tests
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            system_user = {
+                "username": "system_tests",
+                "role": "system",
+                "ab_tests": [],
+                "created_at": _now()
+            }
+            users.append(system_user)
+        
+        system_user.setdefault("ab_tests", []).append(ab_test)
+        
+        await _save_users(client, users)
+    
+    return {"ok": True, "ab_test": ab_test}
+
+@app.get("/upgrades/test/list")
+async def list_ab_tests(status: str = None):
+    """
+    List all A/B tests
+    
+    status: active | completed | deployed | all
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"ok": True, "tests": [], "count": 0}
+        
+        tests = system_user.get("ab_tests", [])
+        
+        if status and status != "all":
+            tests = [t for t in tests if t.get("status") == status]
+        
+        return {
+            "ok": True,
+            "tests": tests,
+            "count": len(tests),
+            "active_count": len([t for t in tests if t.get("status") == "active"])
+        }
+
+@app.get("/upgrades/test/{test_id}")
+async def get_ab_test(test_id: str):
+    """Get specific A/B test details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "no_tests_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        return {"ok": True, "test": test}
+
+@app.post("/upgrades/test/assign")
+async def assign_agent_to_test(body: Dict = Body(...)):
+    """
+    Assign agent to A/B test group
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "agent_id": "agent1"
+    }
+    """
+    test_id = body.get("test_id")
+    agent_id = body.get("agent_id")
+    
+    if not all([test_id, agent_id]):
+        return {"error": "test_id and agent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Assign to group
+        group = assign_to_test_group(test, agent_id)
+        
+        # Get logic for assigned group
+        logic = test[group]["logic"]
+        
+        return {
+            "ok": True,
+            "test_id": test_id,
+            "agent_id": agent_id,
+            "assigned_group": group,
+            "logic": logic
+        }
+
+@app.post("/upgrades/test/record")
+async def record_test_outcome_endpoint(body: Dict = Body(...)):
+    """
+    Record outcome for an A/B test sample
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "group": "variant",
+        "metrics": {
+            "win_rate": 0.35,
+            "avg_margin": 0.15,
+            "conversion_rate": 0.28
+        }
+    }
+    """
+    test_id = body.get("test_id")
+    group = body.get("group")
+    metrics = body.get("metrics", {})
+    
+    if not all([test_id, group]):
+        return {"error": "test_id and group required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Record outcome
+        result = record_test_outcome(test, group, metrics)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/upgrades/test/analyze")
+async def analyze_ab_test_endpoint(body: Dict = Body(...)):
+    """
+    Analyze A/B test results
+    
+    Body:
+    {
+        "test_id": "test_abc123",
+        "min_sample_size": 30
+    }
+    """
+    test_id = body.get("test_id")
+    min_sample_size = int(body.get("min_sample_size", 30))
+    
+    if not test_id:
+        return {"error": "test_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Analyze
+        analysis = analyze_ab_test(test, min_sample_size)
+        
+        if analysis.get("ok"):
+            # Update test status
+            if analysis.get("is_significant"):
+                test["status"] = "completed"
+            
+            await _save_users(client, users)
+        
+        return analysis
+
+@app.post("/upgrades/deploy")
+async def deploy_upgrade_endpoint(body: Dict = Body(...)):
+    """
+    Deploy winning logic upgrade to all agents
+    
+    Body:
+    {
+        "test_id": "test_abc123"
+    }
+    """
+    test_id = body.get("test_id")
+    
+    if not test_id:
+        return {"error": "test_id required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"error": "test_not_found"}
+        
+        tests = system_user.get("ab_tests", [])
+        test = next((t for t in tests if t.get("id") == test_id), None)
+        
+        if not test:
+            return {"error": "test_not_found", "test_id": test_id}
+        
+        # Deploy
+        result = deploy_logic_upgrade(test, users)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/upgrades/rollback")
+async def rollback_upgrade_endpoint(body: Dict = Body(...)):
+    """
+    Rollback a logic upgrade
+    
+    Body:
+    {
+        "upgrade_type": "pricing_strategy",
+        "rollback_to_version": "var_abc123" (optional)
+    }
+    """
+    upgrade_type = body.get("upgrade_type")
+    rollback_to_version = body.get("rollback_to_version")
+    
+    if not upgrade_type:
+        return {"error": "upgrade_type required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = rollback_logic_upgrade(upgrade_type, users, rollback_to_version)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/upgrades/suggest")
+async def suggest_next_upgrade_endpoint():
+    """Suggest next logic upgrade to test based on platform needs"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Get existing tests
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        existing_tests = system_user.get("ab_tests", []) if system_user else []
+        
+        suggestion = suggest_next_upgrade(users, existing_tests)
+        
+        return suggestion
+
+@app.get("/upgrades/agent/history")
+async def get_agent_upgrade_history(username: str):
+    """Get agent's logic upgrade history"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        logic_upgrades = user.get("logic_upgrades", [])
+        current_logic = user.get("logic", {})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "current_logic": current_logic,
+            "upgrade_history": logic_upgrades,
+            "total_upgrades": len(logic_upgrades)
+        }
+
+@app.get("/upgrades/active")
+async def get_active_tests_endpoint():
+    """Get all active A/B tests"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {"ok": True, "active_tests": [], "count": 0}
+        
+        all_tests = system_user.get("ab_tests", [])
+        active = get_active_tests(all_tests)
+        
+        return {
+            "ok": True,
+            "active_tests": active,
+            "count": len(active)
+        }
+
+@app.get("/upgrades/dashboard")
+async def get_upgrades_dashboard():
+    """Get autonomous upgrades dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_tests"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_tests": 0,
+                "active_tests": 0,
+                "completed_tests": 0,
+                "deployed_upgrades": 0
+            }
+        
+        all_tests = system_user.get("ab_tests", [])
+        
+        active = len([t for t in all_tests if t.get("status") == "active"])
+        completed = len([t for t in all_tests if t.get("status") == "completed"])
+        deployed = len([t for t in all_tests if t.get("status") == "deployed"])
+        
+        # Get suggestion
+        suggestion = suggest_next_upgrade(users, all_tests)
+        
+        return {
+            "ok": True,
+            "total_tests": len(all_tests),
+            "active_tests": active,
+            "completed_tests": completed,
+            "deployed_upgrades": deployed,
+            "next_suggestion": suggestion,
+            "upgrade_types": UPGRADE_TYPES,
+            "dashboard_generated_at": _now()
+        }
+
+        # ============ DARK-POOL PERFORMANCE AUCTIONS ============
+
+@app.get("/darkpool/tiers")
+async def get_reputation_tiers():
+    """Get reputation tier definitions"""
+    return {
+        "ok": True,
+        "tiers": REPUTATION_TIERS,
+        "description": "Reputation tiers for dark pool matching"
+    }
+
+@app.get("/darkpool/tier/{username}")
+async def get_agent_reputation_tier(username: str):
+    """Get agent's reputation tier"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outcome_score = int(user.get("outcomeScore", 0))
+        tier = get_reputation_tier(outcome_score)
+        
+        return {"ok": True, "username": username, **tier}
+
+@app.post("/darkpool/auction/create")
+async def create_dark_pool_auction_endpoint(body: Dict = Body(...)):
+    """
+    Create a dark pool auction for an intent
+    
+    Body:
+    {
+        "intent_id": "intent_123",
+        "min_reputation_tier": "silver",
+        "auction_duration_hours": 24,
+        "reveal_reputation": true
+    }
+    """
+    intent_id = body.get("intent_id")
+    min_reputation_tier = body.get("min_reputation_tier", "silver")
+    auction_duration_hours = int(body.get("auction_duration_hours", 24))
+    reveal_reputation = body.get("reveal_reputation", True)
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Create auction
+        auction = create_dark_pool_auction(
+            intent,
+            min_reputation_tier,
+            auction_duration_hours,
+            reveal_reputation
+        )
+        
+        # Store auction
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            system_user = {
+                "username": "system_darkpool",
+                "role": "system",
+                "auctions": [],
+                "created_at": _now()
+            }
+            users.append(system_user)
+        
+        system_user.setdefault("auctions", []).append(auction)
+        
+        # Mark intent as in dark pool auction
+        intent["auction_type"] = "dark_pool"
+        intent["auction_id"] = auction["id"]
+        intent["status"] = "auction"
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "auction": auction}
+
+@app.get("/darkpool/auction/{auction_id}")
+async def get_dark_pool_auction(auction_id: str):
+    """Get dark pool auction details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "no_auctions_found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction_not_found", "auction_id": auction_id}
+        
+        # Hide real agent identities if auction is open
+        if auction["status"] == "open":
+            sanitized_bids = [
+                {
+                    "anonymous_id": b["anonymous_id"],
+                    "reputation": b["reputation"],
+                    "performance_metrics": b["performance_metrics"],
+                    "submitted_at": b["submitted_at"],
+                    "is_sealed": b["is_sealed"]
+                    # bid_amount hidden until close
+                }
+                for b in auction.get("bids", [])
+            ]
+            
+            auction_view = auction.copy()
+            auction_view["bids"] = sanitized_bids
+            auction_view["bid_count"] = len(sanitized_bids)
+            
+            return {"ok": True, "auction": auction_view}
+        
+        return {"ok": True, "auction": auction}
+
+@app.get("/darkpool/auction/list")
+async def list_dark_pool_auctions(status: str = None):
+    """
+    List dark pool auctions
+    
+    status: open | closed | expired | all
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"ok": True, "auctions": [], "count": 0}
+        
+        auctions = system_user.get("auctions", [])
+        
+        if status and status != "all":
+            auctions = [a for a in auctions if a.get("status") == status]
+        
+        return {
+            "ok": True,
+            "auctions": auctions,
+            "count": len(auctions)
+        }
+
+@app.post("/darkpool/bid")
+async def submit_dark_pool_bid_endpoint(body: Dict = Body(...)):
+    """
+    Submit anonymous bid to dark pool auction
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "username": "agent1",
+        "bid_amount": 150,
+        "delivery_hours": 48,
+        "proposal_summary": "Brief description"
+    }
+    """
+    auction_id = body.get("auction_id")
+    username = body.get("username")
+    bid_amount = float(body.get("bid_amount", 0))
+    delivery_hours = int(body.get("delivery_hours", 48))
+    proposal_summary = body.get("proposal_summary", "")
+    
+    if not all([auction_id, username, bid_amount]):
+        return {"error": "auction_id, username, and bid_amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find agent
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Find auction
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found", "auction_id": auction_id}
+        
+        # Submit bid
+        result = submit_dark_pool_bid(
+            auction,
+            agent_user,
+            bid_amount,
+            delivery_hours,
+            proposal_summary
+        )
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/darkpool/auction/close")
+async def close_dark_pool_auction_endpoint(body: Dict = Body(...)):
+    """
+    Close dark pool auction and select winner
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "matching_algorithm": "reputation_weighted_price"
+    }
+    
+    matching_algorithm options:
+    - reputation_weighted_price (default): Balance quality and price
+    - lowest_price: Cheapest qualified bid
+    - highest_reputation: Best reputation
+    - best_value: Optimize value score
+    """
+    auction_id = body.get("auction_id")
+    matching_algorithm = body.get("matching_algorithm", "reputation_weighted_price")
+    
+    if not auction_id:
+        return {"error": "auction_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found", "auction_id": auction_id}
+        
+        # Close auction
+        result = close_dark_pool_auction(auction, matching_algorithm)
+        
+        if result["ok"]:
+            # Update related intent
+            intent_id = auction.get("intent_id")
+            
+            for user in users:
+                for intent in user.get("intents", []):
+                    if intent.get("id") == intent_id:
+                        intent["status"] = "ACCEPTED"
+                        intent["agent"] = auction["winner"]["real_agent"]
+                        intent["awarded_bid"] = auction["winner"]
+                        intent["awarded_at"] = _now()
+                        break
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/darkpool/reveal")
+async def reveal_agent_identity_endpoint(body: Dict = Body(...)):
+    """
+    Reveal agent identity (only after auction closes)
+    
+    Body:
+    {
+        "auction_id": "dark_abc123",
+        "anonymous_id": "agent_xyz789",
+        "requester": "buyer1"
+    }
+    """
+    auction_id = body.get("auction_id")
+    anonymous_id = body.get("anonymous_id")
+    requester = body.get("requester")
+    
+    if not all([auction_id, anonymous_id, requester]):
+        return {"error": "auction_id, anonymous_id, and requester required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {"error": "auction not found"}
+        
+        auctions = system_user.get("auctions", [])
+        auction = next((a for a in auctions if a.get("id") == auction_id), None)
+        
+        if not auction:
+            return {"error": "auction not found"}
+        
+        result = reveal_agent_identity(auction, anonymous_id, requester)
+        
+        return result
+
+@app.get("/darkpool/metrics")
+async def get_dark_pool_metrics():
+    """Get dark pool performance metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_auctions": 0,
+                "message": "No dark pool auctions yet"
+            }
+        
+        auctions = system_user.get("auctions", [])
+        metrics = calculate_dark_pool_metrics(auctions)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/darkpool/agent/history")
+async def get_agent_dark_pool_history_endpoint(username: str):
+    """Get agent's dark pool bidding history"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "agent": username,
+                "total_bids": 0,
+                "wins": 0,
+                "bids": []
+            }
+        
+        auctions = system_user.get("auctions", [])
+        history = get_agent_dark_pool_history(username, auctions)
+        
+        return {"ok": True, **history}
+
+@app.get("/darkpool/dashboard")
+async def get_dark_pool_dashboard():
+    """Get dark pool dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_darkpool"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_auctions": 0,
+                "open_auctions": 0,
+                "message": "No dark pool activity yet"
+            }
+        
+        auctions = system_user.get("auctions", [])
+        
+        open_auctions = [a for a in auctions if a.get("status") == "open"]
+        closed_auctions = [a for a in auctions if a.get("status") == "closed"]
+        
+        metrics = calculate_dark_pool_metrics(auctions)
+        
+        return {
+            "ok": True,
+            "total_auctions": len(auctions),
+            "open_auctions": len(open_auctions),
+            "closed_auctions": len(closed_auctions),
+            "metrics": metrics,
+            "reputation_tiers": REPUTATION_TIERS,
+            "dashboard_generated_at": _now()
+        }
+
+    # ============ JV MESH (AUTONOMOUS + MANUAL) ============
+
+@app.post("/jv/propose")
+async def propose_jv_endpoint(body: Dict = Body(...)):
+    """
+    Propose a JV partnership
+    
+    Body:
+    {
+        "proposer": "agent1",
+        "partner": "agent2",
+        "title": "Design + Dev Partnership",
+        "description": "...",
+        "revenue_split": {"agent1": 0.6, "agent2": 0.4},
+        "duration_days": 90
+    }
+    """
+    result = await create_jv_proposal(
+        proposer=body.get("proposer"),
+        partner=body.get("partner"),
+        title=body.get("title"),
+        description=body.get("description"),
+        revenue_split=body.get("revenue_split"),
+        duration_days=body.get("duration_days", 90),
+        terms=body.get("terms")
+    )
+    
+    return result
+
+@app.post("/jv/vote")
+async def vote_on_jv_endpoint(body: Dict = Body(...)):
+    """
+    Vote on JV proposal
+    
+    Body:
+    {
+        "proposal_id": "jvp_abc123",
+        "voter": "agent2",
+        "vote": "APPROVED",
+        "feedback": "optional"
+    }
+    """
+    result = await vote_on_jv(
+        proposal_id=body.get("proposal_id"),
+        voter=body.get("voter"),
+        vote=body.get("vote"),
+        feedback=body.get("feedback", "")
+    )
+    
+    return result
+
+@app.get("/jv/proposals")
+async def list_jv_proposals_endpoint(party: str = None, status: str = None):
+    """List JV proposals"""
+    result = list_jv_proposals(party, status)
+    return result
+
+@app.get("/jv/active")
+async def list_active_jvs_endpoint(party: str = None):
+    """List active JV partnerships"""
+    result = list_active_jvs(party)
+    return result
+
+@app.get("/jv/proposal/{proposal_id}")
+async def get_jv_proposal_endpoint(proposal_id: str):
+    """Get specific JV proposal"""
+    result = get_jv_proposal(proposal_id)
+    return result
+
+@app.get("/jv/{jv_id}")
+async def get_active_jv_endpoint(jv_id: str):
+    """Get active JV details"""
+    result = get_active_jv(jv_id)
+    return result
+
+@app.post("/jv/dissolve")
+async def dissolve_jv_endpoint(body: Dict = Body(...)):
+    """
+    Dissolve a JV partnership
+    
+    Body:
+    {
+        "jv_id": "jv_abc123",
+        "requester": "agent1",
+        "reason": "mutual agreement"
+    }
+    """
+    result = await dissolve_jv(
+        jv_id=body.get("jv_id"),
+        requester=body.get("requester"),
+        reason=body.get("reason", "")
+    )
+    
+    return result
+
+# ============ AUTONOMOUS JV FEATURES ============
+
+@app.get("/jv/suggest/{username}")
+async def suggest_jv_partners_endpoint(username: str, min_score: float = 0.6, limit: int = 5):
+    """AI suggests compatible JV partners"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent = _find_user(users, username)
+        if not agent:
+            return {"error": "user not found"}
+        
+        suggestions = suggest_jv_partners(agent, users, min_score, limit)
+        
+        return suggestions
+
+@app.post("/jv/auto_propose")
+async def auto_propose_jv_endpoint(body: Dict = Body(...)):
+    """
+    Automatically propose JV to AI-suggested partner
+    
+    Body:
+    {
+        "agent_username": "agent1",
+        "partner_username": "agent2"
+    }
+    """
+    agent_username = body.get("agent_username")
+    partner_username = body.get("partner_username")
+    
+    if not all([agent_username, partner_username]):
+        return {"error": "agent_username and partner_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Get compatibility
+        agent = _find_user(users, agent_username)
+        partner = _find_user(users, partner_username)
+        
+        if not agent or not partner:
+            return {"error": "user not found"}
+        
+        compatibility = calculate_compatibility_score(agent, partner)
+        
+        suggested_partner = {
+            "username": partner_username,
+            "compatibility": compatibility
+        }
+        
+        result = await auto_propose_jv(agent_username, suggested_partner, users)
+        
+        return result
+
+@app.get("/jv/compatibility")
+async def check_compatibility(agent1: str, agent2: str):
+    """Check compatibility between two agents"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        user1 = _find_user(users, agent1)
+        user2 = _find_user(users, agent2)
+        
+        if not user1 or not user2:
+            return {"error": "user not found"}
+        
+        compatibility = calculate_compatibility_score(user1, user2)
+        
+        return {"ok": True, "agent1": agent1, "agent2": agent2, **compatibility}
+
+@app.get("/jv/performance/{jv_id}")
+async def get_jv_performance(jv_id: str):
+    """Evaluate JV partnership performance"""
+    jv_result = get_active_jv(jv_id)
+    
+    if not jv_result.get("ok"):
+        return jv_result
+    
+    jv = jv_result["jv"]
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        performance = evaluate_jv_performance(jv, users)
+        
+        return {"ok": True, **performance}
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
@@ -2820,14 +5877,17 @@ async def poo_submit(
     )
     return result
 
+
+    
 @app.post("/poo/verify")
 async def poo_verify(
     poo_id: str,
     buyer_username: str,
     approved: bool,
-    feedback: str = ""
+    feedback: str = "",
+    outcome_rating: str = "good" 
 ):
-    """Verify PoO + auto-expand OCL"""
+    """Verify PoO + auto-capture escrow + return bond + award bonus"""
     result = await verify_poo_oracle(
         poo_id=poo_id,
         buyer_username=buyer_username,
@@ -2835,22 +5895,89 @@ async def poo_verify(
         feedback=feedback
     )
     
-    # ✅ AUTO-EXPAND OCL ON VERIFIED POO
     if result.get("ok") and approved:
         async with httpx.AsyncClient(timeout=20) as client:
             users = await _load_users(client)
             poo = result.get("poo", {})
+            intent_id = poo.get("intent_id")
             agent = poo.get("agent")
             
-            if agent:
-                u = _find_user(users, agent)
-                if u:
-                    # AUTO-EXPAND OCL
-                    expansion = await expand_ocl_on_poo(u, poo_id)
-                    await _save_users(client, users)
-                    result["ocl_expansion"] = expansion
+            # Find intent & agent user
+            intent = None
+            agent_user = None
+            
+            for user in users:
+                # Find agent user
+                if _uname(user) == agent:
+                    agent_user = user
+                
+                # Find intent
+                for i in user.get("intents", []):
+                    if i.get("id") == intent_id:
+                        intent = i
+                        # Mark as delivered
+                        intent["status"] = "DELIVERED"
+                        intent["delivered_at"] = _now()
+            
+            # AUTO-CAPTURE ESCROW
+            if intent:
+                capture_result = await auto_capture_on_delivered(intent)
+                result["escrow_capture"] = capture_result
+            
+            # AUTO-RETURN BOND
+            if agent_user and intent:
+                bond_result = await return_bond(agent_user, intent)
+                result["bond_return"] = bond_result
+                
+                # AUTO-AWARD SLA BONUS (if delivered early/on-time)
+                bonus_result = await award_sla_bonus(agent_user, intent)
+                result["sla_bonus"] = bonus_result
+            
+            #  OCL EXPANSION (existing logic)
+            if agent_user:
+                expansion = await expand_ocl_on_poo(agent_user, poo_id)
+                result["ocl_expansion"] = expansion
+            
+            # ✅ UPDATE OUTCOMESCORE
+            if agent_user:
+                # Determine outcome rating from delivery speed + feedback
+                outcome_result = outcome_rating  # Default from param
+                
+                # Auto-determine if not explicitly provided
+                if outcome_rating == "good":
+                    # Check SLA performance
+                    if intent and intent.get("accepted_at") and intent.get("delivered_at"):
+                        from performance_bonds import _hours_between
+                        delivery_hours = _hours_between(intent["accepted_at"], intent["delivered_at"])
+                        sla_hours = intent.get("delivery_hours", 48)
+                        
+                        if delivery_hours < (sla_hours * 0.5):
+                            outcome_result = "excellent"
+                        elif delivery_hours > sla_hours:
+                            outcome_result = "satisfactory"
+                
+                # Update score
+                current_score = int(agent_user.get("outcomeScore", 0))
+                new_score = update_outcome_score_weighted(current_score, outcome_result)
+                
+                agent_user["outcomeScore"] = new_score
+                
+                # Calculate pricing impact
+                pricing_impact = calculate_pricing_impact(current_score, new_score, base_price=200)
+                
+                result["score_update"] = {
+                    "old_score": current_score,
+                    "new_score": new_score,
+                    "outcome_result": outcome_result,
+                    "pricing_impact": pricing_impact
+                }
+                
+                print(f" Updated {agent} OutcomeScore: {current_score} → {new_score}")
+            
+            await _save_users(client, users)
     
     return result
+    
 
 @app.get("/poo/{poo_id}")
 async def poo_get(poo_id: str):
@@ -3230,43 +6357,317 @@ async def clone_register(
         generation=generation
     )
     return result
-#@app.post("/intent/bid")
-async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
-    users, client = await _get_users_client()
-    buyer_user, intent = _global_find_intent(users, intent_id)
-    if not intent: return {"error":"intent not found"}
-    if intent.get("status") != "open": return {"error":"intent closed"}
-    bid = {"id": _uid(), "agent": agent, "price": float(price), "ttr": ttr, "ts": _now()}
-    intent.setdefault("bids", []).append(bid)
-    await _save_users(client, users)
-    try:
-        await publish({"type":"intent_bid","intent_id":intent_id,"agent":agent,"price":price})
-    except Exception:
-        pass
-    return {"ok": True, "bid": bid}
 
-#@app.post("/intent/award")
-async def intent_award(intent_id: str, bid_id: str = None):
+@app.post("/intent/bid")
+async def intent_bid(
+    agent: str,
+    intent_id: str,
+    price: Optional[float] = None,  # ✅ NOW OPTIONAL - ARM can suggest
+    ttr: str = "48h"
+):
+    """Bid on intent with ARM price recommendation"""
     users, client = await _get_users_client()
+    
+    # Find intent
     buyer_user, intent = _global_find_intent(users, intent_id)
-    if not intent: return {"error":"intent not found"}
-    if intent.get("status") != "open": return {"error":"intent closed"}
-    chosen = None
-    if bid_id:
-        chosen = next((b for b in intent.get("bids",[]) if b["id"]==bid_id), None)
-    else:
-        bids = intent.get("bids", [])
-        if not bids: return {"error":"no bids"}
-        bids_sorted = sorted(bids, key=lambda b: (b["price"], b["ttr"]))
-        chosen = bids_sorted[0]
-    intent["status"] = "awarded"
-    intent["award"] = chosen
+    if not intent:
+        return {"error": "intent not found"}
+    
+    if intent.get("status") != "open":
+        return {"error": "intent closed"}
+    
+    # Find agent
+    agent_user = _find_user(users, agent)
+    if not agent_user:
+        return {"error": "agent not found"}
+    
+    # ✅ ARM PRICE RECOMMENDATION (if price not provided)
+    arm_recommendation = None
+    
+    if not price:
+        try:
+            outcome_score = int(agent_user.get("outcomeScore", 0))
+            existing_bids = intent.get("bids", [])
+            
+            arm_recommendation = calculate_dynamic_bid_price(
+                intent=intent,
+                agent_outcome_score=outcome_score,
+                existing_bids=existing_bids
+            )
+            
+            if arm_recommendation.get("recommended_bid"):
+                price = arm_recommendation["recommended_bid"]
+                print(f"💡 ARM recommended price: ${price} for {agent} (tier: {calculate_pricing_tier(outcome_score)['tier']})")
+            else:
+                # Agent's tier exceeds budget or other issue
+                return {
+                    "error": "cannot_bid",
+                    "reason": arm_recommendation.get("rationale"),
+                    "suggestion": arm_recommendation.get("suggestion"),
+                    "arm_recommendation": arm_recommendation
+                }
+        except Exception as e:
+            print(f"⚠️ ARM price calculation failed: {e}")
+            # Continue without ARM - require manual price
+            if not price:
+                return {
+                    "error": "price_required",
+                    "message": "ARM price calculation failed. Please provide a manual price."
+                }
+    
+    # ✅ PRICE VALIDATION
+    if not price or price <= 0:
+        return {"error": "invalid_price", "price": price}
+    
+    # Check if price exceeds intent budget
+    intent_budget = float(intent.get("budget", 999999))
+    if price > intent_budget:
+        return {
+            "error": "price_exceeds_budget",
+            "your_price": price,
+            "buyer_budget": intent_budget,
+            "suggestion": f"Reduce price to ${intent_budget} or below"
+        }
+    
+    # ✅ CREATE BID
+    delivery_hours = int(ttr.replace("h", "")) if "h" in ttr else 48
+    
+    bid = {
+        "id": _uid(),
+        "agent": agent,
+        "price": float(price),
+        "price_usd": float(price),  
+        "ttr": ttr,
+        "delivery_hours": delivery_hours,  
+        "ts": _now(),
+        "submitted_at": _now()
+    }
+    
+    # ✅ ADD ARM METADATA (if used)
+    if arm_recommendation:
+        bid["arm_pricing"] = {
+            "recommended": arm_recommendation.get("recommended_bid"),
+            "tier": calculate_pricing_tier(agent_user.get("outcomeScore", 0))["tier"],
+            "outcome_score": agent_user.get("outcomeScore", 0),
+            "adjustment": arm_recommendation.get("adjustment")
+        }
+    
+    # Add to intent
+    intent.setdefault("bids", []).append(bid)
+    
     await _save_users(client, users)
+    
+    # Publish event
     try:
-        await publish({"type":"intent_award","intent_id":intent_id,"agent":chosen['agent'],"buyer": _username_of(buyer_user)})
+        await publish({
+            "type": "intent_bid",
+            "intent_id": intent_id,
+            "agent": agent,
+            "price": price,
+            "arm_used": arm_recommendation is not None,
+            "pricing_tier": calculate_pricing_tier(agent_user.get("outcomeScore", 0))["tier"] if arm_recommendation else None
+        })
     except Exception:
         pass
-    return {"ok": True, "award": chosen}
+    
+    return {
+        "ok": True,
+        "bid": bid,
+        "arm_recommendation": arm_recommendation,
+        "message": "Bid submitted successfully"
+    }
+    
+@app.post("/intent/award")
+async def intent_award(body: Dict = Body(...)):
+    """Award intent + create escrow + stake bond + collect insurance + factoring advance"""
+    intent_id = body.get("intent_id")
+    bid_id = body.get("bid_id")
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        buyer_user = None
+        intent = None
+        
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    buyer_user = user
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Find winning bid
+        bids = intent.get("bids", [])
+        if bid_id:
+            chosen_bid = next((b for b in bids if b.get("id") == bid_id), None)
+        else:
+            # Auto-select lowest price
+            chosen_bid = min(bids, key=lambda b: b.get("price", float('inf'))) if bids else None
+        
+        if not chosen_bid:
+            return {"error": "no valid bid found"}
+        
+        # Find agent
+        agent_username = chosen_bid.get("agent")
+        agent_user = _find_user(users, agent_username)
+        
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Update intent
+        intent["status"] = "ACCEPTED"
+        intent["awarded_bid"] = chosen_bid
+        intent["awarded_at"] = _now()
+        intent["accepted_at"] = _now()
+        intent["agent"] = agent_username
+        intent["delivery_hours"] = chosen_bid.get("delivery_hours", 48)
+        intent["price_usd"] = chosen_bid.get("price", 0)
+        
+        order_value = float(chosen_bid.get("price", 0))
+        
+        # ✅ 1. COLLECT INSURANCE (0.5% fee to pool)
+        insurance_result = {"ok": False, "fee": 0}
+        
+        # Find or create insurance pool
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
+            }
+            users.append(pool_user)
+        
+        try:
+            insurance_result = await collect_insurance(agent_user, intent, order_value)
+            
+            if insurance_result["ok"]:
+                # Credit insurance pool
+                fee = insurance_result["fee"]
+                pool_user["ownership"]["aigx"] = float(pool_user["ownership"].get("aigx", 0)) + fee
+                pool_user["ownership"].setdefault("ledger", []).append({
+                    "ts": _now(),
+                    "amount": fee,
+                    "currency": "AIGx",
+                    "basis": "insurance_premium",
+                    "agent": agent_username,
+                    "ref": intent_id,
+                    "order_value": order_value
+                })
+        except Exception as e:
+            print(f"⚠️ Insurance collection failed: {e}")
+            insurance_result = {"ok": False, "error": str(e), "warning": "Insurance collection failed"}
+        
+        # ✅ 2. REQUEST FACTORING ADVANCE
+        factoring_result = {"ok": False, "net_advance": 0, "holdback": 0}
+        
+        try:
+            factoring_result = await request_factoring_advance(agent_user, intent)
+            
+            if not factoring_result["ok"]:
+                factoring_result["warning"] = factoring_result.get("error", "Factoring unavailable")
+                print(f"⚠️ Factoring unavailable: {factoring_result.get('error')}")
+        except Exception as e:
+            print(f"⚠️ Factoring request failed: {e}")
+            factoring_result = {"ok": False, "error": str(e), "warning": "Factoring request failed"}
+        
+        # ✅ 3. STAKE BOND
+        bond_result = {"ok": False, "bond_amount": 0}
+        
+        try:
+            bond_result = await stake_bond(agent_user, intent)
+            
+            if not bond_result["ok"]:
+                bond_result["warning"] = "Agent needs more AIGx for performance bond"
+        except Exception as e:
+            print(f"⚠️ Bond staking failed: {e}")
+            bond_result = {"ok": False, "error": str(e), "warning": "Bond staking failed"}
+        
+        # ✅ 4. CREATE ESCROW
+        escrow_result = {"ok": False}
+        
+        try:
+            buyer_email = buyer_user.get("consent", {}).get("username") + "@aigentsy.com"
+            escrow_result = await create_payment_intent(
+                amount=order_value,
+                buyer_email=buyer_email,
+                intent_id=intent_id,
+                metadata={
+                    "buyer": _uname(buyer_user),
+                    "agent": agent_username
+                }
+            )
+            
+            if escrow_result["ok"]:
+                intent["payment_intent_id"] = escrow_result["payment_intent_id"]
+                intent["escrow_status"] = "authorized"
+                intent["escrow_created_at"] = _now()
+        except Exception as e:
+            print(f"⚠️ Escrow creation failed: {e}")
+            escrow_result = {"ok": False, "error": str(e)}
+        
+        # Save all changes
+        await _save_users(client, users)
+        
+        # Publish event
+        try:
+            await publish({
+                "type": "intent_award",
+                "intent_id": intent_id,
+                "agent": agent_username,
+                "buyer": _uname(buyer_user),
+                "order_value": order_value,
+                "escrow_created": escrow_result["ok"],
+                "bond_staked": bond_result.get("ok", False),
+                "bond_amount": bond_result.get("bond_amount", 0),
+                "insurance_collected": insurance_result.get("ok", False),
+                "insurance_fee": insurance_result.get("fee", 0),
+                "factoring_advanced": factoring_result.get("ok", False),
+                "factoring_amount": factoring_result.get("net_advance", 0),
+                "factoring_tier": factoring_result.get("factoring_tier", "new")
+            })
+        except Exception as e:
+            print(f"⚠️ Event publish failed: {e}")
+        
+        return {
+            "ok": True,
+            "award": chosen_bid,
+            "escrow": escrow_result,
+            "bond": bond_result,
+            "insurance": insurance_result,
+            "factoring": factoring_result,
+            "summary": {
+                "order_value": order_value,
+                "insurance_fee": insurance_result.get("fee", 0),
+                "bond_staked": bond_result.get("bond_amount", 0),
+                "factoring_advance": factoring_result.get("net_advance", 0),
+                "factoring_fee": factoring_result.get("factoring_fee", 0),
+                "factoring_tier": factoring_result.get("factoring_tier", "new"),
+                "agent_receives_now": factoring_result.get("net_advance", 0),
+                "agent_receives_on_delivery": factoring_result.get("holdback", 0),
+                "escrow_authorized": escrow_result.get("ok", False)
+            },
+            "agent_net_summary": {
+                "immediate_cash": factoring_result.get("net_advance", 0),
+                "costs_paid": insurance_result.get("fee", 0) + factoring_result.get("factoring_fee", 0),
+                "bond_staked_aigx": bond_result.get("bond_amount", 0),
+                "remaining_on_delivery": factoring_result.get("holdback", 0),
+                "net_immediate": round(
+                    factoring_result.get("net_advance", 0) - 
+                    insurance_result.get("fee", 0), 
+                    2
+                )
+            }
+        }
+        
 
 @app.post("/productize")
 async def productize(username: str, url: Optional[str] = None, file_meta: dict = None):
