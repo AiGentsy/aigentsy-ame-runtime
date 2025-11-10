@@ -5,7 +5,12 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 import asyncio
 import httpx
-
+from performance_bonds import (
+    stake_bond,
+    return_bond,
+    award_sla_bonus,
+    slash_bond
+)
 router = APIRouter()
 _INTENTS: Dict[str, Dict[str, Any]] = {}
 _BIDS: Dict[str, List[Dict[str, Any]]] = {}
@@ -166,6 +171,9 @@ async def _auto_award_after_auction(intent_id: str, duration: int):
     it["claimed_by"] = winner["agent"]
     it["winning_bid"] = winner
     it["all_bids"] = bids
+    it["accepted_at"] = now_iso()  
+    it["delivery_hours"] = winner["delivery_hours"]  
+    it["price_usd"] = winner["price_usd"]  
     it["events"].append({
         "type": "INTENT_AWARDED",
         "agent": winner["agent"],
@@ -173,7 +181,35 @@ async def _auto_award_after_auction(intent_id: str, duration: int):
         "at": now_iso()
     })
     
+    #STAKE PERFORMANCE BOND
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            bond_response = await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/bond/stake",
+                json={
+                    "username": winner["agent"],
+                    "intent_id": intent_id
+                }
+            )
+            bond_data = bond_response.json()
+            
+            if bond_data.get("ok"):
+                it["bond"] = bond_data
+                it["events"].append({
+                    "type": "BOND_STAKED",
+                    "amount": bond_data.get("bond_amount"),
+                    "at": now_iso()
+                })
+                print(f" Staked {bond_data.get('bond_amount')} AIGx bond for {winner['agent']}")
+            else:
+                it["bond_warning"] = bond_data.get("error", "insufficient_aigx")
+                print(f" Bond stake failed for {winner['agent']}: {bond_data.get('error')}")
+    except Exception as e:
+        print(f" Bond stake error: {e}")
+        it["bond_warning"] = str(e)
+    
     await _send_award_proposal(it, winner)
+
 
 async def _send_award_proposal(intent: Dict, winning_bid: Dict):
     proposal = {
@@ -286,7 +322,7 @@ async def bid_on_intent(req: Bid):
 
 @router.post("/verify_poo")
 async def verify_proof_of_outcome(req: VerifyPoO):
-    """Buyer verifies agent's Proof of Outcome and releases escrow"""
+    """Buyer verifies agent's Proof of Outcome, releases escrow, returns bond, awards bonus"""
     it = _INTENTS.get(req.intent_id)
     if not it:
         raise HTTPException(status_code=404, detail="intent not found")
@@ -295,6 +331,7 @@ async def verify_proof_of_outcome(req: VerifyPoO):
         raise HTTPException(status_code=400, detail=f"cannot verify PoO for intent in status {it['status']}")
     
     if not req.approved:
+        # PoO REJECTED - DISPUTE
         it["status"] = "DISPUTED"
         it["poo_verified"] = False
         it["dispute_reason"] = req.feedback or "buyer_rejected_poo"
@@ -310,9 +347,11 @@ async def verify_proof_of_outcome(req: VerifyPoO):
             "message": "PoO rejected. Dispute opened. Escrow held pending resolution."
         }
     
+    # PoO APPROVED - SETTLE
     it["status"] = "SETTLED"
     it["poo_verified"] = True
     it["poo_id"] = req.poo_id
+    it["delivered_at"] = now_iso()  
     it["settlement"] = {"verified": True, "feedback": req.feedback}
     it["events"].append({
         "type": "POO_VERIFIED",
@@ -324,8 +363,56 @@ async def verify_proof_of_outcome(req: VerifyPoO):
     if not winner:
         raise HTTPException(status_code=500, detail="no_winner_found")
     
+    # Release escrow
     released = await _release_escrow(req.intent_id, winner)
     
+    #  RETURN BOND + AWARD SLA BONUS
+    bond_result = None
+    bonus_result = None
+    
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Return bond
+            bond_response = await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/bond/return",
+                json={
+                    "username": winner,
+                    "intent_id": req.intent_id
+                }
+            )
+            bond_result = bond_response.json()
+            
+            if bond_result.get("ok"):
+                it["events"].append({
+                    "type": "BOND_RETURNED",
+                    "amount": bond_result.get("returned"),
+                    "at": now_iso()
+                })
+                print(f" Returned bond to {winner}")
+            
+            # Award SLA bonus
+            bonus_response = await client.post(
+                "https://aigentsy-ame-runtime.onrender.com/bond/award_bonus",
+                json={
+                    "username": winner,
+                    "intent_id": req.intent_id
+                }
+            )
+            bonus_result = bonus_response.json()
+            
+            if bonus_result.get("ok") and bonus_result.get("bonus", 0) > 0:
+                it["events"].append({
+                    "type": "SLA_BONUS_AWARDED",
+                    "amount": bonus_result.get("bonus"),
+                    "tier": bonus_result.get("tier"),
+                    "at": now_iso()
+                })
+                print(f" Awarded {bonus_result.get('bonus')} AIGx bonus to {winner}")
+    
+    except Exception as e:
+        print(f" Bond/bonus processing error: {e}")
+    
+    # R³ reallocation (existing)
     try:
         realloc_budget = round(released * 0.2, 2)
         async with httpx.AsyncClient(timeout=10) as client:
@@ -343,6 +430,9 @@ async def verify_proof_of_outcome(req: VerifyPoO):
     return {
         "ok": True,
         "escrow_released": released,
+        "bond_returned": bond_result.get("returned", 0) if bond_result else 0,
+        "sla_bonus": bonus_result.get("bonus", 0) if bonus_result else 0,
+        "bonus_tier": bonus_result.get("tier") if bonus_result else None,
         "message": f"PoO verified. ${released} released to {winner}."
     }
 
@@ -380,7 +470,7 @@ async def dispute_intent(intent_id: str, reason: str):
 
 @router.post("/resolve_dispute")
 async def resolve_dispute(intent_id: str, resolution: str, refund_pct: float = 0.0):
-    """Admin resolves dispute (release to agent, refund to buyer, or split)"""
+    """Admin resolves dispute (release to agent, refund to buyer, or split) + slash bond"""
     it = _INTENTS.get(intent_id)
     if not it:
         raise HTTPException(status_code=404, detail="intent not found")
@@ -396,6 +486,35 @@ async def resolve_dispute(intent_id: str, resolution: str, refund_pct: float = 0
     winner = it.get("claimed_by")
     buyer = it.get("from")
     
+    # ✅ SLASH BOND IF AGENT AT FAULT
+    slash_result = None
+    if refund_pct > 0 and winner:  # Any refund = agent partially/fully at fault
+        severity = "major" if refund_pct >= 0.75 else ("moderate" if refund_pct >= 0.25 else "minor")
+        
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                slash_response = await client.post(
+                    "https://aigentsy-ame-runtime.onrender.com/bond/slash",
+                    json={
+                        "username": winner,
+                        "intent_id": intent_id,
+                        "severity": severity
+                    }
+                )
+                slash_result = slash_response.json()
+                
+                if slash_result.get("ok"):
+                    it["events"].append({
+                        "type": "BOND_SLASHED",
+                        "amount": slash_result.get("slashed"),
+                        "severity": severity,
+                        "at": now_iso()
+                    })
+                    print(f"⚖️ Slashed {slash_result.get('slashed')} AIGx from {winner}")
+        except Exception as e:
+            print(f"❌ Bond slash error: {e}")
+    
+    # Existing escrow logic
     if refund_pct == 1.0:
         await _refund_escrow(intent_id, "dispute_resolved_refund")
         it["status"] = "REFUNDED"
@@ -441,14 +560,17 @@ async def resolve_dispute(intent_id: str, resolution: str, refund_pct: float = 0
         "type": "DISPUTE_RESOLVED",
         "resolution": resolution,
         "refund_pct": refund_pct,
+        "bond_slashed": slash_result.get("slashed", 0) if slash_result else 0,
         "at": now_iso()
     })
     
     return {
         "ok": True,
         "resolution": resolution,
-        "refund_pct": refund_pct
+        "refund_pct": refund_pct,
+        "bond_slashed": slash_result.get("slashed", 0) if slash_result else 0
     }
+    
 
 @router.get("/list")
 async def list_intents(status: Optional[str] = None):
