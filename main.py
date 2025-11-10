@@ -3019,7 +3019,188 @@ async def escrow_refund(body: Dict = Body(...)):
         )
         
         return result
+
+# ============ PERFORMANCE BONDS + SLA BONUS ============
+
+from performance_bonds import (
+    stake_bond,
+    return_bond,
+    calculate_sla_bonus,
+    award_sla_bonus,
+    slash_bond,
+    calculate_bond_amount
+)
+
+@app.post("/bond/stake")
+async def stake_performance_bond(body: Dict = Body(...)):
+    """
+    Stake performance bond when accepting intent
+    Auto-called on intent acceptance
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
         
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Stake bond
+        result = await stake_bond(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/return")
+async def return_performance_bond(body: Dict = Body(...)):
+    """
+    Return bond on successful delivery
+    Auto-called on PoO verification
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Return bond
+        result = await return_bond(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/award_bonus")
+async def award_bonus(body: Dict = Body(...)):
+    """
+    Award SLA bonus for early delivery
+    Auto-called on PoO verification
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Award bonus
+        result = await award_sla_bonus(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/bond/slash")
+async def slash_performance_bond(body: Dict = Body(...)):
+    """
+    Slash bond on dispute loss
+    Called by dispute resolution system
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    severity = body.get("severity", "moderate")  # minor | moderate | major
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Slash bond
+        result = await slash_bond(user, intent, severity)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/bond/calculate")
+async def calculate_bond(order_value: float):
+    """
+    Calculate required bond for an order value
+    """
+    from performance_bonds import calculate_bond_amount
+    result = calculate_bond_amount(order_value)
+    return {"ok": True, **result}
+    
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
@@ -3065,6 +3246,8 @@ async def poo_submit(
     )
     return result
 
+
+    
 @app.post("/poo/verify")
 async def poo_verify(
     poo_id: str,
@@ -3072,7 +3255,7 @@ async def poo_verify(
     approved: bool,
     feedback: str = ""
 ):
-    """Verify PoO + auto-capture escrow"""
+    """Verify PoO + auto-capture escrow + return bond + award bonus"""
     result = await verify_poo_oracle(
         poo_id=poo_id,
         buyer_username=buyer_username,
@@ -3087,28 +3270,44 @@ async def poo_verify(
             intent_id = poo.get("intent_id")
             agent = poo.get("agent")
             
-            # ✅ AUTO-CAPTURE ESCROW ON VERIFIED POO
-            if intent_id:
-                # Find intent
-                for user in users:
-                    for intent in user.get("intents", []):
-                        if intent.get("id") == intent_id:
-                            # Mark as delivered
-                            intent["status"] = "DELIVERED"
-                            intent["delivered_at"] = _now()
-                            
-                            # Auto-capture payment
-                            capture_result = await auto_capture_on_delivered(intent)
-                            result["escrow_capture"] = capture_result
-                            break
+            # Find intent & agent user
+            intent = None
+            agent_user = None
             
-            # OCL expansion (existing logic)
-            if agent:
-                u = _find_user(users, agent)
-                if u:
-                    expansion = await expand_ocl_on_poo(u, poo_id)
-                    await _save_users(client, users)
-                    result["ocl_expansion"] = expansion
+            for user in users:
+                # Find agent user
+                if _uname(user) == agent:
+                    agent_user = user
+                
+                # Find intent
+                for i in user.get("intents", []):
+                    if i.get("id") == intent_id:
+                        intent = i
+                        # Mark as delivered
+                        intent["status"] = "DELIVERED"
+                        intent["delivered_at"] = _now()
+            
+            # AUTO-CAPTURE ESCROW
+            if intent:
+                capture_result = await auto_capture_on_delivered(intent)
+                result["escrow_capture"] = capture_result
+            
+            # AUTO-RETURN BOND
+            if agent_user and intent:
+                bond_result = await return_bond(agent_user, intent)
+                result["bond_return"] = bond_result
+                
+                # AUTO-AWARD SLA BONUS (if delivered early/on-time)
+                bonus_result = await award_sla_bonus(agent_user, intent)
+                result["sla_bonus"] = bonus_result
+            
+            #  OCL EXPANSION (existing logic)
+            if agent_user:
+                expansion = await expand_ocl_on_poo(agent_user, poo_id)
+                result["ocl_expansion"] = expansion
+            
+            # Save all changes
+            await _save_users(client, users)
     
     return result
     
