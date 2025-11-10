@@ -4189,6 +4189,132 @@ async def retry_failed_payments_endpoint(body: Dict = Body(...)):
         
         return result
 
+# ============ FINANCIAL ANALYTICS DASHBOARD ============
+
+@app.get("/analytics/revenue")
+async def get_revenue_analytics(period_days: int = 30):
+    """Get platform revenue metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        metrics = calculate_revenue_metrics(users, period_days)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/analytics/revenue/by_currency")
+async def get_revenue_by_currency(period_days: int = 30):
+    """Get revenue broken down by currency"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = calculate_revenue_by_currency(users, period_days)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/revenue/forecast")
+async def get_revenue_forecast(historical_days: int = 30, forecast_days: int = 30):
+    """Forecast future revenue based on historical data"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        historical = calculate_revenue_metrics(users, historical_days)
+        forecast = forecast_revenue(historical, forecast_days)
+        
+        return {"ok": True, "historical": historical, "forecast": forecast}
+
+@app.get("/analytics/agent")
+async def get_agent_analytics(username: str, period_days: int = 30):
+    """Get individual agent performance metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        metrics = calculate_agent_metrics(user, period_days)
+        
+        return {"ok": True, **metrics}
+
+@app.get("/analytics/leaderboard")
+async def get_agent_leaderboard(metric: str = "total_earned", limit: int = 10):
+    """
+    Get agent leaderboard
+    
+    metric options: total_earned, completed_jobs, outcome_score, on_time_rate
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = rank_agents_by_performance(users, metric, limit)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/health")
+async def get_platform_health():
+    """Get overall platform financial health score"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        health = calculate_platform_health(users)
+        
+        return {"ok": True, **health}
+
+@app.get("/analytics/cohorts")
+async def get_cohort_analysis(cohort_by: str = "signup_month"):
+    """
+    Analyze user cohorts
+    
+    cohort_by options: signup_month, outcome_score_tier, revenue_tier
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        result = generate_cohort_analysis(users, cohort_by)
+        
+        return {"ok": True, **result}
+
+@app.get("/analytics/alerts")
+async def get_financial_alerts():
+    """Get financial health alerts and recommendations"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        health = calculate_platform_health(users)
+        revenue = calculate_revenue_metrics(users, period_days=30)
+        
+        alerts = detect_financial_alerts(health, revenue)
+        
+        return {
+            "ok": True,
+            "alert_count": len(alerts),
+            "alerts": alerts,
+            "platform_status": health["status"]
+        }
+
+@app.get("/analytics/dashboard")
+async def get_analytics_dashboard():
+    """Get complete analytics dashboard summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Calculate all metrics
+        revenue_30d = calculate_revenue_metrics(users, period_days=30)
+        revenue_7d = calculate_revenue_metrics(users, period_days=7)
+        health = calculate_platform_health(users)
+        top_agents = rank_agents_by_performance(users, "total_earned", 5)
+        alerts = detect_financial_alerts(health, revenue_30d)
+        
+        return {
+            "ok": True,
+            "revenue_30d": revenue_30d,
+            "revenue_7d": revenue_7d,
+            "platform_health": health,
+            "top_agents": top_agents["top_agents"],
+            "alerts": alerts,
+            "dashboard_generated_at": _now()
+        }
+        
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
