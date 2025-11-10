@@ -79,6 +79,8 @@ try:
 except Exception:
     r3_router = None
 
+from ocl_engine import calculate_ocl_limit, spend_ocl, auto_repay_ocl, expand_ocl_on_poo
+
 app = FastAPI()
 
 async def auto_bid_background():
@@ -301,7 +303,7 @@ def make_canonical_record(username: str, company_type: str = "general", referral
         "remixUnlocked": False,
         "cloneLicenseUnlocked": False,
         "sdkAccess_eligible": False,
-        "autonomyLevel": "AL1",  # default safe mode
+        "autonomyLevel": "AL1",
     }
     runtime_flags.update(preset["flags"])
 
@@ -347,13 +349,23 @@ def make_canonical_record(username: str, company_type: str = "general", referral
         "referral": referral,
         "mintTime": _now(),
         "created": _now(),
-        # NEW: upgradable surfaces
-        "amg": {"apps": [], "capabilities": [], "lastSync": None},  # App Monetization Graph
-        "ownership": {"aigx": 0, "royalties": 0, "ledger": []},    # AIGx & royalties ledger
-        "jvMesh": [],                                               # micro-JVs (cap tables)
-        "contacts": {"sources": [], "counts": {}, "lastSync": None} # privacy-first contacts
+        "amg": {"apps": [], "capabilities": [], "lastSync": None},
+        "ownership": {"aigx": 0, "royalties": 0, "ledger": []},
+        "jvMesh": [],
+        "contacts": {"sources": [], "counts": {}, "lastSync": None},  # ✅ COMMA ADDED
+        "ocl": {
+            "limit": 10.0,
+            "used": 0.0,
+            "available": 10.0,
+            "poo_multiplier": 5.0,
+            "max_limit": 200.0,
+            "last_updated": _now(),
+            "auto_repay": True,
+            "repayment_schedule": [],
+            "expansion_events": []
+        }
     }
-    # ensure default chart-friendly flags
+    
     user["runtimeFlags"]["vaultAccess"] = user["runtimeFlags"]["vaultAccess"] or user["kits"]["universal"]["unlocked"]
     return user
 
@@ -1756,12 +1768,12 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
         amt      = float(invoice.get("amount", 0))
         currency = invoice.get("currency", "USD")
 
-        # platform fee (single source of truth)
-        fee_rate = _platform_fee_rate(u)             # e.g. 0.05
-        fee_amt  = round(amt * fee_rate, 2)          # positive
+        # platform fee
+        fee_rate = _platform_fee_rate(u)
+        fee_amt  = round(amt * fee_rate, 2)
         net_amt  = round(amt - fee_amt, 2)
 
-        # ledger entries: revenue (+), platform fee (-)
+        # ledger entries
         u["ownership"]["ledger"].append({
             "ts": _now(), "amount": amt, "currency": currency, "basis": "revenue", "ref": inv_id
         })
@@ -1769,9 +1781,26 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
             "ts": _now(), "amount": -fee_amt, "currency": currency, "basis": "platform_fee", "ref": inv_id
         })
 
-        # reflect in balances
+        # update balances
         u["yield"]["aigxEarned"] = float(u["yield"].get("aigxEarned", 0)) + net_amt
         u["ownership"]["aigx"]   = float(u["ownership"].get("aigx", 0)) + net_amt
+
+        # ✅ AUTO-REPAY OCL from earnings (CORRECT INDENTATION)
+        repay_result = None
+        if net_amt > 0:
+            repay_result = await auto_repay_ocl(u, net_amt)
+        
+        # ✅ SAVE USERS (CORRECT INDENTATION - SAME LEVEL AS OTHER CODE)
+        await _save_users(client, users)
+        
+        # ✅ RETURN (CORRECT INDENTATION)
+        return {
+            "ok": True, 
+            "invoice": invoice, 
+            "fee": {"rate": fee_rate, "amount": fee_amt}, 
+            "net": net_amt,
+            "ocl_repayment": repay_result
+        }
 
         await _save_users(client, users)
         return {"ok": True, "invoice": invoice, "fee": {"rate": fee_rate, "amount": fee_amt}, "net": net_amt}
@@ -2682,6 +2711,70 @@ async def analytics_track(username: str, event: dict):
         pass
     return {"ok": True}
 
+# ============ OCL (OUTCOME-BACKED CREDIT LINE) ============
+
+@app.get("/credit/status")
+async def ocl_status(username: str):
+    """Get OCL credit status"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = _find_user(users, username)
+        if not u: return {"error": "user not found"}
+        
+        limits = await calculate_ocl_limit(u)
+        return {"ok": True, **limits}
+
+@app.post("/credit/spend")
+async def ocl_spend_endpoint(body: Dict = Body(...)):
+    """Spend from OCL"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    ref = body.get("ref", "purchase")
+    
+    if not username or not amount:
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = _find_user(users, username)
+        if not u: return {"error": "user not found"}
+        
+        result = await spend_ocl(u, amount, ref)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/credit/repay")
+async def ocl_repay_endpoint(body: Dict = Body(...)):
+    """Manual OCL repayment"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    
+    if not username or not amount:
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        u = _find_user(users, username)
+        if not u: return {"error": "user not found"}
+        
+        # Add repayment entry
+        entry = {
+            "ts": _now(),
+            "amount": float(amount),
+            "currency": "USD",
+            "basis": "ocl_repay",
+            "ref": "manual_repay"
+        }
+        
+        u.setdefault("ownership", {}).setdefault("ledger", []).append(entry)
+        await _save_users(client, users)
+        
+        limits = await calculate_ocl_limit(u)
+        return {"ok": True, "repaid": amount, **limits}
+        
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
@@ -2734,12 +2827,29 @@ async def poo_verify(
     approved: bool,
     feedback: str = ""
 ):
+    """Verify PoO + auto-expand OCL"""
     result = await verify_poo_oracle(
         poo_id=poo_id,
         buyer_username=buyer_username,
         approved=approved,
         feedback=feedback
     )
+    
+    # ✅ AUTO-EXPAND OCL ON VERIFIED POO
+    if result.get("ok") and approved:
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            poo = result.get("poo", {})
+            agent = poo.get("agent")
+            
+            if agent:
+                u = _find_user(users, agent)
+                if u:
+                    # AUTO-EXPAND OCL
+                    expansion = await expand_ocl_on_poo(u, poo_id)
+                    await _save_users(client, users)
+                    result["ocl_expansion"] = expansion
+    
     return result
 
 @app.get("/poo/{poo_id}")
