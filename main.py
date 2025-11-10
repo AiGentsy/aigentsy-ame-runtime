@@ -182,7 +182,7 @@ try:
         SUPPORTED_CURRENCIES
     )
 except Exception as e:
-    print(f"⚠️ currency_engine import failed: {e}")
+    print(f" currency_engine import failed: {e}")
     def convert_currency(a, f, t, r=None): return {"ok": False, "error": "not_available"}
     def get_user_balance(u, c="USD"): return {"ok": False, "error": "not_available"}
     def credit_currency(u, a, c, r=""): return {"ok": False, "error": "not_available"}
@@ -203,7 +203,7 @@ try:
         retry_failed_payments
     )
 except Exception as e:
-    print(f"⚠️ batch_payments import failed: {e}")
+    print(f" batch_payments import failed: {e}")
     async def create_batch_payment(p, b=None, d=""): return {"ok": False}
     async def execute_batch_payment(b, u, c): return {"ok": False}
     async def generate_bulk_invoices(i, b=None): return {"ok": False}
@@ -225,7 +225,7 @@ try:
         export_tax_csv
     )
 except Exception as e:
-    print(f"⚠️ tax_reporting import failed: {e}")
+    print(f" tax_reporting import failed: {e}")
     def calculate_annual_earnings(u, y=None): return {"ok": False}
     def generate_1099_nec(u, y=None, p=None): return {"ok": False}
     def calculate_estimated_taxes(e, r="US"): return {"ok": False}
@@ -234,7 +234,30 @@ except Exception as e:
     def generate_annual_tax_summary(u, y=None): return {"ok": False}
     def batch_generate_1099s(u, y=None): return {"ok": False}
     def export_tax_csv(u, y=None): return {"ok": False}
-        
+
+# ============ R³ AUTOPILOT (KEEP-ME-GROWING) ============
+try:
+    from r3_autopilot import (
+        create_autopilot_strategy,
+        calculate_budget_allocation,
+        predict_roi,
+        execute_autopilot_spend,
+        rebalance_autopilot,
+        get_autopilot_recommendations,
+        AUTOPILOT_TIERS,
+        CHANNELS
+    )
+except Exception as e:
+    print(f" r3_autopilot import failed: {e}")
+    def create_autopilot_strategy(u, t="balanced", m=500): return {"ok": False}
+    def calculate_budget_allocation(b, t, h=None): return {"ok": False}
+    def predict_roi(c, s, h=None): return {"ok": False}
+    def execute_autopilot_spend(s, u): return {"ok": False}
+    def rebalance_autopilot(s, a=None): return {"ok": False}
+    def get_autopilot_recommendations(u, c=None): return {"ok": False}
+    AUTOPILOT_TIERS = {}
+    CHANNELS = {}
+    
 app = FastAPI()
 
 
@@ -4455,6 +4478,311 @@ async def export_tax_csv_endpoint(username: str, year: int = None):
         csv_data = export_tax_csv(user, year)
         
         return csv_data
+
+        # ============ R³ AUTOPILOT (KEEP-ME-GROWING) ============
+
+@app.get("/r3/autopilot/tiers")
+async def get_autopilot_tiers():
+    """Get available autopilot tiers"""
+    return {
+        "ok": True,
+        "tiers": AUTOPILOT_TIERS,
+        "channels": CHANNELS
+    }
+
+@app.get("/r3/autopilot/recommend")
+async def recommend_autopilot_tier(username: str):
+    """Get personalized autopilot recommendations"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        recommendations = get_autopilot_recommendations(user)
+        
+        return recommendations
+
+@app.post("/r3/autopilot/create")
+async def create_autopilot_strategy_endpoint(body: Dict = Body(...)):
+    """
+    Create an autopilot budget strategy
+    
+    Body:
+    {
+        "username": "agent1",
+        "tier": "balanced",
+        "monthly_budget": 500
+    }
+    """
+    username = body.get("username")
+    tier = body.get("tier", "balanced")
+    monthly_budget = float(body.get("monthly_budget", 500))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Create strategy
+        result = create_autopilot_strategy(user, tier, monthly_budget)
+        
+        if result["ok"]:
+            # Store strategy in user record
+            user.setdefault("r3_autopilot", {})
+            user["r3_autopilot"]["strategy"] = result["strategy"]
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/r3/autopilot/strategy")
+async def get_autopilot_strategy(username: str):
+    """Get user's current autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found", "message": "User has not created an autopilot strategy"}
+        
+        return {"ok": True, "strategy": strategy}
+
+@app.post("/r3/autopilot/allocate")
+async def calculate_allocation_endpoint(body: Dict = Body(...)):
+    """
+    Calculate optimal budget allocation
+    
+    Body:
+    {
+        "budget": 500,
+        "tier": "balanced",
+        "historical_performance": {...}
+    }
+    """
+    budget = float(body.get("budget", 500))
+    tier = body.get("tier", "balanced")
+    historical_performance = body.get("historical_performance")
+    
+    if tier not in AUTOPILOT_TIERS:
+        return {"error": "invalid_tier", "valid_tiers": list(AUTOPILOT_TIERS.keys())}
+    
+    tier_config = AUTOPILOT_TIERS[tier]
+    
+    allocation = calculate_budget_allocation(budget, tier_config, historical_performance)
+    
+    return {"ok": True, "allocation": allocation}
+
+@app.post("/r3/autopilot/predict")
+async def predict_channel_roi(body: Dict = Body(...)):
+    """
+    Predict ROI for a specific channel
+    
+    Body:
+    {
+        "channel": "google_ads",
+        "spend_amount": 200,
+        "historical_data": {...}
+    }
+    """
+    channel_id = body.get("channel")
+    spend_amount = float(body.get("spend_amount", 0))
+    historical_data = body.get("historical_data")
+    
+    if not channel_id:
+        return {"error": "channel required"}
+    
+    prediction = predict_roi(channel_id, spend_amount, historical_data)
+    
+    return prediction
+
+@app.post("/r3/autopilot/execute")
+async def execute_autopilot_spend_endpoint(body: Dict = Body(...)):
+    """
+    Execute the autopilot spend for current period
+    
+    Body:
+    {
+        "username": "agent1"
+    }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Get strategy
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        # Execute spend
+        result = execute_autopilot_spend(strategy, user)
+        
+        if result["ok"]:
+            # Update user record
+            user["r3_autopilot"]["strategy"] = strategy
+            user["r3_autopilot"]["last_execution"] = _now()
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/r3/autopilot/rebalance")
+async def rebalance_autopilot_endpoint(body: Dict = Body(...)):
+    """
+    Rebalance autopilot strategy based on performance
+    
+    Body:
+    {
+        "username": "agent1",
+        "actual_performance": {
+            "google_ads": {"roi": 2.1, "revenue": 420},
+            "facebook_ads": {"roi": 1.4, "revenue": 168}
+        }
+    }
+    """
+    username = body.get("username")
+    actual_performance = body.get("actual_performance")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Get strategy
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        # Rebalance
+        result = rebalance_autopilot(strategy, actual_performance)
+        
+        if result["ok"]:
+            # Update user record
+            user["r3_autopilot"]["strategy"] = strategy
+            user["r3_autopilot"]["last_rebalance"] = _now()
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/r3/autopilot/pause")
+async def pause_autopilot(username: str):
+    """Pause autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        strategy["status"] = "paused"
+        strategy["paused_at"] = _now()
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "message": "Autopilot paused", "strategy": strategy}
+
+@app.post("/r3/autopilot/resume")
+async def resume_autopilot(username: str):
+    """Resume paused autopilot strategy"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        strategy["status"] = "active"
+        strategy["resumed_at"] = _now()
+        
+        await _save_users(client, users)
+        
+        return {"ok": True, "message": "Autopilot resumed", "strategy": strategy}
+
+@app.get("/r3/autopilot/performance")
+async def get_autopilot_performance(username: str):
+    """Get autopilot performance summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        strategy = user.get("r3_autopilot", {}).get("strategy")
+        
+        if not strategy:
+            return {"error": "no_strategy_found"}
+        
+        performance = strategy.get("performance", {})
+        
+        # Calculate actual ROI from ledger
+        ledger = user.get("ownership", {}).get("ledger", [])
+        
+        total_autopilot_spend = 0.0
+        total_autopilot_revenue = 0.0
+        
+        for entry in ledger:
+            basis = entry.get("basis", "")
+            
+            if basis == "r3_autopilot_spend":
+                total_autopilot_spend += abs(float(entry.get("amount", 0)))
+            
+            # Revenue from autopilot campaigns (would need tracking)
+            if basis == "revenue" and entry.get("source") == "r3_autopilot":
+                total_autopilot_revenue += float(entry.get("amount", 0))
+        
+        actual_roi = (total_autopilot_revenue / total_autopilot_spend) if total_autopilot_spend > 0 else 0
+        
+        return {
+            "ok": True,
+            "strategy_id": strategy["id"],
+            "tier": strategy["tier"],
+            "performance": {
+                **performance,
+                "total_spend": round(total_autopilot_spend, 2),
+                "total_revenue": round(total_autopilot_revenue, 2),
+                "actual_roi": round(actual_roi, 2)
+            },
+            "status": strategy["status"]
+        }
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
