@@ -3806,7 +3806,7 @@ async def poo_verify(
     poo_id: str,
     buyer_username: str,
     approved: bool,
-    feedback: str = ""
+    feedback: str = "",
     outcome_rating: str = "good" 
 ):
     """Verify PoO + auto-capture escrow + return bond + award bonus"""
