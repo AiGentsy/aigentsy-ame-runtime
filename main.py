@@ -4279,21 +4279,126 @@ async def clone_register(
         generation=generation
     )
     return result
-#@app.post("/intent/bid")
-async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h"):
+
+@app.post("/intent/bid")
+async def intent_bid(
+    agent: str,
+    intent_id: str,
+    price: Optional[float] = None,  # ✅ NOW OPTIONAL - ARM can suggest
+    ttr: str = "48h"
+):
+    """Bid on intent with ARM price recommendation"""
     users, client = await _get_users_client()
+    
+    # Find intent
     buyer_user, intent = _global_find_intent(users, intent_id)
-    if not intent: return {"error":"intent not found"}
-    if intent.get("status") != "open": return {"error":"intent closed"}
-    bid = {"id": _uid(), "agent": agent, "price": float(price), "ttr": ttr, "ts": _now()}
+    if not intent:
+        return {"error": "intent not found"}
+    
+    if intent.get("status") != "open":
+        return {"error": "intent closed"}
+    
+    # Find agent
+    agent_user = _find_user(users, agent)
+    if not agent_user:
+        return {"error": "agent not found"}
+    
+    # ✅ ARM PRICE RECOMMENDATION (if price not provided)
+    arm_recommendation = None
+    
+    if not price:
+        try:
+            outcome_score = int(agent_user.get("outcomeScore", 0))
+            existing_bids = intent.get("bids", [])
+            
+            arm_recommendation = calculate_dynamic_bid_price(
+                intent=intent,
+                agent_outcome_score=outcome_score,
+                existing_bids=existing_bids
+            )
+            
+            if arm_recommendation.get("recommended_bid"):
+                price = arm_recommendation["recommended_bid"]
+                print(f"💡 ARM recommended price: ${price} for {agent} (tier: {calculate_pricing_tier(outcome_score)['tier']})")
+            else:
+                # Agent's tier exceeds budget or other issue
+                return {
+                    "error": "cannot_bid",
+                    "reason": arm_recommendation.get("rationale"),
+                    "suggestion": arm_recommendation.get("suggestion"),
+                    "arm_recommendation": arm_recommendation
+                }
+        except Exception as e:
+            print(f"⚠️ ARM price calculation failed: {e}")
+            # Continue without ARM - require manual price
+            if not price:
+                return {
+                    "error": "price_required",
+                    "message": "ARM price calculation failed. Please provide a manual price."
+                }
+    
+    # ✅ PRICE VALIDATION
+    if not price or price <= 0:
+        return {"error": "invalid_price", "price": price}
+    
+    # Check if price exceeds intent budget
+    intent_budget = float(intent.get("budget", 999999))
+    if price > intent_budget:
+        return {
+            "error": "price_exceeds_budget",
+            "your_price": price,
+            "buyer_budget": intent_budget,
+            "suggestion": f"Reduce price to ${intent_budget} or below"
+        }
+    
+    # ✅ CREATE BID
+    delivery_hours = int(ttr.replace("h", "")) if "h" in ttr else 48
+    
+    bid = {
+        "id": _uid(),
+        "agent": agent,
+        "price": float(price),
+        "price_usd": float(price),  
+        "ttr": ttr,
+        "delivery_hours": delivery_hours,  
+        "ts": _now(),
+        "submitted_at": _now()
+    }
+    
+    # ✅ ADD ARM METADATA (if used)
+    if arm_recommendation:
+        bid["arm_pricing"] = {
+            "recommended": arm_recommendation.get("recommended_bid"),
+            "tier": calculate_pricing_tier(agent_user.get("outcomeScore", 0))["tier"],
+            "outcome_score": agent_user.get("outcomeScore", 0),
+            "adjustment": arm_recommendation.get("adjustment")
+        }
+    
+    # Add to intent
     intent.setdefault("bids", []).append(bid)
+    
     await _save_users(client, users)
+    
+    # Publish event
     try:
-        await publish({"type":"intent_bid","intent_id":intent_id,"agent":agent,"price":price})
+        await publish({
+            "type": "intent_bid",
+            "intent_id": intent_id,
+            "agent": agent,
+            "price": price,
+            "arm_used": arm_recommendation is not None,
+            "pricing_tier": calculate_pricing_tier(agent_user.get("outcomeScore", 0))["tier"] if arm_recommendation else None
+        })
     except Exception:
         pass
-    return {"ok": True, "bid": bid}
-
+    
+    return {
+        "ok": True,
+        "bid": bid,
+        "arm_recommendation": arm_recommendation,
+        "message": "Bid submitted successfully"
+    }
+    
 @app.post("/intent/award")
 async def intent_award(body: Dict = Body(...)):
     """Award intent + create escrow + stake bond + collect insurance + factoring advance"""
