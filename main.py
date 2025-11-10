@@ -3864,7 +3864,137 @@ async def get_market_rates(service_type: str = "custom"):
         "service_type": service_type,
         "tiers": tiers_pricing
     }
+
+# ============ MULTI-CURRENCY SUPPORT ============
+
+@app.get("/currency/rates")
+async def get_exchange_rates():
+    """Get current exchange rates"""
+    live_rates = await fetch_live_rates()
     
+    return {
+        "ok": True,
+        "rates": live_rates,
+        "supported_currencies": SUPPORTED_CURRENCIES,
+        "aigx_rates": {
+            "USD": 1.0,
+            "EUR": 0.92,
+            "GBP": 0.79,
+            "CREDITS": 100
+        }
+    }
+
+@app.post("/currency/convert")
+async def convert_currency_endpoint(body: Dict = Body(...)):
+    """Convert amount from one currency to another"""
+    amount = float(body.get("amount", 0))
+    from_currency = body.get("from_currency", "USD")
+    to_currency = body.get("to_currency", "USD")
+    
+    if amount <= 0:
+        return {"error": "invalid_amount", "amount": amount}
+    
+    result = convert_currency(amount, from_currency, to_currency)
+    return result
+
+@app.get("/currency/balance")
+async def get_currency_balance(username: str, currency: str = "USD"):
+    """Get user's balance in specified currency"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = get_user_balance(user, currency)
+        return result
+
+@app.post("/currency/credit")
+async def credit_user_currency(body: Dict = Body(...)):
+    """Credit user's account in any supported currency"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    currency = body.get("currency", "USD")
+    reason = body.get("reason", "credit")
+    
+    if not all([username, amount]):
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = credit_currency(user, amount, currency, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/currency/debit")
+async def debit_user_currency(body: Dict = Body(...)):
+    """Debit user's account in any supported currency"""
+    username = body.get("username")
+    amount = float(body.get("amount", 0))
+    currency = body.get("currency", "USD")
+    reason = body.get("reason", "debit")
+    
+    if not all([username, amount]):
+        return {"error": "username and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = debit_currency(user, amount, currency, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/currency/transfer")
+async def transfer_between_users(body: Dict = Body(...)):
+    """Transfer funds between users with currency conversion"""
+    from_username = body.get("from_username")
+    to_username = body.get("to_username")
+    amount = float(body.get("amount", 0))
+    from_currency = body.get("from_currency", "USD")
+    to_currency = body.get("to_currency", "USD")
+    reason = body.get("reason", "transfer")
+    
+    if not all([from_username, to_username, amount]):
+        return {"error": "from_username, to_username, and amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        from_user = _find_user(users, from_username)
+        to_user = _find_user(users, to_username)
+        
+        if not from_user:
+            return {"error": "from_user not found"}
+        
+        if not to_user:
+            return {"error": "to_user not found"}
+        
+        result = transfer_with_conversion(
+            from_user, to_user, amount,
+            from_currency, to_currency, reason
+        )
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+        
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
