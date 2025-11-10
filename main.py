@@ -4337,6 +4337,124 @@ async def get_analytics_dashboard():
             "alerts": alerts,
             "dashboard_generated_at": _now()
         }
+
+# ============ AUTOMATED TAX REPORTING ============
+
+@app.get("/tax/earnings")
+async def get_annual_earnings(username: str, year: int = None):
+    """Get agent's annual earnings for tax purposes"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        earnings = calculate_annual_earnings(user, year)
+        
+        return {"ok": True, **earnings}
+
+@app.get("/tax/1099")
+async def get_1099_nec(username: str, year: int = None):
+    """Generate 1099-NEC form for agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = generate_1099_nec(user, year)
+        
+        return result
+
+@app.get("/tax/estimated")
+async def get_estimated_taxes(username: str, year: int = None, region: str = "US"):
+    """Calculate estimated tax liability"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        earnings = calculate_annual_earnings(user, year)
+        taxes = calculate_estimated_taxes(earnings, region)
+        
+        return taxes
+
+@app.get("/tax/quarterly")
+async def get_quarterly_report(username: str, year: int, quarter: int):
+    """
+    Generate quarterly tax report
+    
+    quarter: 1, 2, 3, or 4
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        report = generate_quarterly_report(user, year, quarter)
+        
+        return {"ok": True, **report}
+
+@app.get("/tax/vat")
+async def get_vat_liability(username: str, year: int, quarter: int = None):
+    """Calculate VAT liability for EU/UK agents"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        vat = calculate_vat_liability(user, year, quarter)
+        
+        return {"ok": True, **vat}
+
+@app.get("/tax/summary")
+async def get_annual_tax_summary_endpoint(username: str, year: int = None):
+    """Get comprehensive annual tax summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        summary = generate_annual_tax_summary(user, year)
+        
+        return {"ok": True, **summary}
+
+@app.get("/tax/batch_1099")
+async def batch_generate_1099s_endpoint(year: int = None):
+    """
+    Generate 1099s for all eligible agents
+    Admin only
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = batch_generate_1099s(users, year)
+        
+        return result
+
+@app.get("/tax/export_csv")
+async def export_tax_csv_endpoint(username: str, year: int = None):
+    """Export tax data as CSV for accountant"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        csv_data = export_tax_csv(user, year)
+        
+        return csv_data
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
