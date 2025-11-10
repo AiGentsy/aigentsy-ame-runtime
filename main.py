@@ -211,6 +211,29 @@ except Exception as e:
     async def schedule_recurring_payment(p, s="monthly", d=None): return {"ok": False}
     def generate_payment_report(b, f="summary"): return {"ok": False}
     async def retry_failed_payments(b, u, c): return {"ok": False}
+
+# ============ AUTOMATED TAX REPORTING ============
+try:
+    from tax_reporting import (
+        calculate_annual_earnings,
+        generate_1099_nec,
+        calculate_estimated_taxes,
+        generate_quarterly_report,
+        calculate_vat_liability,
+        generate_annual_tax_summary,
+        batch_generate_1099s,
+        export_tax_csv
+    )
+except Exception as e:
+    print(f"⚠️ tax_reporting import failed: {e}")
+    def calculate_annual_earnings(u, y=None): return {"ok": False}
+    def generate_1099_nec(u, y=None, p=None): return {"ok": False}
+    def calculate_estimated_taxes(e, r="US"): return {"ok": False}
+    def generate_quarterly_report(u, y, q): return {"ok": False}
+    def calculate_vat_liability(u, y, q=None): return {"ok": False}
+    def generate_annual_tax_summary(u, y=None): return {"ok": False}
+    def batch_generate_1099s(u, y=None): return {"ok": False}
+    def export_tax_csv(u, y=None): return {"ok": False}
         
 app = FastAPI()
 
