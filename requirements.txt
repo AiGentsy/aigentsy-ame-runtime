@@ -9,4 +9,4 @@ python-dotenv
 fastapi
 uvicorn
 requests
-
+stripe>=8.0.0
