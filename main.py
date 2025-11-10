@@ -132,11 +132,11 @@ async def auto_release_escrows_job():
                             result = await auto_timeout_release(intent, timeout_days=7)
                             
                             if result.get("ok"):
-                                print(f"✅ Auto-released escrow for intent {intent.get('id')}")
+                                print(f"Auto-released escrow for intent {intent.get('id')}")
                 
                 await _save_users(client, users)
         except Exception as e:
-            print(f"❌ Auto-release job error: {e}")
+            print(f" Auto-release job error: {e}")
         
         # Run every 6 hours
         await asyncio.sleep(6 * 3600)
@@ -145,7 +145,7 @@ async def auto_release_escrows_job():
 async def startup_event():
     """Start background tasks"""
     asyncio.create_task(auto_bid_background())
-    asyncio.create_task(auto_release_escrows_job())  # ✅ ADD THIS
+    asyncio.create_task(auto_release_escrows_job())  # ADD THIS
     print("Background tasks started: auto-bid, auto-release")
     
 logger = logging.getLogger("aigentsy")
