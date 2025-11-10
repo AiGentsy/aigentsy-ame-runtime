@@ -4051,7 +4051,7 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
 
 @app.post("/intent/award")
 async def intent_award(body: Dict = Body(...)):
-    """Award intent + create escrow + stake bond + collect insurance"""
+    """Award intent + create escrow + stake bond + collect insurance + factoring advance"""
     intent_id = body.get("intent_id")
     bid_id = body.get("bid_id")
     
@@ -4138,7 +4138,20 @@ async def intent_award(body: Dict = Body(...)):
             print(f"⚠️ Insurance collection failed: {e}")
             insurance_result = {"ok": False, "error": str(e), "warning": "Insurance collection failed"}
         
-        # ✅ 2. STAKE BOND
+        # ✅ 2. REQUEST FACTORING ADVANCE
+        factoring_result = {"ok": False, "net_advance": 0, "holdback": 0}
+        
+        try:
+            factoring_result = await request_factoring_advance(agent_user, intent)
+            
+            if not factoring_result["ok"]:
+                factoring_result["warning"] = factoring_result.get("error", "Factoring unavailable")
+                print(f"⚠️ Factoring unavailable: {factoring_result.get('error')}")
+        except Exception as e:
+            print(f"⚠️ Factoring request failed: {e}")
+            factoring_result = {"ok": False, "error": str(e), "warning": "Factoring request failed"}
+        
+        # ✅ 3. STAKE BOND
         bond_result = {"ok": False, "bond_amount": 0}
         
         try:
@@ -4150,7 +4163,7 @@ async def intent_award(body: Dict = Body(...)):
             print(f"⚠️ Bond staking failed: {e}")
             bond_result = {"ok": False, "error": str(e), "warning": "Bond staking failed"}
         
-        # ✅ 3. CREATE ESCROW
+        # ✅ 4. CREATE ESCROW
         escrow_result = {"ok": False}
         
         try:
@@ -4188,7 +4201,10 @@ async def intent_award(body: Dict = Body(...)):
                 "bond_staked": bond_result.get("ok", False),
                 "bond_amount": bond_result.get("bond_amount", 0),
                 "insurance_collected": insurance_result.get("ok", False),
-                "insurance_fee": insurance_result.get("fee", 0)
+                "insurance_fee": insurance_result.get("fee", 0),
+                "factoring_advanced": factoring_result.get("ok", False),
+                "factoring_amount": factoring_result.get("net_advance", 0),
+                "factoring_tier": factoring_result.get("factoring_tier", "new")
             })
         except Exception as e:
             print(f"⚠️ Event publish failed: {e}")
@@ -4199,13 +4215,31 @@ async def intent_award(body: Dict = Body(...)):
             "escrow": escrow_result,
             "bond": bond_result,
             "insurance": insurance_result,
+            "factoring": factoring_result,
             "summary": {
                 "order_value": order_value,
                 "insurance_fee": insurance_result.get("fee", 0),
                 "bond_staked": bond_result.get("bond_amount", 0),
+                "factoring_advance": factoring_result.get("net_advance", 0),
+                "factoring_fee": factoring_result.get("factoring_fee", 0),
+                "factoring_tier": factoring_result.get("factoring_tier", "new"),
+                "agent_receives_now": factoring_result.get("net_advance", 0),
+                "agent_receives_on_delivery": factoring_result.get("holdback", 0),
                 "escrow_authorized": escrow_result.get("ok", False)
+            },
+            "agent_net_summary": {
+                "immediate_cash": factoring_result.get("net_advance", 0),
+                "costs_paid": insurance_result.get("fee", 0) + factoring_result.get("factoring_fee", 0),
+                "bond_staked_aigx": bond_result.get("bond_amount", 0),
+                "remaining_on_delivery": factoring_result.get("holdback", 0),
+                "net_immediate": round(
+                    factoring_result.get("net_advance", 0) - 
+                    insurance_result.get("fee", 0), 
+                    2
+                )
             }
         }
+        
 
 @app.post("/productize")
 async def productize(username: str, url: Optional[str] = None, file_meta: dict = None):
