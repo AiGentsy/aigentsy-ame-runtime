@@ -3423,6 +3423,128 @@ async def claim_annual_refund(username: str):
         
         return result
 
+# ============ AGENT FACTORING LINE ============
+
+from agent_factoring import (
+    request_factoring_advance,
+    settle_factoring,
+    calculate_factoring_eligibility,
+    calculate_factoring_tier,
+    calculate_outstanding_factoring
+)
+
+@app.get("/factoring/eligibility")
+async def factoring_eligibility(username: str):
+    """Check agent's factoring eligibility and tier"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        result = await calculate_factoring_eligibility(user)
+        return result
+
+@app.get("/factoring/outstanding")
+async def factoring_outstanding(username: str):
+    """Get agent's outstanding factoring balance"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        outstanding = calculate_outstanding_factoring(user)
+        tier_info = calculate_factoring_tier(user)
+        
+        return {
+            "ok": True,
+            "outstanding": outstanding,
+            "tier": tier_info["tier"],
+            "rate": tier_info["rate"]
+        }
+
+@app.post("/factoring/request")
+async def request_factoring(body: Dict = Body(...)):
+    """
+    Request factoring advance (auto-called on intent award)
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    
+    if not all([username, intent_id]):
+        return {"error": "username and intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Request advance
+        result = await request_factoring_advance(user, intent)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/factoring/settle")
+async def settle_factoring_endpoint(body: Dict = Body(...)):
+    """
+    Settle factoring when buyer pays (auto-called on revenue recognition)
+    """
+    username = body.get("username")
+    intent_id = body.get("intent_id")
+    payment_received = float(body.get("payment_received", 0))
+    
+    if not all([username, intent_id, payment_received]):
+        return {"error": "username, intent_id, payment_received required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        user = _find_user(users, username)
+        
+        if not user:
+            return {"error": "user not found"}
+        
+        # Find intent
+        intent = None
+        for u in users:
+            for i in u.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Settle factoring
+        result = await settle_factoring(user, intent, payment_received)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+        
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
