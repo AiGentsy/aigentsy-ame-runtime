@@ -3929,7 +3929,7 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
 
 @app.post("/intent/award")
 async def intent_award(body: Dict = Body(...)):
-    """Award intent + create escrow + stake bond"""
+    """Award intent + create escrow + stake bond + collect insurance"""
     intent_id = body.get("intent_id")
     bid_id = body.get("bid_id")
     
@@ -3974,35 +3974,84 @@ async def intent_award(body: Dict = Body(...)):
         intent["status"] = "ACCEPTED"
         intent["awarded_bid"] = chosen_bid
         intent["awarded_at"] = _now()
-        intent["accepted_at"] = _now()  
+        intent["accepted_at"] = _now()
         intent["agent"] = agent_username
         intent["delivery_hours"] = chosen_bid.get("delivery_hours", 48)
         intent["price_usd"] = chosen_bid.get("price", 0)
         
-        #  AUTO-STAKE BOND
-        bond_result = await stake_bond(agent_user, intent)
+        order_value = float(chosen_bid.get("price", 0))
         
-        if not bond_result["ok"]:
-            # Don't block award if bond fails, just warn
-            bond_result["warning"] = "Agent needs more AIGx for performance bond"
+        # ✅ 1. COLLECT INSURANCE (0.5% fee to pool)
+        insurance_result = {"ok": False, "fee": 0}
         
-        #  AUTO-CREATE ESCROW
-        buyer_email = buyer_user.get("consent", {}).get("username") + "@aigentsy.com"
-        escrow_result = await create_payment_intent(
-            amount=float(chosen_bid.get("price", 0)),
-            buyer_email=buyer_email,
-            intent_id=intent_id,
-            metadata={
-                "buyer": _uname(buyer_user),
-                "agent": agent_username
+        # Find or create insurance pool
+        pool_user = next((u for u in users if _uname(u) == "insurance_pool"), None)
+        if not pool_user:
+            pool_user = {
+                "consent": {"username": "insurance_pool", "agreed": True, "timestamp": _now()},
+                "username": "insurance_pool",
+                "ownership": {"aigx": 0, "ledger": []},
+                "role": "system",
+                "created_at": _now()
             }
-        )
+            users.append(pool_user)
         
-        if escrow_result["ok"]:
-            intent["payment_intent_id"] = escrow_result["payment_intent_id"]
-            intent["escrow_status"] = "authorized"
-            intent["escrow_created_at"] = _now()
+        try:
+            insurance_result = await collect_insurance(agent_user, intent, order_value)
+            
+            if insurance_result["ok"]:
+                # Credit insurance pool
+                fee = insurance_result["fee"]
+                pool_user["ownership"]["aigx"] = float(pool_user["ownership"].get("aigx", 0)) + fee
+                pool_user["ownership"].setdefault("ledger", []).append({
+                    "ts": _now(),
+                    "amount": fee,
+                    "currency": "AIGx",
+                    "basis": "insurance_premium",
+                    "agent": agent_username,
+                    "ref": intent_id,
+                    "order_value": order_value
+                })
+        except Exception as e:
+            print(f"⚠️ Insurance collection failed: {e}")
+            insurance_result = {"ok": False, "error": str(e), "warning": "Insurance collection failed"}
         
+        # ✅ 2. STAKE BOND
+        bond_result = {"ok": False, "bond_amount": 0}
+        
+        try:
+            bond_result = await stake_bond(agent_user, intent)
+            
+            if not bond_result["ok"]:
+                bond_result["warning"] = "Agent needs more AIGx for performance bond"
+        except Exception as e:
+            print(f"⚠️ Bond staking failed: {e}")
+            bond_result = {"ok": False, "error": str(e), "warning": "Bond staking failed"}
+        
+        # ✅ 3. CREATE ESCROW
+        escrow_result = {"ok": False}
+        
+        try:
+            buyer_email = buyer_user.get("consent", {}).get("username") + "@aigentsy.com"
+            escrow_result = await create_payment_intent(
+                amount=order_value,
+                buyer_email=buyer_email,
+                intent_id=intent_id,
+                metadata={
+                    "buyer": _uname(buyer_user),
+                    "agent": agent_username
+                }
+            )
+            
+            if escrow_result["ok"]:
+                intent["payment_intent_id"] = escrow_result["payment_intent_id"]
+                intent["escrow_status"] = "authorized"
+                intent["escrow_created_at"] = _now()
+        except Exception as e:
+            print(f"⚠️ Escrow creation failed: {e}")
+            escrow_result = {"ok": False, "error": str(e)}
+        
+        # Save all changes
         await _save_users(client, users)
         
         # Publish event
@@ -4012,18 +4061,28 @@ async def intent_award(body: Dict = Body(...)):
                 "intent_id": intent_id,
                 "agent": agent_username,
                 "buyer": _uname(buyer_user),
+                "order_value": order_value,
                 "escrow_created": escrow_result["ok"],
                 "bond_staked": bond_result.get("ok", False),
-                "bond_amount": bond_result.get("bond_amount", 0)
+                "bond_amount": bond_result.get("bond_amount", 0),
+                "insurance_collected": insurance_result.get("ok", False),
+                "insurance_fee": insurance_result.get("fee", 0)
             })
-        except:
-            pass
+        except Exception as e:
+            print(f"⚠️ Event publish failed: {e}")
         
         return {
             "ok": True,
             "award": chosen_bid,
             "escrow": escrow_result,
-            "bond": bond_result
+            "bond": bond_result,
+            "insurance": insurance_result,
+            "summary": {
+                "order_value": order_value,
+                "insurance_fee": insurance_result.get("fee", 0),
+                "bond_staked": bond_result.get("bond_amount", 0),
+                "escrow_authorized": escrow_result.get("ok", False)
+            }
         }
 
 @app.post("/productize")
