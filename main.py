@@ -190,7 +190,28 @@ except Exception as e:
     def transfer_with_conversion(f, t, a, fc, tc, r=""): return {"ok": False, "error": "not_available"}
     async def fetch_live_rates(): return {}
     SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "AIGx", "CREDITS"]
-    
+
+# ============ BATCH PAYMENT PROCESSING ============
+try:
+    from batch_payments import (
+        create_batch_payment,
+        execute_batch_payment,
+        generate_bulk_invoices,
+        batch_revenue_recognition,
+        schedule_recurring_payment,
+        generate_payment_report,
+        retry_failed_payments
+    )
+except Exception as e:
+    print(f"⚠️ batch_payments import failed: {e}")
+    async def create_batch_payment(p, b=None, d=""): return {"ok": False}
+    async def execute_batch_payment(b, u, c): return {"ok": False}
+    async def generate_bulk_invoices(i, b=None): return {"ok": False}
+    async def batch_revenue_recognition(i, u, p=0.05): return {"ok": False}
+    async def schedule_recurring_payment(p, s="monthly", d=None): return {"ok": False}
+    def generate_payment_report(b, f="summary"): return {"ok": False}
+    async def retry_failed_payments(b, u, c): return {"ok": False}
+        
 app = FastAPI()
 
 
@@ -3994,7 +4015,180 @@ async def transfer_between_users(body: Dict = Body(...)):
             await _save_users(client, users)
         
         return result
+
+# ============ BATCH PAYMENT PROCESSING ============
+
+@app.post("/batch/payment/create")
+async def create_batch_payment_endpoint(body: Dict = Body(...)):
+    """
+    Create a batch payment for multiple agents
+    
+    Body:
+    {
+        "payments": [
+            {"username": "agent1", "amount": 100, "currency": "USD", "reason": "job_123"},
+            {"username": "agent2", "amount": 50, "currency": "EUR", "reason": "job_456"}
+        ],
+        "description": "Weekly agent payouts"
+    }
+    """
+    payments = body.get("payments", [])
+    description = body.get("description", "")
+    batch_id = body.get("batch_id")
+    
+    if not payments:
+        return {"error": "no_payments_provided"}
+    
+    batch = await create_batch_payment(payments, batch_id, description)
+    
+    return {"ok": True, "batch": batch}
+
+@app.post("/batch/payment/execute")
+async def execute_batch_payment_endpoint(body: Dict = Body(...)):
+    """Execute a batch payment - credit all agents"""
+    batch_id = body.get("batch_id")
+    batch = body.get("batch")
+    
+    if not batch:
+        return {"error": "batch_required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
         
+        # Execute batch
+        result = await execute_batch_payment(batch, users, credit_currency)
+        
+        # Save users
+        await _save_users(client, users)
+        
+        return result
+
+@app.post("/batch/invoices/generate")
+async def generate_bulk_invoices_endpoint(body: Dict = Body(...)):
+    """
+    Generate invoices for multiple completed intents
+    
+    Body:
+    {
+        "intent_ids": ["intent_123", "intent_456"]
+    }
+    """
+    intent_ids = body.get("intent_ids", [])
+    batch_id = body.get("batch_id")
+    
+    if not intent_ids:
+        return {"error": "no_intent_ids_provided"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find all intents
+        intents = []
+        for user in users:
+            for intent in user.get("intents", []):
+                if intent.get("id") in intent_ids:
+                    intents.append(intent)
+        
+        # Generate invoices
+        result = await generate_bulk_invoices(intents, batch_id)
+        
+        return result
+
+@app.post("/batch/revenue/recognize")
+async def batch_revenue_recognition_endpoint(body: Dict = Body(...)):
+    """
+    Process revenue recognition for multiple invoices at once
+    
+    Body:
+    {
+        "invoice_ids": ["inv_123", "inv_456"],
+        "platform_fee_rate": 0.05
+    }
+    """
+    invoice_ids = body.get("invoice_ids", [])
+    platform_fee_rate = float(body.get("platform_fee_rate", 0.05))
+    
+    if not invoice_ids:
+        return {"error": "no_invoice_ids_provided"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        # Find all invoices
+        invoices = []
+        for user in users:
+            for invoice in user.get("invoices", []):
+                if invoice.get("id") in invoice_ids:
+                    invoices.append(invoice)
+        
+        # Process batch revenue recognition
+        result = await batch_revenue_recognition(invoices, users, platform_fee_rate)
+        
+        # Save users
+        await _save_users(client, users)
+        
+        return result
+
+@app.post("/batch/payment/schedule")
+async def schedule_recurring_payment_endpoint(body: Dict = Body(...)):
+    """
+    Schedule recurring payment (monthly stipends, etc.)
+    
+    Body:
+    {
+        "payment_template": {
+            "username": "agent1",
+            "amount": 1000,
+            "currency": "USD",
+            "reason": "monthly_stipend"
+        },
+        "schedule": "monthly",
+        "start_date": "2025-12-01T00:00:00Z"
+    }
+    """
+    payment_template = body.get("payment_template")
+    schedule = body.get("schedule", "monthly")
+    start_date = body.get("start_date")
+    
+    if not payment_template:
+        return {"error": "payment_template_required"}
+    
+    result = await schedule_recurring_payment(payment_template, schedule, start_date)
+    
+    return result
+
+@app.get("/batch/payment/report")
+async def get_batch_payment_report(batch_id: str, format: str = "summary"):
+    """
+    Get payment report for a batch
+    
+    format: summary | detailed | csv
+    """
+    # This is a simplified version - in production, you'd load batch from database
+    return {
+        "ok": True,
+        "message": "In production, load batch from storage",
+        "batch_id": batch_id,
+        "format": format
+    }
+
+@app.post("/batch/payment/retry")
+async def retry_failed_payments_endpoint(body: Dict = Body(...)):
+    """Retry all failed payments from a batch"""
+    batch = body.get("batch")
+    
+    if not batch:
+        return {"error": "batch_required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        result = await retry_failed_payments(batch, users, credit_currency)
+        
+        await _save_users(client, users)
+        
+        return result
+
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
     users, client = await _get_users_client()
