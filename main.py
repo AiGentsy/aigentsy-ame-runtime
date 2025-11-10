@@ -284,6 +284,33 @@ except Exception as e:
     def get_active_tests(t): return []
     def suggest_next_upgrade(u, e): return {"ok": False}
     UPGRADE_TYPES = {}
+
+# ============ DARK-POOL PERFORMANCE AUCTIONS ============
+try:
+    from dark_pool import (
+        anonymize_agent,
+        get_reputation_tier,
+        create_dark_pool_auction,
+        submit_dark_pool_bid,
+        calculate_bid_score,
+        close_dark_pool_auction,
+        reveal_agent_identity,
+        calculate_dark_pool_metrics,
+        get_agent_dark_pool_history,
+        REPUTATION_TIERS
+    )
+except Exception as e:
+    print(f"⚠️ dark_pool import failed: {e}")
+    def anonymize_agent(a, auc): return "agent_anonymous"
+    def get_reputation_tier(s): return {"tier": "silver", "badge": "🥈"}
+    def create_dark_pool_auction(i, m="silver", d=24, r=True): return {"ok": False}
+    def submit_dark_pool_bid(auc, u, b, d, p=""): return {"ok": False}
+    def calculate_bid_score(b, w=None): return 0.5
+    def close_dark_pool_auction(auc, m="reputation_weighted_price"): return {"ok": False}
+    def reveal_agent_identity(auc, anon, req): return {"ok": False}
+    def calculate_dark_pool_metrics(aucs): return {"ok": False}
+    def get_agent_dark_pool_history(a, aucs): return {"ok": False}
+    REPUTATION_TIERS = {}
     
 app = FastAPI()
 
