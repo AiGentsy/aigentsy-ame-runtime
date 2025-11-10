@@ -112,7 +112,42 @@ async def startup_event():
     asyncio.create_task(auto_bid_background())
     print("Auto-bid background task started")
 # ========== END BLOCK ==========
+async def auto_release_escrows_job():
+    """
+    Runs every 6 hours
+    Auto-releases escrows after 7-day timeout with no disputes
+    """
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                users = await _load_users(client)
+                
+                for user in users:
+                    for intent in user.get("intents", []):
+                        if intent.get("status") == "DELIVERED" and \
+                           intent.get("payment_intent_id") and \
+                           not intent.get("payment_captured"):
+                            
+                            # Check timeout
+                            result = await auto_timeout_release(intent, timeout_days=7)
+                            
+                            if result.get("ok"):
+                                print(f"✅ Auto-released escrow for intent {intent.get('id')}")
+                
+                await _save_users(client, users)
+        except Exception as e:
+            print(f"❌ Auto-release job error: {e}")
+        
+        # Run every 6 hours
+        await asyncio.sleep(6 * 3600)
 
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    asyncio.create_task(auto_bid_background())
+    asyncio.create_task(auto_release_escrows_job())  # ✅ ADD THIS
+    print("Background tasks started: auto-bid, auto-release")
+    
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 
@@ -3037,7 +3072,7 @@ async def poo_verify(
     approved: bool,
     feedback: str = ""
 ):
-    """Verify PoO + auto-expand OCL"""
+    """Verify PoO + auto-capture escrow"""
     result = await verify_poo_oracle(
         poo_id=poo_id,
         buyer_username=buyer_username,
@@ -3045,22 +3080,38 @@ async def poo_verify(
         feedback=feedback
     )
     
-    # ✅ AUTO-EXPAND OCL ON VERIFIED POO
     if result.get("ok") and approved:
         async with httpx.AsyncClient(timeout=20) as client:
             users = await _load_users(client)
             poo = result.get("poo", {})
+            intent_id = poo.get("intent_id")
             agent = poo.get("agent")
             
+            # ✅ AUTO-CAPTURE ESCROW ON VERIFIED POO
+            if intent_id:
+                # Find intent
+                for user in users:
+                    for intent in user.get("intents", []):
+                        if intent.get("id") == intent_id:
+                            # Mark as delivered
+                            intent["status"] = "DELIVERED"
+                            intent["delivered_at"] = _now()
+                            
+                            # Auto-capture payment
+                            capture_result = await auto_capture_on_delivered(intent)
+                            result["escrow_capture"] = capture_result
+                            break
+            
+            # OCL expansion (existing logic)
             if agent:
                 u = _find_user(users, agent)
                 if u:
-                    # AUTO-EXPAND OCL
                     expansion = await expand_ocl_on_poo(u, poo_id)
                     await _save_users(client, users)
                     result["ocl_expansion"] = expansion
     
     return result
+    
 
 @app.get("/poo/{poo_id}")
 async def poo_get(poo_id: str):
@@ -3455,28 +3506,84 @@ async def intent_bid(agent: str, intent_id: str, price: float, ttr: str = "48h")
         pass
     return {"ok": True, "bid": bid}
 
-#@app.post("/intent/award")
-async def intent_award(intent_id: str, bid_id: str = None):
-    users, client = await _get_users_client()
-    buyer_user, intent = _global_find_intent(users, intent_id)
-    if not intent: return {"error":"intent not found"}
-    if intent.get("status") != "open": return {"error":"intent closed"}
-    chosen = None
-    if bid_id:
-        chosen = next((b for b in intent.get("bids",[]) if b["id"]==bid_id), None)
-    else:
+@app.post("/intent/award")
+async def intent_award(body: Dict = Body(...)):
+    """Award intent + create escrow automatically"""
+    intent_id = body.get("intent_id")
+    bid_id = body.get("bid_id")
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        buyer_user = None
+        intent = None
+        
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    buyer_user = user
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Find winning bid
         bids = intent.get("bids", [])
-        if not bids: return {"error":"no bids"}
-        bids_sorted = sorted(bids, key=lambda b: (b["price"], b["ttr"]))
-        chosen = bids_sorted[0]
-    intent["status"] = "awarded"
-    intent["award"] = chosen
-    await _save_users(client, users)
-    try:
-        await publish({"type":"intent_award","intent_id":intent_id,"agent":chosen['agent'],"buyer": _username_of(buyer_user)})
-    except Exception:
-        pass
-    return {"ok": True, "award": chosen}
+        if bid_id:
+            chosen_bid = next((b for b in bids if b.get("id") == bid_id), None)
+        else:
+            # Auto-select lowest price
+            chosen_bid = min(bids, key=lambda b: b.get("price", float('inf'))) if bids else None
+        
+        if not chosen_bid:
+            return {"error": "no valid bid found"}
+        
+        # Update intent
+        intent["status"] = "ACCEPTED"
+        intent["awarded_bid"] = chosen_bid
+        intent["awarded_at"] = _now()
+        intent["agent"] = chosen_bid.get("agent")
+        
+        # ✅ AUTO-CREATE ESCROW
+        buyer_email = buyer_user.get("consent", {}).get("username") + "@aigentsy.com"
+        escrow_result = await create_payment_intent(
+            amount=float(chosen_bid.get("price", 0)),
+            buyer_email=buyer_email,
+            intent_id=intent_id,
+            metadata={
+                "buyer": _uname(buyer_user),
+                "agent": chosen_bid.get("agent")
+            }
+        )
+        
+        if escrow_result["ok"]:
+            intent["payment_intent_id"] = escrow_result["payment_intent_id"]
+            intent["escrow_status"] = "authorized"
+            intent["escrow_created_at"] = _now()
+        
+        await _save_users(client, users)
+        
+        # Publish event
+        try:
+            await publish({
+                "type": "intent_award",
+                "intent_id": intent_id,
+                "agent": chosen_bid["agent"],
+                "buyer": _uname(buyer_user),
+                "escrow_created": escrow_result["ok"]
+            })
+        except:
+            pass
+        
+        return {
+            "ok": True,
+            "award": chosen_bid,
+            "escrow": escrow_result
+        }
 
 @app.post("/productize")
 async def productize(username: str, url: Optional[str] = None, file_meta: dict = None):
