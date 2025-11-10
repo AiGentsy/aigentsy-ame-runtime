@@ -340,7 +340,32 @@ except Exception as e:
     def suggest_jv_partners(a, all_a, m=0.6, l=5): return {"ok": False}
     async def auto_propose_jv(a, s, all_a): return {"ok": False}
     def evaluate_jv_performance(j, u): return {"ok": False}
-        
+
+# ============ SLO CONTRACT TIERS ============
+try:
+    from slo_tiers import (
+        get_slo_tier,
+        calculate_slo_requirements,
+        create_slo_contract,
+        stake_slo_bond,
+        check_slo_breach,
+        enforce_slo_breach,
+        process_slo_delivery,
+        get_agent_slo_stats,
+        SLO_TIERS
+    )
+except Exception as e:
+    print(f"⚠️ slo_tiers import failed: {e}")
+    def get_slo_tier(t): return {"ok": False}
+    def calculate_slo_requirements(j, t="standard"): return {"ok": False}
+    def create_slo_contract(i, a, t="standard"): return {"ok": False}
+    def stake_slo_bond(c, u): return {"ok": False}
+    def check_slo_breach(c): return {"ok": False}
+    def enforce_slo_breach(c, a, b): return {"ok": False}
+    def process_slo_delivery(c, u, d=None): return {"ok": False}
+    def get_agent_slo_stats(u): return {"ok": False}
+    SLO_TIERS = {}
+    
 app = FastAPI()
 
 
@@ -5831,6 +5856,378 @@ async def get_jv_performance(jv_id: str):
         performance = evaluate_jv_performance(jv, users)
         
         return {"ok": True, **performance}
+
+        # ============ SLO CONTRACT TIERS ============
+
+@app.get("/slo/tiers")
+async def get_slo_tiers():
+    """Get all available SLO tiers"""
+    return {
+        "ok": True,
+        "tiers": SLO_TIERS,
+        "description": "Service-level tiers with auto-enforced bonds and bonuses"
+    }
+
+@app.get("/slo/tier/{tier_name}")
+async def get_slo_tier_endpoint(tier_name: str):
+    """Get specific SLO tier configuration"""
+    result = get_slo_tier(tier_name)
+    return result
+
+@app.post("/slo/calculate")
+async def calculate_slo_requirements_endpoint(body: Dict = Body(...)):
+    """
+    Calculate SLO requirements for a job
+    
+    Body:
+    {
+        "job_value": 500,
+        "tier": "premium"
+    }
+    """
+    job_value = float(body.get("job_value", 0))
+    tier = body.get("tier", "standard")
+    
+    if job_value <= 0:
+        return {"error": "job_value must be positive"}
+    
+    result = calculate_slo_requirements(job_value, tier)
+    
+    return result
+
+@app.post("/slo/contract/create")
+async def create_slo_contract_endpoint(body: Dict = Body(...)):
+    """
+    Create SLO contract when agent accepts intent
+    
+    Body:
+    {
+        "intent_id": "intent_abc123",
+        "agent_username": "agent1",
+        "tier": "premium"
+    }
+    """
+    intent_id = body.get("intent_id")
+    agent_username = body.get("agent_username")
+    tier = body.get("tier", "standard")
+    
+    if not all([intent_id, agent_username]):
+        return {"error": "intent_id and agent_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Create contract
+        result = create_slo_contract(intent, agent_username, tier)
+        
+        if result["ok"]:
+            # Store contract
+            system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_slo",
+                    "role": "system",
+                    "contracts": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("contracts", []).append(result["contract"])
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/slo/bond/stake")
+async def stake_slo_bond_endpoint(body: Dict = Body(...)):
+    """
+    Agent stakes required bond for SLO contract
+    
+    Body:
+    {
+        "contract_id": "slo_abc123",
+        "agent_username": "agent1"
+    }
+    """
+    contract_id = body.get("contract_id")
+    agent_username = body.get("agent_username")
+    
+    if not all([contract_id, agent_username]):
+        return {"error": "contract_id and agent_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find contract
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"error": "contract not found"}
+        
+        contracts = system_user.get("contracts", [])
+        contract = next((c for c in contracts if c.get("id") == contract_id), None)
+        
+        if not contract:
+            return {"error": "contract not found", "contract_id": contract_id}
+        
+        # Find agent
+        agent_user = _find_user(users, agent_username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Stake bond
+        result = stake_slo_bond(contract, agent_user)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/slo/contract/{contract_id}")
+async def get_slo_contract(contract_id: str):
+    """Get SLO contract details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"error": "no_contracts_found"}
+        
+        contracts = system_user.get("contracts", [])
+        contract = next((c for c in contracts if c.get("id") == contract_id), None)
+        
+        if not contract:
+            return {"error": "contract not found", "contract_id": contract_id}
+        
+        return {"ok": True, "contract": contract}
+
+@app.get("/slo/contract/{contract_id}/check")
+async def check_slo_breach_endpoint(contract_id: str):
+    """Check if SLO contract has been breached"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"error": "contract not found"}
+        
+        contracts = system_user.get("contracts", [])
+        contract = next((c for c in contracts if c.get("id") == contract_id), None)
+        
+        if not contract:
+            return {"error": "contract not found"}
+        
+        result = check_slo_breach(contract)
+        
+        return result
+
+@app.post("/slo/contract/enforce")
+async def enforce_slo_breach_endpoint(body: Dict = Body(...)):
+    """
+    Auto-enforce SLO breach (slash bond, refund buyer)
+    
+    Body:
+    {
+        "contract_id": "slo_abc123"
+    }
+    """
+    contract_id = body.get("contract_id")
+    
+    if not contract_id:
+        return {"error": "contract_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find contract
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"error": "contract not found"}
+        
+        contracts = system_user.get("contracts", [])
+        contract = next((c for c in contracts if c.get("id") == contract_id), None)
+        
+        if not contract:
+            return {"error": "contract not found"}
+        
+        # Find agent and buyer
+        agent_user = _find_user(users, contract["agent"])
+        buyer_user = _find_user(users, contract["buyer"])
+        
+        if not agent_user or not buyer_user:
+            return {"error": "user not found"}
+        
+        # Enforce breach
+        result = enforce_slo_breach(contract, agent_user, buyer_user)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/slo/contract/deliver")
+async def process_slo_delivery_endpoint(body: Dict = Body(...)):
+    """
+    Process delivery under SLO contract
+    
+    Body:
+    {
+        "contract_id": "slo_abc123",
+        "agent_username": "agent1",
+        "delivery_timestamp": "2025-01-15T10:00:00Z" (optional)
+    }
+    """
+    contract_id = body.get("contract_id")
+    agent_username = body.get("agent_username")
+    delivery_timestamp = body.get("delivery_timestamp")
+    
+    if not all([contract_id, agent_username]):
+        return {"error": "contract_id and agent_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find contract
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"error": "contract not found"}
+        
+        contracts = system_user.get("contracts", [])
+        contract = next((c for c in contracts if c.get("id") == contract_id), None)
+        
+        if not contract:
+            return {"error": "contract not found"}
+        
+        # Find agent
+        agent_user = _find_user(users, agent_username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Process delivery
+        result = process_slo_delivery(contract, agent_user, delivery_timestamp)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/slo/agent/{username}/stats")
+async def get_agent_slo_stats_endpoint(username: str):
+    """Get agent's SLO performance statistics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        stats = get_agent_slo_stats(agent_user)
+        
+        return {"ok": True, "username": username, **stats}
+
+@app.get("/slo/contracts/active")
+async def list_active_slo_contracts():
+    """List all active SLO contracts"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"ok": True, "contracts": [], "count": 0}
+        
+        contracts = system_user.get("contracts", [])
+        active = [c for c in contracts if c.get("status") == "ACTIVE"]
+        
+        return {"ok": True, "contracts": active, "count": len(active)}
+
+@app.get("/slo/contracts/breached")
+async def list_breached_slo_contracts():
+    """List all breached SLO contracts needing enforcement"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {"ok": True, "contracts": [], "count": 0}
+        
+        contracts = system_user.get("contracts", [])
+        
+        # Check each active contract for breach
+        breached = []
+        for contract in contracts:
+            if contract.get("status") == "ACTIVE":
+                breach_check = check_slo_breach(contract)
+                if breach_check.get("breached"):
+                    breached.append({
+                        **contract,
+                        "breach_info": breach_check
+                    })
+        
+        return {"ok": True, "breached_contracts": breached, "count": len(breached)}
+
+@app.get("/slo/dashboard")
+async def get_slo_dashboard():
+    """Get SLO system dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_slo"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_contracts": 0,
+                "message": "No SLO contracts yet"
+            }
+        
+        contracts = system_user.get("contracts", [])
+        
+        active = len([c for c in contracts if c.get("status") == "ACTIVE"])
+        completed = len([c for c in contracts if c.get("status") == "COMPLETED"])
+        breached = len([c for c in contracts if c.get("status") == "BREACHED"])
+        
+        # Tier distribution
+        tier_dist = {}
+        for contract in contracts:
+            tier = contract.get("tier", "standard")
+            tier_dist[tier] = tier_dist.get(tier, 0) + 1
+        
+        # Calculate on-time rate
+        on_time = len([c for c in contracts if c.get("status") == "COMPLETED" and c.get("on_time")])
+        total_completed = completed + breached
+        on_time_rate = (on_time / total_completed) if total_completed > 0 else 0
+        
+        return {
+            "ok": True,
+            "total_contracts": len(contracts),
+            "active_contracts": active,
+            "completed_contracts": completed,
+            "breached_contracts": breached,
+            "on_time_rate": round(on_time_rate, 2),
+            "tier_distribution": tier_dist,
+            "available_tiers": SLO_TIERS,
+            "dashboard_generated_at": _now()
+        }
         
 @app.post("/poo/issue")
 async def poo_issue(username: str, title: str, metrics: dict = None, evidence_urls: List[str] = None):
