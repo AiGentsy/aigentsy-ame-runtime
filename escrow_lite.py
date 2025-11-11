@@ -87,7 +87,17 @@ async def capture_payment(
             "error": str(e)
         }
 
-
+# Add this right after your existing capture_payment function
+async def capture_payment_intent(
+    intent_id: str,
+    amount: Optional[float] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Alias for capture_payment - maintains compatibility with main.py imports
+    """
+    return await capture_payment(intent_id, amount)
+    
 async def cancel_payment(payment_intent_id: str) -> Dict[str, Any]:
     """
     Cancel authorized payment (if dispute or timeout)
