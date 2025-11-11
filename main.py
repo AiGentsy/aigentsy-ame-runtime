@@ -541,6 +541,41 @@ except Exception as e:
     def get_next_tier_incentive(c, j): return {"ok": False}
     EXPANSION_RULES = {}
     REPUTATION_TIERS = {}
+
+# ============ REPUTATION-INDEXED KNOBS ============
+try:
+    from reputation_knobs import (
+        calculate_reputation_metrics,
+        calculate_ocl_limit,
+        calculate_factoring_rate,
+        calculate_arm_pricing,
+        calculate_dark_pool_rank,
+        recompute_all_knobs,
+        apply_knob_updates,
+        get_tier_comparison,
+        simulate_reputation_change,
+        REPUTATION_TIERS,
+        OCL_LIMITS,
+        FACTORING_RATES,
+        ARM_MULTIPLIERS,
+        DARK_POOL_WEIGHTS
+    )
+except Exception as e:
+    print(f" reputation_knobs import failed: {e}")
+    def calculate_reputation_metrics(u): return {"ok": False}
+    def calculate_ocl_limit(m): return {"ok": False}
+    def calculate_factoring_rate(m, j): return {"ok": False}
+    def calculate_arm_pricing(m, b): return {"ok": False}
+    def calculate_dark_pool_rank(m): return {"ok": False}
+    def recompute_all_knobs(u, j=1000, b=500): return {"ok": False}
+    def apply_knob_updates(u, k): return {"ok": False}
+    def get_tier_comparison(s): return {"ok": False}
+    def simulate_reputation_change(u, n): return {"ok": False}
+    REPUTATION_TIERS = {}
+    OCL_LIMITS = {}
+    FACTORING_RATES = {}
+    ARM_MULTIPLIERS = {}
+    DARK_POOL_WEIGHTS = {}
     
 app = FastAPI()
 
@@ -7222,6 +7257,404 @@ async def get_ipvault_dashboard():
             "dashboard_generated_at": _now()
         }
 
+# ============ REPUTATION-INDEXED KNOBS ============
+
+@app.get("/reputation/knobs/config")
+async def get_knobs_config():
+    """Get reputation knobs configuration"""
+    return {
+        "ok": True,
+        "reputation_tiers": REPUTATION_TIERS,
+        "ocl_limits": OCL_LIMITS,
+        "factoring_rates": FACTORING_RATES,
+        "arm_multipliers": ARM_MULTIPLIERS,
+        "dark_pool_weights": DARK_POOL_WEIGHTS,
+        "description": "Dynamic adjustment of limits, rates, and pricing based on reputation"
+    }
+
+@app.get("/reputation/metrics/{username}")
+async def get_reputation_metrics_endpoint(username: str):
+    """Get comprehensive reputation metrics for agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        metrics = calculate_reputation_metrics(agent_user)
+        
+        return {"ok": True, "username": username, **metrics}
+
+@app.post("/reputation/knobs/calculate_ocl")
+async def calculate_ocl_limit_endpoint(body: Dict = Body(...)):
+    """
+    Calculate OCL limit based on reputation
+    
+    Body:
+    {
+        "username": "agent1"
+    }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        metrics = calculate_reputation_metrics(agent_user)
+        ocl = calculate_ocl_limit(metrics)
+        
+        return {"ok": True, "username": username, "reputation": metrics, **ocl}
+
+@app.post("/reputation/knobs/calculate_factoring")
+async def calculate_factoring_rate_endpoint(body: Dict = Body(...)):
+    """
+    Calculate factoring rate based on reputation
+    
+    Body:
+    {
+        "username": "agent1",
+        "job_value": 1000
+    }
+    """
+    username = body.get("username")
+    job_value = float(body.get("job_value", 1000))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        metrics = calculate_reputation_metrics(agent_user)
+        factoring = calculate_factoring_rate(metrics, job_value)
+        
+        return {"ok": True, "username": username, "reputation": metrics, **factoring}
+
+@app.post("/reputation/knobs/calculate_arm")
+async def calculate_arm_pricing_endpoint(body: Dict = Body(...)):
+    """
+    Calculate ARM pricing based on reputation
+    
+    Body:
+    {
+        "username": "agent1",
+        "base_price": 500
+    }
+    """
+    username = body.get("username")
+    base_price = float(body.get("base_price", 500))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        metrics = calculate_reputation_metrics(agent_user)
+        arm = calculate_arm_pricing(metrics, base_price)
+        
+        return {"ok": True, "username": username, "reputation": metrics, **arm}
+
+@app.post("/reputation/knobs/calculate_rank")
+async def calculate_dark_pool_rank_endpoint(body: Dict = Body(...)):
+    """
+    Calculate dark pool rank based on reputation
+    
+    Body:
+    {
+        "username": "agent1"
+    }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        metrics = calculate_reputation_metrics(agent_user)
+        rank = calculate_dark_pool_rank(metrics)
+        
+        return {"ok": True, "username": username, "reputation": metrics, **rank}
+
+@app.post("/reputation/knobs/recompute")
+async def recompute_all_knobs_endpoint(body: Dict = Body(...)):
+    """
+    Recompute all reputation knobs for an agent
+    
+    Body:
+    {
+        "username": "agent1",
+        "job_value": 1000,
+        "base_price": 500
+    }
+    """
+    username = body.get("username")
+    job_value = float(body.get("job_value", 1000))
+    base_price = float(body.get("base_price", 500))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        result = recompute_all_knobs(agent_user, job_value, base_price)
+        
+        return result
+
+@app.post("/reputation/knobs/apply")
+async def apply_knob_updates_endpoint(body: Dict = Body(...)):
+    """
+    Recompute and apply all knob updates to agent record
+    
+    Body:
+    {
+        "username": "agent1",
+        "job_value": 1000,
+        "base_price": 500
+    }
+    """
+    username = body.get("username")
+    job_value = float(body.get("job_value", 1000))
+    base_price = float(body.get("base_price", 500))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Recompute knobs
+        knob_calculations = recompute_all_knobs(agent_user, job_value, base_price)
+        
+        # Apply updates
+        apply_result = apply_knob_updates(agent_user, knob_calculations)
+        
+        await _save_users(client, users)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "calculations": knob_calculations,
+            "updates": apply_result
+        }
+
+@app.get("/reputation/knobs/tiers")
+async def get_tier_comparison_endpoint(outcome_score: int):
+    """
+    Get comparison of all tiers
+    
+    Parameters:
+    - outcome_score: Current outcome score
+    """
+    result = get_tier_comparison(outcome_score)
+    
+    return result
+
+@app.post("/reputation/knobs/simulate")
+async def simulate_reputation_change_endpoint(body: Dict = Body(...)):
+    """
+    Simulate impact of reputation change
+    
+    Body:
+    {
+        "username": "agent1",
+        "new_outcome_score": 80
+    }
+    """
+    username = body.get("username")
+    new_outcome_score = int(body.get("new_outcome_score", 0))
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        result = simulate_reputation_change(agent_user, new_outcome_score)
+        
+        return result
+
+@app.get("/reputation/knobs/dashboard/{username}")
+async def get_knobs_dashboard(username: str):
+    """Get comprehensive knobs dashboard for agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Get all calculations
+        metrics = calculate_reputation_metrics(agent_user)
+        knobs = recompute_all_knobs(agent_user, 1000, 500)
+        
+        # Get tier comparison
+        outcome_score = metrics["outcome_score"]
+        comparison = get_tier_comparison(outcome_score)
+        
+        # Simulate next tier
+        current_tier_idx = list(REPUTATION_TIERS.keys()).index(metrics["tier"])
+        
+        next_tier_sim = None
+        if current_tier_idx < len(REPUTATION_TIERS) - 1:
+            next_tier_name = list(REPUTATION_TIERS.keys())[current_tier_idx + 1]
+            next_tier_min = REPUTATION_TIERS[next_tier_name]["min_score"]
+            next_tier_sim = simulate_reputation_change(agent_user, next_tier_min)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "current_reputation": metrics,
+            "current_knobs": knobs,
+            "tier_comparison": comparison,
+            "next_tier_simulation": next_tier_sim,
+            "config": {
+                "reputation_tiers": REPUTATION_TIERS,
+                "ocl_limits": OCL_LIMITS,
+                "factoring_rates": FACTORING_RATES,
+                "arm_multipliers": ARM_MULTIPLIERS
+            },
+            "dashboard_generated_at": _now()
+        }
+
+@app.post("/reputation/knobs/batch_update")
+async def batch_update_knobs(body: Dict = Body(...)):
+    """
+    Batch update knobs for multiple agents
+    
+    Body:
+    {
+        "usernames": ["agent1", "agent2", "agent3"]
+    }
+    """
+    usernames = body.get("usernames", [])
+    
+    if not usernames:
+        return {"error": "usernames array required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        results = []
+        
+        for username in usernames:
+            agent_user = _find_user(users, username)
+            
+            if not agent_user:
+                results.append({
+                    "username": username,
+                    "status": "error",
+                    "error": "agent not found"
+                })
+                continue
+            
+            # Recompute and apply
+            try:
+                knob_calculations = recompute_all_knobs(agent_user, 1000, 500)
+                apply_result = apply_knob_updates(agent_user, knob_calculations)
+                
+                results.append({
+                    "username": username,
+                    "status": "success",
+                    "tier": knob_calculations["reputation_metrics"]["tier"],
+                    "new_ocl_limit": knob_calculations["ocl_limit"]["final_limit"],
+                    "new_dark_pool_rank": knob_calculations["dark_pool_rank"]["final_rank"]
+                })
+            except Exception as e:
+                results.append({
+                    "username": username,
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        await _save_users(client, users)
+        
+        successful = len([r for r in results if r.get("status") == "success"])
+        
+        return {
+            "ok": True,
+            "total_processed": len(usernames),
+            "successful": successful,
+            "failed": len(usernames) - successful,
+            "results": results
+        }
+
+@app.post("/reputation/knobs/auto_update")
+async def auto_update_knobs_on_event(body: Dict = Body(...)):
+    """
+    Auto-trigger knob update when reputation changes
+    
+    Body:
+    {
+        "username": "agent1",
+        "event": "job_completed",
+        "event_data": {...}
+    }
+    """
+    username = body.get("username")
+    event = body.get("event")
+    
+    if not username:
+        return {"error": "username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Recompute and apply knobs
+        knob_calculations = recompute_all_knobs(agent_user, 1000, 500)
+        apply_result = apply_knob_updates(agent_user, knob_calculations)
+        
+        await _save_users(client, users)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "event": event,
+            "knobs_updated": True,
+            "calculations": knob_calculations,
+            "updates": apply_result,
+            "message": "Knobs automatically updated within 60s of reputation change"
+        }
+        
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
 @app.get("/dealgraph/config")
