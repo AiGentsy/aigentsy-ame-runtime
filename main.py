@@ -452,6 +452,35 @@ except Exception as e:
     def generate_proof_report(p, s=None, e=None): return {"ok": False}
     PROOF_TYPES = {}
     OUTCOME_EVENTS = {}
+
+# ============ SPONSOR/CO-OP OUTCOME POOLS ============
+try:
+    from sponsor_pools import (
+        create_sponsor_pool,
+        check_pool_eligibility,
+        calculate_discount,
+        apply_pool_discount,
+        track_conversion,
+        generate_sponsor_report,
+        refill_pool,
+        find_matching_pools,
+        get_pool_leaderboard,
+        POOL_TYPES,
+        DISCOUNT_METHODS
+    )
+except Exception as e:
+    print(f" sponsor_pools import failed: {e}")
+    def create_sponsor_pool(s, pt, to, tb, dp=None, df=None, dd=90, m=None, c=None): return {"ok": False}
+    def check_pool_eligibility(p, j, a=None): return {"ok": False}
+    def calculate_discount(p, j): return {"ok": False}
+    def apply_pool_discount(p, j, a, b): return {"ok": False}
+    def track_conversion(p, j, c): return {"ok": False}
+    def generate_sponsor_report(p): return {"ok": False}
+    def refill_pool(p, a, e=0): return {"ok": False}
+    def find_matching_pools(j, a, ap): return {"ok": False}
+    def get_pool_leaderboard(p, s="roi"): return {"ok": False}
+    POOL_TYPES = {}
+    DISCOUNT_METHODS = {}
     
 app = FastAPI()
 
@@ -7729,6 +7758,487 @@ async def get_proofs_dashboard():
             ],
             "proof_types": PROOF_TYPES,
             "outcome_events": OUTCOME_EVENTS,
+            "dashboard_generated_at": _now()
+        }
+
+# ============ SPONSOR/CO-OP OUTCOME POOLS ============
+
+@app.get("/sponsors/pool_types")
+async def get_sponsor_pool_types():
+    """Get available sponsor pool types"""
+    return {
+        "ok": True,
+        "pool_types": POOL_TYPES,
+        "discount_methods": DISCOUNT_METHODS,
+        "description": "External brands fund outcome-specific credits with verified ROI"
+    }
+
+@app.post("/sponsors/pool/create")
+async def create_sponsor_pool_endpoint(body: Dict = Body(...)):
+    """
+    Create a sponsor pool
+    
+    Body:
+    {
+        "sponsor_name": "Adobe",
+        "pool_type": "outcome_specific",
+        "target_outcomes": ["website_migrations", "design_refreshes"],
+        "total_budget": 10000,
+        "discount_percentage": 0.20,
+        "duration_days": 90,
+        "max_per_job": 500,
+        "criteria": {
+            "min_agent_score": 70,
+            "required_skills": ["design", "web_development"]
+        }
+    }
+    """
+    sponsor_name = body.get("sponsor_name")
+    pool_type = body.get("pool_type")
+    target_outcomes = body.get("target_outcomes", [])
+    total_budget = float(body.get("total_budget", 0))
+    discount_percentage = body.get("discount_percentage")
+    discount_fixed = body.get("discount_fixed")
+    duration_days = int(body.get("duration_days", 90))
+    max_per_job = body.get("max_per_job")
+    criteria = body.get("criteria")
+    
+    if not all([sponsor_name, pool_type, total_budget]):
+        return {"error": "sponsor_name, pool_type, and total_budget required"}
+    
+    # Create pool
+    result = create_sponsor_pool(
+        sponsor_name,
+        pool_type,
+        target_outcomes,
+        total_budget,
+        discount_percentage,
+        discount_fixed,
+        duration_days,
+        max_per_job,
+        criteria
+    )
+    
+    if result["ok"]:
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            # Store pool
+            system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_sponsors",
+                    "role": "system",
+                    "pools": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("pools", []).append(result["pool"])
+            
+            await _save_users(client, users)
+    
+    return result
+
+@app.get("/sponsors/pool/{pool_id}")
+async def get_sponsor_pool(pool_id: str):
+    """Get sponsor pool details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "no_pools_found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found", "pool_id": pool_id}
+        
+        return {"ok": True, "pool": pool}
+
+@app.post("/sponsors/pool/check_eligibility")
+async def check_pool_eligibility_endpoint(body: Dict = Body(...)):
+    """
+    Check if job/agent is eligible for pool discount
+    
+    Body:
+    {
+        "pool_id": "pool_abc123",
+        "job_id": "job_xyz789",
+        "agent_username": "agent1"
+    }
+    """
+    pool_id = body.get("pool_id")
+    job_id = body.get("job_id")
+    agent_username = body.get("agent_username")
+    
+    if not pool_id:
+        return {"error": "pool_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find pool
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        # Find job (simplified - would search across all users' intents)
+        job = {"id": job_id, "budget": 500, "type": "website_migration"}
+        
+        # Find agent if specified
+        agent = None
+        if agent_username:
+            agent = _find_user(users, agent_username)
+        
+        # Check eligibility
+        result = check_pool_eligibility(pool, job, agent)
+        
+        return {"ok": True, **result}
+
+@app.post("/sponsors/pool/calculate_discount")
+async def calculate_pool_discount_endpoint(body: Dict = Body(...)):
+    """
+    Calculate discount amount from pool
+    
+    Body:
+    {
+        "pool_id": "pool_abc123",
+        "job_value": 500
+    }
+    """
+    pool_id = body.get("pool_id")
+    job_value = float(body.get("job_value", 0))
+    
+    if not pool_id or job_value <= 0:
+        return {"error": "pool_id and positive job_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        result = calculate_discount(pool, job_value)
+        
+        return result
+
+@app.post("/sponsors/pool/apply")
+async def apply_pool_discount_endpoint(body: Dict = Body(...)):
+    """
+    Apply pool discount to a job
+    
+    Body:
+    {
+        "pool_id": "pool_abc123",
+        "job_id": "job_xyz789",
+        "agent_username": "agent1",
+        "buyer_username": "buyer1"
+    }
+    """
+    pool_id = body.get("pool_id")
+    job_id = body.get("job_id")
+    agent_username = body.get("agent_username")
+    buyer_username = body.get("buyer_username")
+    
+    if not all([pool_id, job_id, agent_username, buyer_username]):
+        return {"error": "pool_id, job_id, agent_username, and buyer_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find pool
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        # Find job, agent, buyer
+        # Simplified - in production would search properly
+        job = {"id": job_id, "budget": 500, "type": "website_migration"}
+        agent = _find_user(users, agent_username)
+        buyer = _find_user(users, buyer_username)
+        
+        if not agent or not buyer:
+            return {"error": "user not found"}
+        
+        # Apply discount
+        result = apply_pool_discount(pool, job, agent, buyer)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/sponsors/pool/track_conversion")
+async def track_conversion_endpoint(body: Dict = Body(...)):
+    """
+    Track conversion for subsidized job
+    
+    Body:
+    {
+        "pool_id": "pool_abc123",
+        "job_id": "job_xyz789",
+        "converted": true
+    }
+    """
+    pool_id = body.get("pool_id")
+    job_id = body.get("job_id")
+    converted = body.get("converted", False)
+    
+    if not all([pool_id, job_id]):
+        return {"error": "pool_id and job_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        # Track conversion
+        result = track_conversion(pool, job_id, converted)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/sponsors/pool/{pool_id}/report")
+async def generate_sponsor_report_endpoint(pool_id: str):
+    """Generate sponsor ROI report"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        report = generate_sponsor_report(pool)
+        
+        return {"ok": True, **report}
+
+@app.post("/sponsors/pool/refill")
+async def refill_pool_endpoint(body: Dict = Body(...)):
+    """
+    Refill sponsor pool with additional budget
+    
+    Body:
+    {
+        "pool_id": "pool_abc123",
+        "additional_budget": 5000,
+        "extend_days": 30
+    }
+    """
+    pool_id = body.get("pool_id")
+    additional_budget = float(body.get("additional_budget", 0))
+    extend_days = int(body.get("extend_days", 0))
+    
+    if not pool_id:
+        return {"error": "pool_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"error": "pool not found"}
+        
+        pools = system_user.get("pools", [])
+        pool = next((p for p in pools if p.get("id") == pool_id), None)
+        
+        if not pool:
+            return {"error": "pool not found"}
+        
+        # Refill pool
+        result = refill_pool(pool, additional_budget, extend_days)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/sponsors/find_pools")
+async def find_matching_pools_endpoint(body: Dict = Body(...)):
+    """
+    Find matching sponsor pools for a job/agent
+    
+    Body:
+    {
+        "job_id": "job_xyz789",
+        "agent_username": "agent1"
+    }
+    """
+    job_id = body.get("job_id")
+    agent_username = body.get("agent_username")
+    
+    if not job_id:
+        return {"error": "job_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find pools
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"ok": True, "matching_pools": [], "count": 0}
+        
+        pools = system_user.get("pools", [])
+        
+        # Find job and agent
+        job = {"id": job_id, "budget": 500, "type": "website_migration"}
+        agent = _find_user(users, agent_username) if agent_username else None
+        
+        # Find matching pools
+        result = find_matching_pools(job, agent, pools)
+        
+        return result
+
+@app.get("/sponsors/leaderboard")
+async def get_sponsor_leaderboard(sort_by: str = "roi"):
+    """
+    Get sponsor pool leaderboard
+    
+    sort_by: roi | conversions | jobs_subsidized | budget_spent
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"ok": True, "leaderboard": [], "message": "No pools yet"}
+        
+        pools = system_user.get("pools", [])
+        result = get_pool_leaderboard(pools, sort_by)
+        
+        return result
+
+@app.get("/sponsors/pools/list")
+async def list_sponsor_pools(status: str = None, sponsor: str = None):
+    """
+    List sponsor pools with filters
+    
+    Parameters:
+    - status: Filter by status (active, depleted, expired)
+    - sponsor: Filter by sponsor name
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {"ok": True, "pools": [], "count": 0}
+        
+        pools = system_user.get("pools", [])
+        
+        # Apply filters
+        if status:
+            pools = [p for p in pools if p.get("status") == status]
+        
+        if sponsor:
+            pools = [p for p in pools if p.get("sponsor") == sponsor]
+        
+        return {"ok": True, "pools": pools, "count": len(pools)}
+
+@app.get("/sponsors/dashboard")
+async def get_sponsors_dashboard():
+    """Get sponsor pools dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_sponsors"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_pools": 0,
+                "message": "No sponsor pools yet"
+            }
+        
+        pools = system_user.get("pools", [])
+        
+        total_pools = len(pools)
+        active_pools = len([p for p in pools if p.get("status") == "active"])
+        depleted_pools = len([p for p in pools if p.get("status") == "depleted"])
+        
+        # Calculate totals
+        total_budget = sum([p.get("total_budget", 0) for p in pools])
+        total_spent = sum([p.get("total_spent", 0) for p in pools])
+        total_remaining = sum([p.get("remaining_budget", 0) for p in pools])
+        
+        total_jobs_subsidized = sum([p.get("jobs_subsidized", 0) for p in pools])
+        total_conversions = sum([p.get("conversions", 0) for p in pools])
+        
+        avg_conversion_rate = (total_conversions / total_jobs_subsidized) if total_jobs_subsidized > 0 else 0
+        
+        # Top sponsors
+        sponsor_budgets = {}
+        for pool in pools:
+            sponsor = pool.get("sponsor")
+            sponsor_budgets[sponsor] = sponsor_budgets.get(sponsor, 0) + pool.get("total_budget", 0)
+        
+        top_sponsors = sorted(sponsor_budgets.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        return {
+            "ok": True,
+            "total_pools": total_pools,
+            "active_pools": active_pools,
+            "depleted_pools": depleted_pools,
+            "total_budget_committed": round(total_budget, 2),
+            "total_spent": round(total_spent, 2),
+            "total_remaining": round(total_remaining, 2),
+            "budget_utilization": round((total_spent / total_budget * 100), 1) if total_budget > 0 else 0,
+            "total_jobs_subsidized": total_jobs_subsidized,
+            "total_conversions": total_conversions,
+            "avg_conversion_rate": round(avg_conversion_rate * 100, 1),
+            "top_sponsors": [
+                {"sponsor": s, "total_budget": round(b, 2)}
+                for s, b in top_sponsors
+            ],
+            "pool_types": POOL_TYPES,
             "dashboard_generated_at": _now()
         }
         
