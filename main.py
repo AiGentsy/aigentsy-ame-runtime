@@ -514,6 +514,33 @@ except Exception as e:
     PARTNER_NETWORKS = {}
     SYNDICATION_REASONS = {}
     DEFAULT_LINEAGE_SPLIT = {}
+
+# ============ OCL AUTO-EXPANSION LOOP ============
+try:
+    from ocl_expansion import (
+        calculate_ocl_expansion,
+        check_expansion_eligibility,
+        expand_ocl_limit,
+        process_job_completion_expansion,
+        trigger_r3_reallocation,
+        get_expansion_stats,
+        simulate_expansion_potential,
+        get_next_tier_incentive,
+        EXPANSION_RULES,
+        REPUTATION_TIERS
+    )
+except Exception as e:
+    print(f" ocl_expansion import failed: {e}")
+    def calculate_ocl_expansion(j, o, ot=True, d=False): return {"ok": False}
+    def check_expansion_eligibility(u): return {"ok": False}
+    def expand_ocl_limit(u, a, j=None, r="job_completion"): return {"ok": False}
+    def process_job_completion_expansion(u, j, jid, ot=True, d=False): return {"ok": False}
+    def trigger_r3_reallocation(u, n): return {"ok": False}
+    def get_expansion_stats(u): return {"ok": False}
+    def simulate_expansion_potential(o, p, ot=True): return {"ok": False}
+    def get_next_tier_incentive(c, j): return {"ok": False}
+    EXPANSION_RULES = {}
+    REPUTATION_TIERS = {}
     
 app = FastAPI()
 
@@ -5439,6 +5466,352 @@ async def get_upgrades_dashboard():
             "dashboard_generated_at": _now()
         }
 
+# ============ OCL AUTO-EXPANSION LOOP ============
+
+@app.get("/ocl/expansion/rules")
+async def get_expansion_rules():
+    """Get OCL expansion rules and reputation tiers"""
+    return {
+        "ok": True,
+        "expansion_rules": EXPANSION_RULES,
+        "reputation_tiers": REPUTATION_TIERS,
+        "description": "Autonomous credit expansion from verified outcomes"
+    }
+
+@app.post("/ocl/expansion/calculate")
+async def calculate_ocl_expansion_endpoint(body: Dict = Body(...)):
+    """
+    Calculate potential OCL expansion
+    
+    Body:
+    {
+        "job_value": 500,
+        "outcome_score": 75,
+        "on_time": true,
+        "disputed": false
+    }
+    """
+    job_value = float(body.get("job_value", 0))
+    outcome_score = int(body.get("outcome_score", 0))
+    on_time = body.get("on_time", True)
+    disputed = body.get("disputed", False)
+    
+    if job_value <= 0:
+        return {"error": "job_value must be positive"}
+    
+    result = calculate_ocl_expansion(job_value, outcome_score, on_time, disputed)
+    
+    return result
+
+@app.get("/ocl/expansion/eligibility/{username}")
+async def check_expansion_eligibility_endpoint(username: str):
+    """Check if agent is eligible for OCL expansion"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        result = check_expansion_eligibility(agent_user)
+        
+        return {"ok": True, "username": username, **result}
+
+@app.post("/ocl/expansion/expand")
+async def expand_ocl_limit_endpoint(body: Dict = Body(...)):
+    """
+    Manually expand OCL limit
+    
+    Body:
+    {
+        "username": "agent1",
+        "expansion_amount": 100,
+        "job_id": "job_xyz789",
+        "reason": "job_completion"
+    }
+    """
+    username = body.get("username")
+    expansion_amount = float(body.get("expansion_amount", 0))
+    job_id = body.get("job_id")
+    reason = body.get("reason", "manual_adjustment")
+    
+    if not username or expansion_amount <= 0:
+        return {"error": "username and positive expansion_amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Expand OCL
+        result = expand_ocl_limit(agent_user, expansion_amount, job_id, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/ocl/expansion/process_completion")
+async def process_job_completion_expansion_endpoint(body: Dict = Body(...)):
+    """
+    Process OCL expansion after job completion
+    
+    Body:
+    {
+        "username": "agent1",
+        "job_value": 500,
+        "job_id": "job_xyz789",
+        "on_time": true,
+        "disputed": false,
+        "trigger_r3": true
+    }
+    """
+    username = body.get("username")
+    job_value = float(body.get("job_value", 0))
+    job_id = body.get("job_id")
+    on_time = body.get("on_time", True)
+    disputed = body.get("disputed", False)
+    trigger_r3 = body.get("trigger_r3", True)
+    
+    if not username or job_value <= 0:
+        return {"error": "username and positive job_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Process expansion
+        result = process_job_completion_expansion(agent_user, job_value, job_id, on_time, disputed)
+        
+        # Trigger R³ reallocation if requested
+        r3_result = None
+        if result["ok"] and trigger_r3:
+            new_available = result.get("available_credit", 0)
+            r3_result = trigger_r3_reallocation(agent_user, new_available)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        response = result.copy()
+        if r3_result:
+            response["r3_reallocation"] = r3_result
+        
+        return response
+
+@app.get("/ocl/expansion/stats/{username}")
+async def get_expansion_stats_endpoint(username: str):
+    """Get agent's OCL expansion statistics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        stats = get_expansion_stats(agent_user)
+        
+        return {"ok": True, "username": username, **stats}
+
+@app.post("/ocl/expansion/simulate")
+async def simulate_expansion_potential_endpoint(body: Dict = Body(...)):
+    """
+    Simulate potential OCL expansion for future job
+    
+    Body:
+    {
+        "outcome_score": 75,
+        "projected_job_value": 1000,
+        "on_time": true
+    }
+    """
+    outcome_score = int(body.get("outcome_score", 0))
+    projected_job_value = float(body.get("projected_job_value", 0))
+    on_time = body.get("on_time", True)
+    
+    if projected_job_value <= 0:
+        return {"error": "projected_job_value must be positive"}
+    
+    result = simulate_expansion_potential(outcome_score, projected_job_value, on_time)
+    
+    return result
+
+@app.get("/ocl/expansion/next_tier/{username}")
+async def get_next_tier_incentive_endpoint(username: str, job_value: float = 500):
+    """
+    Show agent benefit of reaching next reputation tier
+    
+    Parameters:
+    - username: Agent username
+    - job_value: Hypothetical job value to calculate benefit (default: 500)
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        current_score = int(agent_user.get("outcomeScore", 0))
+        
+        result = get_next_tier_incentive(current_score, job_value)
+        
+        return result
+
+@app.get("/ocl/expansion/history/{username}")
+async def get_expansion_history(username: str, limit: int = 20):
+    """
+    Get agent's expansion history
+    
+    Parameters:
+    - username: Agent username
+    - limit: Number of recent expansions to return (default: 20)
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        ocl_data = agent_user.get("ocl", {})
+        expansion_history = ocl_data.get("expansion_history", [])
+        
+        # Get most recent
+        recent_expansions = sorted(
+            expansion_history,
+            key=lambda e: e.get("expanded_at", ""),
+            reverse=True
+        )[:limit]
+        
+        return {
+            "ok": True,
+            "username": username,
+            "total_expansions": len(expansion_history),
+            "recent_expansions": recent_expansions,
+            "current_limit": ocl_data.get("limit", 1000.0)
+        }
+
+@app.get("/ocl/expansion/dashboard/{username}")
+async def get_expansion_dashboard(username: str):
+    """Get comprehensive OCL expansion dashboard for agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        agent_user = _find_user(users, username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Get stats
+        stats = get_expansion_stats(agent_user)
+        
+        # Get eligibility
+        eligibility = check_expansion_eligibility(agent_user)
+        
+        # Get next tier incentive
+        outcome_score = int(agent_user.get("outcomeScore", 0))
+        next_tier = get_next_tier_incentive(outcome_score, 500)
+        
+        # Get recent history
+        ocl_data = agent_user.get("ocl", {})
+        expansion_history = ocl_data.get("expansion_history", [])
+        recent_expansions = sorted(
+            expansion_history,
+            key=lambda e: e.get("expanded_at", ""),
+            reverse=True
+        )[:5]
+        
+        # Check R³ status
+        r3_strategy = agent_user.get("r3_autopilot", {}).get("strategy")
+        r3_active = r3_strategy.get("status") == "active" if r3_strategy else False
+        
+        return {
+            "ok": True,
+            "username": username,
+            "outcome_score": outcome_score,
+            "expansion_stats": stats,
+            "eligibility": eligibility,
+            "next_tier_benefit": next_tier if next_tier.get("ok") else None,
+            "recent_expansions": recent_expansions,
+            "r3_autopilot_active": r3_active,
+            "expansion_rules": EXPANSION_RULES,
+            "dashboard_generated_at": _now()
+        }
+
+@app.post("/ocl/expansion/batch_process")
+async def batch_process_expansions(body: Dict = Body(...)):
+    """
+    Batch process OCL expansions for multiple completed jobs
+    
+    Body:
+    {
+        "expansions": [
+            {
+                "username": "agent1",
+                "job_value": 500,
+                "job_id": "job_1",
+                "on_time": true,
+                "disputed": false
+            },
+            ...
+        ]
+    }
+    """
+    expansions = body.get("expansions", [])
+    
+    if not expansions:
+        return {"error": "expansions array required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        results = []
+        
+        for expansion_data in expansions:
+            username = expansion_data.get("username")
+            job_value = float(expansion_data.get("job_value", 0))
+            job_id = expansion_data.get("job_id")
+            on_time = expansion_data.get("on_time", True)
+            disputed = expansion_data.get("disputed", False)
+            
+            agent_user = _find_user(users, username)
+            
+            if not agent_user:
+                results.append({
+                    "username": username,
+                    "status": "error",
+                    "error": "agent not found"
+                })
+                continue
+            
+            # Process expansion
+            result = process_job_completion_expansion(
+                agent_user, job_value, job_id, on_time, disputed
+            )
+            
+            results.append({
+                "username": username,
+                "job_id": job_id,
+                "status": "success" if result["ok"] else "error",
+                **result
+            })
+        
+        await _save_users(client, users)
+        
+        successful = len([r for r in results if r.get("status") == "success"])
+        
+        return {
+            "ok": True,
+            "total_processed": len(expansions),
+            "successful": successful,
+            "failed": len(expansions) - successful,
+            "results": results
+        }
+        
         # ============ DARK-POOL PERFORMANCE AUCTIONS ============
 
 @app.get("/darkpool/tiers")
