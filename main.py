@@ -672,6 +672,7 @@ async def startup_event():
     asyncio.create_task(auto_bid_background())
     print("Auto-bid background task started")
 # ========== END BLOCK ==========
+
 async def auto_release_escrows_job():
     """
     Runs every 6 hours
@@ -682,24 +683,58 @@ async def auto_release_escrows_job():
             async with httpx.AsyncClient(timeout=30) as client:
                 users = await _load_users(client)
                 
-                for user in users:
-                    for intent in user.get("intents", []):
-                        if intent.get("status") == "DELIVERED" and \
-                           intent.get("payment_intent_id") and \
-                           not intent.get("payment_captured"):
-                            
-                            # Check timeout
-                            result = await auto_timeout_release(intent, timeout_days=7)
-                            
-                            if result.get("ok"):
-                                print(f"Auto-released escrow for intent {intent.get('id')}")
+                # Find DealGraph system user
+                system_user = next(
+                    (u for u in users if u.get("username") == "system_dealgraph"),
+                    None
+                )
                 
-                await _save_users(client, users)
+                if not system_user:
+                    print("No DealGraph system user found")
+                    await asyncio.sleep(6 * 3600)
+                    continue
+                
+                deals = system_user.get("deals", [])
+                
+                # Only check IN_PROGRESS deals
+                in_progress_deals = [
+                    d for d in deals 
+                    if isinstance(d, dict) and d.get("state") == "IN_PROGRESS"
+                ]
+                
+                released_count = 0
+                
+                for deal in in_progress_deals:
+                    try:
+                        # Check if timed out
+                        timeout_check = check_timeout(deal)
+                        
+                        if timeout_check.get("timed_out"):
+                            # Check if proof exists
+                            proof_verified = bool(deal.get("delivery", {}).get("proof"))
+                            
+                            # Auto-release
+                            release_result = auto_release_on_timeout(deal, proof_verified)
+                            
+                            if release_result.get("ok"):
+                                released_count += 1
+                                print(f" Auto-released deal {deal.get('id')} after {timeout_check.get('hours_overdue', 0)}h timeout")
+                    
+                    except Exception as deal_error:
+                        print(f" Error processing deal {deal.get('id', 'unknown')}: {deal_error}")
+                        continue
+                
+                # Save if any changes
+                if released_count > 0:
+                    await _save_users(client, users)
+                    print(f" Auto-released {released_count} deals")
+                
         except Exception as e:
             print(f" Auto-release job error: {e}")
         
         # Run every 6 hours
         await asyncio.sleep(6 * 3600)
+        
 
 @app.on_event("startup")
 async def startup_event():
