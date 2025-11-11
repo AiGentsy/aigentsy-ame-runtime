@@ -576,6 +576,39 @@ except Exception as e:
     FACTORING_RATES = {}
     ARM_MULTIPLIERS = {}
     DARK_POOL_WEIGHTS = {}
+
+# ============ STATE-DRIVEN MONEY (WEBHOOK SAFETY) ============
+try:
+    from state_money import (
+        generate_idempotency_key,
+        validate_state_transition,
+        record_money_event,
+        authorize_payment,
+        capture_payment,
+        pause_on_dispute,
+        check_timeout,
+        auto_release_on_timeout,
+        void_authorization,
+        process_webhook,
+        get_money_timeline,
+        STATE_TRANSITIONS,
+        TIMEOUT_RULES
+    )
+except Exception as e:
+    print(f" state_money import failed: {e}")
+    def generate_idempotency_key(d, a, t=None): return "key"
+    def validate_state_transition(c, n): return {"ok": False}
+    def record_money_event(d, e, p=None, a=None, i=None, m=None): return {"ok": False}
+    def authorize_payment(d, p, a): return {"ok": False}
+    def capture_payment(d, a=None): return {"ok": False}
+    def pause_on_dispute(d, r=""): return {"ok": False}
+    def check_timeout(d): return {"ok": False}
+    def auto_release_on_timeout(d, p=False): return {"ok": False}
+    def void_authorization(d, r="cancelled"): return {"ok": False}
+    def process_webhook(w, d): return {"ok": False}
+    def get_money_timeline(d): return {"ok": False}
+    STATE_TRANSITIONS = {}
+    TIMEOUT_RULES = {}
     
 app = FastAPI()
 
@@ -6414,6 +6447,441 @@ async def get_jv_performance(jv_id: str):
         
         return {"ok": True, **performance}
 
+# ============ STATE-DRIVEN MONEY (WEBHOOK SAFETY) ============
+
+@app.get("/money/config")
+async def get_money_config():
+    """Get state-driven money configuration"""
+    return {
+        "ok": True,
+        "state_transitions": STATE_TRANSITIONS,
+        "timeout_rules": TIMEOUT_RULES,
+        "description": "Production-safe escrow bound to DealGraph states with webhook idempotency"
+    }
+
+@app.post("/money/idempotency_key")
+async def generate_idempotency_key_endpoint(body: Dict = Body(...)):
+    """
+    Generate idempotency key for Stripe operation
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "action": "authorize",
+        "timestamp": "2025-01-15T10:00:00Z" (optional)
+    }
+    """
+    deal_id = body.get("deal_id")
+    action = body.get("action")
+    timestamp = body.get("timestamp")
+    
+    if not all([deal_id, action]):
+        return {"error": "deal_id and action required"}
+    
+    key = generate_idempotency_key(deal_id, action, timestamp)
+    
+    return {
+        "ok": True,
+        "idempotency_key": key,
+        "deal_id": deal_id,
+        "action": action
+    }
+
+@app.post("/money/validate_transition")
+async def validate_state_transition_endpoint(body: Dict = Body(...)):
+    """
+    Validate if state transition is allowed
+    
+    Body:
+    {
+        "current_state": "ACCEPTED",
+        "new_state": "ESCROW_HELD"
+    }
+    """
+    current_state = body.get("current_state")
+    new_state = body.get("new_state")
+    
+    if not all([current_state, new_state]):
+        return {"error": "current_state and new_state required"}
+    
+    result = validate_state_transition(current_state, new_state)
+    
+    return {"ok": True, **result}
+
+@app.post("/money/authorize")
+async def authorize_payment_endpoint(body: Dict = Body(...)):
+    """
+    Authorize payment (Stripe payment intent)
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "payment_intent_id": "pi_stripe123",
+        "amount": 500
+    }
+    """
+    deal_id = body.get("deal_id")
+    payment_intent_id = body.get("payment_intent_id")
+    amount = float(body.get("amount", 0))
+    
+    if not all([deal_id, payment_intent_id]) or amount <= 0:
+        return {"error": "deal_id, payment_intent_id, and positive amount required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find deal
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Authorize payment
+        result = authorize_payment(deal, payment_intent_id, amount)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/money/capture")
+async def capture_payment_endpoint(body: Dict = Body(...)):
+    """
+    Capture payment (when delivered)
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "capture_amount": 500 (optional - defaults to authorized amount)
+    }
+    """
+    deal_id = body.get("deal_id")
+    capture_amount = body.get("capture_amount")
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Capture payment
+        result = capture_payment(deal, capture_amount)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/money/pause_dispute")
+async def pause_on_dispute_endpoint(body: Dict = Body(...)):
+    """
+    Pause payment on dispute
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "dispute_reason": "Quality issue"
+    }
+    """
+    deal_id = body.get("deal_id")
+    dispute_reason = body.get("dispute_reason", "")
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Pause on dispute
+        result = pause_on_dispute(deal, dispute_reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/money/check_timeout/{deal_id}")
+async def check_timeout_endpoint(deal_id: str):
+    """Check if deal has timed out"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        result = check_timeout(deal)
+        
+        return {"ok": True, "deal_id": deal_id, **result}
+
+@app.post("/money/auto_release")
+async def auto_release_on_timeout_endpoint(body: Dict = Body(...)):
+    """
+    Auto-release payment on timeout
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "proof_verified": true
+    }
+    """
+    deal_id = body.get("deal_id")
+    proof_verified = body.get("proof_verified", False)
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Auto-release
+        result = auto_release_on_timeout(deal, proof_verified)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/money/void")
+async def void_authorization_endpoint(body: Dict = Body(...)):
+    """
+    Void authorization (cancel deal)
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "reason": "cancelled_by_buyer"
+    }
+    """
+    deal_id = body.get("deal_id")
+    reason = body.get("reason", "cancelled")
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Void authorization
+        result = void_authorization(deal, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/money/webhook")
+async def process_webhook_endpoint(body: Dict = Body(...)):
+    """
+    Process Stripe webhook with idempotency
+    
+    Body: Stripe webhook payload
+    """
+    # Extract deal_id from webhook metadata
+    deal_id = body.get("data", {}).get("object", {}).get("metadata", {}).get("deal_id")
+    
+    if not deal_id:
+        return {"error": "deal_id not found in webhook metadata"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Process webhook
+        result = process_webhook(body, deal)
+        
+        if result.get("ok") or result.get("error") == "webhook_already_processed":
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/money/timeline/{deal_id}")
+async def get_money_timeline_endpoint(deal_id: str):
+    """Get complete money event timeline for deal"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        timeline = get_money_timeline(deal)
+        
+        return {"ok": True, **timeline}
+
+@app.post("/money/batch_check_timeouts")
+async def batch_check_timeouts():
+    """Batch check all active deals for timeouts"""
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"ok": True, "timed_out_deals": [], "count": 0}
+        
+        deals = system_user.get("deals", [])
+        
+        # Check all IN_PROGRESS deals
+        in_progress_deals = [d for d in deals if d.get("state") == "IN_PROGRESS"]
+        
+        timed_out = []
+        
+        for deal in in_progress_deals:
+            timeout_check = check_timeout(deal)
+            
+            if timeout_check.get("timed_out"):
+                timed_out.append({
+                    "deal_id": deal["id"],
+                    "timeout_info": timeout_check,
+                    "buyer": deal.get("buyer"),
+                    "lead_agent": deal.get("lead_agent")
+                })
+        
+        return {
+            "ok": True,
+            "total_checked": len(in_progress_deals),
+            "timed_out_count": len(timed_out),
+            "timed_out_deals": timed_out
+        }
+
+@app.get("/money/dashboard")
+async def get_money_dashboard():
+    """Get state-driven money dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_deals": 0,
+                "message": "No deals yet"
+            }
+        
+        deals = system_user.get("deals", [])
+        
+        # Count by escrow status
+        by_escrow_status = {}
+        for deal in deals:
+            status = deal.get("escrow", {}).get("status", "none")
+            by_escrow_status[status] = by_escrow_status.get(status, 0) + 1
+        
+        # Calculate totals
+        total_authorized = sum([
+            d.get("escrow", {}).get("amount", 0) 
+            for d in deals 
+            if d.get("escrow", {}).get("status") == "authorized"
+        ])
+        
+        total_captured = sum([
+            d.get("escrow", {}).get("captured_amount", 0)
+            for d in deals
+            if d.get("escrow", {}).get("status") == "captured"
+        ])
+        
+        # Count timeouts
+        in_progress = [d for d in deals if d.get("state") == "IN_PROGRESS"]
+        timed_out_count = 0
+        for deal in in_progress:
+            if check_timeout(deal).get("timed_out"):
+                timed_out_count += 1
+        
+        # Count webhooks processed
+        total_webhooks = sum([
+            len(d.get("processed_webhooks", []))
+            for d in deals
+        ])
+        
+        return {
+            "ok": True,
+            "total_deals": len(deals),
+            "escrow_status_breakdown": by_escrow_status,
+            "total_authorized": round(total_authorized, 2),
+            "total_captured": round(total_captured, 2),
+            "deals_in_progress": len(in_progress),
+            "timed_out_deals": timed_out_count,
+            "total_webhooks_processed": total_webhooks,
+            "state_transitions": STATE_TRANSITIONS,
+            "timeout_rules": TIMEOUT_RULES,
+            "dashboard_generated_at": _now()
+        }
+        
         # ============ SLO CONTRACT TIERS ============
 
 @app.get("/slo/tiers")
