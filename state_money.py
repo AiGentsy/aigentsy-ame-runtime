@@ -80,8 +80,11 @@ def generate_idempotency_key(
     if not timestamp:
         timestamp = _now()
     
+    # Truncate timestamp to second precision safely
+    ts_truncated = timestamp[:19] if len(timestamp) >= 19 else timestamp
+    
     # Create deterministic hash
-    key_input = f"{deal_id}:{action}:{timestamp[:19]}"  # Truncate to second precision
+    key_input = f"{deal_id}:{action}:{ts_truncated}"
     key_hash = hashlib.sha256(key_input.encode()).hexdigest()[:32]
     
     return f"aigentsy_{deal_id}_{action}_{key_hash}"
