@@ -382,7 +382,7 @@ try:
         ASSET_TYPES
     )
 except Exception as e:
-    print(f"⚠️ ipvault import failed: {e}")
+    print(f" ipvault import failed: {e}")
     def create_ip_asset(o, t, ti, d, r=None, m=None, p=0.0, lt="per_use"): return {"ok": False}
     def license_ip_asset(a, l, u): return {"ok": False}
     def record_asset_usage(a, u, j=None, c=""): return {"ok": False}
@@ -412,7 +412,7 @@ try:
         INSURANCE_POOL_CUT
     )
 except Exception as e:
-    print(f"⚠️ dealgraph import failed: {e}")
+    print(f" dealgraph import failed: {e}")
     def create_deal(i, a, s="standard", ip=None, jv=None): return {"ok": False}
     def calculate_revenue_split(j, l, jv, ip, ipd=None): return {"ok": False}
     def transition_state(d, n, a, m=None): return {"ok": False}
@@ -2233,7 +2233,7 @@ async def revenue_recognize(request: Request, x_api_key: str | None = Header(Non
             try:
                 repay_result = await auto_repay_ocl(u, net_amt)
             except Exception as e:
-                print(f"⚠️ OCL repayment failed: {e}")
+                print(f" OCL repayment failed: {e}")
                 repay_result = {"ok": False, "error": str(e)}
         
         # ✅ SAVE USERS
@@ -8297,7 +8297,7 @@ async def intent_bid(
             
             if arm_recommendation.get("recommended_bid"):
                 price = arm_recommendation["recommended_bid"]
-                print(f"💡 ARM recommended price: ${price} for {agent} (tier: {calculate_pricing_tier(outcome_score)['tier']})")
+                print(f" ARM recommended price: ${price} for {agent} (tier: {calculate_pricing_tier(outcome_score)['tier']})")
             else:
                 # Agent's tier exceeds budget or other issue
                 return {
@@ -8307,7 +8307,7 @@ async def intent_bid(
                     "arm_recommendation": arm_recommendation
                 }
         except Exception as e:
-            print(f"⚠️ ARM price calculation failed: {e}")
+            print(f" ARM price calculation failed: {e}")
             # Continue without ARM - require manual price
             if not price:
                 return {
@@ -8463,7 +8463,7 @@ async def intent_award(body: Dict = Body(...)):
                     "order_value": order_value
                 })
         except Exception as e:
-            print(f"⚠️ Insurance collection failed: {e}")
+            print(f" Insurance collection failed: {e}")
             insurance_result = {"ok": False, "error": str(e), "warning": "Insurance collection failed"}
         
         # ✅ 2. REQUEST FACTORING ADVANCE
@@ -8474,9 +8474,9 @@ async def intent_award(body: Dict = Body(...)):
             
             if not factoring_result["ok"]:
                 factoring_result["warning"] = factoring_result.get("error", "Factoring unavailable")
-                print(f"⚠️ Factoring unavailable: {factoring_result.get('error')}")
+                print(f" Factoring unavailable: {factoring_result.get('error')}")
         except Exception as e:
-            print(f"⚠️ Factoring request failed: {e}")
+            print(f" Factoring request failed: {e}")
             factoring_result = {"ok": False, "error": str(e), "warning": "Factoring request failed"}
         
         # ✅ 3. STAKE BOND
@@ -8488,7 +8488,7 @@ async def intent_award(body: Dict = Body(...)):
             if not bond_result["ok"]:
                 bond_result["warning"] = "Agent needs more AIGx for performance bond"
         except Exception as e:
-            print(f"⚠️ Bond staking failed: {e}")
+            print(f" Bond staking failed: {e}")
             bond_result = {"ok": False, "error": str(e), "warning": "Bond staking failed"}
         
         # ✅ 4. CREATE ESCROW
@@ -8511,7 +8511,7 @@ async def intent_award(body: Dict = Body(...)):
                 intent["escrow_status"] = "authorized"
                 intent["escrow_created_at"] = _now()
         except Exception as e:
-            print(f"⚠️ Escrow creation failed: {e}")
+            print(f" Escrow creation failed: {e}")
             escrow_result = {"ok": False, "error": str(e)}
         
         # Save all changes
@@ -8535,7 +8535,7 @@ async def intent_award(body: Dict = Body(...)):
                 "factoring_tier": factoring_result.get("factoring_tier", "new")
             })
         except Exception as e:
-            print(f"⚠️ Event publish failed: {e}")
+            print(f" Event publish failed: {e}")
         
         return {
             "ok": True,
