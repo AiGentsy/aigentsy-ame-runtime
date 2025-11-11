@@ -160,7 +160,34 @@ async def auto_capture_on_delivered(intent: Dict[str, Any]) -> Dict[str, Any]:
     
     return result
 
-
+def capture_payment_intent(
+    intent_id: str,
+    amount: float = None,
+    metadata: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """
+    Capture a payment intent (Stripe API call simulation)
+    In production, this would call Stripe's API
+    """
+    if not intent_id:
+        return {
+            "ok": False,
+            "error": "intent_id required"
+        }
+    
+    # Simulate Stripe capture
+    # In production: stripe.PaymentIntent.capture(intent_id, amount=amount)
+    
+    return {
+        "ok": True,
+        "intent_id": intent_id,
+        "amount": amount,
+        "status": "captured",
+        "captured_at": _now(),
+        "metadata": metadata or {},
+        "note": "Simulated capture - integrate real Stripe API in production"
+    }
+    
 async def auto_timeout_release(intent: Dict[str, Any], timeout_days: int = 7) -> Dict[str, Any]:
     """
     Auto-release payment if delivery confirmed and no disputes after timeout
