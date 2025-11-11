@@ -724,23 +724,6 @@ async def auto_release_escrows_job():
         
         await asyncio.sleep(6 * 3600)
         
-                    
-                    except Exception as deal_error:
-                        print(f" Error processing deal {deal.get('id', 'unknown')}: {deal_error}")
-                        continue
-                
-                # Save if any changes
-                if released_count > 0:
-                    await _save_users(client, users)
-                    print(f" Auto-released {released_count} deals")
-                
-        except Exception as e:
-            print(f" Auto-release job error: {e}")
-        
-        # Run every 6 hours
-        await asyncio.sleep(6 * 3600)
-        
-
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks"""
