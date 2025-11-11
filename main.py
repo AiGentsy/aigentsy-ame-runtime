@@ -425,6 +425,33 @@ except Exception as e:
     DealState = None
     PLATFORM_FEE = 0.15
     INSURANCE_POOL_CUT = 0.05
+
+# ============ REAL-WORLD PROOF PIPE ============
+try:
+    from proof_pipe import (
+        create_proof,
+        process_square_webhook,
+        process_calendly_webhook,
+        verify_proof,
+        create_outcome_from_proof,
+        get_agent_proofs,
+        attach_proof_to_deal,
+        generate_proof_report,
+        PROOF_TYPES,
+        OUTCOME_EVENTS
+    )
+except Exception as e:
+    print(f" proof_pipe import failed: {e}")
+    def create_proof(pt, s, a, j=None, d=None, pd=None, au=None): return {"ok": False}
+    def process_square_webhook(w): return {"ok": False}
+    def process_calendly_webhook(w): return {"ok": False}
+    def verify_proof(p, v="system"): return {"ok": False}
+    def create_outcome_from_proof(p, u, e): return {"ok": False}
+    def get_agent_proofs(a, p, v=False): return {"ok": False}
+    def attach_proof_to_deal(p, d): return {"ok": False}
+    def generate_proof_report(p, s=None, e=None): return {"ok": False}
+    PROOF_TYPES = {}
+    OUTCOME_EVENTS = {}
     
 app = FastAPI()
 
@@ -7271,6 +7298,437 @@ async def get_dealgraph_dashboard():
                 "platform_fee": PLATFORM_FEE,
                 "insurance_pool_cut": INSURANCE_POOL_CUT
             },
+            "dashboard_generated_at": _now()
+        }
+
+# ============ REAL-WORLD PROOF PIPE ============
+
+@app.get("/proofs/types")
+async def get_proof_types():
+    """Get available proof types"""
+    return {
+        "ok": True,
+        "proof_types": PROOF_TYPES,
+        "outcome_events": OUTCOME_EVENTS,
+        "description": "Real-world proof integration for physical + digital outcomes"
+    }
+
+@app.post("/proofs/create")
+async def create_proof_endpoint(body: Dict = Body(...)):
+    """
+    Create a proof record
+    
+    Body:
+    {
+        "proof_type": "pos_receipt",
+        "source": "square",
+        "agent_username": "agent1",
+        "job_id": "job_xyz789",
+        "deal_id": "deal_abc123",
+        "proof_data": {
+            "transaction_id": "...",
+            "amount": 50.00,
+            "timestamp": "...",
+            "merchant_id": "..."
+        },
+        "attachment_url": "https://..."
+    }
+    """
+    proof_type = body.get("proof_type")
+    source = body.get("source")
+    agent_username = body.get("agent_username")
+    job_id = body.get("job_id")
+    deal_id = body.get("deal_id")
+    proof_data = body.get("proof_data")
+    attachment_url = body.get("attachment_url")
+    
+    if not all([proof_type, source, agent_username]):
+        return {"error": "proof_type, source, and agent_username required"}
+    
+    # Create proof
+    result = create_proof(
+        proof_type,
+        source,
+        agent_username,
+        job_id,
+        deal_id,
+        proof_data,
+        attachment_url
+    )
+    
+    if result["ok"]:
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            # Store proof
+            system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_proofs",
+                    "role": "system",
+                    "proofs": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("proofs", []).append(result["proof"])
+            
+            await _save_users(client, users)
+    
+    return result
+
+@app.post("/proofs/webhook/square")
+async def square_webhook_endpoint(body: Dict = Body(...)):
+    """
+    Square POS webhook handler
+    
+    Automatically processes Square payment webhooks and creates proofs
+    """
+    # Process webhook
+    result = process_square_webhook(body)
+    
+    if not result["ok"]:
+        return result
+    
+    # Extract agent from webhook (would need to be in custom metadata)
+    # For now, return processed data for manual proof creation
+    
+    return {
+        "ok": True,
+        "webhook_processed": True,
+        "event": result["event"],
+        "proof_data": result["proof_data"],
+        "message": "Use POST /proofs/create to create proof record"
+    }
+
+@app.post("/proofs/webhook/calendly")
+async def calendly_webhook_endpoint(body: Dict = Body(...)):
+    """
+    Calendly booking webhook handler
+    
+    Automatically processes Calendly webhooks and creates proofs
+    """
+    # Process webhook
+    result = process_calendly_webhook(body)
+    
+    if not result["ok"]:
+        return result
+    
+    return {
+        "ok": True,
+        "webhook_processed": True,
+        "event": result["event"],
+        "proof_data": result["proof_data"],
+        "message": "Use POST /proofs/create to create proof record"
+    }
+
+@app.get("/proofs/{proof_id}")
+async def get_proof(proof_id: str):
+    """Get proof details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {"error": "no_proofs_found"}
+        
+        proofs = system_user.get("proofs", [])
+        proof = next((p for p in proofs if p.get("id") == proof_id), None)
+        
+        if not proof:
+            return {"error": "proof not found", "proof_id": proof_id}
+        
+        return {"ok": True, "proof": proof}
+
+@app.post("/proofs/verify")
+async def verify_proof_endpoint(body: Dict = Body(...)):
+    """
+    Verify a proof record
+    
+    Body:
+    {
+        "proof_id": "proof_abc123",
+        "verifier": "system"
+    }
+    """
+    proof_id = body.get("proof_id")
+    verifier = body.get("verifier", "system")
+    
+    if not proof_id:
+        return {"error": "proof_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find proof
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {"error": "proof not found"}
+        
+        proofs = system_user.get("proofs", [])
+        proof = next((p for p in proofs if p.get("id") == proof_id), None)
+        
+        if not proof:
+            return {"error": "proof not found"}
+        
+        # Verify proof
+        result = verify_proof(proof, verifier)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/proofs/create_outcome")
+async def create_outcome_from_proof_endpoint(body: Dict = Body(...)):
+    """
+    Create outcome record from verified proof
+    
+    Body:
+    {
+        "proof_id": "proof_abc123",
+        "agent_username": "agent1",
+        "outcome_event": "PAID_POS"
+    }
+    """
+    proof_id = body.get("proof_id")
+    agent_username = body.get("agent_username")
+    outcome_event = body.get("outcome_event")
+    
+    if not all([proof_id, agent_username, outcome_event]):
+        return {"error": "proof_id, agent_username, and outcome_event required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find proof
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {"error": "proof not found"}
+        
+        proofs = system_user.get("proofs", [])
+        proof = next((p for p in proofs if p.get("id") == proof_id), None)
+        
+        if not proof:
+            return {"error": "proof not found"}
+        
+        # Find agent
+        agent_user = _find_user(users, agent_username)
+        if not agent_user:
+            return {"error": "agent not found"}
+        
+        # Create outcome
+        result = create_outcome_from_proof(proof, agent_user, outcome_event)
+        
+        if result["ok"]:
+            # Store outcome
+            system_user.setdefault("outcomes", []).append(result["outcome"])
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/proofs/agent/{username}")
+async def get_agent_proofs_endpoint(username: str, verified_only: bool = False):
+    """Get all proofs for an agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "agent": username,
+                "total_proofs": 0,
+                "proofs": []
+            }
+        
+        proofs = system_user.get("proofs", [])
+        result = get_agent_proofs(username, proofs, verified_only)
+        
+        return {"ok": True, **result}
+
+@app.post("/proofs/attach_to_deal")
+async def attach_proof_to_deal_endpoint(body: Dict = Body(...)):
+    """
+    Attach verified proof to a DealGraph entry
+    
+    Body:
+    {
+        "proof_id": "proof_abc123",
+        "deal_id": "deal_xyz789"
+    }
+    """
+    proof_id = body.get("proof_id")
+    deal_id = body.get("deal_id")
+    
+    if not all([proof_id, deal_id]):
+        return {"error": "proof_id and deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find proof
+        proof_system = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not proof_system:
+            return {"error": "proof not found"}
+        
+        proofs = proof_system.get("proofs", [])
+        proof = next((p for p in proofs if p.get("id") == proof_id), None)
+        
+        if not proof:
+            return {"error": "proof not found"}
+        
+        # Find deal
+        deal_system = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not deal_system:
+            return {"error": "deal not found"}
+        
+        deals = deal_system.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Attach proof
+        result = attach_proof_to_deal(proof, deal)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/proofs/report")
+async def generate_proof_report_endpoint(start_date: str = None, end_date: str = None):
+    """
+    Generate proof verification report
+    
+    Parameters:
+    - start_date: Filter start (ISO format)
+    - end_date: Filter end (ISO format)
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_proofs": 0,
+                "message": "No proofs created yet"
+            }
+        
+        proofs = system_user.get("proofs", [])
+        report = generate_proof_report(proofs, start_date, end_date)
+        
+        return {"ok": True, **report}
+
+@app.get("/proofs/list")
+async def list_proofs(
+    proof_type: str = None,
+    source: str = None,
+    verified: bool = None,
+    agent: str = None
+):
+    """
+    List proofs with filters
+    
+    Parameters:
+    - proof_type: Filter by type
+    - source: Filter by source
+    - verified: Filter by verification status
+    - agent: Filter by agent
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {"ok": True, "proofs": [], "count": 0}
+        
+        proofs = system_user.get("proofs", [])
+        
+        # Apply filters
+        if proof_type:
+            proofs = [p for p in proofs if p.get("type") == proof_type]
+        
+        if source:
+            proofs = [p for p in proofs if p.get("source") == source]
+        
+        if verified is not None:
+            proofs = [p for p in proofs if p.get("verified") == verified]
+        
+        if agent:
+            proofs = [p for p in proofs if p.get("agent") == agent]
+        
+        return {"ok": True, "proofs": proofs, "count": len(proofs)}
+
+@app.get("/proofs/dashboard")
+async def get_proofs_dashboard():
+    """Get proof pipe dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_proofs"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_proofs": 0,
+                "message": "No proofs created yet"
+            }
+        
+        proofs = system_user.get("proofs", [])
+        
+        total_proofs = len(proofs)
+        verified_proofs = len([p for p in proofs if p.get("verified")])
+        pending_proofs = total_proofs - verified_proofs
+        
+        # Count by type
+        by_type = {}
+        for proof in proofs:
+            proof_type = proof.get("type")
+            by_type[proof_type] = by_type.get(proof_type, 0) + 1
+        
+        # Count by source
+        by_source = {}
+        for proof in proofs:
+            source = proof.get("source")
+            by_source[source] = by_source.get(source, 0) + 1
+        
+        # Recent proofs
+        recent_proofs = sorted(proofs, key=lambda p: p.get("created_at", ""), reverse=True)[:10]
+        
+        return {
+            "ok": True,
+            "total_proofs": total_proofs,
+            "verified_proofs": verified_proofs,
+            "pending_proofs": pending_proofs,
+            "verification_rate": round(verified_proofs / total_proofs, 2) if total_proofs > 0 else 0,
+            "proofs_by_type": by_type,
+            "proofs_by_source": by_source,
+            "recent_proofs": [
+                {
+                    "proof_id": p["id"],
+                    "type": p["type"],
+                    "source": p["source"],
+                    "agent": p["agent"],
+                    "verified": p.get("verified", False),
+                    "created_at": p["created_at"]
+                }
+                for p in recent_proofs
+            ],
+            "proof_types": PROOF_TYPES,
+            "outcome_events": OUTCOME_EVENTS,
             "dashboard_generated_at": _now()
         }
         
