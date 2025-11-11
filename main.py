@@ -355,7 +355,7 @@ try:
         SLO_TIERS
     )
 except Exception as e:
-    print(f"⚠️ slo_tiers import failed: {e}")
+    print(f" slo_tiers import failed: {e}")
     def get_slo_tier(t): return {"ok": False}
     def calculate_slo_requirements(j, t="standard"): return {"ok": False}
     def create_slo_contract(i, a, t="standard"): return {"ok": False}
@@ -365,6 +365,35 @@ except Exception as e:
     def process_slo_delivery(c, u, d=None): return {"ok": False}
     def get_agent_slo_stats(u): return {"ok": False}
     SLO_TIERS = {}
+
+# ============ IPVAULT AUTO-ROYALTIES ============
+try:
+    from ipvault import (
+        create_ip_asset,
+        license_ip_asset,
+        record_asset_usage,
+        calculate_royalty_payment,
+        process_delivery_with_royalty,
+        get_asset_performance,
+        get_owner_portfolio,
+        get_licensee_library,
+        search_assets,
+        update_asset_status,
+        ASSET_TYPES
+    )
+except Exception as e:
+    print(f"⚠️ ipvault import failed: {e}")
+    def create_ip_asset(o, t, ti, d, r=None, m=None, p=0.0, lt="per_use"): return {"ok": False}
+    def license_ip_asset(a, l, u): return {"ok": False}
+    def record_asset_usage(a, u, j=None, c=""): return {"ok": False}
+    def calculate_royalty_payment(a, j): return {"ok": False}
+    def process_delivery_with_royalty(a, j, ag, ow, jid=None): return {"ok": False}
+    def get_asset_performance(a): return {"ok": False}
+    def get_owner_portfolio(o, a): return {"ok": False}
+    def get_licensee_library(l, a): return {"ok": False}
+    def search_assets(a, t=None, q=None, m=0, s="royalties"): return {"ok": False}
+    def update_asset_status(a, s, r=""): return {"ok": False}
+    ASSET_TYPES = {}
     
 app = FastAPI()
 
@@ -6226,6 +6255,477 @@ async def get_slo_dashboard():
             "on_time_rate": round(on_time_rate, 2),
             "tier_distribution": tier_dist,
             "available_tiers": SLO_TIERS,
+            "dashboard_generated_at": _now()
+        }
+
+# ============ IPVAULT AUTO-ROYALTIES ============
+
+@app.get("/ipvault/types")
+async def get_asset_types():
+    """Get available IP asset types"""
+    return {
+        "ok": True,
+        "asset_types": ASSET_TYPES,
+        "description": "Protocol-native IP marketplace with auto-royalties"
+    }
+
+@app.post("/ipvault/asset/create")
+async def create_ip_asset_endpoint(body: Dict = Body(...)):
+    """
+    Create an IP asset (playbook, template, workflow, etc.)
+    
+    Body:
+    {
+        "owner_username": "agent1",
+        "asset_type": "playbook",
+        "title": "E-commerce SEO Audit",
+        "description": "Complete SEO audit process for online stores",
+        "royalty_percentage": 0.10,
+        "price": 50.0,
+        "license_type": "per_use",
+        "metadata": {...}
+    }
+    """
+    owner_username = body.get("owner_username")
+    asset_type = body.get("asset_type")
+    title = body.get("title")
+    description = body.get("description")
+    royalty_percentage = body.get("royalty_percentage")
+    price = float(body.get("price", 0))
+    license_type = body.get("license_type", "per_use")
+    metadata = body.get("metadata")
+    
+    if not all([owner_username, asset_type, title, description]):
+        return {"error": "owner_username, asset_type, title, and description required"}
+    
+    # Create asset
+    result = create_ip_asset(
+        owner_username,
+        asset_type,
+        title,
+        description,
+        royalty_percentage,
+        metadata,
+        price,
+        license_type
+    )
+    
+    if result["ok"]:
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            # Store asset
+            system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_ipvault",
+                    "role": "system",
+                    "assets": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("assets", []).append(result["asset"])
+            
+            await _save_users(client, users)
+    
+    return result
+
+@app.get("/ipvault/asset/{asset_id}")
+async def get_ip_asset(asset_id: str):
+    """Get IP asset details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "no_assets_found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found", "asset_id": asset_id}
+        
+        return {"ok": True, "asset": asset}
+
+@app.post("/ipvault/license")
+async def license_ip_asset_endpoint(body: Dict = Body(...)):
+    """
+    License an IP asset to use in deliveries
+    
+    Body:
+    {
+        "asset_id": "asset_abc123",
+        "licensee_username": "agent2"
+    }
+    """
+    asset_id = body.get("asset_id")
+    licensee_username = body.get("licensee_username")
+    
+    if not all([asset_id, licensee_username]):
+        return {"error": "asset_id and licensee_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find asset
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        # Find licensee
+        licensee_user = _find_user(users, licensee_username)
+        if not licensee_user:
+            return {"error": "user not found"}
+        
+        # License asset
+        result = license_ip_asset(asset, licensee_username, licensee_user)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/ipvault/usage/record")
+async def record_asset_usage_endpoint(body: Dict = Body(...)):
+    """
+    Record usage of an IP asset
+    
+    Body:
+    {
+        "asset_id": "asset_abc123",
+        "user_username": "agent2",
+        "job_id": "job_xyz789",
+        "context": "Used for client website audit"
+    }
+    """
+    asset_id = body.get("asset_id")
+    user_username = body.get("user_username")
+    job_id = body.get("job_id")
+    context = body.get("context", "")
+    
+    if not all([asset_id, user_username]):
+        return {"error": "asset_id and user_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find asset
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        # Record usage
+        result = record_asset_usage(asset, user_username, job_id, context)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/ipvault/royalty/calculate")
+async def calculate_royalty_payment_endpoint(body: Dict = Body(...)):
+    """
+    Calculate royalty payment for asset usage
+    
+    Body:
+    {
+        "asset_id": "asset_abc123",
+        "job_payment": 500
+    }
+    """
+    asset_id = body.get("asset_id")
+    job_payment = float(body.get("job_payment", 0))
+    
+    if not asset_id or job_payment <= 0:
+        return {"error": "asset_id and positive job_payment required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        result = calculate_royalty_payment(asset, job_payment)
+        
+        return {"ok": True, **result}
+
+@app.post("/ipvault/delivery/process")
+async def process_delivery_with_royalty_endpoint(body: Dict = Body(...)):
+    """
+    Process job delivery with automatic royalty routing
+    
+    Body:
+    {
+        "asset_id": "asset_abc123",
+        "job_payment": 500,
+        "agent_username": "agent2",
+        "job_id": "job_xyz789"
+    }
+    """
+    asset_id = body.get("asset_id")
+    job_payment = float(body.get("job_payment", 0))
+    agent_username = body.get("agent_username")
+    job_id = body.get("job_id")
+    
+    if not all([asset_id, agent_username]) or job_payment <= 0:
+        return {"error": "asset_id, agent_username, and positive job_payment required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find asset
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        # Find agent and owner
+        agent_user = _find_user(users, agent_username)
+        owner_user = _find_user(users, asset["owner"])
+        
+        if not agent_user or not owner_user:
+            return {"error": "user not found"}
+        
+        # Process delivery with royalty
+        result = process_delivery_with_royalty(
+            asset,
+            job_payment,
+            agent_user,
+            owner_user,
+            job_id
+        )
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/ipvault/asset/{asset_id}/performance")
+async def get_asset_performance_endpoint(asset_id: str):
+    """Get asset performance metrics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        performance = get_asset_performance(asset)
+        
+        return {"ok": True, **performance}
+
+@app.get("/ipvault/owner/{username}/portfolio")
+async def get_owner_portfolio_endpoint(username: str):
+    """Get owner's IP asset portfolio"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "owner": username,
+                "total_assets": 0,
+                "total_royalties_earned": 0
+            }
+        
+        assets = system_user.get("assets", [])
+        portfolio = get_owner_portfolio(username, assets)
+        
+        return {"ok": True, **portfolio}
+
+@app.get("/ipvault/licensee/{username}/library")
+async def get_licensee_library_endpoint(username: str):
+    """Get agent's licensed asset library"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "licensee": username,
+                "total_licensed_assets": 0,
+                "licensed_assets": []
+            }
+        
+        assets = system_user.get("assets", [])
+        library = get_licensee_library(username, assets)
+        
+        return {"ok": True, **library}
+
+@app.get("/ipvault/search")
+async def search_assets_endpoint(
+    asset_type: str = None,
+    query: str = None,
+    min_usage: int = 0,
+    sort_by: str = "royalties"
+):
+    """
+    Search IP assets
+    
+    Parameters:
+    - asset_type: Filter by type (playbook, prompt_template, etc.)
+    - query: Search title/description
+    - min_usage: Minimum usage count
+    - sort_by: royalties | usage | recent
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "results": [],
+                "count": 0
+            }
+        
+        assets = system_user.get("assets", [])
+        result = search_assets(assets, asset_type, query, min_usage, sort_by)
+        
+        return result
+
+@app.post("/ipvault/asset/update_status")
+async def update_asset_status_endpoint(body: Dict = Body(...)):
+    """
+    Update asset status
+    
+    Body:
+    {
+        "asset_id": "asset_abc123",
+        "status": "archived",
+        "reason": "No longer maintained"
+    }
+    """
+    asset_id = body.get("asset_id")
+    status = body.get("status")
+    reason = body.get("reason", "")
+    
+    if not all([asset_id, status]):
+        return {"error": "asset_id and status required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {"error": "asset not found"}
+        
+        assets = system_user.get("assets", [])
+        asset = next((a for a in assets if a.get("id") == asset_id), None)
+        
+        if not asset:
+            return {"error": "asset not found"}
+        
+        result = update_asset_status(asset, status, reason)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/ipvault/dashboard")
+async def get_ipvault_dashboard():
+    """Get IPVault marketplace dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_assets": 0,
+                "message": "No IP assets created yet"
+            }
+        
+        assets = system_user.get("assets", [])
+        
+        total_assets = len(assets)
+        active_assets = len([a for a in assets if a.get("status") == "active"])
+        
+        # Calculate totals
+        total_usage = sum([a.get("usage_count", 0) for a in assets])
+        total_royalties = sum([a.get("total_royalties_earned", 0) for a in assets])
+        total_licensees = sum([len(a.get("licensees", [])) for a in assets])
+        
+        # Asset breakdown by type
+        by_type = {}
+        for asset in assets:
+            asset_type = asset["type"]
+            by_type[asset_type] = by_type.get(asset_type, 0) + 1
+        
+        # Top assets
+        top_assets = sorted(
+            assets,
+            key=lambda a: a.get("total_royalties_earned", 0),
+            reverse=True
+        )[:10]
+        
+        return {
+            "ok": True,
+            "total_assets": total_assets,
+            "active_assets": active_assets,
+            "total_usage": total_usage,
+            "total_royalties_paid": round(total_royalties, 2),
+            "total_licensees": total_licensees,
+            "assets_by_type": by_type,
+            "top_earning_assets": [
+                {
+                    "asset_id": a["id"],
+                    "title": a["title"],
+                    "type": a["type"],
+                    "owner": a["owner"],
+                    "royalties": round(a.get("total_royalties_earned", 0), 2),
+                    "usage": a.get("usage_count", 0)
+                }
+                for a in top_assets
+            ],
+            "asset_types": ASSET_TYPES,
             "dashboard_generated_at": _now()
         }
         
