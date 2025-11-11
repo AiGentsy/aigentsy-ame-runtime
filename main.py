@@ -453,6 +453,36 @@ except Exception as e:
     PROOF_TYPES = {}
     OUTCOME_EVENTS = {}
 
+# ============ METABRIDGE AUTO-ASSEMBLE JV TEAMS ============
+try:
+    from metabridge import (
+        analyze_intent_complexity,
+        find_complementary_agents,
+        optimize_team_composition,
+        assign_team_roles,
+        calculate_team_splits,
+        create_team_proposal,
+        vote_on_team_proposal,
+        execute_metabridge,
+        get_metabridge_stats,
+        TEAM_RULES,
+        ROLE_SPLITS
+    )
+    from datetime import timedelta
+except Exception as e:
+    print(f"⚠️ metabridge import failed: {e}")
+    def analyze_intent_complexity(i): return {"ok": False}
+    def find_complementary_agents(i, a, m=None): return {"ok": False}
+    def optimize_team_composition(i, c, m=None): return {"ok": False}
+    def assign_team_roles(t, i): return {"ok": False}
+    def calculate_team_splits(r, b): return {"ok": False}
+    def create_team_proposal(i, r, s): return {"ok": False}
+    def vote_on_team_proposal(p, v, vo, f=""): return {"ok": False}
+    def execute_metabridge(i, a): return {"ok": False}
+    def get_metabridge_stats(p): return {"ok": False}
+    TEAM_RULES = {}
+    ROLE_SPLITS = {}
+    
 # ============ SPONSOR/CO-OP OUTCOME POOLS ============
 try:
     from sponsor_pools import (
@@ -6881,7 +6911,501 @@ async def get_money_dashboard():
             "timeout_rules": TIMEOUT_RULES,
             "dashboard_generated_at": _now()
         }
+
+# ============ METABRIDGE AUTO-ASSEMBLE JV TEAMS ============
+
+@app.get("/metabridge/config")
+async def get_metabridge_config():
+    """Get MetaBridge configuration"""
+    return {
+        "ok": True,
+        "team_rules": TEAM_RULES,
+        "role_splits": ROLE_SPLITS,
+        "description": "Autonomous team formation for complex jobs based on skill matching"
+    }
+
+@app.post("/metabridge/analyze_intent")
+async def analyze_intent_complexity_endpoint(body: Dict = Body(...)):
+    """
+    Analyze if intent requires a team
+    
+    Body:
+    {
+        "intent_id": "intent_abc123"
+    }
+    """
+    intent_id = body.get("intent_id")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
         
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        result = analyze_intent_complexity(intent)
+        
+        return {"ok": True, "intent_id": intent_id, **result}
+
+@app.post("/metabridge/find_candidates")
+async def find_complementary_agents_endpoint(body: Dict = Body(...)):
+    """
+    Find agents with complementary skills
+    
+    Body:
+    {
+        "intent_id": "intent_abc123",
+        "max_team_size": 5
+    }
+    """
+    intent_id = body.get("intent_id")
+    max_team_size = body.get("max_team_size")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Get all agents
+        agents = [u for u in users if u.get("role") == "agent"]
+        
+        result = find_complementary_agents(intent, agents, max_team_size)
+        
+        return result
+
+@app.post("/metabridge/optimize_team")
+async def optimize_team_composition_endpoint(body: Dict = Body(...)):
+    """
+    Optimize team composition for skill coverage
+    
+    Body:
+    {
+        "intent_id": "intent_abc123",
+        "candidate_usernames": ["agent1", "agent2", "agent3"],
+        "max_team_size": 5
+    }
+    """
+    intent_id = body.get("intent_id")
+    candidate_usernames = body.get("candidate_usernames", [])
+    max_team_size = body.get("max_team_size")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Get candidates
+        if candidate_usernames:
+            agents = [u for u in users if u.get("username") in candidate_usernames]
+        else:
+            agents = [u for u in users if u.get("role") == "agent"]
+        
+        # First find complementary agents
+        candidates_result = find_complementary_agents(intent, agents, max_team_size)
+        
+        if not candidates_result["ok"]:
+            return candidates_result
+        
+        # Then optimize
+        result = optimize_team_composition(intent, candidates_result["candidates"], max_team_size)
+        
+        return result
+
+@app.post("/metabridge/execute")
+async def execute_metabridge_endpoint(body: Dict = Body(...)):
+    """
+    Execute complete MetaBridge pipeline to auto-form team
+    
+    Body:
+    {
+        "intent_id": "intent_abc123"
+    }
+    """
+    intent_id = body.get("intent_id")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Get all agents
+        agents = [u for u in users if u.get("role") == "agent"]
+        
+        # Execute MetaBridge
+        result = execute_metabridge(intent, agents)
+        
+        # Store proposal if created
+        if result.get("ok") and result.get("action") == "team_proposal_created":
+            system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_metabridge",
+                    "role": "system",
+                    "proposals": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("proposals", []).append(result["proposal"])
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/metabridge/vote")
+async def vote_on_team_proposal_endpoint(body: Dict = Body(...)):
+    """
+    Vote on team proposal
+    
+    Body:
+    {
+        "proposal_id": "team_abc123",
+        "voter": "agent1",
+        "vote": "APPROVED",
+        "feedback": "Looks good to me"
+    }
+    """
+    proposal_id = body.get("proposal_id")
+    voter = body.get("voter")
+    vote = body.get("vote")
+    feedback = body.get("feedback", "")
+    
+    if not all([proposal_id, voter, vote]):
+        return {"error": "proposal_id, voter, and vote required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {"error": "proposal not found"}
+        
+        proposals = system_user.get("proposals", [])
+        proposal = next((p for p in proposals if p.get("id") == proposal_id), None)
+        
+        if not proposal:
+            return {"error": "proposal not found"}
+        
+        # Vote
+        result = vote_on_team_proposal(proposal, voter, vote, feedback)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/metabridge/proposal/{proposal_id}")
+async def get_team_proposal(proposal_id: str):
+    """Get team proposal details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {"error": "proposal not found"}
+        
+        proposals = system_user.get("proposals", [])
+        proposal = next((p for p in proposals if p.get("id") == proposal_id), None)
+        
+        if not proposal:
+            return {"error": "proposal not found"}
+        
+        return {"ok": True, "proposal": proposal}
+
+@app.get("/metabridge/proposals/list")
+async def list_team_proposals(
+    status: str = None,
+    intent_id: str = None
+):
+    """
+    List team proposals with filters
+    
+    Parameters:
+    - status: Filter by status (PENDING_VOTES, APPROVED, REJECTED)
+    - intent_id: Filter by intent
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {"ok": True, "proposals": [], "count": 0}
+        
+        proposals = system_user.get("proposals", [])
+        
+        # Apply filters
+        if status:
+            proposals = [p for p in proposals if p.get("status") == status]
+        
+        if intent_id:
+            proposals = [p for p in proposals if p.get("intent_id") == intent_id]
+        
+        return {"ok": True, "proposals": proposals, "count": len(proposals)}
+
+@app.get("/metabridge/stats")
+async def get_metabridge_stats_endpoint():
+    """Get MetaBridge performance statistics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_proposals": 0,
+                "message": "No team proposals yet"
+            }
+        
+        proposals = system_user.get("proposals", [])
+        stats = get_metabridge_stats(proposals)
+        
+        return {"ok": True, **stats}
+
+@app.get("/metabridge/agent/{username}/invitations")
+async def get_agent_team_invitations(username: str):
+    """Get pending team invitations for an agent"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {"ok": True, "invitations": [], "count": 0}
+        
+        proposals = system_user.get("proposals", [])
+        
+        # Find proposals where agent is a member and hasn't voted
+        invitations = []
+        for proposal in proposals:
+            if proposal.get("status") != "PENDING_VOTES":
+                continue
+            
+            team_members = proposal.get("team", {}).get("members", [])
+            votes = proposal.get("votes", {})
+            
+            if username in team_members and votes.get(username) == "PENDING":
+                invitations.append({
+                    "proposal_id": proposal["id"],
+                    "intent_id": proposal.get("intent_id"),
+                    "budget": proposal.get("intent_budget"),
+                    "team_size": len(team_members),
+                    "your_role": next(
+                        (r["role"] for r in proposal.get("team", {}).get("roles", []) 
+                         if r["username"] == username),
+                        "member"
+                    ),
+                    "your_split": proposal.get("splits", {}).get(username, 0),
+                    "skill_coverage": proposal.get("skill_coverage", 0),
+                    "created_at": proposal.get("created_at"),
+                    "expires_at": proposal.get("expires_at")
+                })
+        
+        return {"ok": True, "invitations": invitations, "count": len(invitations)}
+
+@app.get("/metabridge/dashboard")
+async def get_metabridge_dashboard():
+    """Get MetaBridge orchestration dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_proposals": 0,
+                "message": "No MetaBridge activity yet"
+            }
+        
+        proposals = system_user.get("proposals", [])
+        
+        # Get stats
+        stats = get_metabridge_stats(proposals)
+        
+        # Recent proposals
+        recent_proposals = sorted(
+            proposals,
+            key=lambda p: p.get("created_at", ""),
+            reverse=True
+        )[:10]
+        
+        # Pending votes summary
+        pending_proposals = [p for p in proposals if p.get("status") == "PENDING_VOTES"]
+        
+        pending_summary = []
+        for proposal in pending_proposals:
+            votes = proposal.get("votes", {})
+            pending_voters = [voter for voter, vote in votes.items() if vote == "PENDING"]
+            
+            pending_summary.append({
+                "proposal_id": proposal["id"],
+                "intent_id": proposal.get("intent_id"),
+                "team_size": len(proposal.get("team", {}).get("members", [])),
+                "pending_voters": pending_voters,
+                "votes_remaining": len(pending_voters),
+                "created_at": proposal.get("created_at")
+            })
+        
+        return {
+            "ok": True,
+            "overview": stats,
+            "recent_proposals": [
+                {
+                    "proposal_id": p["id"],
+                    "intent_id": p.get("intent_id"),
+                    "status": p.get("status"),
+                    "team_size": len(p.get("team", {}).get("members", [])),
+                    "budget": p.get("intent_budget"),
+                    "skill_coverage": p.get("skill_coverage"),
+                    "created_at": p.get("created_at")
+                }
+                for p in recent_proposals
+            ],
+            "pending_votes": pending_summary,
+            "config": {
+                "team_rules": TEAM_RULES,
+                "role_splits": ROLE_SPLITS
+            },
+            "dashboard_generated_at": _now()
+        }
+
+@app.post("/metabridge/batch_execute")
+async def batch_execute_metabridge(body: Dict = Body(...)):
+    """
+    Batch execute MetaBridge for multiple intents
+    
+    Body:
+    {
+        "intent_ids": ["intent_1", "intent_2", "intent_3"]
+    }
+    """
+    intent_ids = body.get("intent_ids", [])
+    
+    if not intent_ids:
+        return {"error": "intent_ids array required"}
+    
+    async with httpx.AsyncClient(timeout=60) as client:
+        users = await _load_users(client)
+        
+        # Get all agents once
+        agents = [u for u in users if u.get("role") == "agent"]
+        
+        results = []
+        
+        for intent_id in intent_ids:
+            # Find intent
+            intent = None
+            for user in users:
+                for i in user.get("intents", []):
+                    if i.get("id") == intent_id:
+                        intent = i
+                        break
+                if intent:
+                    break
+            
+            if not intent:
+                results.append({
+                    "intent_id": intent_id,
+                    "status": "error",
+                    "error": "intent not found"
+                })
+                continue
+            
+            # Execute MetaBridge
+            result = execute_metabridge(intent, agents)
+            
+            # Store proposal if created
+            if result.get("ok") and result.get("action") == "team_proposal_created":
+                system_user = next((u for u in users if u.get("username") == "system_metabridge"), None)
+                
+                if not system_user:
+                    system_user = {
+                        "username": "system_metabridge",
+                        "role": "system",
+                        "proposals": [],
+                        "created_at": _now()
+                    }
+                    users.append(system_user)
+                
+                system_user.setdefault("proposals", []).append(result["proposal"])
+            
+            results.append({
+                "intent_id": intent_id,
+                "status": "success" if result.get("ok") else "failed",
+                "action": result.get("action"),
+                "proposal_id": result.get("proposal", {}).get("id") if result.get("ok") else None
+            })
+        
+        await _save_users(client, users)
+        
+        successful = len([r for r in results if r.get("status") == "success"])
+        
+        return {
+            "ok": True,
+            "total_processed": len(intent_ids),
+            "successful": successful,
+            "failed": len(intent_ids) - successful,
+            "results": results
+        }
         # ============ SLO CONTRACT TIERS ============
 
 @app.get("/slo/tiers")
