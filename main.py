@@ -394,6 +394,37 @@ except Exception as e:
     def search_assets(a, t=None, q=None, m=0, s="royalties"): return {"ok": False}
     def update_asset_status(a, s, r=""): return {"ok": False}
     ASSET_TYPES = {}
+
+# ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
+try:
+    from dealgraph import (
+        create_deal,
+        calculate_revenue_split,
+        transition_state,
+        authorize_escrow,
+        stake_bonds,
+        start_work,
+        mark_delivered,
+        settle_deal,
+        get_deal_summary,
+        DealState,
+        PLATFORM_FEE,
+        INSURANCE_POOL_CUT
+    )
+except Exception as e:
+    print(f"⚠️ dealgraph import failed: {e}")
+    def create_deal(i, a, s="standard", ip=None, jv=None): return {"ok": False}
+    def calculate_revenue_split(j, l, jv, ip, ipd=None): return {"ok": False}
+    def transition_state(d, n, a, m=None): return {"ok": False}
+    def authorize_escrow(d, p, b): return {"ok": False}
+    def stake_bonds(d, s, u): return {"ok": False}
+    def start_work(d, deadline): return {"ok": False}
+    def mark_delivered(d, t=None): return {"ok": False}
+    def settle_deal(d, u): return {"ok": False}
+    def get_deal_summary(d): return {"ok": False}
+    DealState = None
+    PLATFORM_FEE = 0.15
+    INSURANCE_POOL_CUT = 0.05
     
 app = FastAPI()
 
@@ -6726,6 +6757,520 @@ async def get_ipvault_dashboard():
                 for a in top_assets
             ],
             "asset_types": ASSET_TYPES,
+            "dashboard_generated_at": _now()
+        }
+
+        # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
+
+@app.get("/dealgraph/config")
+async def get_dealgraph_config():
+    """Get DealGraph configuration"""
+    return {
+        "ok": True,
+        "platform_fee": PLATFORM_FEE,
+        "insurance_pool_cut": INSURANCE_POOL_CUT,
+        "states": [s.value for s in DealState] if DealState else [],
+        "description": "Unified state machine for contract + escrow + bonds + JV/IP splits"
+    }
+
+@app.post("/dealgraph/deal/create")
+async def create_deal_endpoint(body: Dict = Body(...)):
+    """
+    Create a DealGraph entry - the unified contract
+    
+    Body:
+    {
+        "intent_id": "intent_abc123",
+        "agent_username": "agent1",
+        "slo_tier": "premium",
+        "ip_assets": ["asset_xyz789"],
+        "jv_partners": [
+            {"username": "agent2", "split": 0.3}
+        ]
+    }
+    """
+    intent_id = body.get("intent_id")
+    agent_username = body.get("agent_username")
+    slo_tier = body.get("slo_tier", "standard")
+    ip_assets = body.get("ip_assets", [])
+    jv_partners = body.get("jv_partners", [])
+    
+    if not all([intent_id, agent_username]):
+        return {"error": "intent_id and agent_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Create deal
+        result = create_deal(intent, agent_username, slo_tier, ip_assets, jv_partners)
+        
+        if result["ok"]:
+            # Store deal
+            system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_dealgraph",
+                    "role": "system",
+                    "deals": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("deals", []).append(result["deal"])
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/dealgraph/deal/{deal_id}")
+async def get_deal(deal_id: str):
+    """Get deal details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "no_deals_found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found", "deal_id": deal_id}
+        
+        return {"ok": True, "deal": deal}
+
+@app.get("/dealgraph/deal/{deal_id}/summary")
+async def get_deal_summary_endpoint(deal_id: str):
+    """Get deal summary"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        summary = get_deal_summary(deal)
+        
+        return {"ok": True, **summary}
+
+@app.post("/dealgraph/deal/calculate_split")
+async def calculate_revenue_split_endpoint(body: Dict = Body(...)):
+    """
+    Calculate revenue distribution preview
+    
+    Body:
+    {
+        "job_value": 1000,
+        "lead_agent": "agent1",
+        "jv_partners": [{"username": "agent2", "split": 0.3}],
+        "ip_asset_ids": ["asset_xyz789"]
+    }
+    """
+    job_value = float(body.get("job_value", 0))
+    lead_agent = body.get("lead_agent")
+    jv_partners = body.get("jv_partners", [])
+    ip_asset_ids = body.get("ip_asset_ids", [])
+    
+    if job_value <= 0:
+        return {"error": "job_value must be positive"}
+    
+    # Get IP assets if specified
+    ip_assets_data = []
+    if ip_asset_ids:
+        async with httpx.AsyncClient(timeout=20) as client:
+            users = await _load_users(client)
+            
+            system_user = next((u for u in users if u.get("username") == "system_ipvault"), None)
+            
+            if system_user:
+                all_assets = system_user.get("assets", [])
+                ip_assets_data = [a for a in all_assets if a.get("id") in ip_asset_ids]
+    
+    result = calculate_revenue_split(job_value, lead_agent, jv_partners, ip_asset_ids, ip_assets_data)
+    
+    return result
+
+@app.post("/dealgraph/deal/accept")
+async def accept_deal(body: Dict = Body(...)):
+    """
+    Accept deal (buyer accepts proposal)
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "buyer_username": "buyer1"
+    }
+    """
+    deal_id = body.get("deal_id")
+    buyer_username = body.get("buyer_username")
+    
+    if not all([deal_id, buyer_username]):
+        return {"error": "deal_id and buyer_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Transition to accepted
+        result = transition_state(deal, DealState.ACCEPTED, buyer_username)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/dealgraph/escrow/authorize")
+async def authorize_escrow_endpoint(body: Dict = Body(...)):
+    """
+    Authorize escrow (hold funds)
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "payment_intent_id": "pi_stripe123",
+        "buyer_username": "buyer1"
+    }
+    """
+    deal_id = body.get("deal_id")
+    payment_intent_id = body.get("payment_intent_id")
+    buyer_username = body.get("buyer_username")
+    
+    if not all([deal_id, payment_intent_id, buyer_username]):
+        return {"error": "deal_id, payment_intent_id, and buyer_username required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Find buyer
+        buyer_user = _find_user(users, buyer_username)
+        if not buyer_user:
+            return {"error": "buyer not found"}
+        
+        # Authorize escrow
+        result = authorize_escrow(deal, payment_intent_id, buyer_user)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/dealgraph/bonds/stake")
+async def stake_bonds_endpoint(body: Dict = Body(...)):
+    """
+    Stake performance bonds from all participants
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "agent_stakes": [
+            {"username": "agent1", "amount": 100},
+            {"username": "agent2", "amount": 50}
+        ]
+    }
+    """
+    deal_id = body.get("deal_id")
+    agent_stakes = body.get("agent_stakes", [])
+    
+    if not deal_id or not agent_stakes:
+        return {"error": "deal_id and agent_stakes required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Stake bonds
+        result = stake_bonds(deal, agent_stakes, users)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/dealgraph/work/start")
+async def start_work_endpoint(body: Dict = Body(...)):
+    """
+    Start work phase
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "deadline": "2025-01-20T10:00:00Z"
+    }
+    """
+    deal_id = body.get("deal_id")
+    deadline = body.get("deadline")
+    
+    if not all([deal_id, deadline]):
+        return {"error": "deal_id and deadline required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Start work
+        result = start_work(deal, deadline)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/dealgraph/work/deliver")
+async def mark_delivered_endpoint(body: Dict = Body(...)):
+    """
+    Mark work as delivered
+    
+    Body:
+    {
+        "deal_id": "deal_abc123",
+        "delivery_timestamp": "2025-01-18T14:00:00Z" (optional)
+    }
+    """
+    deal_id = body.get("deal_id")
+    delivery_timestamp = body.get("delivery_timestamp")
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Mark delivered
+        result = mark_delivered(deal, delivery_timestamp)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/dealgraph/settle")
+async def settle_deal_endpoint(body: Dict = Body(...)):
+    """
+    Settle deal - THE HOLY GRAIL
+    
+    Single atomic operation that:
+    1. Captures escrow
+    2. Returns bonds
+    3. Distributes to JV partners
+    4. Pays IP royalties
+    5. Credits platform & insurance
+    
+    Body:
+    {
+        "deal_id": "deal_abc123"
+    }
+    """
+    deal_id = body.get("deal_id")
+    
+    if not deal_id:
+        return {"error": "deal_id required"}
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"error": "deal not found"}
+        
+        deals = system_user.get("deals", [])
+        deal = next((d for d in deals if d.get("id") == deal_id), None)
+        
+        if not deal:
+            return {"error": "deal not found"}
+        
+        # Settle deal (atomic operation)
+        result = settle_deal(deal, users)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/dealgraph/deals/list")
+async def list_deals(state: str = None, agent: str = None, buyer: str = None):
+    """
+    List deals with filters
+    
+    Parameters:
+    - state: Filter by state (PROPOSED, ACCEPTED, IN_PROGRESS, etc.)
+    - agent: Filter by lead agent
+    - buyer: Filter by buyer
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"ok": True, "deals": [], "count": 0}
+        
+        deals = system_user.get("deals", [])
+        
+        # Apply filters
+        if state:
+            deals = [d for d in deals if d.get("state") == state]
+        
+        if agent:
+            deals = [d for d in deals if d.get("lead_agent") == agent]
+        
+        if buyer:
+            deals = [d for d in deals if d.get("buyer") == buyer]
+        
+        return {"ok": True, "deals": deals, "count": len(deals)}
+
+@app.get("/dealgraph/agent/{username}/deals")
+async def get_agent_deals(username: str):
+    """Get all deals for an agent (lead or JV partner)"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {"ok": True, "deals": [], "count": 0}
+        
+        deals = system_user.get("deals", [])
+        
+        # Find deals where user is lead or JV partner
+        agent_deals = []
+        for deal in deals:
+            if deal.get("lead_agent") == username:
+                agent_deals.append(deal)
+            else:
+                # Check JV partners
+                jv_partners = deal.get("jv_partners", [])
+                if any(p.get("username") == username for p in jv_partners):
+                    agent_deals.append(deal)
+        
+        return {"ok": True, "deals": agent_deals, "count": len(agent_deals)}
+
+@app.get("/dealgraph/dashboard")
+async def get_dealgraph_dashboard():
+    """Get DealGraph system dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_dealgraph"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_deals": 0,
+                "message": "No deals created yet"
+            }
+        
+        deals = system_user.get("deals", [])
+        
+        # Count by state
+        by_state = {}
+        for deal in deals:
+            state = deal.get("state", "UNKNOWN")
+            by_state[state] = by_state.get(state, 0) + 1
+        
+        # Calculate totals
+        total_value = sum([d.get("job_value", 0) for d in deals])
+        settled_deals = [d for d in deals if d.get("state") == "COMPLETED"]
+        settled_value = sum([d.get("job_value", 0) for d in settled_deals])
+        
+        # Platform revenue
+        platform_revenue = settled_value * PLATFORM_FEE
+        insurance_pool_total = settled_value * INSURANCE_POOL_CUT
+        
+        # On-time rate
+        delivered_deals = [d for d in deals if d.get("delivery", {}).get("delivered_at")]
+        on_time_count = len([d for d in delivered_deals if d.get("delivery", {}).get("on_time")])
+        on_time_rate = (on_time_count / len(delivered_deals)) if delivered_deals else 0
+        
+        return {
+            "ok": True,
+            "total_deals": len(deals),
+            "deals_by_state": by_state,
+            "total_deal_value": round(total_value, 2),
+            "settled_deals": len(settled_deals),
+            "settled_value": round(settled_value, 2),
+            "platform_revenue": round(platform_revenue, 2),
+            "insurance_pool_contributions": round(insurance_pool_total, 2),
+            "on_time_delivery_rate": round(on_time_rate, 2),
+            "config": {
+                "platform_fee": PLATFORM_FEE,
+                "insurance_pool_cut": INSURANCE_POOL_CUT
+            },
             "dashboard_generated_at": _now()
         }
         
