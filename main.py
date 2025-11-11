@@ -481,6 +481,39 @@ except Exception as e:
     def get_pool_leaderboard(p, s="roi"): return {"ok": False}
     POOL_TYPES = {}
     DISCOUNT_METHODS = {}
+
+# ============ INTENT SYNDICATION + ROYALTY TRAILS ============
+try:
+    from syndication import (
+        create_syndication_route,
+        route_to_network,
+        record_network_acceptance,
+        record_network_completion,
+        calculate_lineage_distribution,
+        process_royalty_payment,
+        find_best_network,
+        get_syndication_stats,
+        generate_network_report,
+        check_sla_compliance,
+        PARTNER_NETWORKS,
+        SYNDICATION_REASONS,
+        DEFAULT_LINEAGE_SPLIT
+    )
+except Exception as e:
+    print(f" syndication import failed: {e}")
+    def create_syndication_route(i, t, r, l=None, s=None): return {"ok": False}
+    def route_to_network(r, n=None): return {"ok": False}
+    def record_network_acceptance(r, a, n=None): return {"ok": False}
+    def record_network_completion(r, c, p=None): return {"ok": False}
+    def calculate_lineage_distribution(r, c): return {"ok": False}
+    def process_royalty_payment(r, p, a=None): return {"ok": False}
+    def find_best_network(i, n=None): return {"ok": False}
+    def get_syndication_stats(r): return {"ok": False}
+    def generate_network_report(r, n): return {"ok": False}
+    def check_sla_compliance(r): return {"ok": False}
+    PARTNER_NETWORKS = {}
+    SYNDICATION_REASONS = {}
+    DEFAULT_LINEAGE_SPLIT = {}
     
 app = FastAPI()
 
@@ -8239,6 +8272,497 @@ async def get_sponsors_dashboard():
                 for s, b in top_sponsors
             ],
             "pool_types": POOL_TYPES,
+            "dashboard_generated_at": _now()
+        }
+
+    # ============ INTENT SYNDICATION + ROYALTY TRAILS ============
+
+@app.get("/syndication/networks")
+async def get_partner_networks():
+    """Get available partner networks"""
+    return {
+        "ok": True,
+        "partner_networks": PARTNER_NETWORKS,
+        "syndication_reasons": SYNDICATION_REASONS,
+        "default_lineage_split": DEFAULT_LINEAGE_SPLIT,
+        "description": "Cross-network demand routing with protocol-level royalties"
+    }
+
+@app.post("/syndication/route/create")
+async def create_syndication_route_endpoint(body: Dict = Body(...)):
+    """
+    Create syndication route for an intent
+    
+    Body:
+    {
+        "intent_id": "intent_abc123",
+        "target_network": "upwork",
+        "reason": "no_local_match",
+        "lineage_split": {
+            "agent": 0.70,
+            "partner_network": 0.20,
+            "aigentsy": 0.10
+        },
+        "sla_terms": {
+            "delivery_days": 7,
+            "quality_threshold": 0.8,
+            "escrow_held": true
+        }
+    }
+    """
+    intent_id = body.get("intent_id")
+    target_network = body.get("target_network")
+    reason = body.get("reason")
+    lineage_split = body.get("lineage_split")
+    sla_terms = body.get("sla_terms")
+    
+    if not all([intent_id, target_network, reason]):
+        return {"error": "intent_id, target_network, and reason required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Create syndication route
+        result = create_syndication_route(intent, target_network, reason, lineage_split, sla_terms)
+        
+        if result["ok"]:
+            # Store route
+            system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+            
+            if not system_user:
+                system_user = {
+                    "username": "system_syndication",
+                    "role": "system",
+                    "routes": [],
+                    "created_at": _now()
+                }
+                users.append(system_user)
+            
+            system_user.setdefault("routes", []).append(result["route"])
+            
+            await _save_users(client, users)
+        
+        return result
+
+@app.get("/syndication/route/{route_id}")
+async def get_syndication_route(route_id: str):
+    """Get syndication route details"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "no_routes_found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found", "route_id": route_id}
+        
+        return {"ok": True, "route": route}
+
+@app.post("/syndication/route/execute")
+async def route_to_network_endpoint(body: Dict = Body(...)):
+    """
+    Execute routing to partner network
+    
+    Body:
+    {
+        "route_id": "route_abc123",
+        "network_job_id": "upwork_xyz789" (optional)
+    }
+    """
+    route_id = body.get("route_id")
+    network_job_id = body.get("network_job_id")
+    
+    if not route_id:
+        return {"error": "route_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        # Execute routing
+        result = route_to_network(route, network_job_id)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/syndication/route/accept")
+async def record_network_acceptance_endpoint(body: Dict = Body(...)):
+    """
+    Record network agent acceptance
+    
+    Body:
+    {
+        "route_id": "route_abc123",
+        "agent_on_network": "upwork_agent_123",
+        "network_metadata": {...}
+    }
+    """
+    route_id = body.get("route_id")
+    agent_on_network = body.get("agent_on_network")
+    network_metadata = body.get("network_metadata")
+    
+    if not all([route_id, agent_on_network]):
+        return {"error": "route_id and agent_on_network required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        # Record acceptance
+        result = record_network_acceptance(route, agent_on_network, network_metadata)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/syndication/route/complete")
+async def record_network_completion_endpoint(body: Dict = Body(...)):
+    """
+    Record job completion on network
+    
+    Body:
+    {
+        "route_id": "route_abc123",
+        "completion_value": 500,
+        "completion_proof": {...}
+    }
+    """
+    route_id = body.get("route_id")
+    completion_value = float(body.get("completion_value", 0))
+    completion_proof = body.get("completion_proof")
+    
+    if not route_id or completion_value <= 0:
+        return {"error": "route_id and positive completion_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        # Record completion
+        result = record_network_completion(route, completion_value, completion_proof)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/syndication/lineage/calculate")
+async def calculate_lineage_distribution_endpoint(body: Dict = Body(...)):
+    """
+    Calculate lineage distribution for completed route
+    
+    Body:
+    {
+        "route_id": "route_abc123",
+        "completion_value": 500
+    }
+    """
+    route_id = body.get("route_id")
+    completion_value = float(body.get("completion_value", 0))
+    
+    if not route_id or completion_value <= 0:
+        return {"error": "route_id and positive completion_value required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        # Calculate distribution
+        result = calculate_lineage_distribution(route, completion_value)
+        
+        return result
+
+@app.post("/syndication/royalty/process")
+async def process_royalty_payment_endpoint(body: Dict = Body(...)):
+    """
+    Process royalty payment from network
+    
+    Body:
+    {
+        "route_id": "route_abc123",
+        "received_amount": 50 (optional - defaults to expected)
+    }
+    """
+    route_id = body.get("route_id")
+    received_amount = body.get("received_amount")
+    
+    if not route_id:
+        return {"error": "route_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        # Find platform user for crediting
+        platform_user = next((u for u in users if u.get("username") == "platform"), None)
+        
+        if not platform_user:
+            platform_user = {
+                "username": "platform",
+                "role": "system",
+                "ownership": {"aigx": 0, "ledger": []},
+                "created_at": _now()
+            }
+            users.append(platform_user)
+        
+        # Process royalty
+        result = process_royalty_payment(route, platform_user, received_amount)
+        
+        if result["ok"]:
+            await _save_users(client, users)
+        
+        return result
+
+@app.post("/syndication/find_network")
+async def find_best_network_endpoint(body: Dict = Body(...)):
+    """
+    Find best network for an intent
+    
+    Body:
+    {
+        "intent_id": "intent_abc123"
+    }
+    """
+    intent_id = body.get("intent_id")
+    
+    if not intent_id:
+        return {"error": "intent_id required"}
+    
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        # Find intent
+        intent = None
+        for user in users:
+            for i in user.get("intents", []):
+                if i.get("id") == intent_id:
+                    intent = i
+                    break
+            if intent:
+                break
+        
+        if not intent:
+            return {"error": "intent not found"}
+        
+        # Find best network
+        result = find_best_network(intent)
+        
+        return result
+
+@app.get("/syndication/stats")
+async def get_syndication_stats_endpoint():
+    """Get syndication performance statistics"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_routes": 0,
+                "message": "No syndication routes yet"
+            }
+        
+        routes = system_user.get("routes", [])
+        stats = get_syndication_stats(routes)
+        
+        return {"ok": True, **stats}
+
+@app.get("/syndication/network/{network_id}/report")
+async def generate_network_report_endpoint(network_id: str):
+    """Generate performance report for specific network"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "no_routes_found"}
+        
+        routes = system_user.get("routes", [])
+        report = generate_network_report(routes, network_id)
+        
+        return report
+
+@app.get("/syndication/route/{route_id}/sla")
+async def check_sla_compliance_endpoint(route_id: str):
+    """Check SLA compliance for syndicated route"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"error": "route not found"}
+        
+        routes = system_user.get("routes", [])
+        route = next((r for r in routes if r.get("id") == route_id), None)
+        
+        if not route:
+            return {"error": "route not found"}
+        
+        result = check_sla_compliance(route)
+        
+        return result
+
+@app.get("/syndication/routes/list")
+async def list_syndication_routes(
+    status: str = None,
+    network: str = None,
+    intent_id: str = None
+):
+    """
+    List syndication routes with filters
+    
+    Parameters:
+    - status: Filter by status (pending, routed, accepted, completed)
+    - network: Filter by target network
+    - intent_id: Filter by intent
+    """
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {"ok": True, "routes": [], "count": 0}
+        
+        routes = system_user.get("routes", [])
+        
+        # Apply filters
+        if status:
+            routes = [r for r in routes if r.get("status") == status]
+        
+        if network:
+            routes = [r for r in routes if r.get("target_network") == network]
+        
+        if intent_id:
+            routes = [r for r in routes if r.get("intent_id") == intent_id]
+        
+        return {"ok": True, "routes": routes, "count": len(routes)}
+
+@app.get("/syndication/dashboard")
+async def get_syndication_dashboard():
+    """Get syndication orchestration dashboard"""
+    async with httpx.AsyncClient(timeout=20) as client:
+        users = await _load_users(client)
+        
+        system_user = next((u for u in users if u.get("username") == "system_syndication"), None)
+        
+        if not system_user:
+            return {
+                "ok": True,
+                "total_routes": 0,
+                "message": "No syndication activity yet"
+            }
+        
+        routes = system_user.get("routes", [])
+        
+        # Get overall stats
+        stats = get_syndication_stats(routes)
+        
+        # Network breakdown
+        network_reports = {}
+        for network_id in PARTNER_NETWORKS.keys():
+            network_routes = [r for r in routes if r.get("target_network") == network_id]
+            if network_routes:
+                report = generate_network_report(routes, network_id)
+                if report.get("ok"):
+                    network_reports[network_id] = report
+        
+        # Recent routes
+        recent_routes = sorted(routes, key=lambda r: r.get("created_at", ""), reverse=True)[:10]
+        
+        return {
+            "ok": True,
+            "overview": stats,
+            "network_performance": network_reports,
+            "recent_routes": [
+                {
+                    "route_id": r["id"],
+                    "intent_id": r.get("intent_id"),
+                    "network": r.get("target_network"),
+                    "status": r.get("status"),
+                    "budget": r.get("intent_budget"),
+                    "expected_royalty": r.get("expected_royalty"),
+                    "created_at": r.get("created_at")
+                }
+                for r in recent_routes
+            ],
+            "partner_networks": PARTNER_NETWORKS,
+            "default_lineage_split": DEFAULT_LINEAGE_SPLIT,
             "dashboard_generated_at": _now()
         }
         
