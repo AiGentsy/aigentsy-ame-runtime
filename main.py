@@ -754,6 +754,70 @@ app.add_middleware(
     max_age=86400,
 )
 
+# ============ USER ENDPOINTS ============
+
+@app.post("/user")
+async def get_user_endpoint(request: Request):
+    """Get user data by username"""
+    try:
+        body = await request.json()
+        username = body.get("username")
+        
+        if not username:
+            return {
+                "error": "Username required",
+                "success": False
+            }
+        
+        # Use the get_user function from log_to_jsonbin
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        
+        if not user:
+            # Return default user structure if not found
+            default_user = {
+                "username": username,
+                "sdkAccess_eligible": False,
+                "vaultAccess": True,
+                "remixUnlocked": {
+                    "remixCount": 0,
+                    "remixCredits": 0
+                },
+                "cloneLicenseUnlocked": False,
+                "yield": {
+                    "vaultYield": 0,
+                    "remixYield": 0,
+                    "aigxEarned": 0,
+                    "aigxEarnedEnabled": False
+                },
+                "staked": 0,
+                "cloneLineage": [],
+                "traits": [],
+                "remixUnlockedForks": 0,
+                "wallet": {
+                    "address": "0x0",
+                    "staked": 0
+                }
+            }
+            return {"record": default_user, "success": True}
+        
+        return {"record": user, "success": True}
+        
+    except Exception as e:
+        logger.error(f"Error in /user endpoint: {str(e)}")
+        return {
+            "error": str(e),
+            "success": False
+        }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "online",
+        "jsonbin": "configured" if JSONBIN_URL and JSONBIN_SECRET else "missing"
+    }
 @app.get("/healthz")
 async def healthz():
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
