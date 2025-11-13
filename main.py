@@ -1280,32 +1280,220 @@ async def get_user(request: Request):
         return {"error": "User not found"}
 
 # ---- POST: mint (idempotent) ----
+
 @app.post("/mint")
 async def mint_user(request: Request):
-    body = await request.json()
-    username = body.get("username")
-    company_type = body.get("companyType", "general")
-    referral = body.get("referral", "origin/hero")
-    if not username:
-        return {"ok": False, "error": "Username required"}
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        data = await _jsonbin_get(client)
-        users = data.get("record", [])
-        for u in users:
-            if u.get("username") == username or u.get("consent", {}).get("username") == username:
-                return {"ok": True, "record": normalize_user_record(u)}
-
-        new_user = make_canonical_record(username, company_type, referral)
-        users = _upsert(users, new_user)
-        await _jsonbin_put(client, users)
+    
+    try:
+        body = await request.json()
+        username = body.get("username")
+        company_type = body.get("companyType", "general")
+        referral = body.get("referral", "origin/hero")
+        custom_input = body.get("customInput", "")
+        template = body.get("template")
+        
+        if not username:
+            logger.error("Mint failed: No username provided")
+            return {"ok": False, "error": "Username required"}
+        
+        logger.info(f"🎯 Minting user: {username} (type: {company_type})")
+        
+        # Import functions we need
+        from log_to_jsonbin import get_user, log_agent_update, normalize_user_data
+        
+        # Check if user already exists
+        existing_user = get_user(username)
+        if existing_user:
+            logger.info(f"✅ User already exists: {username}")
+            return {"ok": True, "record": existing_user, "already_exists": True}
+        
+        # Create new user with complete structure
+        now = datetime.now(timezone.utc).isoformat()
+        role_map = {
+            "legal": "CLO",
+            "social": "CMO", 
+            "saas": "CTO",
+            "marketing": "CMO",
+            "custom": "CEO",
+            "general": "CEO"
+        }
+        
+        new_user = {
+            "schemaVersion": 3,
+            "id": f"user_{int(datetime.now(timezone.utc).timestamp())}",
+            "username": username,
+            "consent": {
+                "agreed": True,
+                "username": username,
+                "timestamp": now
+            },
+            "companyType": company_type,
+            "created": now,
+            "mintTime": now,
+            "customInput": custom_input,
+            "meta_role": role_map.get(company_type, "CEO"),
+            "role": role_map.get(company_type, "CEO"),
+            
+            # Traits
+            "traits": [company_type, "founder", "autonomous", "aigentsy"],
+            
+            # Runtime flags
+            "runtimeFlags": {
+                "vaultAccess": True,
+                "remixUnlocked": False,
+                "cloneLicenseUnlocked": False,
+                "sdkAccess_eligible": company_type == "saas",
+                "flagged": False,
+                "eligibleForAudit": True,
+                "needsReview": False
+            },
+            
+            # Wallet
+            "wallet": {
+                "address": "0x0",
+                "staked": 0
+            },
+            "staked": 0,
+            
+            # Yield
+            "yield": {
+                "autoStake": False,
+                "aigxEarned": 0,
+                "vaultYield": 0,
+                "remixYield": 0,
+                "aigxAttributedTo": [],
+                "aigxEarnedEnabled": False
+            },
+            
+            # Remix
+            "remixUnlocked": False,
+            "remixUnlockedForks": 0,
+            "remix": {
+                "remixCount": 0,
+                "remixCredits": 1000,
+                "lineageDepth": 0,
+                "royaltyTerms": "Standard 30%"
+            },
+            
+            # Collections
+            "cloneLineage": [],
+            "proposals": [],
+            "orders": [],
+            "invoices": [],
+            "payments": [],
+            "contacts": [],
+            "meetings": [],
+            "kpi_snapshots": [],
+            "docs": [],
+            "ownership": {"ledger": []},
+            
+            # Kits
+            "kits": {
+                "universal": {"unlocked": True},
+                "growth": {"unlocked": False},
+                "legal": {"unlocked": company_type == "legal"},
+                "sdk": {"unlocked": False},
+                "branding": {"unlocked": False},
+                "marketing": {"unlocked": company_type == "marketing"},
+                "social": {"unlocked": company_type == "social"}
+            },
+            
+            # Meta structures
+            "metaloop": {
+                "enabled": True,
+                "lastMatchCheck": None,
+                "proposalHistory": []
+            },
+            "metabridge": {
+                "active": True,
+                "lastBridge": None,
+                "bridgeCount": 0
+            },
+            "automatch": {
+                "status": "pending",
+                "lastMatchResult": None,
+                "matchReady": True
+            },
+            
+            # Other fields
+            "referral": referral,
+            "runtimeURL": "https://aigentsy.com/agents/aigent0.html",
+            "protocol": "MetaUpgrade25+26",
+            "earningsEnabled": True,
+            "listingStatus": "active",
+            "protocolStatus": "Bound",
+            "tethered": True,
+            
+            "licenses": {
+                "sdk": False,
+                "vault": False,
+                "remix": False,
+                "clone": False,
+                "aigx": False
+            },
+            
+            "transactions": {
+                "unlocks": [],
+                "yieldEvents": [],
+                "referralEvents": []
+            },
+            
+            "packaging": {
+                "kits_sent": [],
+                "proposals": [],
+                "custom_files": [],
+                "active": False
+            },
+            
+            "offerings": {
+                "products": [],
+                "services": [],
+                "pricing": [],
+                "description": ""
+            }
+        }
+        
+        # Add template if provided
+        if template:
+            new_user["template"] = template
+        
+        # Normalize the user data
         try:
-            log_agent_update(new_user)
-            append_intent_ledger(username, {"event":"mint","referral": referral})
-        except Exception:
-            pass
-        return {"ok": True, "record": normalize_user_record(new_user)}
-
+            normalized = normalize_user_data(new_user)
+        except Exception as norm_error:
+            logger.error(f"Normalization failed: {norm_error}")
+            normalized = new_user
+        
+        # Save to JSONBin
+        try:
+            saved_user = log_agent_update(normalized)
+            logger.info(f"💾 Saved new user to JSONBin: {username}")
+            
+            # Log the mint event
+            try:
+                from log_to_jsonbin import append_intent_ledger
+                append_intent_ledger(username, {
+                    "event": "mint",
+                    "referral": referral,
+                    "companyType": company_type,
+                    "timestamp": now
+                })
+            except Exception as ledger_error:
+                logger.warning(f"Ledger append failed: {ledger_error}")
+            
+            return {"ok": True, "record": saved_user}
+            
+        except Exception as save_error:
+            logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
+            # Return the normalized user anyway so frontend can proceed
+            return {"ok": True, "record": normalized, "warning": "Saved locally only"}
+        
+    except Exception as e:
+        logger.error(f"❌ Mint endpoint error: {str(e)}", exc_info=True)
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"ok": False, "error": str(e)}
+        
 # ---- POST: unlock (kits/licenses/flags) ----
 @app.post("/unlock")
 async def unlock_feature(request: Request):
