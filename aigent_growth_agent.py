@@ -56,6 +56,75 @@ def _post_json(path: str, payload: dict, timeout: int = 15):
         return False, {"error": str(e)}
 
 # =========================
+# C-Suite Router
+# =========================
+def route_to_csuite_member(user_input: str) -> dict:
+    """
+    Detect which C-Suite member should respond based on keywords
+    Returns: {"role": "CFO", "name": "CFO", "personality": "..."}
+    """
+    msg = user_input.lower()
+    
+    # CFO Keywords: budget, finance, money, revenue, cost, pricing, payment
+    if any(word in msg for word in [
+        'budget', 'finance', 'money', 'revenue', 'cost', 'pricing', 'payment',
+        'invoice', 'expense', 'profit', 'cash', 'ocl', 'factoring', 'credit',
+        'roi', 'margin', 'earnings', 'wallet', 'balance', 'spend', 'earn',
+        'price', 'pay', 'dollar', '$', 'usd'
+    ]):
+        return {
+            "role": "CFO",
+            "name": "CFO",
+            "personality": "You are the CFO. Frame pricing/ROI, unit economics, and cash implications. Give one concrete financial next step. End with exactly one clarifying question."
+        }
+    
+    # CMO Keywords: marketing, sales, growth, customer, lead, campaign
+    if any(word in msg for word in [
+        'market', 'sales', 'customer', 'lead', 'campaign', 'growth', 'advertis',
+        'promo', 'traffic', 'conversion', 'funnel', 'r3', 'retarget', 'seo',
+        'social', 'content', 'brand', 'audience', 'engagement', 'viral',
+        'tiktok', 'instagram', 'facebook', 'linkedin', 'twitter'
+    ]):
+        return {
+            "role": "CMO",
+            "name": "CMO",
+            "personality": "You are the CMO. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
+        }
+    
+    # CLO Keywords: legal, contract, terms, compliance, dispute
+    if any(word in msg for word in [
+        'legal', 'contract', 'terms', 'complian', 'dispute', 'agreement',
+        'lawsuit', 'regulation', 'policy', 'liability', 'ip', 'license',
+        'nda', 'ncnda', 'copyright', 'trademark', 'patent', 'attorney',
+        'law', 'sue', 'rights', 'privacy', 'gdpr', 'terms of service'
+    ]):
+        return {
+            "role": "CLO",
+            "name": "CLO",
+            "personality": "You are the CLO (Chief Legal Officer). Identify risks and the right instrument (license/NDA/ToS), list key clauses, and propose a simple execution path. End with one clarifying question."
+        }
+    
+    # CTO Keywords: tech, build, develop, code, api, integration
+    if any(word in msg for word in [
+        'tech', 'build', 'develop', 'code', 'api', 'integrat', 'software',
+        'app', 'platform', 'feature', 'bug', 'deploy', 'sdk', 'system',
+        'automat', 'script', 'database', 'server', 'cloud', 'hosting',
+        'website', 'mobile', 'ios', 'android', 'backend', 'frontend'
+    ]):
+        return {
+            "role": "CTO",
+            "name": "CTO",
+            "personality": "You are the CTO. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
+        }
+    
+    # Default to CMO (Growth's natural role)
+    return {
+        "role": "CMO",
+        "name": "CMO",
+        "personality": "You are the CMO. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
+    }
+    
+# =========================
 # Utility: JSONBin helpers
 # =========================
 def _jsonbin_headers():
@@ -316,28 +385,44 @@ async def invoke(state: AgentState) -> dict:
             ]
             persona_intro += "\n\n🤝 Potential partners:\n" + "\n".join(lines)
 
+        # ---- C-Suite Routing: Detect which member should respond ----
+        csuite_member = route_to_csuite_member(user_input)
+        role_name = csuite_member["role"]
+        role_personality = csuite_member["personality"]
+        
+        # Build enhanced system message with C-Suite context
+        csuite_context = f"""
+{role_personality}
+
+FULL AIGENTSY CAPABILITIES YOU CAN REFERENCE:
+- OCL (Outcome Credit Line): Spending based on outcomes
+- Factoring: Get paid upfront on jobs
+- Performance Bonds: Stake AIGx for quality guarantee
+- Insurance Pool: Protection against disputes
+- ARM Pricing: Reputation-based pricing tiers
+- Dark Pool Auctions: Anonymous bidding
+- SLO Tiers: Service level guarantees
+- IPVault: Royalty tracking for IP assets
+- JV Mesh: Joint venture partnerships
+- MetaBridge: Team formation for complex jobs
+- Sponsor Pools: Co-op funding from brands
+- Real-world Proofs: POS receipts, Calendly bookings
+- DealGraph: Unified contract/escrow/splits
+- R³ Autopilot: Auto-budget allocation
+- Compliance/KYC: Identity verification
+"""
+        
         # ---- Final response (LLM or deterministic fallback) ----
         if llm is not None and HAS_KEY:
             llm_resp = await llm.ainvoke([
-                SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + persona_intro),
+                SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + csuite_context + "\n\n" + persona_intro),
                 HumanMessage(content=user_input)
             ])
-            out = llm_resp.content
+            # Prefix response with role
+            out = f"**{role_name}:** {llm_resp.content}"
         else:
             moves = "\n".join("• " + s for s in service_needs)
-            out = persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
-
-        return {
-            "output": out,
-            "memory": state.memory,
-            "traits": traits,
-            "kits": kits,
-            "region": region,
-            "offers": service_offer_registry,
-        }
-
-    except Exception as e:
-        return {"output": f"Agent error: {str(e)}"}
+            out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
 
 # =========================
 # Matching / Proposal tools
