@@ -93,7 +93,13 @@ def route_to_csuite_member(user_input: str) -> dict:
             "name": "CTO",
             "personality": "You are the CTO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CTO' or 'our CTO'. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
         }
-    
+    if 'coo' in msg or 'chief operating' in msg or 'chief operations' in msg:
+        return {
+            "role": "COO",
+            "name": "COO",
+            "personality": "You are the COO (Chief Operating Officer). Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the COO' or 'our COO'. I handle day-to-day operations, workflow efficiency, resource allocation, and execution of company objectives. I ensure smooth operations and optimize business processes. End with one clarifying question."
+        }
+        
     # PRIORITY 2: Detect by task/keyword
     # CFO Keywords: budget, finance, money, revenue, cost, pricing, payment
     if any(word in msg for word in [
@@ -145,6 +151,18 @@ def route_to_csuite_member(user_input: str) -> dict:
             "role": "CTO",
             "name": "CTO",
             "personality": "You are the CTO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CTO' or 'our CTO'. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
+        }
+    # COO Keywords: operations, workflow, process, efficiency, execution
+    if any(word in msg for word in [
+        'operat', 'workflow', 'process', 'efficiency', 'execution',
+        'logistics', 'supply', 'delivery', 'fulfillment', 'coordination',
+        'resource', 'allocation', 'management', 'optimization', 'scale',
+        'infrastructure', 'systems', 'procedures', 'daily operations'
+    ]):
+        return {
+            "role": "COO",
+            "name": "COO",
+            "personality": "You are the COO (Chief Operating Officer). Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the COO' or 'our COO'. I handle day-to-day operations, workflow efficiency, resource allocation, and execution of company objectives. I ensure smooth operations and optimize business processes. End with one clarifying question."
         }
     
     # Default to CMO (Growth's natural role)
