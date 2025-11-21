@@ -253,22 +253,6 @@ Offers: {service_offer_registry}
 """
 )
 
-NEVER say "Our CFO" or "The CLO" - YOU ARE THAT PERSON.
-
-Examples:
-✅ CORRECT: "I handle all legal aspects and can draft contracts for you."
-❌ WRONG: "Our CLO handles all legal aspects."
-
-✅ CORRECT: "I'll create a marketing strategy focused on social channels."
-❌ WRONG: "The CMO will create a marketing strategy."
-
-Traits: {agent_traits}
-Offers: {service_offer_registry}
-
-Always act like a sovereign, real-world operator speaking directly to the user.
-"""
-)
-
 # =========================
 # LLM Setup with guards
 # =========================
@@ -505,8 +489,6 @@ CORRECT EXAMPLES (ALWAYS DO THIS):
 ═══════════════════════════════════════════════════════════════
 
 FULL AIGENTSY CAPABILITIES YOU CAN REFERENCE:
-
-FULL AIGENTSY CAPABILITIES YOU CAN REFERENCE:
 - OCL (Outcome Credit Line): Spending based on outcomes
 - Factoring: Get paid upfront on jobs
 - Performance Bonds: Stake AIGx for quality guarantee
@@ -530,8 +512,9 @@ FULL AIGENTSY CAPABILITIES YOU CAN REFERENCE:
                 SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + csuite_context + "\n\n" + persona_intro),
                 HumanMessage(content=user_input)
             ])
-            # Prefix response with role
-            out = f"**{role_name}:** {llm_resp.content}"
+            # Validate and prefix response with role
+            validated_content = validate_first_person_response(llm_resp.content, role_name)
+            out = f"**{role_name}:** {validated_content}"
         else:
             moves = "\n".join("• " + s for s in service_needs)
             out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
