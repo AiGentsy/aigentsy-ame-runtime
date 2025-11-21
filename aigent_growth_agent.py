@@ -424,6 +424,18 @@ FULL AIGENTSY CAPABILITIES YOU CAN REFERENCE:
             moves = "\n".join("• " + s for s in service_needs)
             out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
 
+        return {
+            "output": out,
+            "memory": state.memory,
+            "traits": traits,
+            "kits": kits,
+            "region": region,
+            "offers": service_offer_registry,
+        }
+
+    except Exception as e:
+        return {"output": f"Agent error: {str(e)}"}
+
 # =========================
 # Matching / Proposal tools
 # =========================
