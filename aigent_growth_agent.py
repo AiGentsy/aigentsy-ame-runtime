@@ -589,7 +589,33 @@ CORRECT EXAMPLES (ALWAYS DO THIS):
 
 ═══════════════════════════════════════════════════════════════
 """
-
+# Add intelligent capability recommendations based on user input
+        input_lower = user_input.lower()
+        capability_hints = []
+        
+        # Detect intent and suggest relevant capabilities
+        if any(word in input_lower for word in ['find client', 'get customer', 'need customer', 'find partner', 'get business']):
+            capability_hints.append("💡 AMG Recommendation: I can activate Autonomous MetaMatch to find clients automatically.")
+        
+        if any(word in input_lower for word in ['cash flow', 'need money', 'need payment', 'get paid faster', 'advance']):
+            capability_hints.append("💡 Factoring Recommendation: I can advance payment on accepted work immediately.")
+        
+        if any(word in input_lower for word in ['guarantee', 'escrow', 'safe payment', 'protect', 'trust']):
+            capability_hints.append("💡 DealGraph Recommendation: I can set up secure escrow with delivery guarantees.")
+        
+        if any(word in input_lower for word in ['partner', 'joint venture', 'collaborate', 'team up', 'jv']):
+            capability_hints.append("💡 JV Mesh Recommendation: I can structure partnership agreements with auto-splits.")
+        
+        if any(word in input_lower for word in ['automate marketing', 'marketing automation', 'nurture leads', 'retarget']):
+            capability_hints.append("💡 R³ Autopilot Recommendation: I can automate your entire marketing funnel.")
+        
+        if any(word in input_lower for word in ['contract', 'agreement', 'legal', 'terms']):
+            capability_hints.append("💡 DealGraph Recommendation: I can draft smart contracts with built-in escrow.")
+        
+        # Append hints to context if relevant
+        if capability_hints:
+            csuite_context += "\n\n" + "RELEVANT TO THIS QUERY:\n" + "\n".join(capability_hints) + "\n"
+            
 # =========================
 # Matching / Proposal tools
 # =========================
