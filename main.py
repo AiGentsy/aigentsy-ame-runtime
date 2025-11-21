@@ -1988,6 +1988,96 @@ async def distribution_push(request: Request, x_api_key: str | None = Header(Non
         await _save_users(client, users)
         return {"ok": True, "sent": dispatched, "card": card}
 
+@app.post("/send_invite")
+async def send_invite(request: Request):
+    """
+    Send business circle invitation (email placeholder for now)
+    """
+    try:
+        payload = await request.json()
+        inviter = payload.get("inviter")
+        target_email = payload.get("target_email", "").strip()
+        
+        if not target_email:
+            return {"success": False, "message": "Email/handle required"}
+        
+        # Check if target is existing user
+        all_users = []
+        try:
+            jsonbin_url = os.getenv("JSONBIN_URL")
+            if jsonbin_url:
+                headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET")}
+                res = requests.get(jsonbin_url, headers=headers, timeout=10)
+                all_users = res.json().get("record", [])
+        except Exception as e:
+            print(f"JSONBin check failed: {e}")
+        
+        # Find if user exists
+        existing_user = None
+        for user in all_users:
+            uname = user.get("username") or user.get("consent", {}).get("username")
+            user_email = user.get("email", "")
+            if target_email.lower() in [uname.lower(), user_email.lower()]:
+                existing_user = uname
+                break
+        
+        if existing_user:
+            # User exists - create proposal
+            proposal = {
+                "sender": inviter,
+                "recipient": existing_user,
+                "title": f"{inviter} invited you to their business circle",
+                "details": f"{inviter} wants to connect and explore collaboration opportunities with you on AiGentsy.",
+                "link": f"https://aigentsy.com/aigent0.html?user={inviter}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "meta": {"type": "business_circle_invite"}
+            }
+            
+            # Submit proposal
+            prop_response = requests.post(
+                f"{request.base_url}submit_proposal",
+                json=proposal,
+                timeout=10
+            )
+            
+            return {
+                "success": True,
+                "message": f"✅ Invitation sent to {existing_user}! They'll see it in their Proposal Viewer.",
+                "existing_user": True
+            }
+        else:
+            # New user - email placeholder
+            # TODO: Replace with SendGrid after setup
+            print(f"📧 EMAIL PLACEHOLDER: Would send invite to {target_email} from {inviter}")
+            
+            # Log invite for future email integration
+            invite_log = {
+                "inviter": inviter,
+                "target_email": target_email,
+                "timestamp": datetime.utcnow().isoformat(),
+                "status": "pending_email_setup"
+            }
+            
+            # Optional: Log to JSONBin for tracking
+            try:
+                log_url = os.getenv("INVITE_LOG_URL")  # Add this to your .env if you want tracking
+                if log_url:
+                    headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET"), "Content-Type": "application/json"}
+                    requests.post(log_url, json=invite_log, headers=headers, timeout=10)
+            except Exception as e:
+                print(f"Invite log failed: {e}")
+            
+            return {
+                "success": True,
+                "message": f"✅ Invitation logged for {target_email}! (Email delivery will be enabled soon)",
+                "existing_user": False,
+                "pending_email": True
+            }
+            
+    except Exception as e:
+        print(f"Send invite error: {e}")
+        return {"success": False, "message": f"Error: {str(e)}"}
+        
 # ---------- REVENUE SPLITTER (JV mesh) ----------
 @app.post("/revenue/split")
 async def revenue_split(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
