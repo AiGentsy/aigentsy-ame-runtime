@@ -65,17 +65,47 @@ def route_to_csuite_member(user_input: str) -> dict:
     """
     msg = user_input.lower()
     
+    # PRIORITY 1: Check if user is asking ABOUT a specific role
+    if 'cfo' in msg or 'chief financial' in msg:
+        return {
+            "role": "CFO",
+            "name": "CFO",
+            "personality": "You are the CFO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CFO' or 'our CFO'. Frame pricing/ROI, unit economics, and cash implications. Give one concrete financial next step. End with exactly one clarifying question."
+        }
+    
+    if 'cmo' in msg or 'chief marketing' in msg:
+        return {
+            "role": "CMO",
+            "name": "CMO",
+            "personality": "You are the CMO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CMO' or 'our CMO'. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
+        }
+    
+    if 'clo' in msg or 'chief legal' in msg:
+        return {
+            "role": "CLO",
+            "name": "CLO",
+            "personality": "You are the CLO (Chief Legal Officer). Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CLO' or 'our CLO'. Identify risks and the right instrument (license/NDA/ToS), list key clauses, and propose a simple execution path. End with one clarifying question."
+        }
+    
+    if 'cto' in msg or 'chief technology' in msg or 'chief technical' in msg:
+        return {
+            "role": "CTO",
+            "name": "CTO",
+            "personality": "You are the CTO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CTO' or 'our CTO'. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
+        }
+    
+    # PRIORITY 2: Detect by task/keyword
     # CFO Keywords: budget, finance, money, revenue, cost, pricing, payment
     if any(word in msg for word in [
         'budget', 'finance', 'money', 'revenue', 'cost', 'pricing', 'payment',
         'invoice', 'expense', 'profit', 'cash', 'ocl', 'factoring', 'credit',
         'roi', 'margin', 'earnings', 'wallet', 'balance', 'spend', 'earn',
-        'price', 'pay', 'dollar', '$', 'usd'
+        'price', 'pay', 'dollar', '$', 'usd', 'financial'
     ]):
         return {
             "role": "CFO",
             "name": "CFO",
-            "personality": "You are the CFO. Frame pricing/ROI, unit economics, and cash implications. Give one concrete financial next step. End with exactly one clarifying question."
+            "personality": "You are the CFO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CFO' or 'our CFO'. Frame pricing/ROI, unit economics, and cash implications. Give one concrete financial next step. End with exactly one clarifying question."
         }
     
     # CMO Keywords: marketing, sales, growth, customer, lead, campaign
@@ -83,12 +113,12 @@ def route_to_csuite_member(user_input: str) -> dict:
         'market', 'sales', 'customer', 'lead', 'campaign', 'growth', 'advertis',
         'promo', 'traffic', 'conversion', 'funnel', 'r3', 'retarget', 'seo',
         'social', 'content', 'brand', 'audience', 'engagement', 'viral',
-        'tiktok', 'instagram', 'facebook', 'linkedin', 'twitter'
+        'tiktok', 'instagram', 'facebook', 'linkedin', 'twitter', 'grow'
     ]):
         return {
             "role": "CMO",
             "name": "CMO",
-            "personality": "You are the CMO. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
+            "personality": "You are the CMO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CMO' or 'our CMO'. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
         }
     
     # CLO Keywords: legal, contract, terms, compliance, dispute
@@ -101,7 +131,7 @@ def route_to_csuite_member(user_input: str) -> dict:
         return {
             "role": "CLO",
             "name": "CLO",
-            "personality": "You are the CLO (Chief Legal Officer). Identify risks and the right instrument (license/NDA/ToS), list key clauses, and propose a simple execution path. End with one clarifying question."
+            "personality": "You are the CLO (Chief Legal Officer). Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CLO' or 'our CLO'. Identify risks and the right instrument (license/NDA/ToS), list key clauses, and propose a simple execution path. End with one clarifying question."
         }
     
     # CTO Keywords: tech, build, develop, code, api, integration
@@ -109,19 +139,19 @@ def route_to_csuite_member(user_input: str) -> dict:
         'tech', 'build', 'develop', 'code', 'api', 'integrat', 'software',
         'app', 'platform', 'feature', 'bug', 'deploy', 'sdk', 'system',
         'automat', 'script', 'database', 'server', 'cloud', 'hosting',
-        'website', 'mobile', 'ios', 'android', 'backend', 'frontend'
+        'website', 'mobile', 'ios', 'android', 'backend', 'frontend', 'technical'
     ]):
         return {
             "role": "CTO",
             "name": "CTO",
-            "personality": "You are the CTO. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
+            "personality": "You are the CTO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CTO' or 'our CTO'. Propose a 3-5 step build/integration plan, call out risks and dependencies, and end with one clarifying question."
         }
     
     # Default to CMO (Growth's natural role)
     return {
         "role": "CMO",
         "name": "CMO",
-        "personality": "You are the CMO. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
+        "personality": "You are the CMO. Speak in FIRST PERSON using 'I' and 'my'. NEVER say 'the CMO' or 'our CMO'. Be concise, practical, and action-led. Include: (1) the growth play, (2) target + channel(s), (3) 3-5 next steps with owners, (4) simple funnel KPIs. End with one clarifying question."
     }
     
 # =========================
