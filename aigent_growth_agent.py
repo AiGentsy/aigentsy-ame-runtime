@@ -467,7 +467,12 @@ async def invoke(state: AgentState) -> dict:
             ]
             persona_intro += "\n\n🤝 Potential partners:\n" + "\n".join(lines)
 
-# Build enhanced system message with C-Suite context
+# ---- C-Suite Routing: Detect which member should respond ----
+        csuite_member = route_to_csuite_member(user_input)
+        role_name = csuite_member["role"]
+        role_personality = csuite_member["personality"]
+        
+        # Build enhanced system message with C-Suite context
         csuite_context = f"""
 ═══════════════════════════════════════════════════════════════
 🚨 CRITICAL IDENTITY OVERRIDE 🚨
@@ -589,7 +594,8 @@ CORRECT EXAMPLES (ALWAYS DO THIS):
 
 ═══════════════════════════════════════════════════════════════
 """
-# Add intelligent capability recommendations based on user input
+        
+        # Add intelligent capability recommendations based on user input
         input_lower = user_input.lower()
         capability_hints = []
         
@@ -615,7 +621,32 @@ CORRECT EXAMPLES (ALWAYS DO THIS):
         # Append hints to context if relevant
         if capability_hints:
             csuite_context += "\n\n" + "RELEVANT TO THIS QUERY:\n" + "\n".join(capability_hints) + "\n"
-            
+        
+        # ---- Final response (LLM or deterministic fallback) ----
+        if llm is not None and HAS_KEY:
+            llm_resp = await llm.ainvoke([
+                SystemMessage(content=AIGENT_SYS_MSG.content + "\n\n" + csuite_context + "\n\n" + persona_intro),
+                HumanMessage(content=user_input)
+            ])
+            # Validate and prefix response with role
+            validated_content = validate_first_person_response(llm_resp.content, role_name)
+            out = f"**{role_name}:** {validated_content}"
+        else:
+            moves = "\n".join("• " + s for s in service_needs)
+            out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
+
+        return {
+            "output": out,
+            "memory": state.memory,
+            "traits": traits,
+            "kits": kits,
+            "region": region,
+            "offers": service_offer_registry,
+        }
+
+    except Exception as e:
+        return {"output": f"Agent error: {str(e)}"}
+
 # =========================
 # Matching / Proposal tools
 # =========================
