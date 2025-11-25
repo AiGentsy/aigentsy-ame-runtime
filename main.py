@@ -642,6 +642,8 @@ except Exception as e:
     
 app = FastAPI()
 
+from ame_routes import register_ame_routes
+register_ame_routes(app)
 
 async def auto_bid_background():
     """Runs in background forever"""
