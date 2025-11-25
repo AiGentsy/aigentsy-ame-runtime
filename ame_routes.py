@@ -1,17 +1,10 @@
 """
-AME API Routes - Add these to your main.py or import as blueprint
-
-Flask endpoints for the AME pitch approval dashboard:
-- GET  /ame/queue      - Get pending pitches
-- GET  /ame/stats      - Get performance stats
-- POST /ame/approve/<id> - Approve and send pitch
-- POST /ame/skip/<id>    - Skip pitch
-- POST /ame/edit/<id>    - Edit pitch message
-- GET  /ame/pitches      - Get all pitches (with filters)
-- POST /ame/track/<id>   - Track events (opened, responded, converted)
+AME API Routes - FastAPI version
+Add to your main.py after app = FastAPI()
 """
 
-from flask import Blueprint, request, jsonify
+from fastapi import APIRouter, Body
+from typing import Optional, Dict, Any, List
 
 # Import pitch queue functions
 from ame_pitches import (
@@ -27,151 +20,122 @@ from ame_pitches import (
     generate_pitches_from_matches
 )
 
-ame_bp = Blueprint('ame', __name__, url_prefix='/ame')
+router = APIRouter(prefix="/ame", tags=["AME Auto-Sales"])
 
 
-@ame_bp.route('/queue', methods=['GET'])
-def api_get_queue():
+@router.get("/queue")
+async def api_get_queue(limit: int = 20):
     """Get pending pitches awaiting approval."""
-    limit = request.args.get('limit', 20, type=int)
     pitches = get_pending_pitches(limit=limit)
     stats = get_stats()
-    return jsonify({
+    return {
         "ok": True,
         "pitches": pitches,
         "queue_size": stats["queue_size"],
         "stats": stats
-    })
+    }
 
 
-@ame_bp.route('/stats', methods=['GET'])
-def api_get_stats():
+@router.get("/stats")
+async def api_get_stats():
     """Get AME performance statistics."""
-    return jsonify({
+    return {
         "ok": True,
         "stats": get_stats()
-    })
+    }
 
 
-@ame_bp.route('/approve/<pitch_id>', methods=['POST'])
-def api_approve(pitch_id: str):
+@router.post("/approve/{pitch_id}")
+async def api_approve(pitch_id: str):
     """Approve a pitch and send it."""
     result = approve_pitch(pitch_id)
-    return jsonify(result)
+    return result
 
 
-@ame_bp.route('/skip/<pitch_id>', methods=['POST'])
-def api_skip(pitch_id: str):
+@router.post("/skip/{pitch_id}")
+async def api_skip(pitch_id: str, body: Dict[str, Any] = Body(default={})):
     """Skip/dismiss a pitch."""
-    data = request.get_json() or {}
-    reason = data.get('reason', '')
+    reason = body.get('reason', '')
     result = skip_pitch(pitch_id, reason=reason)
-    return jsonify(result)
+    return result
 
 
-@ame_bp.route('/edit/<pitch_id>', methods=['POST'])
-def api_edit(pitch_id: str):
+@router.post("/edit/{pitch_id}")
+async def api_edit(pitch_id: str, body: Dict[str, Any] = Body(...)):
     """Edit a pitch message before approving."""
-    data = request.get_json() or {}
-    new_message = data.get('message', '')
+    new_message = body.get('message', '')
     if not new_message:
-        return jsonify({"ok": False, "error": "message_required"}), 400
+        return {"ok": False, "error": "message_required"}
     result = edit_pitch(pitch_id, new_message)
-    return jsonify(result)
+    return result
 
 
-@ame_bp.route('/pitch/<pitch_id>', methods=['GET'])
-def api_get_pitch(pitch_id: str):
+@router.get("/pitch/{pitch_id}")
+async def api_get_pitch(pitch_id: str):
     """Get a specific pitch."""
     pitch = get_pitch(pitch_id)
     if not pitch:
-        return jsonify({"ok": False, "error": "not_found"}), 404
-    return jsonify({"ok": True, "pitch": pitch})
+        return {"ok": False, "error": "not_found"}
+    return {"ok": True, "pitch": pitch}
 
 
-@ame_bp.route('/pitches', methods=['GET'])
-def api_get_all_pitches():
+@router.get("/pitches")
+async def api_get_all_pitches(status: Optional[str] = None, limit: int = 50):
     """Get all pitches with optional status filter."""
-    status = request.args.get('status')
-    limit = request.args.get('limit', 50, type=int)
     pitches = get_all_pitches(status=status, limit=limit)
-    return jsonify({
+    return {
         "ok": True,
         "pitches": pitches,
         "count": len(pitches)
-    })
+    }
 
 
-@ame_bp.route('/track/<pitch_id>', methods=['POST'])
-def api_track_event(pitch_id: str):
+@router.post("/track/{pitch_id}")
+async def api_track_event(pitch_id: str, body: Dict[str, Any] = Body(...)):
     """Track pitch events (opened, responded, converted)."""
-    data = request.get_json() or {}
-    event = data.get('event')
+    event = body.get('event')
     if event not in ('opened', 'responded', 'converted'):
-        return jsonify({"ok": False, "error": "invalid_event"}), 400
+        return {"ok": False, "error": "invalid_event"}
     result = track_event(pitch_id, event)
-    return jsonify(result)
+    return result
 
 
-@ame_bp.route('/generate', methods=['POST'])
-def api_generate_pitch():
+@router.post("/generate")
+async def api_generate_pitch(body: Dict[str, Any] = Body(...)):
     """Manually generate a pitch (goes to pending queue)."""
-    data = request.get_json() or {}
-    
-    recipient = data.get('recipient')
-    channel = data.get('channel', 'email')
-    context = data.get('context', {})
-    originator = data.get('originator', 'manual')
+    recipient = body.get('recipient')
+    channel = body.get('channel', 'email')
+    context = body.get('context', {})
+    originator = body.get('originator', 'manual')
     
     if not recipient:
-        return jsonify({"ok": False, "error": "recipient_required"}), 400
+        return {"ok": False, "error": "recipient_required"}
     
     pitch = generate_pitch(recipient, channel, context, originator)
-    return jsonify({"ok": True, "pitch": pitch})
+    return {"ok": True, "pitch": pitch}
 
 
-@ame_bp.route('/generate-from-matches', methods=['POST'])
-def api_generate_from_matches():
+@router.post("/generate-from-matches")
+async def api_generate_from_matches(body: Dict[str, Any] = Body(...)):
     """Bulk generate pitches from MetaBridge matches."""
-    data = request.get_json() or {}
-    
-    matches = data.get('matches', [])
-    channel = data.get('channel', 'email')
-    originator = data.get('originator', 'ame_auto')
+    matches = body.get('matches', [])
+    channel = body.get('channel', 'email')
+    originator = body.get('originator', 'ame_auto')
     
     if not matches:
-        return jsonify({"ok": False, "error": "matches_required"}), 400
+        return {"ok": False, "error": "matches_required"}
     
     pitches = generate_pitches_from_matches(matches, channel, originator)
-    return jsonify({
+    return {
         "ok": True,
         "generated": len(pitches),
         "pitches": pitches
-    })
+    }
 
 
 # ========== Registration helper ==========
 
 def register_ame_routes(app):
-    """Call this from main.py to register AME routes."""
-    app.register_blueprint(ame_bp)
+    """Call this from main.py AFTER app = FastAPI()"""
+    app.include_router(router)
     print("✅ AME routes registered at /ame/*")
-
-
-# ========== Standalone test ==========
-
-if __name__ == "__main__":
-    from flask import Flask
-    app = Flask(__name__)
-    register_ame_routes(app)
-    
-    # Add test pitch
-    from ame_pitches import generate_pitch
-    generate_pitch(
-        recipient="test@example.com",
-        channel="email",
-        context={"offer": "AI automation", "match_reason": "You posted about needing help with marketing"},
-        originator="test"
-    )
-    
-    app.run(debug=True, port=5001)
