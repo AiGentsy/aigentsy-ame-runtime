@@ -34,6 +34,16 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["shopify"] = round(
+            user["revenue"]["bySource"].get("shopify", 0.0) + user_net, 2
+        )
+        
+        # Save updated user
+        log_agent_update(user)
+
         # Post ledger entry
         append_intent_ledger(username, {
             "event": "shopify_revenue",
@@ -45,7 +55,9 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "cid": cid,
             "ts": now_iso()
         })
-        
+
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
         # Credit AIGx
         credit_aigx(username, user_net, {"source": "shopify", "order_id": order_id})
         
@@ -81,6 +93,16 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["affiliate"] = round(
+            user["revenue"]["bySource"].get("affiliate", 0.0) + user_net, 2
+        )
+        
+        # Save updated user
+        log_agent_update(user)
+        
         # Post ledger
         append_intent_ledger(username, {
             "event": f"{source}_affiliate",
@@ -94,6 +116,9 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         
         # Credit AIGx
         credit_aigx(username, user_net, {"source": source, "product_id": product_id})
+
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
@@ -121,6 +146,16 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["contentCPM"] = round(
+            user["revenue"]["bySource"].get("contentCPM", 0.0) + user_net, 2
+        )
+        
+        # Save updated user
+        log_agent_update(user)
+        
         # Post ledger
         append_intent_ledger(username, {
             "event": f"{platform}_cpm",
@@ -135,6 +170,9 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         
         # Credit AIGx
         credit_aigx(username, user_net, {"source": platform, "views": views})
+
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
@@ -160,6 +198,16 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["services"] = round(
+            user["revenue"]["bySource"].get("services", 0.0) + user_net, 2
+        )
+        
+        # Save updated user
+        log_agent_update(user)
+        
         # Post ledger
         append_intent_ledger(username, {
             "event": "service_payment",
@@ -173,6 +221,9 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         
         # Credit AIGx
         credit_aigx(username, user_net, {"source": "service", "invoice_id": invoice_id})
+
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
@@ -284,6 +335,29 @@ async def split_jv_revenue(username: str, amount_usd: float, jv_id: str):
         if partner_b:
             credit_aigx(partner_b, b_amount, {"source": "jv_split", "jv_id": jv_id})
         
+        # Update revenue tracking for both partners
+        if partner_a:
+            a_user = get_user(partner_a)
+            if a_user:
+                a_user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+                a_user["revenue"]["total"] = round(a_user["revenue"]["total"] + a_amount, 2)
+                a_user["revenue"]["bySource"]["jvMesh"] = round(
+                    a_user["revenue"]["bySource"].get("jvMesh", 0.0) + a_amount, 2
+                )
+                log_agent_update(a_user)
+                await check_revenue_milestones(partner_a, a_user["revenue"]["total"])
+        
+        if partner_b:
+            b_user = get_user(partner_b)
+            if b_user:
+                b_user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+                b_user["revenue"]["total"] = round(b_user["revenue"]["total"] + b_amount, 2)
+                b_user["revenue"]["bySource"]["jvMesh"] = round(
+                    b_user["revenue"]["bySource"].get("jvMesh", 0.0) + b_amount, 2
+                )
+                log_agent_update(b_user)
+                await check_revenue_milestones(partner_b, b_user["revenue"]["total"])
+                
         # Post ledger
         append_intent_ledger(username, {
             "event": "jv_revenue_split",
@@ -456,7 +530,185 @@ async def register_clone_lineage(
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+ # ============ AME REVENUE ============
 
+async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float, recipient: str):
+    """Ingest revenue from AME auto-sales pitch conversion"""
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate splits
+        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        
+        # Update earnings
+        user.setdefault("yield", {})
+        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
+        
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["ame"] = round(
+            user["revenue"]["bySource"].get("ame", 0.0) + user_net, 2
+        )
+        
+        # Post ledger
+        append_intent_ledger(username, {
+            "event": "ame_conversion",
+            "pitch_id": pitch_id,
+            "recipient": recipient,
+            "revenue_usd": amount_usd,
+            "platform_fee": platform_cut,
+            "reinvestment": reinvest_amount,
+            "user_net": user_net,
+            "ts": now_iso()
+        })
+        
+        # Credit AIGx
+        credit_aigx(username, user_net, {"source": "ame", "pitch_id": pitch_id})
+        
+        # Save updated user
+        log_agent_update(user)
+        
+        # Trigger reinvestment
+        await trigger_r3_reinvestment(username, reinvest_amount)
+        
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        return {
+            "ok": True,
+            "revenue": amount_usd,
+            "user_net": user_net,
+            "total_revenue": user["revenue"]["total"]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ INTENT EXCHANGE REVENUE ============
+
+async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: float, buyer: str):
+    """Ingest revenue from intent exchange contract settlement"""
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate splits
+        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        
+        # Update earnings
+        user.setdefault("yield", {})
+        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
+        
+        # Update revenue tracking
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["intentExchange"] = round(
+            user["revenue"]["bySource"].get("intentExchange", 0.0) + user_net, 2
+        )
+        
+        # Post ledger
+        append_intent_ledger(username, {
+            "event": "intent_settlement",
+            "intent_id": intent_id,
+            "buyer": buyer,
+            "revenue_usd": amount_usd,
+            "platform_fee": platform_cut,
+            "reinvestment": reinvest_amount,
+            "user_net": user_net,
+            "ts": now_iso()
+        })
+        
+        # Credit AIGx
+        credit_aigx(username, user_net, {"source": "intent_exchange", "intent_id": intent_id})
+        
+        # Save updated user
+        log_agent_update(user)
+        
+        # Trigger reinvestment
+        await trigger_r3_reinvestment(username, reinvest_amount)
+        
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        return {
+            "ok": True,
+            "revenue": amount_usd,
+            "user_net": user_net,
+            "total_revenue": user["revenue"]["total"]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ MILESTONE UNLOCK SYSTEM ============
+
+async def check_revenue_milestones(username: str, total_revenue: float):
+    """Check if user hit revenue milestones and trigger unlocks"""
+    try:
+        user = get_user(username)
+        if not user:
+            return
+        
+        unlocked = []
+        
+        # Milestone 1: First $100 → Unlock R³ Autopilot
+        if total_revenue >= 100 and not user.get("runtimeFlags", {}).get("r3AutopilotEnabled"):
+            user.setdefault("runtimeFlags", {})
+            user["runtimeFlags"]["r3AutopilotEnabled"] = True
+            unlocked.append("r3_autopilot")
+        
+        # Milestone 2: $500 → Unlock Advanced Analytics
+        if total_revenue >= 500 and not user.get("runtimeFlags", {}).get("advancedAnalyticsEnabled"):
+            user.setdefault("runtimeFlags", {})
+            user["runtimeFlags"]["advancedAnalyticsEnabled"] = True
+            unlocked.append("advanced_analytics")
+        
+        # Milestone 3: $1,000 → Unlock Template Publishing (Franchise)
+        if total_revenue >= 1000 and not user.get("runtimeFlags", {}).get("templatePublishingEnabled"):
+            user.setdefault("runtimeFlags", {})
+            user["runtimeFlags"]["templatePublishingEnabled"] = True
+            unlocked.append("template_publishing")
+        
+        # Milestone 4: $2,500 → Unlock MetaHive Premium
+        if total_revenue >= 2500 and not user.get("runtimeFlags", {}).get("metaHivePremium"):
+            user.setdefault("runtimeFlags", {})
+            user["runtimeFlags"]["metaHivePremium"] = True
+            unlocked.append("metahive_premium")
+        
+        # Milestone 5: $5,000 → Unlock White Label
+        if total_revenue >= 5000 and not user.get("runtimeFlags", {}).get("whiteLabelEnabled"):
+            user.setdefault("runtimeFlags", {})
+            user["runtimeFlags"]["whiteLabelEnabled"] = True
+            unlocked.append("white_label")
+        
+        if unlocked:
+            # Save user with new unlocks
+            log_agent_update(user)
+            
+            # Post unlock event
+            append_intent_ledger(username, {
+                "event": "milestone_unlocks",
+                "total_revenue": total_revenue,
+                "unlocked": unlocked,
+                "ts": now_iso()
+            })
+            
+            print(f"🎉 {username} unlocked: {', '.join(unlocked)}")
+        
+        return {"ok": True, "unlocked": unlocked}
+    
+    except Exception as e:
+        print(f"Milestone check error: {e}")
+        return {"ok": False, "error": str(e)}
+        
 # ============ EARNINGS SUMMARY ============
 
 def get_earnings_summary(username: str) -> Dict[str, Any]:
