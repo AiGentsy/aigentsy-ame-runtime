@@ -11,6 +11,9 @@ from performance_bonds import (
     award_sla_bonus,
     slash_bond
 )
+
+from revenue_flows import ingest_intent_settlement
+
 router = APIRouter()
 _INTENTS: Dict[str, Dict[str, Any]] = {}
 _BIDS: Dict[str, List[Dict[str, Any]]] = {}
@@ -365,6 +368,19 @@ async def verify_proof_of_outcome(req: VerifyPoO):
     
     # Release escrow
     released = await _release_escrow(req.intent_id, winner)
+    
+    # ✅ ADD THIS BLOCK HERE:
+    # Track revenue
+    try:
+        await ingest_intent_settlement(
+            username=winner,
+            intent_id=req.intent_id,
+            amount_usd=released,
+            buyer=it.get("from")
+        )
+        print(f"💰 Tracked ${released} revenue for {winner}")
+    except Exception as e:
+        print(f"❌ Revenue tracking failed: {e}")
     
     #  RETURN BOND + AWARD SLA BONUS
     bond_result = None
