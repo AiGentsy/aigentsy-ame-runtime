@@ -824,12 +824,7 @@ async def health_check():
 async def healthz():
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
-# ========== ADD THESE 3 ENDPOINTS HERE ==========
-@app.get("/revenue/summary")
-async def revenue_summary_get(username: str):
-    """Frontend expects this endpoint"""
-    result = get_earnings_summary(username)
-    return result
+# ========== ADD THESE 2 ENDPOINTS HERE ==========
 
 @app.get("/score/outcome") 
 async def get_outcome_score_query(username: str):
@@ -1590,19 +1585,55 @@ async def money_summary(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         return {"ok": True, "summary": _money_summary(u)}
+
+# ========== CONSOLIDATED REVENUE SUMMARY ENDPOINT ==========
 @app.get("/revenue/summary")
-async def revenue_summary_get(username: str):
-    """Frontend expects this endpoint"""
-    async with httpx.AsyncClient(timeout=20) as client:
-        users = await _load_users(client)
-        u = next((x for x in users if _uname(x) == username), None)
-        if not u:
-            return {"error": "user not found"}
-        
-        # Call your revenue_flows.py function
+async def get_revenue_summary(username: str):
+    """Get user's comprehensive revenue breakdown for dashboard"""
+    try:
         from revenue_flows import get_earnings_summary
-        result = get_earnings_summary(username)
-        return result
+        from log_to_jsonbin import get_user
+        
+        # Get earnings from revenue_flows
+        earnings = get_earnings_summary(username)
+        
+        if not earnings.get("ok"):
+            return {"ok": False, "error": earnings.get("error", "unknown")}
+        
+        # Get user for revenue.bySource and unlocks
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {"total": 0.0, "bySource": {}})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "total_earned": earnings["total_earned"],
+            "eligible_earned": earnings["eligible_earned"],
+            "held_back": earnings["held_back"],
+            "holdback_days": earnings["holdback_days"],
+            "breakdown": {
+                "ame": revenue["bySource"].get("ame", 0.0),
+                "intentExchange": revenue["bySource"].get("intentExchange", 0.0),
+                "jvMesh": revenue["bySource"].get("jvMesh", 0.0),
+                "services": revenue["bySource"].get("services", 0.0),
+                "shopify": revenue["bySource"].get("shopify", 0.0),
+                "affiliate": revenue["bySource"].get("affiliate", 0.0),
+                "contentCPM": revenue["bySource"].get("contentCPM", 0.0)
+            },
+            "aigx_balance": user.get("yield", {}).get("aigxEarned", 0),
+            "unlocks": {
+                "r3_autopilot": user.get("runtimeFlags", {}).get("r3AutopilotEnabled", False),
+                "advanced_analytics": user.get("runtimeFlags", {}).get("advancedAnalyticsEnabled", False),
+                "template_publishing": user.get("runtimeFlags", {}).get("templatePublishingEnabled", False),
+                "metahive_premium": user.get("runtimeFlags", {}).get("metaHivePremium", False),
+                "white_label": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False)
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.get("/score/outcome") 
 async def get_outcome_score_query(username: str):
