@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import httpx
 from log_to_jsonbin import get_user, log_agent_update, credit_aigx, append_intent_ledger
+from outcome_oracle_max import on_event
 
 # Platform fee (5%)
 PLATFORM_FEE = 0.05
@@ -60,6 +61,16 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         await check_revenue_milestones(username, user["revenue"]["total"])
         # Credit AIGx
         credit_aigx(username, user_net, {"source": "shopify", "order_id": order_id})
+        
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "shopify",
+            "order_id": order_id
+        })
         
         # Trigger R³ reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
@@ -120,6 +131,16 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": f"{source}_affiliate",
+            "product_id": product_id
+        })
+        
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
         
@@ -174,6 +195,16 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": f"{platform}_cpm",
+            "views": views
+        })
+        
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
         
@@ -224,6 +255,16 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
 
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "service_payment",
+            "invoice_id": invoice_id
+        })
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
@@ -579,12 +620,24 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "ame_conversion",
+            "pitch_id": pitch_id,
+            "recipient": recipient
+        })
+        
         return {
             "ok": True,
             "revenue": amount_usd,
             "user_net": user_net,
             "total_revenue": user["revenue"]["total"]
         }
+        
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -637,6 +690,17 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
         
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # ✅ ADD THIS BLOCK:
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "intent_exchange",
+            "intent_id": intent_id,
+            "buyer": buyer
+        })
         
         return {
             "ok": True,
