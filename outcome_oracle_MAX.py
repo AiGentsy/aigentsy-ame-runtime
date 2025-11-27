@@ -1,11 +1,13 @@
 """
-Outcome Oracle (MAX) — unified & hardened
+Outcome Oracle (MAX) — unified & hardened + Task 7 Funnel Tracking
 -----------------------------------------
 - Backward compatible `on_event(evt: dict)` entrypoint
 - Credits AIGx from USD with env-configurable multiplier
 - Autostake v2 with weekly cap
 - Records bundle outcomes (A/B tuner), mesh sessions, R3 allocation
 - Handles INTENT_*, DEALGRAPH_*, FRANCHISE_*, PROPOSAL_*, COOP_* events
+- NEW: 4-stage outcome funnel (CLICKED → AUTHORIZED → DELIVERED → PAID)
+- NEW: Outcome-based feature unlocks (OCL, Factoring, IPVault, Certification)
 - Dual logging: events + JSONBin (safe fallbacks)
 - Graceful degradation if JSONBIN_* envs missing
 """
@@ -130,11 +132,152 @@ def _record_coop(user: Dict[str, Any], evt: Dict[str, Any]) -> None:
         # purely informational; real pool tracked server-side
         coop["pool_usd"] = float(coop.get("pool_usd", 0)) - float(evt.get("usd", 0))
 
+# ---------- NEW: TASK 7 - Outcome Funnel Tracking ----------
+def _track_funnel_stage(user: Dict[str, Any], stage: str, metadata: dict) -> None:
+    """Track CLICKED → AUTHORIZED → DELIVERED → PAID funnel stages"""
+    
+    # Initialize funnel if not exists
+    funnel = user.setdefault("outcomeFunnel", {
+        "clicked": 0,
+        "authorized": 0,
+        "delivered": 0,
+        "paid": 0
+    })
+    
+    # Increment stage counter
+    stage_key = stage.lower()
+    if stage_key in funnel:
+        funnel[stage_key] = funnel.get(stage_key, 0) + 1
+    
+    # Log detailed funnel event
+    user.setdefault("funnel_history", []).append({
+        "stage": stage,
+        "ts": _now(),
+        "source": metadata.get("source", "unknown"),
+        "amount_usd": metadata.get("amount_usd", 0),
+        "id": metadata.get("id", _uid())
+    })
+    
+    print(f"📊 Funnel tracked: {user.get('username')} → {stage} (count: {funnel[stage_key]})")
+
+# ---------- NEW: TASK 7 - Outcome-Based Unlocks ----------
+def _check_unlocks(user: Dict[str, Any]) -> List[str]:
+    """Check outcome milestones and unlock financial tools"""
+    
+    funnel = user.get("outcomeFunnel", {})
+    paid = funnel.get("paid", 0)
+    delivered = funnel.get("delivered", 0)
+    
+    unlocked = []
+    
+    # ========== OCL (Outcome Credit Line) ==========
+    
+    # 1st PAID → Unlock OCL Phase 1 (AIGx Credit)
+    if paid >= 1 and not user.get("ocl", {}).get("enabled"):
+        user.setdefault("ocl", {})
+        user["ocl"]["enabled"] = True
+        user["ocl"]["phase"] = "aigx_credit"
+        user["ocl"]["creditLine"] = 2000  # 2,000 AIGx
+        user["ocl"]["borrowed"] = 0
+        user["ocl"]["collateral"] = {
+            "aigxLocked": 0,
+            "performanceBonds": []
+        }
+        user["ocl"]["repayment"] = {
+            "rate": 0.10,
+            "autoDeduct": True
+        }
+        unlocked.append("ocl_aigx_credit")
+        print(f"🎉 {user.get('username')} unlocked OCL Phase 1 (AIGx Credit): 2,000 AIGx credit line")
+    
+    # Grow OCL credit line with each PAID outcome (+500 AIGx per deal)
+    if paid > 1 and user.get("ocl", {}).get("enabled"):
+        new_credit = 2000 + (500 * (paid - 1))
+        max_credit = 50000  # Cap at 50K AIGx
+        if new_credit > user["ocl"].get("creditLine", 0):
+            old_credit = user["ocl"]["creditLine"]
+            user["ocl"]["creditLine"] = min(new_credit, max_credit)
+            print(f"📈 {user.get('username')} OCL credit line grew: {old_credit} → {user['ocl']['creditLine']} AIGx")
+    
+    # 5th PAID → Upgrade OCL to Phase 2 (Hybrid Fiat)
+    if paid >= 5 and user.get("ocl", {}).get("phase") == "aigx_credit":
+        user["ocl"]["phase"] = "hybrid_fiat"
+        user["ocl"]["fiatAdvanceEnabled"] = True
+        user["ocl"]["collateralRatio"] = 1.5  # 1.5 AIGx per $1 fiat
+        unlocked.append("ocl_fiat_upgrade")
+        print(f"🎉 {user.get('username')} unlocked OCL Phase 2 (Hybrid Fiat): Fiat advances enabled")
+    
+    # ========== FACTORING ==========
+    
+    # 1st DELIVERED → Unlock Factoring Phase 1 (AIGx Advance)
+    if delivered >= 1 and not user.get("factoring", {}).get("enabled"):
+        user.setdefault("factoring", {})
+        user["factoring"]["enabled"] = True
+        user["factoring"]["phase"] = "aigx_advance"
+        user["factoring"]["advanceRate"] = 0.80  # Get 80% immediately
+        user["factoring"]["holdbackRate"] = 0.20  # 20% held
+        user["factoring"]["fee"] = 0.05  # 5% platform fee
+        unlocked.append("factoring_aigx_advance")
+        print(f"🎉 {user.get('username')} unlocked Factoring Phase 1 (AIGx Advance): 80% immediate, 20% holdback")
+    
+    # 5th PAID → Upgrade Factoring to Phase 2 (Hybrid Fiat)
+    if paid >= 5 and user.get("factoring", {}).get("phase") == "aigx_advance":
+        user["factoring"]["phase"] = "hybrid_fiat"
+        user["factoring"]["fiatEnabled"] = True
+        unlocked.append("factoring_fiat_upgrade")
+        print(f"🎉 {user.get('username')} unlocked Factoring Phase 2 (Hybrid Fiat): Fiat factoring enabled")
+    
+    # ========== IP VAULT ==========
+    
+    # 3rd PAID → Unlock IPVault (Passive Royalties)
+    if paid >= 3 and not user.get("ipVault", {}).get("enabled"):
+        user.setdefault("ipVault", {})
+        user["ipVault"]["enabled"] = True
+        user["ipVault"]["royaltyRate"] = 0.70  # User gets 70%, platform 30%
+        user["ipVault"]["assets"] = []
+        unlocked.append("ip_vault")
+        print(f"🎉 {user.get('username')} unlocked IPVault: Start earning passive royalties (70% rate)")
+    
+    # ========== CERTIFICATION ==========
+    
+    # 10th PAID → Certification (TODO: Add on-time rate check)
+    if paid >= 10 and not user.get("certification", {}).get("enabled"):
+        # TODO: Calculate on-time delivery rate
+        # For now, unlock automatically at 10 PAID outcomes
+        user.setdefault("certification", {})
+        user["certification"]["enabled"] = True
+        user["certification"]["tier"] = "aigentsy_specialist"
+        user["certification"]["badge"] = "verified_professional"
+        user["certification"]["unlockedAt"] = _now()
+        unlocked.append("certification")
+        print(f"🎉 {user.get('username')} unlocked Certification: AiGentsy Specialist badge")
+    
+    # ========== FUTURE UNLOCKS (Placeholders) ==========
+    
+    # 20th PAID → Phase 3 Full Lending
+    if paid >= 20 and user.get("ocl", {}).get("phase") == "hybrid_fiat":
+        user["ocl"]["phase"] = "full_lending"
+        user["ocl"]["partnerCapitalEnabled"] = True
+        unlocked.append("ocl_full_lending")
+        print(f"🎉 {user.get('username')} unlocked OCL Phase 3 (Full Lending): Partner capital access")
+    
+    # Return list of newly unlocked features
+    return unlocked
+
+# ---------- NEW: TASK 7 - On-Time Delivery Rate ----------
+def _calculate_on_time_rate(user: Dict[str, Any]) -> float:
+    """Calculate percentage of deals delivered on-time"""
+    # TODO: Implement based on actual delivery tracking
+    # For now, return default high rate
+    # This will be implemented when we add delivery deadline tracking
+    return 0.95
+
 # ---------- Public API ----------
 def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
     """
     Event schema (flexible):
-      kind: str  (ATTRIBUTED | PAID | INTENT_* | DEALGRAPH_* | FRANCHISE_* | R3_* | PROPOSAL_* | COOP_*)
+      kind: str  (ATTRIBUTED | PAID | CLICKED | AUTHORIZED | DELIVERED | 
+                  INTENT_* | DEALGRAPH_* | FRANCHISE_* | R3_* | PROPOSAL_* | COOP_*)
       user / username: key for JSONBin record
       value_usd / amount_usd: numeric
       bundle_id / mesh_session_id: optional attribution
@@ -148,18 +291,49 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
     if not user:
         return {"ok": False, "err": "no_user"}
 
-    # Revenue-affecting events
+    # ========== NEW: TASK 7 - Funnel Stage Tracking ==========
+    
+    # CLICKED: Proposals/pitches sent
+    if kind in ("CLICKED", "PROPOSAL_SENT", "AME_PITCH_SENT", "PITCH_SENT"):
+        _track_funnel_stage(user, "CLICKED", evt)
+    
+    # AUTHORIZED: Payment authorized/escrow locked
+    if kind in ("AUTHORIZED", "PAYMENT_AUTHORIZED", "ESCROW_LOCKED"):
+        _track_funnel_stage(user, "AUTHORIZED", evt)
+    
+    # DELIVERED: Work completed/proof submitted
+    if kind in ("DELIVERED", "POO_SUBMITTED", "WORK_COMPLETE", "DELIVERY_CONFIRMED"):
+        _track_funnel_stage(user, "DELIVERED", evt)
+    
+    # PAID: Payment captured (tracked below with revenue events)
+    
+    # ========== Revenue-affecting events ==========
     if kind in ("ATTRIBUTED", "PAID"):
         usd = float(evt.get("value_usd") or evt.get("amount_usd") or 0.0)
         credit_aigx(user, usd, f"{kind}:{evt.get('provider') or evt.get('channel') or 'unknown'}")
+        
         if kind == "PAID":
             autostake(user, usd)
+            
+            # NEW: Track PAID stage in funnel
+            _track_funnel_stage(user, "PAID", evt)
+            
+            # NEW: Check for unlocks after PAID events
+            unlocked = _check_unlocks(user)
+            if unlocked:
+                # Emit unlock event for notifications
+                _emit("FEATURES_UNLOCKED", {
+                    "user": username,
+                    "features": unlocked,
+                    "paid_count": user.get("outcomeFunnel", {}).get("paid", 0)
+                })
+        
         if evt.get("bundle_id"):
             _record_bundle(user, evt["bundle_id"], usd)
         if evt.get("mesh_session_id"):
             _record_mesh(user, evt["mesh_session_id"], kind, usd)
 
-    # Domain event families
+    # ========== Domain event families ==========
     if kind.startswith("INTENT_"):
         _record_intent(user, evt)
 
@@ -182,3 +356,59 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
     ok = _save_users(users)
     _emit(kind, evt)
     return {"ok": ok}
+
+# ---------- NEW: TASK 7 - Helper Functions for External Use ----------
+
+def get_user_funnel_stats(username: str) -> Dict[str, Any]:
+    """Get user's outcome funnel stats"""
+    users = _load_users()
+    user = _find_user(users, username)
+    if not user:
+        return {"ok": False, "error": "user_not_found"}
+    
+    funnel = user.get("outcomeFunnel", {
+        "clicked": 0,
+        "authorized": 0,
+        "delivered": 0,
+        "paid": 0
+    })
+    
+    # Calculate conversion rates
+    clicked = funnel.get("clicked", 0)
+    conversion_rates = {}
+    if clicked > 0:
+        conversion_rates = {
+            "clicked_to_authorized": round(funnel.get("authorized", 0) / clicked * 100, 1),
+            "clicked_to_delivered": round(funnel.get("delivered", 0) / clicked * 100, 1),
+            "clicked_to_paid": round(funnel.get("paid", 0) / clicked * 100, 1)
+        }
+    
+    return {
+        "ok": True,
+        "username": username,
+        "funnel": funnel,
+        "conversion_rates": conversion_rates,
+        "unlocks": {
+            "ocl": user.get("ocl", {}),
+            "factoring": user.get("factoring", {}),
+            "ipVault": user.get("ipVault", {}),
+            "certification": user.get("certification", {})
+        }
+    }
+
+def manually_trigger_unlock_check(username: str) -> Dict[str, Any]:
+    """Manually trigger unlock check for a user (admin/debug)"""
+    users = _load_users()
+    user = _find_user(users, username)
+    if not user:
+        return {"ok": False, "error": "user_not_found"}
+    
+    unlocked = _check_unlocks(user)
+    ok = _save_users(users)
+    
+    return {
+        "ok": ok,
+        "username": username,
+        "unlocked": unlocked,
+        "funnel": user.get("outcomeFunnel", {})
+    }
