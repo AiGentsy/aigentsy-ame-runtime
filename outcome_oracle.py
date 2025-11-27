@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 import httpx
+from outcome_oracle_max import on_event
 
 _POO_LEDGER: Dict[str, Dict[str, Any]] = {}
 
@@ -70,6 +71,18 @@ Review and verify at: /intents/verify_poo""",
                 )
         except Exception as e:
             print(f"Failed to notify buyer: {e}")
+    
+    try:
+        on_event({
+            "kind": "DELIVERED",
+            "username": username,
+            "source": "intent_exchange",
+            "intent_id": intent_id,
+            "poo_id": poo_id
+        })
+        print(f"📦 Tracked DELIVERED for {username} (PoO: {poo_id})")
+    except Exception as e:
+        print(f"❌ Outcome tracking failed: {e}")
     
     return {"ok": True, "poo_id": poo_id, "poo": poo_entry}
 
