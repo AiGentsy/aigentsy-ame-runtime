@@ -369,9 +369,9 @@ async def verify_proof_of_outcome(req: VerifyPoO):
     # Release escrow
     released = await _release_escrow(req.intent_id, winner)
     
-    # ✅ ADD THIS BLOCK HERE:
-    # Track revenue
+    # Track revenue and outcomes
     try:
+        from revenue_flows import ingest_intent_settlement
         await ingest_intent_settlement(
             username=winner,
             intent_id=req.intent_id,
