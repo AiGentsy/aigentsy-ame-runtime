@@ -7,7 +7,7 @@ import httpx
 try:
     from metahive_brain import query_hive, report_pattern_usage
     from pricing_oracle import calculate_dynamic_price
-    from outcome_oracle_MAX import on_event
+    from outcome_oracle_max import on_event
     from ltv_forecaster import calculate_ltv_with_churn
     from bundle_engine import create_bundle
     from fraud_detector import check_fraud_signals
