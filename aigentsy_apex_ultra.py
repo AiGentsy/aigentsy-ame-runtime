@@ -653,34 +653,35 @@ class CompleteActivationEngine:
 
     async def _activate_amg(self) -> Dict[str, Any]:
         """Activate the App Monetization Graph - THE REVENUE BRAIN"""
+        
+        print(f"   💰 AMG: Initializing revenue optimization engine...")
+        
+        try:
+            # Create AMG orchestrator
+            amg = AMGOrchestrator(self.username)
+            
+            # Initialize the graph
+            init_result = await amg.initialize_graph()
+            
+            print(f"   💰 AMG: Graph built - {init_result['nodes']} nodes, {init_result['edges']} edges")
+            
+            # Run first cycle
+            print(f"   💰 AMG: Running first revenue cycle...")
+            cycle_result = await amg.run_cycle()
+            
+            print(f"   ✅ AMG: Revenue engine active - {cycle_result['results']['route']['actions_executed']} actions queued")
+            
+            return {
+                "ok": True,
+                "graph_initialized": True,
+                "first_cycle_complete": True,
+                "actions_queued": cycle_result['results']['route']['actions_executed']
+            }
+        
+        except Exception as e:
+            print(f"   ⚠️  AMG: {str(e)}")
+            return {"ok": False, "error": str(e)}
     
-    print(f"   💰 AMG: Initializing revenue optimization engine...")
-    
-    try:
-        # Create AMG orchestrator
-        amg = AMGOrchestrator(self.username)
-        
-        # Initialize the graph
-        init_result = await amg.initialize_graph()
-        
-        print(f"   💰 AMG: Graph built - {init_result['nodes']} nodes, {init_result['edges']} edges")
-        
-        # Run first cycle
-        print(f"   💰 AMG: Running first revenue cycle...")
-        cycle_result = await amg.run_cycle()
-        
-        print(f"   ✅ AMG: Revenue engine active - {cycle_result['results']['route']['actions_executed']} actions queued")
-        
-        return {
-            "ok": True,
-            "graph_initialized": True,
-            "first_cycle_complete": True,
-            "actions_queued": cycle_result['results']['route']['actions_executed']
-        }
-    
-    except Exception as e:
-        print(f"   ⚠️  AMG: {str(e)}")
-        return {"ok": False, "error": str(e)}
         
     async def _activate_ame(self) -> Dict[str, Any]:
         """Activate Autonomous Money Engine"""
