@@ -1,9 +1,10 @@
-# revenue_flows.py — AiGentsy Autonomous Money Flows
+# revenue_flows.py — AiGentsy Autonomous Money Flows with Platform Attribution
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import httpx
 from log_to_jsonbin import get_user, log_agent_update, credit_aigx, append_intent_ledger
 from outcome_oracle_max import on_event
+from uuid import uuid4
 
 # Platform fee (5%)
 PLATFORM_FEE = 0.05
@@ -17,9 +18,9 @@ STAKING_RETURN = 0.10
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
-# ============ REVENUE INGESTION ============
+# ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION ============
 
-async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float, cid: str = None):
+async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float, cid: str = None, platform: str = "shopify"):
     """Ingest Shopify order revenue and auto-split"""
     try:
         user = get_user(username)
@@ -35,12 +36,28 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
         user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
         user["revenue"]["bySource"]["shopify"] = round(
             user["revenue"]["bySource"].get("shopify", 0.0) + user_net, 2
         )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform] = round(
+            user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "shopify",
+            "platform": platform,
+            "amount": revenue_usd,
+            "netToUser": user_net,
+            "orderId": order_id,
+            "ts": now_iso()
+        })
         
         # Save updated user
         log_agent_update(user)
@@ -50,6 +67,7 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "event": "shopify_revenue",
             "order_id": order_id,
             "revenue_usd": revenue_usd,
+            "platform": platform,
             "platform_fee": platform_cut,
             "reinvestment": reinvest_amount,
             "user_net": user_net,
@@ -59,16 +77,17 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
 
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
         # Credit AIGx
         credit_aigx(username, user_net, {"source": "shopify", "order_id": order_id})
         
-        # ✅ ADD THIS BLOCK:
         # Track PAID outcome
         on_event({
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
             "source": "shopify",
+            "platform": platform,
             "order_id": order_id
         })
         
@@ -78,6 +97,7 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         return {
             "ok": True,
             "revenue": revenue_usd,
+            "platform": platform,
             "splits": {
                 "platform": platform_cut,
                 "reinvest": reinvest_amount,
@@ -88,9 +108,19 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_affiliate_commission(username: str, source: str, revenue_usd: float, product_id: str = None):
-    """Ingest TikTok/Amazon affiliate commission"""
+async def ingest_affiliate_commission(username: str, source: str, revenue_usd: float, product_id: str = None, platform: str = None):
+    """Ingest TikTok/Amazon/Instagram affiliate commission with platform tracking"""
     try:
+        # Auto-detect platform from source if not provided
+        if not platform:
+            platform_map = {
+                "tiktok": "tiktok",
+                "amazon": "amazon",
+                "instagram": "instagram",
+                "facebook": "facebook"
+            }
+            platform = platform_map.get(source.lower(), source.lower())
+        
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
@@ -104,12 +134,29 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
         user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
         user["revenue"]["bySource"]["affiliate"] = round(
             user["revenue"]["bySource"].get("affiliate", 0.0) + user_net, 2
         )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform] = round(
+            user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "affiliate",
+            "platform": platform,
+            "network": source,
+            "amount": revenue_usd,
+            "netToUser": user_net,
+            "product": product_id,
+            "ts": now_iso()
+        })
         
         # Save updated user
         log_agent_update(user)
@@ -118,6 +165,7 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         append_intent_ledger(username, {
             "event": f"{source}_affiliate",
             "revenue_usd": revenue_usd,
+            "platform": platform,
             "product_id": product_id,
             "platform_fee": platform_cut,
             "reinvestment": reinvest_amount,
@@ -131,28 +179,36 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # ✅ ADD THIS BLOCK:
         # Track PAID outcome
         on_event({
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
             "source": f"{source}_affiliate",
+            "platform": platform,
             "product_id": product_id
         })
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
         
-        return {"ok": True, "revenue": revenue_usd, "user_net": user_net}
+        return {
+            "ok": True,
+            "revenue": revenue_usd,
+            "platform": platform,
+            "user_net": user_net
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate: float):
-    """Ingest YouTube/TikTok CPM revenue"""
+    """Ingest YouTube/TikTok/Instagram CPM revenue with platform tracking"""
     try:
         revenue_usd = round((views / 1000) * cpm_rate, 2)
+        
+        # Normalize platform name
+        platform_normalized = platform.lower().replace(" ", "_")
         
         user = get_user(username)
         if not user:
@@ -167,12 +223,30 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
         user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
         user["revenue"]["bySource"]["contentCPM"] = round(
             user["revenue"]["bySource"].get("contentCPM", 0.0) + user_net, 2
         )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform_normalized] = round(
+            user["revenue"]["byPlatform"].get(platform_normalized, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "content_cpm",
+            "platform": platform_normalized,
+            "platformName": platform,
+            "amount": revenue_usd,
+            "netToUser": user_net,
+            "views": views,
+            "cpmRate": cpm_rate,
+            "ts": now_iso()
+        })
         
         # Save updated user
         log_agent_update(user)
@@ -183,6 +257,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "views": views,
             "cpm_rate": cpm_rate,
             "revenue_usd": revenue_usd,
+            "platform": platform_normalized,
             "platform_fee": platform_cut,
             "reinvestment": reinvest_amount,
             "user_net": user_net,
@@ -195,26 +270,32 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # ✅ ADD THIS BLOCK:
         # Track PAID outcome
         on_event({
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
             "source": f"{platform}_cpm",
+            "platform": platform_normalized,
             "views": views
         })
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
         
-        return {"ok": True, "revenue": revenue_usd, "views": views, "user_net": user_net}
+        return {
+            "ok": True,
+            "revenue": revenue_usd,
+            "platform": platform_normalized,
+            "views": views,
+            "user_net": user_net
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_service_payment(username: str, invoice_id: str, amount_usd: float):
-    """Ingest direct service payment (consulting, design, etc.)"""
+async def ingest_service_payment(username: str, invoice_id: str, amount_usd: float, platform: str = "direct"):
+    """Ingest direct service payment (consulting, design, etc.) with platform tracking"""
     try:
         user = get_user(username)
         if not user:
@@ -229,12 +310,28 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         user.setdefault("yield", {})
         user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
         
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
         user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
         user["revenue"]["bySource"]["services"] = round(
             user["revenue"]["bySource"].get("services", 0.0) + user_net, 2
         )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform] = round(
+            user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "services",
+            "platform": platform,
+            "amount": amount_usd,
+            "netToUser": user_net,
+            "invoiceId": invoice_id,
+            "ts": now_iso()
+        })
         
         # Save updated user
         log_agent_update(user)
@@ -244,6 +341,7 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             "event": "service_payment",
             "invoice_id": invoice_id,
             "amount_usd": amount_usd,
+            "platform": platform,
             "platform_fee": platform_cut,
             "reinvestment": reinvest_amount,
             "user_net": user_net,
@@ -256,23 +354,221 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # ✅ ADD THIS BLOCK:
         # Track PAID outcome
         on_event({
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
             "source": "service_payment",
+            "platform": platform,
             "invoice_id": invoice_id
         })
         
         # Trigger reinvestment
         await trigger_r3_reinvestment(username, reinvest_amount)
         
-        return {"ok": True, "amount": amount_usd, "user_net": user_net}
+        return {
+            "ok": True,
+            "amount": amount_usd,
+            "platform": platform,
+            "user_net": user_net
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float, recipient: str, platform: str):
+    """Ingest revenue from AME auto-sales pitch conversion (REQUIRES platform)"""
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate splits
+        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        
+        # Update earnings
+        user.setdefault("yield", {})
+        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
+        
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["ame"] = round(
+            user["revenue"]["bySource"].get("ame", 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform] = round(
+            user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "ame",
+            "platform": platform,
+            "amount": amount_usd,
+            "netToUser": user_net,
+            "client": recipient,
+            "pitchId": pitch_id,
+            "ts": now_iso()
+        })
+        
+        # Post ledger
+        append_intent_ledger(username, {
+            "event": "ame_conversion",
+            "pitch_id": pitch_id,
+            "recipient": recipient,
+            "platform": platform,
+            "revenue_usd": amount_usd,
+            "platform_fee": platform_cut,
+            "reinvestment": reinvest_amount,
+            "user_net": user_net,
+            "ts": now_iso()
+        })
+        
+        # Credit AIGx
+        credit_aigx(username, user_net, {"source": "ame", "pitch_id": pitch_id})
+        
+        # Save updated user
+        log_agent_update(user)
+        
+        # Trigger reinvestment
+        await trigger_r3_reinvestment(username, reinvest_amount)
+        
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "ame_conversion",
+            "platform": platform,
+            "pitch_id": pitch_id,
+            "recipient": recipient
+        })
+        
+        return {
+            "ok": True,
+            "revenue": amount_usd,
+            "platform": platform,
+            "user_net": user_net,
+            "total_revenue": user["revenue"]["total"]
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: float, buyer: str, platform: str = "intent_exchange"):
+    """Ingest revenue from intent exchange contract settlement with platform tracking"""
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate splits
+        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        
+        # Update earnings
+        user.setdefault("yield", {})
+        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
+        
+        # Update revenue tracking WITH PLATFORM ATTRIBUTION
+        user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
+        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
+        user["revenue"]["bySource"]["intentExchange"] = round(
+            user["revenue"]["bySource"].get("intentExchange", 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Platform tracking
+        user["revenue"]["byPlatform"][platform] = round(
+            user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
+        )
+        
+        # ✅ NEW: Attribution record
+        user["revenue"]["attribution"].append({
+            "id": f"rev-{str(uuid4())[:8]}",
+            "source": "intent_exchange",
+            "platform": platform,
+            "amount": amount_usd,
+            "netToUser": user_net,
+            "buyer": buyer,
+            "intentId": intent_id,
+            "ts": now_iso()
+        })
+        
+        # Post ledger
+        append_intent_ledger(username, {
+            "event": "intent_settlement",
+            "intent_id": intent_id,
+            "buyer": buyer,
+            "platform": platform,
+            "revenue_usd": amount_usd,
+            "platform_fee": platform_cut,
+            "reinvestment": reinvest_amount,
+            "user_net": user_net,
+            "ts": now_iso()
+        })
+        
+        # Credit AIGx
+        credit_aigx(username, user_net, {"source": "intent_exchange", "intent_id": intent_id})
+        
+        # Save updated user
+        log_agent_update(user)
+        
+        # Trigger reinvestment
+        await trigger_r3_reinvestment(username, reinvest_amount)
+        
+        # Check unlock milestones
+        await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Track PAID outcome
+        on_event({
+            "kind": "PAID",
+            "username": username,
+            "amount_usd": user_net,
+            "source": "intent_exchange",
+            "platform": platform,
+            "intent_id": intent_id,
+            "buyer": buyer
+        })
+        
+        return {
+            "ok": True,
+            "revenue": amount_usd,
+            "platform": platform,
+            "user_net": user_net,
+            "total_revenue": user["revenue"]["total"]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ AUTO-REINVESTMENT ============
+
+async def trigger_r3_reinvestment(username: str, budget_usd: float):
+    """Trigger R³ router to reallocate budget"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                "http://localhost:8000/r3/allocate",
+                json={"user_id": username, "budget_usd": budget_usd}
+            )
+            return r.json()
+    except Exception as e:
+        print(f"R³ reinvestment failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============ STAKING RETURNS ============
 
 async def distribute_staking_returns(username: str, amount_usd: float):
     """Distribute staking returns (10% of agent's earnings to stakers)"""
@@ -329,22 +625,6 @@ async def distribute_staking_returns(username: str, amount_usd: float):
         return {"ok": False, "error": str(e)}
 
 
-# ============ AUTO-REINVESTMENT ============
-
-async def trigger_r3_reinvestment(username: str, budget_usd: float):
-    """Trigger R³ router to reallocate budget"""
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                "http://localhost:8000/r3/allocate",
-                json={"user_id": username, "budget_usd": budget_usd}
-            )
-            return r.json()
-    except Exception as e:
-        print(f"R³ reinvestment failed: {e}")
-        return {"ok": False, "error": str(e)}
-
-
 # ============ JV REVENUE SPLIT ============
 
 async def split_jv_revenue(username: str, amount_usd: float, jv_id: str):
@@ -380,7 +660,7 @@ async def split_jv_revenue(username: str, amount_usd: float, jv_id: str):
         if partner_a:
             a_user = get_user(partner_a)
             if a_user:
-                a_user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+                a_user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
                 a_user["revenue"]["total"] = round(a_user["revenue"]["total"] + a_amount, 2)
                 a_user["revenue"]["bySource"]["jvMesh"] = round(
                     a_user["revenue"]["bySource"].get("jvMesh", 0.0) + a_amount, 2
@@ -391,7 +671,7 @@ async def split_jv_revenue(username: str, amount_usd: float, jv_id: str):
         if partner_b:
             b_user = get_user(partner_b)
             if b_user:
-                b_user.setdefault("revenue", {"total": 0.0, "bySource": {}})
+                b_user.setdefault("revenue", {"total": 0.0, "bySource": {}, "byPlatform": {}, "attribution": []})
                 b_user["revenue"]["total"] = round(b_user["revenue"]["total"] + b_amount, 2)
                 b_user["revenue"]["bySource"]["jvMesh"] = round(
                     b_user["revenue"]["bySource"].get("jvMesh", 0.0) + b_amount, 2
@@ -571,145 +851,6 @@ async def register_clone_lineage(
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
- # ============ AME REVENUE ============
-
-async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float, recipient: str):
-    """Ingest revenue from AME auto-sales pitch conversion"""
-    try:
-        user = get_user(username)
-        if not user:
-            return {"ok": False, "error": "user_not_found"}
-        
-        # Calculate splits
-        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
-        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
-        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Update earnings
-        user.setdefault("yield", {})
-        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
-        
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
-        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
-        user["revenue"]["bySource"]["ame"] = round(
-            user["revenue"]["bySource"].get("ame", 0.0) + user_net, 2
-        )
-        
-        # Post ledger
-        append_intent_ledger(username, {
-            "event": "ame_conversion",
-            "pitch_id": pitch_id,
-            "recipient": recipient,
-            "revenue_usd": amount_usd,
-            "platform_fee": platform_cut,
-            "reinvestment": reinvest_amount,
-            "user_net": user_net,
-            "ts": now_iso()
-        })
-        
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "ame", "pitch_id": pitch_id})
-        
-        # Save updated user
-        log_agent_update(user)
-        
-        # Trigger reinvestment
-        await trigger_r3_reinvestment(username, reinvest_amount)
-        
-        # Check unlock milestones
-        await check_revenue_milestones(username, user["revenue"]["total"])
-        
-        # ✅ ADD THIS BLOCK:
-        # Track PAID outcome
-        on_event({
-            "kind": "PAID",
-            "username": username,
-            "amount_usd": user_net,
-            "source": "ame_conversion",
-            "pitch_id": pitch_id,
-            "recipient": recipient
-        })
-        
-        return {
-            "ok": True,
-            "revenue": amount_usd,
-            "user_net": user_net,
-            "total_revenue": user["revenue"]["total"]
-        }
-        
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ============ INTENT EXCHANGE REVENUE ============
-
-async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: float, buyer: str):
-    """Ingest revenue from intent exchange contract settlement"""
-    try:
-        user = get_user(username)
-        if not user:
-            return {"ok": False, "error": "user_not_found"}
-        
-        # Calculate splits
-        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
-        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
-        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Update earnings
-        user.setdefault("yield", {})
-        user["yield"]["aigxEarned"] = user["yield"].get("aigxEarned", 0) + user_net
-        
-        # Update revenue tracking
-        user.setdefault("revenue", {"total": 0.0, "bySource": {}})
-        user["revenue"]["total"] = round(user["revenue"]["total"] + user_net, 2)
-        user["revenue"]["bySource"]["intentExchange"] = round(
-            user["revenue"]["bySource"].get("intentExchange", 0.0) + user_net, 2
-        )
-        
-        # Post ledger
-        append_intent_ledger(username, {
-            "event": "intent_settlement",
-            "intent_id": intent_id,
-            "buyer": buyer,
-            "revenue_usd": amount_usd,
-            "platform_fee": platform_cut,
-            "reinvestment": reinvest_amount,
-            "user_net": user_net,
-            "ts": now_iso()
-        })
-        
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "intent_exchange", "intent_id": intent_id})
-        
-        # Save updated user
-        log_agent_update(user)
-        
-        # Trigger reinvestment
-        await trigger_r3_reinvestment(username, reinvest_amount)
-        
-        # Check unlock milestones
-        await check_revenue_milestones(username, user["revenue"]["total"])
-        
-        # ✅ ADD THIS BLOCK:
-        # Track PAID outcome
-        on_event({
-            "kind": "PAID",
-            "username": username,
-            "amount_usd": user_net,
-            "source": "intent_exchange",
-            "intent_id": intent_id,
-            "buyer": buyer
-        })
-        
-        return {
-            "ok": True,
-            "revenue": amount_usd,
-            "user_net": user_net,
-            "total_revenue": user["revenue"]["total"]
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 
 # ============ MILESTONE UNLOCK SYSTEM ============
@@ -773,6 +914,7 @@ async def check_revenue_milestones(username: str, total_revenue: float):
         print(f"Milestone check error: {e}")
         return {"ok": False, "error": str(e)}
         
+
 # ============ EARNINGS SUMMARY ============
 
 def get_earnings_summary(username: str) -> Dict[str, Any]:
