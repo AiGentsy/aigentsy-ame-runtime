@@ -261,6 +261,54 @@ def _check_unlocks(user: Dict[str, Any]) -> List[str]:
         unlocked.append("ocl_full_lending")
         print(f"🎉 {user.get('username')} unlocked OCL Phase 3 (Full Lending): Partner capital access")
     
+    def _check_unlocks(user: Dict[str, Any]) -> List[str]:
+    """Check outcome milestones and unlock financial tools"""
+    
+    funnel = user.get("outcomeFunnel", {})
+    paid = funnel.get("paid", 0)
+    delivered = funnel.get("delivered", 0)
+    
+    unlocked = []
+    
+    # ========== OCL (Outcome Credit Line) ==========
+    # ... all your existing unlock logic ...
+    # ... (keep everything the same until the end)
+    
+    # 20th PAID → Phase 3 Full Lending
+    if paid >= 20 and user.get("ocl", {}).get("phase") == "hybrid_fiat":
+        user["ocl"]["phase"] = "full_lending"
+        user["ocl"]["partnerCapitalEnabled"] = True
+        unlocked.append("ocl_full_lending")
+        print(f"🎉 {user.get('username')} unlocked OCL Phase 3 (Full Lending): Partner capital access")
+    
+    # ✅ REPLACE THIS LINE:
+    # return unlocked
+    
+    # ✅ WITH THIS ENTIRE BLOCK:
+    if unlocked:
+        # Get username for logging
+        username = user.get("username") or (user.get("consent", {}) or {}).get("username", "unknown")
+        
+        # Post unlock event
+        from log_to_jsonbin_aam_patched import log_event
+        try:
+            log_event({
+                "kind": "outcome_unlocks",
+                "username": username,
+                "unlocked": unlocked,
+                "paid_count": paid,
+                "delivered_count": delivered,
+                "ts": _now()
+            })
+        except Exception as e:
+            print(f"Failed to log unlock event: {e}")
+        
+        # Send notifications
+        for feature in unlocked:
+            _send_unlock_notification(username, feature, user)
+        
+        print(f"🎉 {username} unlocked: {', '.join(unlocked)}")
+    
     # Return list of newly unlocked features
     return unlocked
 
@@ -412,3 +460,75 @@ def manually_trigger_unlock_check(username: str) -> Dict[str, Any]:
         "unlocked": unlocked,
         "funnel": user.get("outcomeFunnel", {})
     }
+# ---------- NEW: TASK 8 - Unlock Notifications ----------
+def _send_unlock_notification(username: str, feature: str, user: Dict[str, Any]) -> None:
+    """Send notification to user about unlocked feature"""
+    try:
+        # Build notification message
+        notifications = {
+            "ocl_aigx_credit": {
+                "title": "🎉 OCL Unlocked!",
+                "message": "You've unlocked a 2,000 AIGx credit line! Borrow AIGx to scale your business.",
+                "action": "View Credit Line"
+            },
+            "ocl_fiat_upgrade": {
+                "title": "🚀 OCL Phase 2 Unlocked!",
+                "message": "Fiat advances now enabled! Lock AIGx to get real cash.",
+                "action": "View Fiat Options"
+            },
+            "factoring_aigx_advance": {
+                "title": "💰 Factoring Unlocked!",
+                "message": "Get 80% of your invoice immediately in AIGx!",
+                "action": "View Factoring"
+            },
+            "factoring_fiat_upgrade": {
+                "title": "💰 Factoring Phase 2!",
+                "message": "Fiat factoring now enabled!",
+                "action": "View Factoring"
+            },
+            "ip_vault": {
+                "title": "📚 IPVault Unlocked!",
+                "message": "Start earning 70% passive royalties on your IP!",
+                "action": "Publish Assets"
+            },
+            "certification": {
+                "title": "⭐ Certified Specialist!",
+                "message": "You're now an AiGentsy Specialist with premium matching priority.",
+                "action": "View Badge"
+            },
+            "ocl_full_lending": {
+                "title": "🏦 OCL Phase 3 Unlocked!",
+                "message": "Partner capital access enabled!",
+                "action": "View Options"
+            }
+        }
+        
+        notif = notifications.get(feature, {
+            "title": f"🎉 {feature} Unlocked!",
+            "message": "You've unlocked a new feature!",
+            "action": "View Features"
+        })
+        
+        # Store notification in user record
+        user.setdefault("notifications", []).append({
+            "id": _uid(),
+            "type": "feature_unlock",
+            "feature": feature,
+            "title": notif["title"],
+            "message": notif["message"],
+            "action": notif["action"],
+            "read": False,
+            "ts": _now()
+        })
+        
+        # Also emit event for real-time notification system
+        _emit("FEATURE_UNLOCKED_NOTIFICATION", {
+            "user": username,
+            "feature": feature,
+            "notification": notif
+        })
+        
+        print(f"📬 Notification sent to {username}: {notif['title']}")
+        
+    except Exception as e:
+        print(f"❌ Notification send failed: {e}")
