@@ -650,8 +650,9 @@ class CompleteActivationEngine:
         }
     
     # ============ PHASE 1: CORE REVENUE ============
+
     async def _activate_amg(self) -> Dict[str, Any]:
-    """Activate the App Monetization Graph - THE REVENUE BRAIN"""
+        """Activate the App Monetization Graph - THE REVENUE BRAIN"""
     
     print(f"   💰 AMG: Initializing revenue optimization engine...")
     
