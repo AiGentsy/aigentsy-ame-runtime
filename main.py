@@ -3890,6 +3890,57 @@ async def get_unlock_status(username: str):
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/notifications/list")
+async def list_notifications(username: str, unread_only: bool = False):
+    """Get user's notifications"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        notifications = user.get("notifications", [])
+        
+        if unread_only:
+            notifications = [n for n in notifications if not n.get("read", False)]
+        
+        # Sort by timestamp, newest first
+        notifications.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        
+        return {
+            "ok": True,
+            "notifications": notifications,
+            "unread_count": sum(1 for n in notifications if not n.get("read", False))
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/notifications/mark_read")
+async def mark_notification_read(username: str, notification_id: str):
+    """Mark a notification as read"""
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        notifications = user.get("notifications", [])
+        
+        for notif in notifications:
+            if notif.get("id") == notification_id:
+                notif["read"] = True
+                notif["read_at"] = datetime.now(timezone.utc).isoformat()
+                break
+        
+        log_agent_update(user)
+        
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
         
 # ============ ESCROW-LITE (AUTH→CAPTURE) ============
 
