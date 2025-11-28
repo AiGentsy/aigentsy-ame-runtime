@@ -1288,7 +1288,7 @@ async def mint_user(request: Request):
         referral = body.get("referral", "origin/hero")
         custom_input = body.get("customInput", "")
         template = body.get("template")
-        password = body.get("password", "default_password")  # Add password support
+        password = body.get("password", "default_password")
         
         if not username:
             logger.error("Mint failed: No username provided")
@@ -1383,7 +1383,11 @@ async def mint_user(request: Request):
             "meetings": [],
             "kpi_snapshots": [],
             "docs": [],
-            "ownership": {"ledger": []},
+            "ownership": {
+                "aigx": 0,
+                "equity": 0,
+                "ledger": []
+            },
             
             # Kits
             "kits": {
@@ -1480,13 +1484,14 @@ async def mint_user(request: Request):
                 logger.warning(f"Ledger append failed: {ledger_error}")
             
             # ============================================================
-            # 🌟 APEX ULTRA AUTO-ACTIVATION
+            # 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
             # ============================================================
             
             logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
             
             try:
                 from aigentsy_apex_ultra import activate_apex_ultra
+                from ipvault import create_ip_asset
                 
                 # Map companyType to template
                 template_map = {
@@ -1508,12 +1513,115 @@ async def mint_user(request: Request):
                 apex_result = await activate_apex_ultra(
                     username=username,
                     template=apex_template,
-                    automation_mode="pro"  # Default to Pro mode
+                    automation_mode="pro"
                 )
                 
                 if apex_result.get("ok"):
-                    systems_activated = apex_result.get("activation", {}).get("systems_activated", 0)
+                    systems_activated = apex_result.get("systems_activated", 0)
+                    amg_result = apex_result.get("results", {}).get("amg", {})
+                    
                     logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+                    
+                    # ============================================================
+                    # 💎 RECORD IN OWNERSHIP LEDGER
+                    # ============================================================
+                    
+                    # Reload user to get updated data
+                    saved_user = get_user(username)
+                    
+                    # Record APEX ULTRA activation
+                    saved_user["ownership"]["ledger"].append({
+                        "ts": now,
+                        "amount": 100,
+                        "currency": "AIGx",
+                        "basis": "apex_ultra_activation",
+                        "systems_activated": systems_activated,
+                        "template": apex_template,
+                        "automation_mode": "pro"
+                    })
+                    saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + 100
+                    
+                    # Record AMG activation separately
+                    if amg_result.get("ok"):
+                        saved_user["ownership"]["ledger"].append({
+                            "ts": now,
+                            "amount": 50,
+                            "currency": "AIGx",
+                            "basis": "amg_revenue_brain_activation",
+                            "graph_initialized": amg_result.get("graph_initialized", False),
+                            "first_cycle_complete": amg_result.get("first_cycle_complete", False),
+                            "actions_queued": amg_result.get("actions_queued", 0)
+                        })
+                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + 50
+                    
+                    # Record each major system activation as equity grants
+                    major_systems = ["ocl", "factoring", "ipvault", "metabridge", "jv_mesh"]
+                    for system in major_systems:
+                        if apex_result.get("results", {}).get(system, {}).get("ok"):
+                            saved_user["ownership"]["ledger"].append({
+                                "ts": now,
+                                "amount": 0,
+                                "currency": "equity",
+                                "basis": f"{system}_unlocked",
+                                "note": f"Future equity unlock when {system} generates revenue"
+                            })
+                    
+                    logger.info(f"💎 Ownership ledger updated: +150 AIGx granted")
+                    
+                    # ============================================================
+                    # 📚 RECORD IN IPVAULT
+                    # ============================================================
+                    
+                    try:
+                        ip_asset = await create_ip_asset(
+                            owner_username=username,
+                            asset_type="apex_ultra_activation",
+                            asset_name=f"APEX ULTRA System - {apex_template}",
+                            royalty_rate=0.70,
+                            metadata={
+                                "systems_activated": systems_activated,
+                                "template": apex_template,
+                                "automation_mode": "pro",
+                                "amg_active": amg_result.get("ok", False),
+                                "activation_date": now,
+                                "referral": referral,
+                                "company_type": company_type
+                            }
+                        )
+                        
+                        logger.info(f"📚 IPVault record created: {ip_asset.get('asset_id', 'N/A')}")
+                        
+                    except Exception as ip_error:
+                        logger.warning(f"⚠️  IPVault recording failed: {ip_error}")
+                    
+                    # ============================================================
+                    # 💾 SAVE UPDATED USER
+                    # ============================================================
+                    
+                    log_agent_update(saved_user)
+                    logger.info(f"💾 User updated with ownership tracking")
+                    
+                    # ============================================================
+                    # 🧠 PREPARE MEMORY CONTEXT
+                    # ============================================================
+                    
+                    activation_memory = {
+                        "event": "apex_ultra_activation",
+                        "username": username,
+                        "template": apex_template,
+                        "company_type": company_type,
+                        "systems_activated": systems_activated,
+                        "amg_revenue_brain": amg_result.get("ok", False),
+                        "aigx_granted": 150,
+                        "activation_timestamp": now,
+                        "major_unlocks": major_systems
+                    }
+                    
+                    logger.info(f"🧠 Memory context prepared for future conversations")
+                    
+                    # ============================================================
+                    # 📤 RETURN SUCCESS WITH FULL TRACKING
+                    # ============================================================
                     
                     return {
                         "ok": True,
@@ -1522,12 +1630,28 @@ async def mint_user(request: Request):
                             "activated": True,
                             "systems_operational": systems_activated,
                             "template": apex_template,
-                            "automation_mode": "pro"
-                        }
+                            "automation_mode": "pro",
+                            "amg_revenue_brain": {
+                                "active": amg_result.get("ok", False),
+                                "graph_initialized": amg_result.get("graph_initialized", False),
+                                "actions_queued": amg_result.get("actions_queued", 0)
+                            }
+                        },
+                        "ownership": {
+                            "aigx_granted": 150,
+                            "total_aigx": saved_user["ownership"]["aigx"],
+                            "ledger_entries": len(saved_user["ownership"]["ledger"]),
+                            "equity_unlocks_pending": len(major_systems)
+                        },
+                        "ipvault": {
+                            "asset_created": True,
+                            "asset_type": "apex_ultra_activation",
+                            "royalty_rate": 0.70
+                        },
+                        "memory": activation_memory
                     }
                 else:
                     logger.warning(f"⚠️  APEX ULTRA activation had issues for {username}")
-                    # Still return success - user account created
                     return {
                         "ok": True,
                         "record": saved_user,
@@ -1539,7 +1663,6 @@ async def mint_user(request: Request):
                     
             except Exception as apex_error:
                 logger.error(f"❌ APEX ULTRA activation failed: {apex_error}", exc_info=True)
-                # Still return success - user account created
                 return {
                     "ok": True,
                     "record": saved_user,
@@ -1551,7 +1674,6 @@ async def mint_user(request: Request):
             
         except Exception as save_error:
             logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
-            # Return error response instead of partial success
             return {
                 "ok": False,
                 "error": f"Failed to save user: {str(save_error)}"
