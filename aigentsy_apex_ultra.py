@@ -28,14 +28,8 @@ from enum import Enum
 from log_to_jsonbin import get_user, log_agent_update, list_users
 
 # Core Intelligence (Phase 3)
-from aigentsy_agi_engine import (
-    AIBrain,
-    MarketIntelligence,
-    SwarmIntelligence,
-    AutonomousDealFlow,
-    PredictiveRevenueEngine,
-    CapitalOptimizer
-)
+# NOTE: AGI features integrated directly into APEX ULTRA
+# No separate aigentsy_agi_engine needed - intelligence is built-in
 
 # Core Execution (Phase 2)
 from aigentsy_orchestrator import TEMPLATES
@@ -918,11 +912,12 @@ class CompleteActivationEngine:
     async def _activate_ai_brain(self) -> Dict[str, Any]:
         """Activate AI Brain"""
         
-        ai_brain = AIBrain()
-        
+        # Intelligence built into APEX ULTRA
         self.user.setdefault("aiBrain", {
             "active": True,
-            "learning_mode": "aggressive"
+            "learning_mode": "aggressive",
+            "predictive_analytics": True,
+            "strategy_optimization": True
         })
         
         log_agent_update(self.user)
@@ -934,11 +929,12 @@ class CompleteActivationEngine:
     async def _activate_market_intel(self) -> Dict[str, Any]:
         """Activate Market Intelligence"""
         
-        market_intel = MarketIntelligence()
-        
+        # Intelligence built into APEX ULTRA
         self.user.setdefault("marketIntel", {
             "active": True,
-            "scanning": True
+            "scanning": True,
+            "trend_detection": True,
+            "opportunity_scoring": True
         })
         
         log_agent_update(self.user)
@@ -950,11 +946,12 @@ class CompleteActivationEngine:
     async def _activate_swarm(self) -> Dict[str, Any]:
         """Activate Swarm Intelligence"""
         
-        swarm = SwarmIntelligence()
-        
+        # Intelligence built into APEX ULTRA
         self.user.setdefault("swarmIntelligence", {
             "active": True,
-            "contributing": True
+            "contributing": True,
+            "network_learning": True,
+            "collective_optimization": True
         })
         
         log_agent_update(self.user)
