@@ -1599,6 +1599,51 @@ async def unlock_feature(request: Request):
                 return {"ok": True, "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
+@app.post("/admin/cleanup_jsonbin")
+async def cleanup_jsonbin():
+    """
+    Remove invalid records from JSONBin (strings, nulls, non-dicts)
+    """
+    try:
+        from log_to_jsonbin import _read_jsonbin, _write_jsonbin
+        
+        # Fetch current data
+        existing, _raw = _read_jsonbin()
+        
+        if existing is None:
+            return {"ok": False, "error": "Could not read JSONBin"}
+        
+        # Filter out invalid records
+        valid_records = []
+        invalid_count = 0
+        
+        for rec in existing:
+            if isinstance(rec, dict) and rec.get("username"):
+                valid_records.append(rec)
+            else:
+                invalid_count += 1
+                logger.warning(f"Removing invalid record: {type(rec)}")
+        
+        # Save cleaned data
+        ok, err = _write_jsonbin(valid_records)
+        
+        if ok:
+            return {
+                "ok": True,
+                "cleaned": True,
+                "invalid_removed": invalid_count,
+                "valid_remaining": len(valid_records)
+            }
+        else:
+            return {
+                "ok": False,
+                "error": f"Failed to write: {err}"
+            }
+        
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+        
 # ---- POST: AMG sync (App Monetization Graph) ----
 @app.post("/amg/sync")
 async def amg_sync(request: Request):
