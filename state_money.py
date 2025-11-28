@@ -134,7 +134,10 @@ def record_money_event(
     """
     Record money event with idempotency tracking
     """
-    event_id = f"evt_{hashlib.sha256(f"{deal['id']}:{event_type}:{_now()}".encode()).hexdigest()[:12]}"
+    # FIXED: Removed nested f-string to avoid syntax error
+    hash_input = f"{deal['id']}:{event_type}:{_now()}"
+    event_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
+    event_id = f"evt_{event_hash}"
     
     # Check for duplicate events (idempotency)
     existing_events = deal.setdefault("money_events", [])
