@@ -31,8 +31,36 @@ from log_to_jsonbin import get_user, log_agent_update, list_users
 # NOTE: AGI features integrated directly into APEX ULTRA
 # No separate aigentsy_agi_engine needed - intelligence is built-in
 
-# Core Execution (Phase 2)
-from aigentsy_orchestrator import TEMPLATES
+# Templates definition (inline - no external file needed)
+TEMPLATES = {
+    "content_creator": {
+        "name": "Content Creator",
+        "focus": "viral_content",
+        "revenue_targets": {"day_1": 200, "week_1": 1000, "month_1": 5000}
+    },
+    "ecommerce": {
+        "name": "E-Commerce",
+        "focus": "product_sales",
+        "revenue_targets": {"day_1": 300, "week_1": 1500, "month_1": 8000}
+    },
+    "saas_tech": {
+        "name": "SaaS/Tech",
+        "focus": "recurring_revenue",
+        "revenue_targets": {"day_1": 400, "week_1": 2000, "month_1": 12000}
+    },
+    "consulting_agency": {
+        "name": "Consulting & Agency",
+        "focus": "client_services",
+        "revenue_targets": {"day_1": 500, "week_1": 2000, "month_1": 10000}
+    },
+    "whitelabel_general": {
+        "name": "General Business",
+        "focus": "diversified",
+        "revenue_targets": {"day_1": 250, "week_1": 1200, "month_1": 6000}
+    }
+}
+
+# Import ALL AiGentsy systems
 
 # Import ALL AiGentsy systems
 from ame_pitches import generate_opportunities, send_pitch, analyze_pitch_performance
