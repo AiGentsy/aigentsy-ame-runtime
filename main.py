@@ -3805,6 +3805,92 @@ async def ocl_repay_endpoint(body: Dict = Body(...)):
         limits = await calculate_ocl_limit(u)
         return {"ok": True, "repaid": amount, **limits}
 
+@app.get("/unlocks/status")
+async def get_unlock_status(username: str):
+    """Get user's feature unlock status and progress"""
+    try:
+        from log_to_jsonbin import get_user
+        from outcome_oracle_max import get_user_funnel_stats
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Get outcome funnel stats
+        funnel_stats = get_user_funnel_stats(username)
+        
+        # Get revenue data
+        revenue = user.get("revenue", {"total": 0.0})
+        
+        # Build unlock status
+        unlocks = {
+            "ocl": {
+                "enabled": user.get("ocl", {}).get("enabled", False),
+                "phase": user.get("ocl", {}).get("phase"),
+                "creditLine": user.get("ocl", {}).get("creditLine", 0),
+                "nextMilestone": "1st PAID outcome" if not user.get("ocl", {}).get("enabled") else "5th PAID for Phase 2",
+                "progress": funnel_stats.get("funnel", {}).get("paid", 0)
+            },
+            "factoring": {
+                "enabled": user.get("factoring", {}).get("enabled", False),
+                "phase": user.get("factoring", {}).get("phase"),
+                "nextMilestone": "1st DELIVERED outcome" if not user.get("factoring", {}).get("enabled") else "5th PAID for Phase 2",
+                "progress": funnel_stats.get("funnel", {}).get("delivered", 0)
+            },
+            "ipVault": {
+                "enabled": user.get("ipVault", {}).get("enabled", False),
+                "royaltyRate": user.get("ipVault", {}).get("royaltyRate"),
+                "nextMilestone": "3 PAID outcomes",
+                "progress": f"{funnel_stats.get('funnel', {}).get('paid', 0)}/3"
+            },
+            "certification": {
+                "enabled": user.get("certification", {}).get("enabled", False),
+                "tier": user.get("certification", {}).get("tier"),
+                "nextMilestone": "10 PAID outcomes + 95% on-time",
+                "progress": f"{funnel_stats.get('funnel', {}).get('paid', 0)}/10"
+            },
+            "r3Autopilot": {
+                "enabled": user.get("runtimeFlags", {}).get("r3AutopilotEnabled", False),
+                "nextMilestone": "$100 revenue",
+                "progress": f"${revenue['total']:.2f}/100"
+            },
+            "advancedAnalytics": {
+                "enabled": user.get("runtimeFlags", {}).get("advancedAnalyticsEnabled", False),
+                "nextMilestone": "$500 revenue",
+                "progress": f"${revenue['total']:.2f}/500"
+            },
+            "templatePublishing": {
+                "enabled": user.get("runtimeFlags", {}).get("templatePublishingEnabled", False),
+                "nextMilestone": "$1,000 revenue",
+                "progress": f"${revenue['total']:.2f}/1000"
+            },
+            "metaHivePremium": {
+                "enabled": user.get("runtimeFlags", {}).get("metaHivePremium", False),
+                "nextMilestone": "$2,500 revenue",
+                "progress": f"${revenue['total']:.2f}/2500"
+            },
+            "whiteLabel": {
+                "enabled": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False),
+                "nextMilestone": "$5,000 revenue",
+                "progress": f"${revenue['total']:.2f}/5000"
+            }
+        }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "unlocks": unlocks,
+            "summary": {
+                "totalUnlocked": sum(1 for u in unlocks.values() if u.get("enabled")),
+                "totalAvailable": len(unlocks),
+                "paidOutcomes": funnel_stats.get("funnel", {}).get("paid", 0),
+                "deliveredOutcomes": funnel_stats.get("funnel", {}).get("delivered", 0),
+                "totalRevenue": revenue["total"]
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+        
 # ============ ESCROW-LITE (AUTH→CAPTURE) ============
 
 from escrow_lite import (
