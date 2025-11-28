@@ -1632,9 +1632,11 @@ async def get_revenue_summary(username: str):
                 "white_label": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False)
             }
         }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 
 # ============ TASK 9: REVENUE ATTRIBUTION API ENDPOINTS ============
-# Add these to main.py after your existing /revenue/summary endpoint
 
 @app.get("/revenue/by_platform")
 async def get_revenue_by_platform(username: str):
