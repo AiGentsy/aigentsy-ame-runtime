@@ -1478,7 +1478,79 @@ async def mint_user(request: Request):
             except Exception as ledger_error:
                 logger.warning(f"Ledger append failed: {ledger_error}")
             
-            return {"ok": True, "record": saved_user}
+            # ============================================================
+            # 🌟 APEX ULTRA AUTO-ACTIVATION
+            # ============================================================
+            
+            logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
+            
+            try:
+                from aigentsy_apex_ultra import activate_apex_ultra
+                
+                # Map companyType to template
+                template_map = {
+                    "legal": "consulting_agency",
+                    "marketing": "consulting_agency",
+                    "social": "content_creator",
+                    "saas": "saas_tech",
+                    "custom": "whitelabel_general",
+                    "general": "whitelabel_general"
+                }
+                
+                apex_template = template_map.get(company_type, "whitelabel_general")
+                
+                # Override with explicit template if provided
+                if template:
+                    apex_template = template
+                
+                # Activate ALL AiGentsy systems
+                apex_result = await activate_apex_ultra(
+                    username=username,
+                    template=apex_template,
+                    automation_mode="pro"  # Default to Pro mode
+                )
+                
+                if apex_result.get("ok"):
+                    systems_activated = apex_result.get("activation", {}).get("systems_activated", 0)
+                    logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+                    
+                    return {
+                        "ok": True,
+                        "record": saved_user,
+                        "apex_ultra": {
+                            "activated": True,
+                            "systems_operational": systems_activated,
+                            "template": apex_template,
+                            "automation_mode": "pro"
+                        }
+                    }
+                else:
+                    logger.warning(f"⚠️  APEX ULTRA activation had issues for {username}")
+                    # Still return success - user account created
+                    return {
+                        "ok": True,
+                        "record": saved_user,
+                        "apex_ultra": {
+                            "activated": False,
+                            "warning": "Systems may need manual activation"
+                        }
+                    }
+                    
+            except Exception as apex_error:
+                logger.error(f"❌ APEX ULTRA activation failed: {apex_error}", exc_info=True)
+                # Still return success - user account created
+                return {
+                    "ok": True,
+                    "record": saved_user,
+                    "apex_ultra": {
+                        "activated": False,
+                        "error": str(apex_error)
+                    }
+                }
+            
+            # ============================================================
+            # END APEX ULTRA AUTO-ACTIVATION
+            # ============================================================
             
         except Exception as save_error:
             logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
