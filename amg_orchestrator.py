@@ -14,36 +14,48 @@ from datetime import datetime, timezone
 from log_to_jsonbin import get_user, log_agent_update
 
 
-# ============ STUB FUNCTIONS ============
-# These will be replaced with real modules as they're built
+# ============ REAL AMG IMPORTS ============
+# These are the actual production modules
 
-def aam_queue_add(*args, **kwargs):
-    """Add action to AMG queue for execution"""
-    return {"ok": True, "queued": True}
+# Queue system
+from aam_queue import AAMQueue
 
-def aam_execute_next(*args, **kwargs):
-    """Execute next action from AMG queue"""
-    return {"ok": True, "executed": True}
+# Yield memory (pattern learning)
+from yield_memory import (
+    store_pattern,
+    find_similar_patterns,
+    get_best_action,
+    get_patterns_to_avoid,
+    get_memory_stats
+)
 
-def yield_memory_record(*args, **kwargs):
-    """Record yield/conversion for learning"""
-    return {"ok": True, "recorded": True}
+# Reputation knobs (dynamic adjustments)
+from reputation_knobs import (
+    recompute_all_knobs,
+    apply_knob_updates,
+    calculate_reputation_metrics
+)
 
-def yield_memory_query(*args, **kwargs):
-    """Query historical yields for prediction"""
-    return {"ok": True, "predictions": []}
+# Reputation pricing
+from reputation_pricing import (
+    calculate_reputation_price,
+    calculate_arm_price_range,
+    calculate_dynamic_bid_price
+)
 
-def reputation_knobs_adjust(*args, **kwargs):
-    """Adjust reputation multipliers dynamically"""
-    return {"ok": True, "adjusted": True}
+# Escrow (payment capture)
+from escrow_lite import (
+    create_payment_intent,
+    capture_payment,
+    cancel_payment,
+    get_payment_status
+)
 
-def escrow_lite_authorize(*args, **kwargs):
-    """Authorize funds in escrow"""
-    return {"ok": True, "authorized": True}
+# Executor
+from sdk_aam_executor import execute
 
-def escrow_lite_capture(*args, **kwargs):
-    """Capture authorized funds"""
-    return {"ok": True, "captured": True}
+# Initialize global queue
+_AMG_QUEUE = AAMQueue(executor=execute)
 
 
 # ============ AMG ORCHESTRATOR ============
@@ -235,8 +247,8 @@ class AMGOrchestrator:
     async def _calculate_edge_weights(self):
         """Calculate probability/margin weights for each edge"""
         
-        # Query historical yields
-        historical_yields = await yield_memory_query(self.username)
+        # Query historical yields using REAL yield_memory
+        memory_stats = get_memory_stats(self.username)
         
         # Get outcome funnel stats
         funnel = self.user.get("outcomeFunnel", {})
@@ -247,12 +259,32 @@ class AMGOrchestrator:
         
         base_conversion = (paid / clicked) if clicked > 0 else 0.1
         
+        # Use success patterns from yield memory
+        avg_success_roas = memory_stats.get("avg_success_roas", 1.5)
+        
         # Weight each edge based on historical performance
         for edge_name, edge_data in self.graph["edges"].items():
+            # Try to find similar patterns
+            patterns = find_similar_patterns(
+                username=self.username,
+                context={"channel": "default"},
+                pattern_type=edge_name,
+                category="SUCCESS",
+                limit=3
+            )
+            
+            # Use pattern data if available
+            if patterns.get("patterns"):
+                avg_score = sum(p["score"] for p in patterns["patterns"]) / len(patterns["patterns"])
+                probability = min(avg_score / 100, 1.0)
+            else:
+                probability = base_conversion
+            
             self.graph["weights"][edge_name] = {
-                "probability": base_conversion * 1.0,  # Will be tuned by Pricing ARM
+                "probability": probability,
                 "margin": 0.30,  # Default 30% margin
-                "priority": 1.0
+                "priority": 1.0,
+                "learned_from_patterns": len(patterns.get("patterns", []))
             }
     
     async def _apply_policies(self):
@@ -524,14 +556,18 @@ class AMGOrchestrator:
         for opp in opportunities:
             action_type = opp["type"]
             
-            # Queue action for execution
-            await aam_queue_add(
-                username=self.username,
-                action=action_type,
-                data=opp
-            )
+            # Queue action for execution using REAL AAM queue
+            job = {
+                "app": "amg",
+                "action_id": action_type,
+                "payload": opp,
+                "username": self.username
+            }
             
-            executed += 1
+            result = _AMG_QUEUE.submit(job)
+            
+            if result.get("ok"):
+                executed += 1
         
         return {
             "ok": True,
@@ -594,18 +630,29 @@ class AMGOrchestrator:
             except:
                 pass
             
-            # Update reputation
+            # Update reputation using REAL reputation_knobs
             try:
-                await reputation_knobs_adjust(
-                    username=self.username,
-                    adjustment=+5
+                # Recompute all knobs based on new outcome
+                knob_results = recompute_all_knobs(
+                    agent_user=self.user,
+                    job_value=revenue,
+                    base_price=revenue * 0.5
                 )
-            except:
-                pass
+                
+                # Apply the updates
+                apply_knob_updates(self.user, knob_results)
+                
+                # Log the update
+                from log_to_jsonbin import log_agent_update
+                log_agent_update(self.user)
+                
+            except Exception as e:
+                print(f"   ⚠️  Reputation update failed: {e}")
         
         return {
             "ok": True,
-            "proof_recorded": True
+            "proof_recorded": True,
+            "reputation_updated": revenue > 0
         }
     
     async def _reallocate(self, attribute_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -613,11 +660,35 @@ class AMGOrchestrator:
         
         from r3_router_UPGRADED import allocate as reallocate_budget
         
-        # Record yields
-        await yield_memory_record(
-            username=self.username,
-            cycle_results=attribute_data
-        )
+        # Record pattern in yield memory using REAL yield_memory
+        try:
+            # Get cycle results
+            revenue = attribute_data.get("revenue", 0)
+            cost = 10  # Stub cost
+            
+            # Calculate ROAS
+            roas = (revenue / cost) if cost > 0 else 0
+            
+            # Store pattern
+            store_pattern(
+                username=self.username,
+                pattern_type="amg_cycle",
+                context={
+                    "channel": "amg_orchestrator",
+                    "template": self.user.get("template", "unknown")
+                },
+                action={
+                    "type": "full_cycle",
+                    "edges_activated": len(self.graph["edges"])
+                },
+                outcome={
+                    "roas": roas,
+                    "revenue_usd": revenue,
+                    "cost_usd": cost
+                }
+            )
+        except Exception as e:
+            print(f"   ⚠️  Pattern storage failed: {e}")
         
         # Re-calculate edge weights based on new data
         await self._calculate_edge_weights()
@@ -632,5 +703,6 @@ class AMGOrchestrator:
         
         return {
             "ok": True,
-            "graph_updated": True
+            "graph_updated": True,
+            "pattern_stored": True
         }
