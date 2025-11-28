@@ -1288,6 +1288,7 @@ async def mint_user(request: Request):
         referral = body.get("referral", "origin/hero")
         custom_input = body.get("customInput", "")
         template = body.get("template")
+        password = body.get("password", "default_password")  # Add password support
         
         if not username:
             logger.error("Mint failed: No username provided")
@@ -1548,14 +1549,13 @@ async def mint_user(request: Request):
                     }
                 }
             
-            # ============================================================
-            # END APEX ULTRA AUTO-ACTIVATION
-            # ============================================================
-            
         except Exception as save_error:
             logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
-            # Return the normalized user anyway so frontend can proceed
-            return {"ok": True, "record": normalized, "warning": "Saved locally only"}
+            # Return error response instead of partial success
+            return {
+                "ok": False,
+                "error": f"Failed to save user: {str(save_error)}"
+            }
         
     except Exception as e:
         logger.error(f"❌ Mint endpoint error: {str(e)}", exc_info=True)
