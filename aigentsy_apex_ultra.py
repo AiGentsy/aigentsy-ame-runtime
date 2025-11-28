@@ -26,6 +26,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from log_to_jsonbin import get_user, log_agent_update, list_users
+from amg_orchestrator import AMGOrchestrator
 
 # Core Intelligence (Phase 3)
 # NOTE: AGI features integrated directly into APEX ULTRA
@@ -553,9 +554,15 @@ class CompleteActivationEngine:
         results["revenue_tracking"] = await self._activate_revenue_tracking()
         results["outcome_oracle"] = await self._activate_outcome_oracle()
         print("   ✅ Phase 1 Complete\n")
-        
+
+        # PHASE 1.5: AMG - THE REVENUE BRAIN ⬅️ ADD THIS
+        print("🧠 Phase 1.5: App Monetization Graph (THE REVENUE ENGINE)")
+        results["amg"] = await self._activate_amg()
+        print("   ✅ Phase 1.5 Complete\n")
+
         # PHASE 2: FINANCIAL TOOLS
         print("💎 Phase 2: Financial Tools")
+
         results["ocl"] = await self._activate_ocl()
         results["factoring"] = await self._activate_factoring()
         results["ipvault"] = await self._activate_ipvault()
@@ -643,7 +650,37 @@ class CompleteActivationEngine:
         }
     
     # ============ PHASE 1: CORE REVENUE ============
+    async def _activate_amg(self) -> Dict[str, Any]:
+    """Activate the App Monetization Graph - THE REVENUE BRAIN"""
     
+    print(f"   💰 AMG: Initializing revenue optimization engine...")
+    
+    try:
+        # Create AMG orchestrator
+        amg = AMGOrchestrator(self.username)
+        
+        # Initialize the graph
+        init_result = await amg.initialize_graph()
+        
+        print(f"   💰 AMG: Graph built - {init_result['nodes']} nodes, {init_result['edges']} edges")
+        
+        # Run first cycle
+        print(f"   💰 AMG: Running first revenue cycle...")
+        cycle_result = await amg.run_cycle()
+        
+        print(f"   ✅ AMG: Revenue engine active - {cycle_result['results']['route']['actions_executed']} actions queued")
+        
+        return {
+            "ok": True,
+            "graph_initialized": True,
+            "first_cycle_complete": True,
+            "actions_queued": cycle_result['results']['route']['actions_executed']
+        }
+    
+    except Exception as e:
+        print(f"   ⚠️  AMG: {str(e)}")
+        return {"ok": False, "error": str(e)}
+        
     async def _activate_ame(self) -> Dict[str, Any]:
         """Activate Autonomous Money Engine"""
         
