@@ -242,8 +242,6 @@ def _check_unlocks(user: Dict[str, Any]) -> List[str]:
     
     # 10th PAID → Certification (TODO: Add on-time rate check)
     if paid >= 10 and not user.get("certification", {}).get("enabled"):
-        # TODO: Calculate on-time delivery rate
-        # For now, unlock automatically at 10 PAID outcomes
         user.setdefault("certification", {})
         user["certification"]["enabled"] = True
         user["certification"]["tier"] = "aigentsy_specialist"
@@ -261,37 +259,14 @@ def _check_unlocks(user: Dict[str, Any]) -> List[str]:
         unlocked.append("ocl_full_lending")
         print(f"🎉 {user.get('username')} unlocked OCL Phase 3 (Full Lending): Partner capital access")
     
-    def _check_unlocks(user: Dict[str, Any]) -> List[str]:
-    """Check outcome milestones and unlock financial tools"""
-    
-    funnel = user.get("outcomeFunnel", {})
-    paid = funnel.get("paid", 0)
-    delivered = funnel.get("delivered", 0)
-    
-    unlocked = []
-    
-    # ========== OCL (Outcome Credit Line) ==========
-    # ... all your existing unlock logic ...
-    # ... (keep everything the same until the end)
-    
-    # 20th PAID → Phase 3 Full Lending
-    if paid >= 20 and user.get("ocl", {}).get("phase") == "hybrid_fiat":
-        user["ocl"]["phase"] = "full_lending"
-        user["ocl"]["partnerCapitalEnabled"] = True
-        unlocked.append("ocl_full_lending")
-        print(f"🎉 {user.get('username')} unlocked OCL Phase 3 (Full Lending): Partner capital access")
-    
-    # ✅ REPLACE THIS LINE:
-    # return unlocked
-    
-    # ✅ WITH THIS ENTIRE BLOCK:
+    # Send notifications if features were unlocked
     if unlocked:
         # Get username for logging
         username = user.get("username") or (user.get("consent", {}) or {}).get("username", "unknown")
         
         # Post unlock event
-        from log_to_jsonbin_aam_patched import log_event
         try:
+            from log_to_jsonbin_aam_patched import log_event
             log_event({
                 "kind": "outcome_unlocks",
                 "username": username,
