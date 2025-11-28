@@ -61,7 +61,7 @@ TEMPLATES = {
 }
 
 # Import ALL AiGentsy systems
-from ame_pitches import generate_opportunities, send_pitch, analyze_pitch_performance
+from ame_pitches import generate_pitch, approve_pitch, get_stats
 from ame_routes import optimize_ame_routing
 from intent_exchange_UPGRADED import create_intent, find_matches, place_bid, verify_poo, release_escrow
 from metabridge_dealgraph_UPGRADED import sync_cross_platform_deals, track_deal_flow, get_deal_analytics
