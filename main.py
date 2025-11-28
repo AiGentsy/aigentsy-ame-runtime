@@ -161,7 +161,7 @@ try:
     from escrow_lite import (
         create_payment_intent,
         capture_payment_intent,
-        refund_payment_intent,
+        partial_refund_on_dispute,  # Use this instead
         auto_capture_on_delivered
     )
 except Exception as e:
