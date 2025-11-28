@@ -291,7 +291,7 @@ def _merge_into_list(records: List[Dict[str, Any]], user_record: Dict[str, Any])
     replaced = False
     out: List[Dict[str, Any]] = []
     for rec in (records or []):
-        # ✅ SKIP INVALID RECORDS
+        # ✅ DEFENSIVE: Skip non-dict records
         if not isinstance(rec, dict):
             continue
         
@@ -327,8 +327,10 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
     existing, _raw = _read_jsonbin()
     pool = existing if existing is not None else _CACHE
     for rec in pool:
-        if not isinstance(rec, dict):  # ✅ SKIP INVALID RECORDS
+        # ✅ DEFENSIVE: Skip non-dict records
+        if not isinstance(rec, dict):
             continue
+        
         u = (rec.get("consent") or {}).get("username") or rec.get("username")
         if u == username:
             return normalize_user_data(rec)
@@ -337,7 +339,7 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
 def list_users() -> List[Dict[str, Any]]:
     existing, _raw = _read_jsonbin()
     pool = existing if existing is not None else _CACHE
-    # ✅ FILTER OUT NON-DICT RECORDS
+    # ✅ DEFENSIVE: Filter out non-dict records
     return [normalize_user_data(r) for r in pool if isinstance(r, dict)]
 
 def append_intent_ledger(username: str, entry: Dict[str, Any]) -> bool:
