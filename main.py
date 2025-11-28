@@ -1632,6 +1632,204 @@ async def get_revenue_summary(username: str):
                 "white_label": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False)
             }
         }
+
+# ============ TASK 9: REVENUE ATTRIBUTION API ENDPOINTS ============
+# Add these to main.py after your existing /revenue/summary endpoint
+
+@app.get("/revenue/by_platform")
+async def get_revenue_by_platform(username: str):
+    """Get revenue breakdown by platform (Instagram, TikTok, LinkedIn, etc.)"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {})
+        by_platform = revenue.get("byPlatform", {})
+        
+        # Sort by revenue (highest first)
+        sorted_platforms = sorted(by_platform.items(), key=lambda x: x[1], reverse=True)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "byPlatform": dict(sorted_platforms),
+            "totalRevenue": revenue.get("total", 0.0),
+            "topPlatform": sorted_platforms[0][0] if sorted_platforms else None,
+            "platformCount": len(by_platform)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/attribution")
+async def get_revenue_attribution(
+    username: str,
+    limit: int = 50,
+    source: str = None,
+    platform: str = None
+):
+    """Get detailed revenue attribution with optional filters
+    
+    Args:
+        username: User to query
+        limit: Max records to return (default 50)
+        source: Filter by source (ame, shopify, affiliate, etc.)
+        platform: Filter by platform (instagram, tiktok, linkedin, etc.)
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        attribution = user.get("revenue", {}).get("attribution", [])
+        
+        # Apply filters
+        if source:
+            attribution = [a for a in attribution if a.get("source") == source]
+        if platform:
+            attribution = [a for a in attribution if a.get("platform") == platform]
+        
+        # Sort by timestamp (newest first)
+        attribution.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        
+        # Apply limit
+        limited_attribution = attribution[:limit]
+        
+        return {
+            "ok": True,
+            "username": username,
+            "attribution": limited_attribution,
+            "totalRecords": len(user.get("revenue", {}).get("attribution", [])),
+            "filteredRecords": len(attribution),
+            "returnedRecords": len(limited_attribution),
+            "filters": {
+                "source": source,
+                "platform": platform,
+                "limit": limit
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/top_performers")
+async def get_top_performers(username: str):
+    """Get top performing sources and platforms with analytics"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {})
+        by_source = revenue.get("bySource", {})
+        by_platform = revenue.get("byPlatform", {})
+        attribution = revenue.get("attribution", [])
+        
+        # Top sources
+        top_sources = sorted(by_source.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Top platforms
+        top_platforms = sorted(by_platform.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Recent high-value deals
+        high_value = sorted(attribution, key=lambda x: x.get("amount", 0), reverse=True)[:10]
+        
+        # Platform x Source matrix (e.g., "AME conversions on Instagram")
+        matrix = {}
+        for attr in attribution:
+            src = attr.get("source", "unknown")
+            plat = attr.get("platform", "unknown")
+            key = f"{src}_{plat}"
+            matrix[key] = matrix.get(key, 0.0) + attr.get("netToUser", 0.0)
+        
+        top_combos = sorted(matrix.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # Calculate conversion metrics by platform (if available)
+        platform_metrics = {}
+        for plat, rev in by_platform.items():
+            platform_metrics[plat] = {
+                "revenue": round(rev, 2),
+                "deals": len([a for a in attribution if a.get("platform") == plat]),
+                "avgDealSize": round(rev / max(1, len([a for a in attribution if a.get("platform") == plat])), 2)
+            }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "topSources": [{"source": s, "revenue": round(r, 2)} for s, r in top_sources],
+            "topPlatforms": [{"platform": p, "revenue": round(r, 2)} for p, r in top_platforms],
+            "highValueDeals": high_value,
+            "topCombinations": [
+                {
+                    "source": c.split("_")[0],
+                    "platform": "_".join(c.split("_")[1:]),
+                    "revenue": round(r, 2)
+                }
+                for c, r in top_combos
+            ],
+            "platformMetrics": platform_metrics,
+            "totalRevenue": revenue.get("total", 0.0),
+            "totalDeals": len(attribution)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/platform_breakdown")
+async def get_platform_breakdown(username: str, platform: str):
+    """Get detailed breakdown of revenue for a specific platform
+    
+    Shows which revenue sources contributed to this platform's total
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        attribution = user.get("revenue", {}).get("attribution", [])
+        
+        # Filter to specific platform
+        platform_attrs = [a for a in attribution if a.get("platform") == platform]
+        
+        if not platform_attrs:
+            return {
+                "ok": True,
+                "username": username,
+                "platform": platform,
+                "totalRevenue": 0.0,
+                "message": "No revenue from this platform"
+            }
+        
+        # Breakdown by source
+        by_source = {}
+        for attr in platform_attrs:
+            source = attr.get("source", "unknown")
+            by_source[source] = by_source.get(source, 0.0) + attr.get("netToUser", 0.0)
+        
+        total_platform_revenue = sum(by_source.values())
+        
+        # Recent deals on this platform
+        recent_deals = sorted(platform_attrs, key=lambda x: x.get("ts", ""), reverse=True)[:10]
+        
+        return {
+            "ok": True,
+            "username": username,
+            "platform": platform,
+            "totalRevenue": round(total_platform_revenue, 2),
+            "bySource": {k: round(v, 2) for k, v in sorted(by_source.items(), key=lambda x: x[1], reverse=True)},
+            "dealCount": len(platform_attrs),
+            "avgDealSize": round(total_platform_revenue / len(platform_attrs), 2),
+            "recentDeals": recent_deals
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
