@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, Any
-from .jsonbin_client import JSONBinClient
-from .event_bus import publish
+from jsonbin_client import JSONBinClient
+from event_bus import publish
 
 router = APIRouter()
 
