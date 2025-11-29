@@ -995,45 +995,45 @@ class CompleteActivationEngine:
     
     # ============ PHASE 5: GROWTH & OPTIMIZATION ============
     
-    async def _activate_growth_agent(self) -> Dict[str, Any]:
+   async def _activate_growth_agent(self) -> Dict[str, Any]:
         """Activate growth campaigns"""
     
-    try:
-        # Launch template-specific growth campaigns
-        if self.template == "content_creator":
-            campaigns = ["viral_hooks", "cross_promotion"]
-        elif self.template == "ecommerce":
-            campaigns = ["retargeting", "abandoned_cart"]
-        elif self.template == "saas_tech":
-            campaigns = ["product_hunt", "seo_content"]
-        else:
-            campaigns = ["referral_program", "social_proof"]
-        
-        results = []
-        for campaign in campaigns:
-            # FIX: Check function signature and call appropriately
-            try:
-                result = await launch_growth_campaign(campaign)  # Only pass campaign name
-            except TypeError:
-                # Fallback if it needs username
-                try:
-                    result = await launch_growth_campaign(self.username, campaign)
-                except:
-                    result = {"ok": False, "error": "function_signature_mismatch"}
+        try:
+            # Launch template-specific growth campaigns
+            if self.template == "content_creator":
+                campaigns = ["viral_hooks", "cross_promotion"]
+            elif self.template == "ecommerce":
+                campaigns = ["retargeting", "abandoned_cart"]
+            elif self.template == "saas_tech":
+                campaigns = ["product_hunt", "seo_content"]
+            else:
+                campaigns = ["referral_program", "social_proof"]
             
-            results.append(result)
-        
-        if "growthAgent" not in self.user:
-            self.user["growthAgent"] = {}
-        
-        self.user["growthAgent"] = {"active": True, "campaigns": campaigns}
-        
-        print(f"   ✅ Growth Agent: {len(campaigns)} campaigns launched")
-        
-        return {"ok": True, "campaigns_active": len(campaigns)}
-    except Exception as e:
-        print(f"   ⚠️  Growth Agent: {str(e)}")
-        return {"ok": False, "error": str(e)}
+            results = []
+            for campaign in campaigns:
+                # FIX: Check function signature and call appropriately
+                try:
+                    result = await launch_growth_campaign(campaign)  # Only pass campaign name
+                except TypeError:
+                    # Fallback if it needs username
+                    try:
+                        result = await launch_growth_campaign(self.username, campaign)
+                    except:
+                        result = {"ok": False, "error": "function_signature_mismatch"}
+                
+                results.append(result)
+            
+            if "growthAgent" not in self.user:
+                self.user["growthAgent"] = {}
+            
+            self.user["growthAgent"] = {"active": True, "campaigns": campaigns}
+            
+            print(f"   ✅ Growth Agent: {len(campaigns)} campaigns launched")
+            
+            return {"ok": True, "campaigns_active": len(campaigns)}
+        except Exception as e:
+            print(f"   ⚠️  Growth Agent: {str(e)}")
+            return {"ok": False, "error": str(e)}
 
     
     async def _activate_analytics(self) -> Dict[str, Any]:
