@@ -1316,6 +1316,109 @@ class CompleteActivationEngine:
             "enabled": True,
             "channels": email_platforms
         }
+    # ============ PHASE 9: INTELLIGENCE LAYER - ADD THESE METHODS ============
+
+    async def _activate_ai_brain(self) -> Dict[str, Any]:
+        """Activate AI Brain intelligence system"""
+        
+        self.user.setdefault("aiBrain", {
+            "enabled": True,
+            "learning_active": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ AI Brain: Intelligence system active")
+        
+        return {"ok": True, "enabled": True}
+    
+    async def _activate_market_intel(self) -> Dict[str, Any]:
+        """Activate market intelligence gathering"""
+        
+        self.user.setdefault("marketIntel", {
+            "enabled": True,
+            "tracking_active": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ Market Intel: Intelligence gathering active")
+        
+        return {"ok": True, "enabled": True}
+    
+    async def _activate_swarm(self) -> Dict[str, Any]:
+        """Activate swarm intelligence"""
+        
+        self.user.setdefault("swarmIntelligence", {
+            "enabled": True,
+            "swarm_active": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ Swarm Intelligence: Collective learning active")
+        
+        return {"ok": True, "enabled": True}
+
+
+# ============ PHASE 10: INFRASTRUCTURE - ADD THESE METHODS ============
+
+    async def _activate_event_bus(self) -> Dict[str, Any]:
+        """Activate event bus for system communication"""
+        
+        self.user.setdefault("eventBus", {
+            "enabled": True,
+            "subscriptions": []
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ Event Bus: System messaging active")
+        
+        return {"ok": True, "enabled": True}
+    
+    async def _activate_state_money(self) -> Dict[str, Any]:
+        """Activate state money tracking"""
+        
+        self.user.setdefault("stateMoney", {
+            "enabled": True,
+            "tracking_active": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ State Money: Value flow tracking active")
+        
+        return {"ok": True, "enabled": True}
+    
+    async def _activate_batch_payments(self) -> Dict[str, Any]:
+        """Activate batch payment processing"""
+        
+        self.user.setdefault("batchPayments", {
+            "enabled": True,
+            "queue_active": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ Batch Payments: Payment processing active")
+        
+        return {"ok": True, "enabled": True}
+    
+    async def _activate_slo_tiers(self) -> Dict[str, Any]:
+        """Activate SLO tier management"""
+        
+        self.user.setdefault("sloTiers", {
+            "enabled": True,
+            "tier": "standard"
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ SLO Tiers: Service level management active")
+        
+        return {"ok": True, "enabled": True}
+        
     # ============ PUBLIC API ============
 
 async def activate_apex_ultra(
