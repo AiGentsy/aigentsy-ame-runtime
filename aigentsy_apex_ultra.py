@@ -915,26 +915,26 @@ class CompleteActivationEngine:
             all_agents = list_users() if hasattr(list_users, '__call__') else []
         except:
             all_agents = []
+        try:  # ⬅️ ADD THIS
+            # Find potential partners
+            partners = await find_jv_partners(self.username, all_agents)
         
-        # Find potential partners
-        partners = await find_jv_partners(self.username, all_agents)
-        
-        if "jvMesh" not in self.user:
+            if "jvMesh" not in self.user:
             self.user["jvMesh"] = {}
         
-        self.user["jvMesh"] = {
-            "enabled": True,
-            "partnerships": [],
-            "potentialPartners": partners[:10] if isinstance(partners, list) else []
-        }
+            self.user["jvMesh"] = {
+                "enabled": True,
+                "partnerships": [],
+                "potentialPartners": partners[:10] if isinstance(partners, list) else []
+            }
         
-        partner_count = len(partners) if isinstance(partners, list) else 0
-        print(f"   ✅ JV Mesh: Found {partner_count} potential partners (user can approve)")
+            partner_count = len(partners) if isinstance(partners, list) else 0
+            print(f"   ✅ JV Mesh: Found {partner_count} potential partners (user can approve)")
         
-        return {"ok": True, "enabled": True, "partners_found": partner_count, "auto_create": False}
-    except Exception as e:
-        print(f"   ⚠️  JV Mesh: {str(e)}")
-        return {"ok": False, "error": str(e)}
+            return {"ok": True, "enabled": True, "partners_found": partner_count, "auto_create": False}
+        except Exception as e:
+            print(f"   ⚠️  JV Mesh: {str(e)}")
+            return {"ok": False, "error": str(e)}
 
     
     async def _activate_syndication(self) -> Dict[str, Any]:
