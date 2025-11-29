@@ -997,7 +997,7 @@ class CompleteActivationEngine:
     
    async def _activate_growth_agent(self) -> Dict[str, Any]:
         """Activate growth campaigns"""
-    
+        
         try:
             # Launch template-specific growth campaigns
             if self.template == "content_creator":
@@ -1013,7 +1013,7 @@ class CompleteActivationEngine:
             for campaign in campaigns:
                 # FIX: Check function signature and call appropriately
                 try:
-                    result = await launch_growth_campaign(campaign)  # Only pass campaign name
+                    result = await launch_growth_campaign(campaign)
                 except TypeError:
                     # Fallback if it needs username
                     try:
