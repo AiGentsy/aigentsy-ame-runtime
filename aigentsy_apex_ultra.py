@@ -908,29 +908,29 @@ class CompleteActivationEngine:
     
     async def _activate_jv_mesh(self) -> Dict[str, Any]:
         """Activate JV Mesh for partnerships"""
-    
-    try:
-        # FIX: Pass all_agents parameter (get from list_users or use empty list)
+        
         try:
-            all_agents = list_users() if hasattr(list_users, '__call__') else []
-        except:
-            all_agents = []
-        try:  # ⬅️ ADD THIS
+            # FIX: Pass all_agents parameter (get from list_users or use empty list)
+            try:
+                all_agents = list_users() if hasattr(list_users, '__call__') else []
+            except:
+                all_agents = []
+            
             # Find potential partners
             partners = await find_jv_partners(self.username, all_agents)
-        
+            
             if "jvMesh" not in self.user:
-            self.user["jvMesh"] = {}
-        
+                self.user["jvMesh"] = {}
+            
             self.user["jvMesh"] = {
                 "enabled": True,
                 "partnerships": [],
                 "potentialPartners": partners[:10] if isinstance(partners, list) else []
             }
-        
+            
             partner_count = len(partners) if isinstance(partners, list) else 0
             print(f"   ✅ JV Mesh: Found {partner_count} potential partners (user can approve)")
-        
+            
             return {"ok": True, "enabled": True, "partners_found": partner_count, "auto_create": False}
         except Exception as e:
             print(f"   ⚠️  JV Mesh: {str(e)}")
