@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
-from .jsonbin_client import JSONBinClient
+from jsonbin_client import JSONBinClient
 
 router = APIRouter()
 
