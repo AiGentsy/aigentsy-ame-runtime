@@ -1271,6 +1271,23 @@ class CompleteActivationEngine:
         print(f"   ✅ Shopify: Integration active")
         
         return {"ok": True, "enabled": True}
+    
+    async def _activate_stripe(self) -> Dict[str, Any]:
+        """Activate Stripe integration"""
+    
+        if "stripe" not in await self.platform_connector.auto_detect_platforms():
+            return {"ok": True, "enabled": False, "reason": "not_connected"}
+    
+        self.user.setdefault("stripeIntegration", {
+            "enabled": True,
+            "webhook_active": True
+        })
+    
+        log_agent_update(self.user)
+    
+        print(f"   ✅ Stripe: Integration active")
+    
+        return {"ok": True, "enabled": True}
     # ============ PUBLIC API ============
 
 async def activate_apex_ultra(
