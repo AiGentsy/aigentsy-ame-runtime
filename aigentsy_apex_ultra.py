@@ -1272,22 +1272,50 @@ class CompleteActivationEngine:
         
         return {"ok": True, "enabled": True}
     
+    # ============ ADD THESE METHODS TO CompleteActivationEngine CLASS ============
+# Add these AFTER the _activate_shopify method in Phase 8
+
     async def _activate_stripe(self) -> Dict[str, Any]:
         """Activate Stripe integration"""
-    
+        
         if "stripe" not in await self.platform_connector.auto_detect_platforms():
             return {"ok": True, "enabled": False, "reason": "not_connected"}
-    
+        
         self.user.setdefault("stripeIntegration", {
             "enabled": True,
             "webhook_active": True
         })
-    
+        
         log_agent_update(self.user)
-    
+        
         print(f"   ✅ Stripe: Integration active")
-    
+        
         return {"ok": True, "enabled": True}
+    
+    async def _activate_messaging(self) -> Dict[str, Any]:
+        """Activate messaging integrations"""
+        
+        self.user.setdefault("messagingIntegrations", {
+            "enabled": True,
+            "channels": []
+        })
+        
+        # Check for email platforms
+        platforms = await self.platform_connector.auto_detect_platforms()
+        email_platforms = [p for p in platforms if p in ["gmail", "outlook"]]
+        
+        if email_platforms:
+            self.user["messagingIntegrations"]["channels"].extend(email_platforms)
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ Messaging: {len(email_platforms)} channels connected")
+        
+        return {
+            "ok": True,
+            "enabled": True,
+            "channels": email_platforms
+        }
     # ============ PUBLIC API ============
 
 async def activate_apex_ultra(
