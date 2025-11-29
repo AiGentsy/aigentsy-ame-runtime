@@ -1013,7 +1013,6 @@ class CompleteActivationEngine:
                 results.append(result)
             
             self.user.setdefault("growthAgent", {"active": True, "campaigns": campaigns})
-            log_agent_update(self.user)
             
             print(f"   ✅ Growth Agent: {len(campaigns)} campaigns launched")
             
