@@ -904,61 +904,10 @@ class CompleteActivationEngine:
         return {"ok": True, "enabled": True}
     
     # ============ PHASE 4: BUSINESS MODELS ============
-    
-    async def _activate_intent_exchange(self) -> Dict[str, Any]:
-    """Activate Intent Exchange"""
-    
-    try:
-        # Create seller intents
-        intents_created = []
-        
-        skills = self.user.get("skills", [])
-        for skill in skills[:5]:  # Top 5 skills
-            result = await create_intent(
-                username=self.username,
-                intent_type="offer",
-                description=skill,
-                price=500
-            )
-            if result.get("ok"):
-                intents_created.append(result)
-        
-        # Find buyer opportunities
-        matches = await find_matches(self.username)
-        
-        # FIX: Check if matches is a list and has items
-        if not isinstance(matches, list):
-            matches = []
-        
-        bids_placed = []
-        for match in matches[:3]:  # Bid on top 3
-            # FIX: Check if match is a dict and has required fields
-            if isinstance(match, dict) and "intent_id" in match:
-                result = await place_bid(
-                    username=self.username,
-                    intent_id=match["intent_id"],
-                    bid_amount=match.get("suggested_bid", 100)
-                )
-                if result.get("ok"):
-                    bids_placed.append(result)
-        
-        # Set Intent Exchange active flag
-        self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
-        
-        print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
-        
-        return {
-            "ok": True,
-            "intents_created": len(intents_created),
-            "bids_placed": len(bids_placed)
-        }
-    except Exception as e:
-        print(f"   ⚠️  Intent Exchange: {str(e)}")
-        return {"ok": False, "error": str(e)}
 
     
     async def _activate_jv_mesh(self) -> Dict[str, Any]:
-    """Activate JV Mesh for partnerships"""
+        """Activate JV Mesh for partnerships"""
     
     try:
         # FIX: Pass all_agents parameter (get from list_users or use empty list)
