@@ -715,11 +715,11 @@ class CompleteActivationEngine:
     
     async def _activate_intent_exchange(self) -> Dict[str, Any]:
         """Activate Intent Exchange"""
-        
+    
         try:
             # Create seller intents
             intents_created = []
-            
+        
             skills = self.user.get("skills", [])
             for skill in skills[:5]:  # Top 5 skills
                 result = await create_intent(
@@ -730,26 +730,31 @@ class CompleteActivationEngine:
                 )
                 if result.get("ok"):
                     intents_created.append(result)
-            
-            # Find buyer opportunities
-            matches = await find_matches(self.username)
-            
+        
+                # Find buyer opportunities
+                matches = await find_matches(self.username)
+        
+        # FIX: Check if matches is a list and has items
+            if not isinstance(matches, list):
+                matches = []
+        
             bids_placed = []
             for match in matches[:3]:  # Bid on top 3
-                result = await place_bid(
-                    username=self.username,
-                    intent_id=match["intent_id"],
-                    bid_amount=match["suggested_bid"]
-                )
-                if result.get("ok"):
-                    bids_placed.append(result)
-            
-            # Set Intent Exchange active flag
+            # FIX: Check if match is a dict and has required fields
+                if isinstance(match, dict) and "intent_id" in match:
+                    result = await place_bid(
+                        username=self.username,
+                        intent_id=match["intent_id"],
+                        bid_amount=match.get("suggested_bid", 100)
+                    )
+                    if result.get("ok"):
+                        bids_placed.append(result)
+        
+        # Set Intent Exchange active flag
             self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
-            
-            
+        
             print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
-            
+        
             return {
                 "ok": True,
                 "intents_created": len(intents_created),
@@ -758,6 +763,7 @@ class CompleteActivationEngine:
         except Exception as e:
             print(f"   ⚠️  Intent Exchange: {str(e)}")
             return {"ok": False, "error": str(e)}
+
     
     async def _activate_revenue_tracking(self) -> Dict[str, Any]:
         """Activate revenue tracking across all sources"""
