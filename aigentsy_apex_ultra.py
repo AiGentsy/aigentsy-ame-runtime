@@ -1271,3 +1271,59 @@ class CompleteActivationEngine:
         print(f"   ✅ Shopify: Integration active")
         
         return {"ok": True, "enabled": True}
+    # ============ PUBLIC API ============
+
+async def activate_apex_ultra(
+    username: str,
+    template: str = "whitelabel_general",
+    automation_mode: str = "pro"
+) -> Dict[str, Any]:
+    """
+    Main entry point: Activate ALL AiGentsy systems for a user
+    
+    Args:
+        username: User to activate for
+        template: Business template (content_creator, ecommerce, saas_tech, consulting_agency, whitelabel_general)
+        automation_mode: beginner, pro, or agi
+    
+    Returns:
+        Activation results with all systems status
+    """
+    
+    # Validate template
+    if template not in TEMPLATES:
+        template = "whitelabel_general"
+    
+    # Validate automation mode
+    try:
+        AutomationMode(automation_mode)
+    except ValueError:
+        automation_mode = "pro"
+    
+    # Create activation engine
+    engine = CompleteActivationEngine(username, template)
+    
+    # Activate everything
+    result = await engine.activate_all_systems()
+    
+    # Store activation in user record
+    user = get_user(username)
+    if user:
+        user.setdefault("apexUltra", {
+            "activated": True,
+            "activationDate": datetime.now(timezone.utc).isoformat(),
+            "template": template,
+            "automationMode": automation_mode,
+            "systemsActivated": result["systems_activated"]
+        })
+        log_agent_update(user)
+    
+    return {
+        "ok": result["ok"],
+        "username": username,
+        "template": template,
+        "automation_mode": automation_mode,
+        "systems_activated": result["systems_activated"],
+        "total_systems": result["total_systems"],
+        "activation": result
+    }
