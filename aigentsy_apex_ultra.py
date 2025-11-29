@@ -1213,7 +1213,7 @@ class CompleteActivationEngine:
             return {"ok": True, "member": True}
         except Exception as e:
             print(f"   ⚠️  Insurance Pool: {str(e)}")
-            return {"ok": False, "error": str(e)
+            return {"ok": False, "error": str(e)}
     
     async def _activate_guardrails(self) -> Dict[str, Any]:
         """Activate safety guardrails"""
