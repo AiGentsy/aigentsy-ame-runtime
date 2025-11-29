@@ -1360,6 +1360,20 @@ class CompleteActivationEngine:
         
         return {"ok": True, "enabled": True}
 
+    async def _activate_metahive(self) -> Dict[str, Any]:
+        """Activate MetaHive collective intelligence"""
+        
+        self.user.setdefault("metahive", {
+            "enabled": True,
+            "collective_learning": True
+        })
+        
+        log_agent_update(self.user)
+        
+        print(f"   ✅ MetaHive: Collective intelligence active")
+        
+        return {"ok": True, "enabled": True}
+
 
 # ============ PHASE 10: INFRASTRUCTURE - ADD THESE METHODS ============
 
