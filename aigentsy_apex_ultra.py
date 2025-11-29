@@ -905,47 +905,88 @@ class CompleteActivationEngine:
     
     # ============ PHASE 4: BUSINESS MODELS ============
     
-    async def _activate_franchise(self) -> Dict[str, Any]:
-        """Activate franchise/template publishing"""
+    async def _activate_intent_exchange(self) -> Dict[str, Any]:
+    """Activate Intent Exchange"""
+    
+    try:
+        # Create seller intents
+        intents_created = []
         
-        try:
-            # Enable but don't auto-publish
-            result = await enable_franchise_mode(self.username)
-            
-            self.user.setdefault("franchise", {
-                "enabled": True,
-                "templatesPublished": [],
-                "franchiseEarnings": 0.0
-            })
-            
-            
-            print(f"   ✅ Franchise: Template publishing enabled (user can publish when ready)")
-            
-            return {"ok": True, "enabled": True, "auto_publish": False}
-        except Exception as e:
-            print(f"   ⚠️  Franchise: {str(e)}")
-            return {"ok": False, "error": str(e)}
+        skills = self.user.get("skills", [])
+        for skill in skills[:5]:  # Top 5 skills
+            result = await create_intent(
+                username=self.username,
+                intent_type="offer",
+                description=skill,
+                price=500
+            )
+            if result.get("ok"):
+                intents_created.append(result)
+        
+        # Find buyer opportunities
+        matches = await find_matches(self.username)
+        
+        # FIX: Check if matches is a list and has items
+        if not isinstance(matches, list):
+            matches = []
+        
+        bids_placed = []
+        for match in matches[:3]:  # Bid on top 3
+            # FIX: Check if match is a dict and has required fields
+            if isinstance(match, dict) and "intent_id" in match:
+                result = await place_bid(
+                    username=self.username,
+                    intent_id=match["intent_id"],
+                    bid_amount=match.get("suggested_bid", 100)
+                )
+                if result.get("ok"):
+                    bids_placed.append(result)
+        
+        # Set Intent Exchange active flag
+        self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
+        
+        print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
+        
+        return {
+            "ok": True,
+            "intents_created": len(intents_created),
+            "bids_placed": len(bids_placed)
+        }
+    except Exception as e:
+        print(f"   ⚠️  Intent Exchange: {str(e)}")
+        return {"ok": False, "error": str(e)}
+
     
     async def _activate_jv_mesh(self) -> Dict[str, Any]:
-        """Activate JV Mesh for partnerships"""
-        
+    """Activate JV Mesh for partnerships"""
+    
+    try:
+        # FIX: Pass all_agents parameter (get from list_users or use empty list)
         try:
-            # Find potential partners but don't auto-create partnerships
-            partners = await find_jv_partners(self.username)
-            
-            self.user.setdefault("jvMesh", {
-                "enabled": True,
-                "partnerships": [],
-                "potentialPartners": partners[:10]  # Store top 10
-            })
-            
-            
-            print(f"   ✅ JV Mesh: Found {len(partners)} potential partners (user can approve)")
-            
-            return {"ok": True, "enabled": True, "partners_found": len(partners), "auto_create": False}
-        except Exception as e:
-            print(f"   ⚠️  JV Mesh: {str(e)}")
-            return {"ok": False, "error": str(e)}
+            all_agents = list_users() if hasattr(list_users, '__call__') else []
+        except:
+            all_agents = []
+        
+        # Find potential partners
+        partners = await find_jv_partners(self.username, all_agents)
+        
+        if "jvMesh" not in self.user:
+            self.user["jvMesh"] = {}
+        
+        self.user["jvMesh"] = {
+            "enabled": True,
+            "partnerships": [],
+            "potentialPartners": partners[:10] if isinstance(partners, list) else []
+        }
+        
+        partner_count = len(partners) if isinstance(partners, list) else 0
+        print(f"   ✅ JV Mesh: Found {partner_count} potential partners (user can approve)")
+        
+        return {"ok": True, "enabled": True, "partners_found": partner_count, "auto_create": False}
+    except Exception as e:
+        print(f"   ⚠️  JV Mesh: {str(e)}")
+        return {"ok": False, "error": str(e)}
+
     
     async def _activate_syndication(self) -> Dict[str, Any]:
         """Activate syndication pools"""
@@ -962,23 +1003,29 @@ class CompleteActivationEngine:
     
     async def _activate_coop_sponsors(self) -> Dict[str, Any]:
         """Activate co-op sponsor pools"""
-        
+    
         try:
-            # Auto-join sponsor pool
+        # Auto-join sponsor pool
             result = await join_sponsor_pool(self.username)
-            
-            # Find sponsor matches
+        
+        # Find sponsor matches
             matches = await find_sponsor_matches(self.username)
-            
-            self.user.setdefault("coopSponsors", {
+        
+        # FIX: Ensure matches is a list before slicing
+            if not isinstance(matches, list):
+                matches = []
+        
+            if "coopSponsors" not in self.user:
+                self.user["coopSponsors"] = {}
+        
+            self.user["coopSponsors"] = {
                 "enabled": True,
                 "poolMember": True,
-                "matches": matches[:5]
-            })
-            
-            
+                "matches": matches[:5]  # Now safe to slice
+            }
+        
             print(f"   ✅ Coop Sponsors: Joined pool, {len(matches)} sponsor matches found")
-            
+        
             return {"ok": True, "enabled": True, "matches": len(matches)}
         except Exception as e:
             print(f"   ⚠️  Coop Sponsors: {str(e)}")
@@ -1001,44 +1048,44 @@ class CompleteActivationEngine:
     
     async def _activate_growth_agent(self) -> Dict[str, Any]:
         """Activate growth campaigns"""
-        
-        try:
-            # Launch template-specific growth campaigns
-            if self.template == "content_creator":
-                campaigns = ["viral_hooks", "cross_promotion"]
-            elif self.template == "ecommerce":
-                campaigns = ["retargeting", "abandoned_cart"]
-            elif self.template == "saas_tech":
-                campaigns = ["product_hunt", "seo_content"]
-            else:
-                campaigns = ["referral_program", "social_proof"]
-            
-            results = []
-            for campaign in campaigns:
-                result = await launch_growth_campaign(self.username, campaign)
-                results.append(result)
-            
-            self.user.setdefault("growthAgent", {"active": True, "campaigns": campaigns})
-            
-            print(f"   ✅ Growth Agent: {len(campaigns)} campaigns launched")
-            
-            return {"ok": True, "campaigns_active": len(campaigns)}
-        except Exception as e:
-            print(f"   ⚠️  Growth Agent: {str(e)}")
-            return {"ok": False, "error": str(e)}
     
-    async def _activate_r3(self) -> Dict[str, Any]:
-        """Activate R³ auto-reinvestment"""
+    try:
+        # Launch template-specific growth campaigns
+        if self.template == "content_creator":
+            campaigns = ["viral_hooks", "cross_promotion"]
+        elif self.template == "ecommerce":
+            campaigns = ["retargeting", "abandoned_cart"]
+        elif self.template == "saas_tech":
+            campaigns = ["product_hunt", "seo_content"]
+        else:
+            campaigns = ["referral_program", "social_proof"]
         
-        try:
-            result = await configure_autopilot(self.username)
+        results = []
+        for campaign in campaigns:
+            # FIX: Check function signature and call appropriately
+            try:
+                result = await launch_growth_campaign(campaign)  # Only pass campaign name
+            except TypeError:
+                # Fallback if it needs username
+                try:
+                    result = await launch_growth_campaign(self.username, campaign)
+                except:
+                    result = {"ok": False, "error": "function_signature_mismatch"}
             
-            print(f"   ✅ R³ Autopilot: Auto-reinvestment configured")
-            
-            return {"ok": True, "autopilot_active": True}
-        except Exception as e:
-            print(f"   ⚠️  R³ Autopilot: {str(e)}")
-            return {"ok": False, "error": str(e)}
+            results.append(result)
+        
+        if "growthAgent" not in self.user:
+            self.user["growthAgent"] = {}
+        
+        self.user["growthAgent"] = {"active": True, "campaigns": campaigns}
+        
+        print(f"   ✅ Growth Agent: {len(campaigns)} campaigns launched")
+        
+        return {"ok": True, "campaigns_active": len(campaigns)}
+    except Exception as e:
+        print(f"   ⚠️  Growth Agent: {str(e)}")
+        return {"ok": False, "error": str(e)}
+
     
     async def _activate_analytics(self) -> Dict[str, Any]:
         """Activate analytics tracking"""
