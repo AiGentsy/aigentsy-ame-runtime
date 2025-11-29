@@ -490,7 +490,6 @@ class PlatformConnector:
             if platform not in self.user["connectedPlatforms"]:
                 self.user["connectedPlatforms"].append(platform)
             
-            log_agent_update(self.user)
         
         return result
     
@@ -701,7 +700,7 @@ class CompleteActivationEngine:
             
             # Set AME active flag
             self.user.setdefault("ame", {"active": True, "pitches_sent": len(pitches_sent)})
-            log_agent_update(self.user)
+            
             
             print(f"   ✅ AME: {len(pitches_sent)} pitches sent across {len(platforms)} platforms")
             
@@ -747,7 +746,7 @@ class CompleteActivationEngine:
             
             # Set Intent Exchange active flag
             self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
-            log_agent_update(self.user)
+            
             
             print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
             
@@ -771,7 +770,6 @@ class CompleteActivationEngine:
             "attribution": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Revenue Tracking: All sources monitored")
         
@@ -787,7 +785,6 @@ class CompleteActivationEngine:
             "paid": 0
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Outcome Oracle: Funnel tracking active")
         
@@ -806,7 +803,6 @@ class CompleteActivationEngine:
             "prequalified": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ OCL: Ready to unlock at 1st PAID outcome")
         
@@ -822,7 +818,6 @@ class CompleteActivationEngine:
             "prequalified": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Factoring: Ready to unlock at 1st DELIVERED outcome")
         
@@ -838,7 +833,6 @@ class CompleteActivationEngine:
             "prequalified": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ IPVault: Ready to unlock at 3rd PAID outcome")
         
@@ -872,7 +866,6 @@ class CompleteActivationEngine:
             "deals": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ DealGraph: Deal flow tracking active")
         
@@ -886,7 +879,6 @@ class CompleteActivationEngine:
             "privateDeals": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Dark Pool: Private deal capability enabled")
         
@@ -900,7 +892,6 @@ class CompleteActivationEngine:
             "bonds": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Performance Bonds: Contract guarantee system active")
         
@@ -921,7 +912,6 @@ class CompleteActivationEngine:
                 "franchiseEarnings": 0.0
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ Franchise: Template publishing enabled (user can publish when ready)")
             
@@ -943,7 +933,6 @@ class CompleteActivationEngine:
                 "potentialPartners": partners[:10]  # Store top 10
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ JV Mesh: Found {len(partners)} potential partners (user can approve)")
             
@@ -960,7 +949,6 @@ class CompleteActivationEngine:
             "pools": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Syndication: Deal syndication enabled")
         
@@ -982,7 +970,6 @@ class CompleteActivationEngine:
                 "matches": matches[:5]
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ Coop Sponsors: Joined pool, {len(matches)} sponsor matches found")
             
@@ -999,7 +986,6 @@ class CompleteActivationEngine:
             "bundles": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Bundle Engine: Product bundling enabled")
         
@@ -1057,7 +1043,6 @@ class CompleteActivationEngine:
             "optimization_enabled": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Analytics: Performance tracking active")
         
@@ -1071,7 +1056,6 @@ class CompleteActivationEngine:
             "predictions": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ LTV Forecaster: Customer value prediction active")
         
@@ -1085,7 +1069,6 @@ class CompleteActivationEngine:
             "dynamic_pricing": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Pricing Oracle: Dynamic pricing enabled")
         
@@ -1104,7 +1087,6 @@ class CompleteActivationEngine:
                 "riskScore": risk_score
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ Fraud Detection: Risk monitoring active (Score: {risk_score})")
             
@@ -1124,7 +1106,6 @@ class CompleteActivationEngine:
                 "status": compliance_status
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ Compliance: Regulatory compliance active")
             
@@ -1141,7 +1122,6 @@ class CompleteActivationEngine:
             "disputes": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Dispute Resolution: Conflict handling system active")
         
@@ -1159,7 +1139,6 @@ class CompleteActivationEngine:
                 "coverage_active": True
             })
             
-            log_agent_update(self.user)
             
             print(f"   ✅ Insurance Pool: Risk coverage active")
             
@@ -1176,7 +1155,6 @@ class CompleteActivationEngine:
             "safety_checks_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Guardrails: Safety systems active")
         
@@ -1195,7 +1173,6 @@ class CompleteActivationEngine:
             "ventures": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Venture Builder: Startup incubation active")
         
@@ -1209,7 +1186,6 @@ class CompleteActivationEngine:
             "auto_apply": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Autonomous Upgrades: Self-improvement system active")
         
@@ -1223,7 +1199,6 @@ class CompleteActivationEngine:
             "auto_close_threshold": 0.85
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Proposal Autoclose: Auto-closing high-confidence deals")
         
@@ -1237,7 +1212,6 @@ class CompleteActivationEngine:
             "tracking_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Tax Reporting: Automated tax tracking active")
         
@@ -1266,7 +1240,6 @@ class CompleteActivationEngine:
             "webhook_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Shopify: Integration active")
         
@@ -1286,7 +1259,6 @@ class CompleteActivationEngine:
             "webhook_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Stripe: Integration active")
         
@@ -1307,7 +1279,6 @@ class CompleteActivationEngine:
         if email_platforms:
             self.user["messagingIntegrations"]["channels"].extend(email_platforms)
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Messaging: {len(email_platforms)} channels connected")
         
@@ -1326,7 +1297,6 @@ class CompleteActivationEngine:
             "learning_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ AI Brain: Intelligence system active")
         
@@ -1340,7 +1310,6 @@ class CompleteActivationEngine:
             "tracking_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Market Intel: Intelligence gathering active")
         
@@ -1354,7 +1323,6 @@ class CompleteActivationEngine:
             "swarm_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Swarm Intelligence: Collective learning active")
         
@@ -1368,7 +1336,6 @@ class CompleteActivationEngine:
             "collective_learning": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ MetaHive: Collective intelligence active")
         
@@ -1385,7 +1352,6 @@ class CompleteActivationEngine:
             "subscriptions": []
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Event Bus: System messaging active")
         
@@ -1399,7 +1365,6 @@ class CompleteActivationEngine:
             "tracking_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ State Money: Value flow tracking active")
         
@@ -1413,7 +1378,6 @@ class CompleteActivationEngine:
             "queue_active": True
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ Batch Payments: Payment processing active")
         
@@ -1427,7 +1391,6 @@ class CompleteActivationEngine:
             "tier": "standard"
         })
         
-        log_agent_update(self.user)
         
         print(f"   ✅ SLO Tiers: Service level management active")
         
