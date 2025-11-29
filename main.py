@@ -1576,8 +1576,8 @@ async def mint_user(request: Request):
                         ip_asset = await create_ip_asset(
                             owner_username=username,
                             asset_type="apex_ultra_activation",
-                            asset_name=f"APEX ULTRA System - {apex_template}",
-                            royalty_rate=0.70,
+                            title=f"APEX ULTRA System - {apex_template}",
+                            royalty_percentage=70.0,
                             metadata={
                                 "systems_activated": systems_activated,
                                 "template": apex_template,
