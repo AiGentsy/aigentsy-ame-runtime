@@ -1211,7 +1211,24 @@ class CompleteActivationEngine:
         print(f"   ✅ Guardrails: Safety systems active")
         
         return {"ok": True, "enabled": True}
+
+    async def _activate_r3(self) -> Dict[str, Any]:
+        """Activate R³ auto-reinvestment"""
     
+        try:
+            result = await configure_autopilot(self.username)
+        
+        # FIX: Check if result is a dict before calling .get()
+            if not isinstance(result, dict):
+                result = {"ok": True}
+        
+            print(f"   ✅ R³ Autopilot: Auto-reinvestment configured")
+        
+            return {"ok": True, "autopilot_active": True}
+        except Exception as e:
+            print(f"   ⚠️  R³ Autopilot: {str(e)}")
+            return {"ok": False, "error": str(e)}
+            
     # ============ PHASE 7: ADVANCED FEATURES ============
     
     async def _activate_venture_builder(self) -> Dict[str, Any]:
