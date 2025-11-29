@@ -1572,13 +1572,13 @@ async def mint_user(request: Request):
                     # 📚 RECORD IN IPVAULT
                     # ============================================================
                     
-                    try:
-                        ip_asset = await create_ip_asset(
-                            owner_username=username,
-                            asset_type="apex_ultra_activation",
-                            title=f"APEX ULTRA System - {apex_template}",
-                            royalty_percentage=70.0,
-                            metadata={
+                    ip_asset = await create_ip_asset(
+                        owner_username=username,
+                        asset_type="apex_ultra_activation",
+                        title=f"APEX ULTRA System - {apex_template}",
+                        description=f"Complete AiGentsy system activation for {apex_template} template with {systems_activated} operational systems including AMG revenue optimization, OCL financing, and autonomous business operations.",  # ← ADD THIS LINE
+                        royalty_percentage=70.0,
+                        metadata={
                                 "systems_activated": systems_activated,
                                 "template": apex_template,
                                 "automation_mode": "pro",
