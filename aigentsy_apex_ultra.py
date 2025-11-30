@@ -1034,7 +1034,7 @@ class CompleteActivationEngine:
         except Exception as e:
             print(f"   ⚠️  Growth Agent: {str(e)}")
             return {"ok": False, "error": str(e)}
-
+            
     
     async def _activate_analytics(self) -> Dict[str, Any]:
         """Activate analytics tracking"""
