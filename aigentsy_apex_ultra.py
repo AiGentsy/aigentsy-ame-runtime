@@ -997,6 +997,8 @@ class CompleteActivationEngine:
     
     async def _activate_growth_agent(self) -> Dict[str, Any]:
         """Activate growth campaigns"""
+        
+        try:
             # Launch template-specific growth campaigns
             if self.template == "content_creator":
                 campaigns = ["viral_hooks", "cross_promotion"]
