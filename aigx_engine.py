@@ -15,7 +15,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from aigx_config import AIGX_CONFIG
-from log_to_jsonbin_merged import get_user, log_agent_update, append_intent_ledger
+from log_to_jsonbin import get_user, list_users
+from log_to_jsonbin_merged import log_agent_update, append_intent_ledger
 
 # ============================================================
 # ACTIVITY TRACKING
