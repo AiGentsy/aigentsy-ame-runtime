@@ -19,7 +19,6 @@ from log_to_jsonbin_merged import (
     append_intent_ledger
 )
 
-from log_to_jsonbin import get_user as get_user_fallback
 
 # Load Stripe secrets
 STRIPE_SECRET = os.getenv("STRIPE_SECRET")
