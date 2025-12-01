@@ -130,8 +130,12 @@ async def process_payment_success(payment_intent: dict) -> dict:
     # ============================================================
     
     user = get_user(username)
-    if not user:
-        user = get_user_fallback(username)
+     if not user:
+         return {
+             "ok": False,
+             "error": "User not found",
+             "username": username
+         }
     
     if not user:
         print(f"❌ User not found: {username}")
