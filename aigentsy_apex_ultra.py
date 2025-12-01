@@ -903,8 +903,33 @@ class CompleteActivationEngine:
         
         return {"ok": True, "enabled": True}
     
-    # ============ PHASE 4: BUSINESS MODELS ============
 
+    # ============ PHASE 4: BUSINESS MODELS ============
+    
+    async def _activate_franchise(self) -> Dict[str, Any]:
+        """Activate franchise/template publishing"""
+        
+        try:
+            # Enable but don't auto-publish
+            result = await enable_franchise_mode(self.username)
+            
+            # FIX: Initialize as dict, not list
+            if "franchise" not in self.user:
+                self.user["franchise"] = {}
+            
+            self.user["franchise"] = {
+                "enabled": True,
+                "templatesPublished": [],
+                "franchiseEarnings": 0.0
+            }
+            
+            print(f"   ✅ Franchise: Template publishing enabled (user can publish when ready)")
+            
+            return {"ok": True, "enabled": True, "auto_publish": False}
+        except Exception as e:
+            print(f"   ⚠️  Franchise: {str(e)}")
+            return {"ok": False, "error": str(e)}
+    
     
     async def _activate_jv_mesh(self) -> Dict[str, Any]:
         """Activate JV Mesh for partnerships"""
