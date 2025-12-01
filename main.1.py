@@ -31,7 +31,8 @@ from agent_spending import (
     get_spending_summary
 )
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.025"))  # 2.5% transaction fee
+PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.30"))  # 30¢ fixed fee
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -39,7 +40,14 @@ from starlette.concurrency import run_in_threadpool
 from venture_builder_agent import get_agent_graph
 from log_to_jsonbin_merged import (
     log_agent_update, append_intent_ledger, credit_aigx as credit_aigx_srv,
-    log_metaloop, log_autoconnect, log_metabridge, log_metahive
+    log_metaloop, log_autoconnect, log_metabridge, log_metahive,
+    get_user_count, increment_user_count  # NEW: Counter functions
+)
+
+from aigx_config import (
+    AIGX_CONFIG,
+    determine_early_adopter_tier,
+    calculate_user_tier
 )
 # Admin normalize uses the classic module (keep both available)
 from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
@@ -161,7 +169,7 @@ try:
     from escrow_lite import (
         create_payment_intent,
         capture_payment_intent,
-        refund_payment_intent,
+        partial_refund_on_dispute,  # Use this instead
         auto_capture_on_delivered
     )
 except Exception as e:
@@ -644,6 +652,8 @@ app = FastAPI()
 
 from ame_routes import register_ame_routes
 register_ame_routes(app)
+from aigx_engine import create_activity_endpoints
+create_activity_endpoints(app)
 
 async def auto_bid_background():
     """Runs in background forever"""
@@ -824,12 +834,7 @@ async def health_check():
 async def healthz():
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
-# ========== ADD THESE 3 ENDPOINTS HERE ==========
-@app.get("/revenue/summary")
-async def revenue_summary_get(username: str):
-    """Frontend expects this endpoint"""
-    result = get_earnings_summary(username)
-    return result
+# ========== ADD THESE 2 ENDPOINTS HERE ==========
 
 @app.get("/score/outcome") 
 async def get_outcome_score_query(username: str):
@@ -1293,6 +1298,7 @@ async def mint_user(request: Request):
         referral = body.get("referral", "origin/hero")
         custom_input = body.get("customInput", "")
         template = body.get("template")
+        password = body.get("password", "default_password")
         
         if not username:
             logger.error("Mint failed: No username provided")
@@ -1302,12 +1308,26 @@ async def mint_user(request: Request):
         
         # Import functions we need
         from log_to_jsonbin import get_user, log_agent_update, normalize_user_data
+        from log_to_jsonbin_merged import increment_user_count
+        from aigx_config import determine_early_adopter_tier
         
         # Check if user already exists
         existing_user = get_user(username)
         if existing_user:
             logger.info(f"✅ User already exists: {username}")
             return {"ok": True, "record": existing_user, "already_exists": True}
+        
+        # ============================================================
+        # 🎯 EARLY ADOPTER TIER DETECTION (BEFORE USER CREATION)
+        # ============================================================
+        
+        # Get sequential user number
+        user_number = increment_user_count()
+        logger.info(f"👤 User number assigned: {user_number}")
+        
+        # Determine early adopter tier
+        early_adopter = determine_early_adopter_tier(user_number)
+        logger.info(f"🎖️ Early adopter tier: {early_adopter['tier']} (multiplier: {early_adopter['multiplier']}x, bonus: {early_adopter['bonus']} AIGx)")
         
         # Create new user with complete structure
         now = datetime.now(timezone.utc).isoformat()
@@ -1335,6 +1355,19 @@ async def mint_user(request: Request):
             "customInput": custom_input,
             "meta_role": role_map.get(company_type, "CEO"),
             "role": role_map.get(company_type, "CEO"),
+            
+            # Early Adopter Fields
+            "userNumber": user_number,
+            "earlyAdopterTier": early_adopter["tier"],
+            "earlyAdopterBadge": early_adopter["badge"],
+            "aigxMultiplier": early_adopter["multiplier"],
+            "currentTier": "free",
+            "lifetimeRevenue": 0.0,
+            "aigxEarningRate": {
+                "tier_multiplier": 1.0,
+                "early_adopter_multiplier": early_adopter["multiplier"],
+                "total_multiplier": early_adopter["multiplier"]
+            },
             
             # Traits
             "traits": [company_type, "founder", "autonomous", "aigentsy"],
@@ -1387,7 +1420,11 @@ async def mint_user(request: Request):
             "meetings": [],
             "kpi_snapshots": [],
             "docs": [],
-            "ownership": {"ledger": []},
+            "ownership": {
+                "aigx": 0,
+                "equity": 0,
+                "ledger": []
+            },
             
             # Kits
             "kits": {
@@ -1483,12 +1520,234 @@ async def mint_user(request: Request):
             except Exception as ledger_error:
                 logger.warning(f"Ledger append failed: {ledger_error}")
             
-            return {"ok": True, "record": saved_user}
+            # ============================================================
+            # 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
+            # ============================================================
+            
+            logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
+            
+            try:
+                from aigentsy_apex_ultra import activate_apex_ultra
+                from ipvault import create_ip_asset
+                
+                # Map companyType to template
+                template_map = {
+                    "legal": "consulting_agency",
+                    "marketing": "consulting_agency",
+                    "social": "content_creator",
+                    "saas": "saas_tech",
+                    "custom": "whitelabel_general",
+                    "general": "whitelabel_general"
+                }
+                
+                apex_template = template_map.get(company_type, "whitelabel_general")
+                
+                # Override with explicit template if provided
+                if template:
+                    apex_template = template
+                
+                # Activate ALL AiGentsy systems
+                apex_result = await activate_apex_ultra(
+                    username=username,
+                    template=apex_template,
+                    automation_mode="pro"
+                )
+                
+                if apex_result.get("ok"):
+                    systems_activated = apex_result.get("systems_activated", 0)
+                    amg_result = apex_result.get("results", {}).get("amg", {})
+                    
+                    logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+                    
+                    # ============================================================
+                    # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
+                    # ============================================================
+                    
+                    # Reload user to get updated data
+                    saved_user = get_user(username)
+                    
+                    apex_aigx = 100  # Base APEX ULTRA activation
+                    amg_aigx = 50 if amg_result.get("ok") else 0  # AMG activation bonus
+                    signup_bonus = early_adopter["bonus"]  # 10k, 5k, 1k, or 0
+                    
+                    # Record APEX ULTRA activation
+                    saved_user["ownership"]["ledger"].append({
+                        "ts": now,
+                        "amount": apex_aigx,
+                        "currency": "AIGx",
+                        "basis": "apex_ultra_activation",
+                        "systems_activated": systems_activated,
+                        "template": apex_template,
+                        "automation_mode": "pro"
+                    })
+                    saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + apex_aigx
+                    
+                    # Record AMG activation (if successful)
+                    if amg_aigx > 0:
+                        saved_user["ownership"]["ledger"].append({
+                            "ts": now,
+                            "amount": amg_aigx,
+                            "currency": "AIGx",
+                            "basis": "amg_revenue_brain_activation",
+                            "graph_initialized": amg_result.get("graph_initialized", False),
+                            "first_cycle_complete": amg_result.get("first_cycle_complete", False),
+                            "actions_queued": amg_result.get("actions_queued", 0)
+                        })
+                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + amg_aigx
+                    
+                    # Record early adopter signup bonus (if applicable)
+                    if signup_bonus > 0:
+                        saved_user["ownership"]["ledger"].append({
+                            "ts": now,
+                            "amount": signup_bonus,
+                            "currency": "AIGx",
+                            "basis": "early_adopter_signup_bonus",
+                            "tier": early_adopter["tier"],
+                            "badge": early_adopter["badge"],
+                            "user_number": user_number,
+                            "multiplier": early_adopter["multiplier"]
+                        })
+                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + signup_bonus
+                    
+                    total_aigx_granted = apex_aigx + amg_aigx + signup_bonus
+                    
+                    # Record each major system activation as equity grants
+                    major_systems = ["ocl", "factoring", "ipvault", "metabridge", "jv_mesh"]
+                    for system in major_systems:
+                        if apex_result.get("results", {}).get(system, {}).get("ok"):
+                            saved_user["ownership"]["ledger"].append({
+                                "ts": now,
+                                "amount": 0,
+                                "currency": "equity",
+                                "basis": f"{system}_unlocked",
+                                "note": f"Future equity unlock when {system} generates revenue"
+                            })
+                    
+                    logger.info(f"💎 Ownership ledger updated: +{total_aigx_granted} AIGx granted (APEX: {apex_aigx}, AMG: {amg_aigx}, Bonus: {signup_bonus})")
+                    
+                    # ============================================================
+                    # 📚 RECORD IN IPVAULT
+                    # ============================================================
+                    
+                    try:
+                        ip_asset = await create_ip_asset(
+                            owner_username=username,
+                            asset_type="apex_ultra_activation",
+                            title=f"APEX ULTRA System - {apex_template}",
+                            description=f"Complete AiGentsy system activation for {apex_template} template with {systems_activated} operational systems.",
+                            royalty_percentage=70.0,
+                            metadata={
+                                "systems_activated": systems_activated,
+                                "template": apex_template,
+                                "automation_mode": "pro",
+                                "amg_active": amg_result.get("ok", False),
+                                "activation_date": now,
+                                "referral": referral,
+                                "company_type": company_type,
+                                "user_number": user_number,
+                                "early_adopter_tier": early_adopter["tier"]
+                            }
+                        )
+                        
+                        logger.info(f"📚 IPVault record created: {ip_asset.get('asset_id', 'N/A')}")
+                        
+                    except Exception as ip_error:
+                        logger.warning(f"⚠️  IPVault recording failed: {ip_error}")
+                    
+                    # ============================================================
+                    # 💾 SAVE UPDATED USER
+                    # ============================================================
+                    
+                    log_agent_update(saved_user)
+                    logger.info(f"💾 User updated with ownership tracking")
+                    
+                    # ============================================================
+                    # 🧠 PREPARE MEMORY CONTEXT
+                    # ============================================================
+                    
+                    activation_memory = {
+                        "event": "apex_ultra_activation",
+                        "username": username,
+                        "template": apex_template,
+                        "company_type": company_type,
+                        "systems_activated": systems_activated,
+                        "amg_revenue_brain": amg_result.get("ok", False),
+                        "aigx_granted": total_aigx_granted,
+                        "activation_timestamp": now,
+                        "major_unlocks": major_systems,
+                        "user_number": user_number,
+                        "early_adopter_tier": early_adopter["tier"]
+                    }
+                    
+                    logger.info(f"🧠 Memory context prepared for future conversations")
+                    
+                    # ============================================================
+                    # 📤 RETURN SUCCESS WITH FULL TRACKING
+                    # ============================================================
+                    
+                    return {
+                        "ok": True,
+                        "record": saved_user,
+                        "apex_ultra": {
+                            "activated": True,
+                            "systems_operational": systems_activated,
+                            "template": apex_template,
+                            "automation_mode": "pro",
+                            "amg_revenue_brain": {
+                                "active": amg_result.get("ok", False),
+                                "graph_initialized": amg_result.get("graph_initialized", False),
+                                "actions_queued": amg_result.get("actions_queued", 0)
+                            }
+                        },
+                        "ownership": {
+                            "aigx_granted": total_aigx_granted,
+                            "total_aigx": saved_user["ownership"]["aigx"],
+                            "ledger_entries": len(saved_user["ownership"]["ledger"]),
+                            "equity_unlocks_pending": len(major_systems)
+                        },
+                        "early_adopter": {
+                            "user_number": user_number,
+                            "tier": early_adopter["tier"],
+                            "badge": early_adopter["badge"],
+                            "multiplier": early_adopter["multiplier"],
+                            "signup_bonus": signup_bonus,
+                            "perks": early_adopter.get("perks", [])
+                        },
+                        "ipvault": {
+                            "asset_created": True,
+                            "asset_type": "apex_ultra_activation",
+                            "royalty_rate": 0.70
+                        },
+                        "memory": activation_memory
+                    }
+                else:
+                    logger.warning(f"⚠️  APEX ULTRA activation had issues for {username}")
+                    return {
+                        "ok": True,
+                        "record": saved_user,
+                        "apex_ultra": {
+                            "activated": False,
+                            "warning": "Systems may need manual activation"
+                        }
+                    }
+                    
+            except Exception as apex_error:
+                logger.error(f"❌ APEX ULTRA activation failed: {apex_error}", exc_info=True)
+                return {
+                    "ok": True,
+                    "record": saved_user,
+                    "apex_ultra": {
+                        "activated": False,
+                        "error": str(apex_error)
+                    }
+                }
             
         except Exception as save_error:
             logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
-            # Return the normalized user anyway so frontend can proceed
-            return {"ok": True, "record": normalized, "warning": "Saved locally only"}
+            return {
+                "ok": False,
+                "error": f"Failed to save user: {str(save_error)}"
+            }
         
     except Exception as e:
         logger.error(f"❌ Mint endpoint error: {str(e)}", exc_info=True)
@@ -1532,6 +1791,51 @@ async def unlock_feature(request: Request):
                 return {"ok": True, "record": normalize_user_record(u)}
         return {"error": "User not found"}
 
+@app.post("/admin/cleanup_jsonbin")
+async def cleanup_jsonbin():
+    """
+    Remove invalid records from JSONBin (strings, nulls, non-dicts)
+    """
+    try:
+        from log_to_jsonbin import _read_jsonbin, _write_jsonbin
+        
+        # Fetch current data
+        existing, _raw = _read_jsonbin()
+        
+        if existing is None:
+            return {"ok": False, "error": "Could not read JSONBin"}
+        
+        # Filter out invalid records
+        valid_records = []
+        invalid_count = 0
+        
+        for rec in existing:
+            if isinstance(rec, dict) and rec.get("username"):
+                valid_records.append(rec)
+            else:
+                invalid_count += 1
+                logger.warning(f"Removing invalid record: {type(rec)}")
+        
+        # Save cleaned data
+        ok, err = _write_jsonbin(valid_records)
+        
+        if ok:
+            return {
+                "ok": True,
+                "cleaned": True,
+                "invalid_removed": invalid_count,
+                "valid_remaining": len(valid_records)
+            }
+        else:
+            return {
+                "ok": False,
+                "error": f"Failed to write: {err}"
+            }
+        
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+        
 # ---- POST: AMG sync (App Monetization Graph) ----
 @app.post("/amg/sync")
 async def amg_sync(request: Request):
@@ -1590,19 +1894,255 @@ async def money_summary(body: Dict = Body(...)):
         if not u: return {"error":"user not found"}
         _ensure_business(u)
         return {"ok": True, "summary": _money_summary(u)}
+
+# ========== CONSOLIDATED REVENUE SUMMARY ENDPOINT ==========
 @app.get("/revenue/summary")
-async def revenue_summary_get(username: str):
-    """Frontend expects this endpoint"""
-    async with httpx.AsyncClient(timeout=20) as client:
-        users = await _load_users(client)
-        u = next((x for x in users if _uname(x) == username), None)
-        if not u:
-            return {"error": "user not found"}
-        
-        # Call your revenue_flows.py function
+async def get_revenue_summary(username: str):
+    """Get user's comprehensive revenue breakdown for dashboard"""
+    try:
         from revenue_flows import get_earnings_summary
-        result = get_earnings_summary(username)
-        return result
+        from log_to_jsonbin import get_user
+        
+        # Get earnings from revenue_flows
+        earnings = get_earnings_summary(username)
+        
+        if not earnings.get("ok"):
+            return {"ok": False, "error": earnings.get("error", "unknown")}
+        
+        # Get user for revenue.bySource and unlocks
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {"total": 0.0, "bySource": {}})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "total_earned": earnings["total_earned"],
+            "eligible_earned": earnings["eligible_earned"],
+            "held_back": earnings["held_back"],
+            "holdback_days": earnings["holdback_days"],
+            "breakdown": {
+                "ame": revenue["bySource"].get("ame", 0.0),
+                "intentExchange": revenue["bySource"].get("intentExchange", 0.0),
+                "jvMesh": revenue["bySource"].get("jvMesh", 0.0),
+                "services": revenue["bySource"].get("services", 0.0),
+                "shopify": revenue["bySource"].get("shopify", 0.0),
+                "affiliate": revenue["bySource"].get("affiliate", 0.0),
+                "contentCPM": revenue["bySource"].get("contentCPM", 0.0)
+            },
+            "aigx_balance": user.get("yield", {}).get("aigxEarned", 0),
+            "unlocks": {
+                "r3_autopilot": user.get("runtimeFlags", {}).get("r3AutopilotEnabled", False),
+                "advanced_analytics": user.get("runtimeFlags", {}).get("advancedAnalyticsEnabled", False),
+                "template_publishing": user.get("runtimeFlags", {}).get("templatePublishingEnabled", False),
+                "metahive_premium": user.get("runtimeFlags", {}).get("metaHivePremium", False),
+                "white_label": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False)
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ TASK 9: REVENUE ATTRIBUTION API ENDPOINTS ============
+
+@app.get("/revenue/by_platform")
+async def get_revenue_by_platform(username: str):
+    """Get revenue breakdown by platform (Instagram, TikTok, LinkedIn, etc.)"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {})
+        by_platform = revenue.get("byPlatform", {})
+        
+        # Sort by revenue (highest first)
+        sorted_platforms = sorted(by_platform.items(), key=lambda x: x[1], reverse=True)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "byPlatform": dict(sorted_platforms),
+            "totalRevenue": revenue.get("total", 0.0),
+            "topPlatform": sorted_platforms[0][0] if sorted_platforms else None,
+            "platformCount": len(by_platform)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/attribution")
+async def get_revenue_attribution(
+    username: str,
+    limit: int = 50,
+    source: str = None,
+    platform: str = None
+):
+    """Get detailed revenue attribution with optional filters
+    
+    Args:
+        username: User to query
+        limit: Max records to return (default 50)
+        source: Filter by source (ame, shopify, affiliate, etc.)
+        platform: Filter by platform (instagram, tiktok, linkedin, etc.)
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        attribution = user.get("revenue", {}).get("attribution", [])
+        
+        # Apply filters
+        if source:
+            attribution = [a for a in attribution if a.get("source") == source]
+        if platform:
+            attribution = [a for a in attribution if a.get("platform") == platform]
+        
+        # Sort by timestamp (newest first)
+        attribution.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        
+        # Apply limit
+        limited_attribution = attribution[:limit]
+        
+        return {
+            "ok": True,
+            "username": username,
+            "attribution": limited_attribution,
+            "totalRecords": len(user.get("revenue", {}).get("attribution", [])),
+            "filteredRecords": len(attribution),
+            "returnedRecords": len(limited_attribution),
+            "filters": {
+                "source": source,
+                "platform": platform,
+                "limit": limit
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/top_performers")
+async def get_top_performers(username: str):
+    """Get top performing sources and platforms with analytics"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        revenue = user.get("revenue", {})
+        by_source = revenue.get("bySource", {})
+        by_platform = revenue.get("byPlatform", {})
+        attribution = revenue.get("attribution", [])
+        
+        # Top sources
+        top_sources = sorted(by_source.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Top platforms
+        top_platforms = sorted(by_platform.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Recent high-value deals
+        high_value = sorted(attribution, key=lambda x: x.get("amount", 0), reverse=True)[:10]
+        
+        # Platform x Source matrix (e.g., "AME conversions on Instagram")
+        matrix = {}
+        for attr in attribution:
+            src = attr.get("source", "unknown")
+            plat = attr.get("platform", "unknown")
+            key = f"{src}_{plat}"
+            matrix[key] = matrix.get(key, 0.0) + attr.get("netToUser", 0.0)
+        
+        top_combos = sorted(matrix.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # Calculate conversion metrics by platform (if available)
+        platform_metrics = {}
+        for plat, rev in by_platform.items():
+            platform_metrics[plat] = {
+                "revenue": round(rev, 2),
+                "deals": len([a for a in attribution if a.get("platform") == plat]),
+                "avgDealSize": round(rev / max(1, len([a for a in attribution if a.get("platform") == plat])), 2)
+            }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "topSources": [{"source": s, "revenue": round(r, 2)} for s, r in top_sources],
+            "topPlatforms": [{"platform": p, "revenue": round(r, 2)} for p, r in top_platforms],
+            "highValueDeals": high_value,
+            "topCombinations": [
+                {
+                    "source": c.split("_")[0],
+                    "platform": "_".join(c.split("_")[1:]),
+                    "revenue": round(r, 2)
+                }
+                for c, r in top_combos
+            ],
+            "platformMetrics": platform_metrics,
+            "totalRevenue": revenue.get("total", 0.0),
+            "totalDeals": len(attribution)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/revenue/platform_breakdown")
+async def get_platform_breakdown(username: str, platform: str):
+    """Get detailed breakdown of revenue for a specific platform
+    
+    Shows which revenue sources contributed to this platform's total
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        attribution = user.get("revenue", {}).get("attribution", [])
+        
+        # Filter to specific platform
+        platform_attrs = [a for a in attribution if a.get("platform") == platform]
+        
+        if not platform_attrs:
+            return {
+                "ok": True,
+                "username": username,
+                "platform": platform,
+                "totalRevenue": 0.0,
+                "message": "No revenue from this platform"
+            }
+        
+        # Breakdown by source
+        by_source = {}
+        for attr in platform_attrs:
+            source = attr.get("source", "unknown")
+            by_source[source] = by_source.get(source, 0.0) + attr.get("netToUser", 0.0)
+        
+        total_platform_revenue = sum(by_source.values())
+        
+        # Recent deals on this platform
+        recent_deals = sorted(platform_attrs, key=lambda x: x.get("ts", ""), reverse=True)[:10]
+        
+        return {
+            "ok": True,
+            "username": username,
+            "platform": platform,
+            "totalRevenue": round(total_platform_revenue, 2),
+            "bySource": {k: round(v, 2) for k, v in sorted(by_source.items(), key=lambda x: x[1], reverse=True)},
+            "dealCount": len(platform_attrs),
+            "avgDealSize": round(total_platform_revenue / len(platform_attrs), 2),
+            "recentDeals": recent_deals
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.get("/score/outcome") 
 async def get_outcome_score_query(username: str):
@@ -3774,6 +4314,143 @@ async def ocl_repay_endpoint(body: Dict = Body(...)):
         limits = await calculate_ocl_limit(u)
         return {"ok": True, "repaid": amount, **limits}
 
+@app.get("/unlocks/status")
+async def get_unlock_status(username: str):
+    """Get user's feature unlock status and progress"""
+    try:
+        from log_to_jsonbin import get_user
+        from outcome_oracle_max import get_user_funnel_stats
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Get outcome funnel stats
+        funnel_stats = get_user_funnel_stats(username)
+        
+        # Get revenue data
+        revenue = user.get("revenue", {"total": 0.0})
+        
+        # Build unlock status
+        unlocks = {
+            "ocl": {
+                "enabled": user.get("ocl", {}).get("enabled", False),
+                "phase": user.get("ocl", {}).get("phase"),
+                "creditLine": user.get("ocl", {}).get("creditLine", 0),
+                "nextMilestone": "1st PAID outcome" if not user.get("ocl", {}).get("enabled") else "5th PAID for Phase 2",
+                "progress": funnel_stats.get("funnel", {}).get("paid", 0)
+            },
+            "factoring": {
+                "enabled": user.get("factoring", {}).get("enabled", False),
+                "phase": user.get("factoring", {}).get("phase"),
+                "nextMilestone": "1st DELIVERED outcome" if not user.get("factoring", {}).get("enabled") else "5th PAID for Phase 2",
+                "progress": funnel_stats.get("funnel", {}).get("delivered", 0)
+            },
+            "ipVault": {
+                "enabled": user.get("ipVault", {}).get("enabled", False),
+                "royaltyRate": user.get("ipVault", {}).get("royaltyRate"),
+                "nextMilestone": "3 PAID outcomes",
+                "progress": f"{funnel_stats.get('funnel', {}).get('paid', 0)}/3"
+            },
+            "certification": {
+                "enabled": user.get("certification", {}).get("enabled", False),
+                "tier": user.get("certification", {}).get("tier"),
+                "nextMilestone": "10 PAID outcomes + 95% on-time",
+                "progress": f"{funnel_stats.get('funnel', {}).get('paid', 0)}/10"
+            },
+            "r3Autopilot": {
+                "enabled": user.get("runtimeFlags", {}).get("r3AutopilotEnabled", False),
+                "nextMilestone": "$100 revenue",
+                "progress": f"${revenue['total']:.2f}/100"
+            },
+            "advancedAnalytics": {
+                "enabled": user.get("runtimeFlags", {}).get("advancedAnalyticsEnabled", False),
+                "nextMilestone": "$500 revenue",
+                "progress": f"${revenue['total']:.2f}/500"
+            },
+            "templatePublishing": {
+                "enabled": user.get("runtimeFlags", {}).get("templatePublishingEnabled", False),
+                "nextMilestone": "$1,000 revenue",
+                "progress": f"${revenue['total']:.2f}/1000"
+            },
+            "metaHivePremium": {
+                "enabled": user.get("runtimeFlags", {}).get("metaHivePremium", False),
+                "nextMilestone": "$2,500 revenue",
+                "progress": f"${revenue['total']:.2f}/2500"
+            },
+            "whiteLabel": {
+                "enabled": user.get("runtimeFlags", {}).get("whiteLabelEnabled", False),
+                "nextMilestone": "$5,000 revenue",
+                "progress": f"${revenue['total']:.2f}/5000"
+            }
+        }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "unlocks": unlocks,
+            "summary": {
+                "totalUnlocked": sum(1 for u in unlocks.values() if u.get("enabled")),
+                "totalAvailable": len(unlocks),
+                "paidOutcomes": funnel_stats.get("funnel", {}).get("paid", 0),
+                "deliveredOutcomes": funnel_stats.get("funnel", {}).get("delivered", 0),
+                "totalRevenue": revenue["total"]
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/notifications/list")
+async def list_notifications(username: str, unread_only: bool = False):
+    """Get user's notifications"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        notifications = user.get("notifications", [])
+        
+        if unread_only:
+            notifications = [n for n in notifications if not n.get("read", False)]
+        
+        # Sort by timestamp, newest first
+        notifications.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        
+        return {
+            "ok": True,
+            "notifications": notifications,
+            "unread_count": sum(1 for n in notifications if not n.get("read", False))
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/notifications/mark_read")
+async def mark_notification_read(username: str, notification_id: str):
+    """Mark a notification as read"""
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        notifications = user.get("notifications", [])
+        
+        for notif in notifications:
+            if notif.get("id") == notification_id:
+                notif["read"] = True
+                notif["read_at"] = datetime.now(timezone.utc).isoformat()
+                break
+        
+        log_agent_update(user)
+        
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+        
 # ============ ESCROW-LITE (AUTH→CAPTURE) ============
 
 from escrow_lite import (
