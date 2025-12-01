@@ -1594,11 +1594,6 @@ async def mint_user(request: Request):
                         
                     except Exception as ip_error:
                         logger.warning(f"⚠️  IPVault recording failed: {ip_error}")
-                        
-                        logger.info(f"📚 IPVault record created: {ip_asset.get('asset_id', 'N/A')}")
-                        
-                    except Exception as ip_error:
-                        logger.warning(f"⚠️  IPVault recording failed: {ip_error}")
                     
                     # ============================================================
                     # 💾 SAVE UPDATED USER
