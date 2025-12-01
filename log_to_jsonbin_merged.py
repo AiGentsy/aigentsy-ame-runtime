@@ -1,4 +1,3 @@
-
 import os, json, requests
 from datetime import datetime, timezone
 
@@ -16,6 +15,7 @@ except Exception:
 
 JSONBIN_URL    = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+JSONBIN_COUNTER_URL = os.getenv("JSONBIN_COUNTER_URL")  # NEW: Counter bin for user numbers
 VERBOSE        = os.getenv("VERBOSE_LOGGING","true").lower()=="true"
 
 def _now(): 
@@ -177,3 +177,72 @@ def credit_aigx(username: str, amount: float, basis="uplift", ref=None):
             _put(users)
             return True
     return False
+
+# ---------- User Counter Functions (for Early Adopter Tiers) ----------
+def get_user_count() -> int:
+    """
+    Get current user count from dedicated counter bin.
+    Returns 0 if counter bin is not configured or unreachable.
+    """
+    if not JSONBIN_COUNTER_URL or not JSONBIN_SECRET:
+        return 0
+    
+    try:
+        r = requests.get(JSONBIN_COUNTER_URL, 
+                        headers={"X-Master-Key": JSONBIN_SECRET}, 
+                        timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        # JSONBin wraps response in {"record": {...}}
+        record = data.get("record", {}) if isinstance(data, dict) else {}
+        return int(record.get("count", 0))
+    except Exception as e:
+        if VERBOSE: print(f"⚠️  Counter read error: {e}")
+        return 0
+
+def increment_user_count() -> int:
+    """
+    Atomically increment and return new user number.
+    This assigns the next sequential user number for early adopter tier detection.
+    
+    Returns:
+        int: New user number (1, 2, 3, etc.)
+        
+    Fallback behavior:
+        If counter bin is unreachable, falls back to counting existing users.
+        This ensures the system continues to function even if counter bin fails.
+    """
+    if not JSONBIN_COUNTER_URL or not JSONBIN_SECRET:
+        # Fallback: count existing users
+        try:
+            data = _get()
+            users = data.get("record", [])
+            return len(users) + 1
+        except Exception:
+            return 1
+    
+    try:
+        # Get current count
+        current = get_user_count()
+        new_count = current + 1
+        
+        # Write new count
+        r = requests.put(JSONBIN_COUNTER_URL,
+                        headers={"X-Master-Key": JSONBIN_SECRET, 
+                                "Content-Type": "application/json"},
+                        json={"count": new_count},
+                        timeout=10)
+        r.raise_for_status()
+        
+        if VERBOSE: print(f"✅ User count incremented: {new_count}")
+        return new_count
+    except Exception as e:
+        if VERBOSE: print(f"⚠️  Counter increment error: {e}, using fallback")
+        # Fallback: count existing users (slower, but safe)
+        try:
+            data = _get()
+            users = data.get("record", [])
+            return len(users) + 1
+        except Exception:
+            return 1
