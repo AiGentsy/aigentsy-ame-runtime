@@ -129,13 +129,7 @@ async def process_payment_success(payment_intent: dict) -> dict:
     # STEP 2: GET USER DATA
     # ============================================================
     
-    user = get_user(username)
-     if not user:
-         return {
-             "ok": False,
-             "error": "User not found",
-             "username": username
-         }
+    user = get_user(username)  # ⬅️ YOU'RE MISSING THIS LINE!
     
     if not user:
         print(f"❌ User not found: {username}")
