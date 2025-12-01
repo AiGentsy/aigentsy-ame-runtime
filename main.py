@@ -652,6 +652,8 @@ app = FastAPI()
 
 from ame_routes import register_ame_routes
 register_ame_routes(app)
+from aigx_engine import create_activity_endpoints
+create_activity_endpoints(app)
 
 async def auto_bid_background():
     """Runs in background forever"""
