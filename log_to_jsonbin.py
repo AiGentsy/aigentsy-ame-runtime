@@ -3,7 +3,7 @@
 AiGentsy JSONBin adapter (sync, robust, schema-aware, legacy-safe).
 
 Exports:
-- JSONBIN_URL, JSONBIN_SECRET
+- JSONBIN_URL, JSONBIN_SECRET, JSONBIN_COUNTER_URL
 - normalize_user_data(record) -> dict
 - _get()  -> raw JSONBin response (dict with 'record' or a list)
 - _put(records: list) -> True/False
@@ -12,6 +12,8 @@ Exports:
 - credit_aigx(username: str, amount: float, meta: dict = None) -> bool
 - get_user(username: str) -> dict | None
 - list_users() -> list[dict]
+- get_user_count() -> int
+- increment_user_count() -> int
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ except Exception:  # pragma: no cover
 # --------- ENV ---------
 JSONBIN_URL: str = os.getenv("JSONBIN_URL", "")
 JSONBIN_SECRET: str = os.getenv("JSONBIN_SECRET", "")
+JSONBIN_COUNTER_URL: str = os.getenv("JSONBIN_COUNTER_URL", "")
 
 # Local cache (used when JSONBin is missing/unreachable)
 _CACHE: List[Dict[str, Any]] = []
@@ -217,8 +220,8 @@ def normalize_user_data(rec: dict) -> dict:
     return r
 
 # --------- Low-level JSONBin I/O (sync) ---------
-def _headers() -> Dict[str, str]:
-    h = {"Content-Type": "application/json"}
+def _headers() -> dict:
+    h = {}
     if JSONBIN_SECRET:
         h["X-Master-Key"] = JSONBIN_SECRET
     return h
@@ -422,6 +425,74 @@ def credit_aigx(username: str, amount: float, meta: Optional[Dict[str, Any]] = N
         _CACHE = out
     return ok
 
+# --------- User Counter Functions (for Early Adopter Tiers) ---------
+def get_user_count() -> int:
+    """
+    Get current user count from dedicated counter bin.
+    Returns 0 if counter bin is not configured or unreachable.
+    """
+    if not JSONBIN_COUNTER_URL or not JSONBIN_SECRET:
+        return 0
+    
+    try:
+        h = {"X-Master-Key": JSONBIN_SECRET}
+        if _USE_HTTPX:
+            with _http.Client(timeout=10) as cx:  # type: ignore[attr-defined]
+                r = cx.get(JSONBIN_COUNTER_URL, headers=h)
+                r.raise_for_status()
+                data = r.json()
+        else:
+            r = _http.get(JSONBIN_COUNTER_URL, headers=h, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+        
+        # JSONBin wraps response in {"record": {...}}
+        record = data.get("record", {}) if isinstance(data, dict) else {}
+        return int(record.get("count", 0))
+    except Exception:
+        return 0
+
+def increment_user_count() -> int:
+    """
+    Atomically increment and return new user number.
+    This assigns the next sequential user number for early adopter tier detection.
+    
+    Returns:
+        int: New user number (1, 2, 3, etc.)
+        
+    Fallback behavior:
+        If counter bin is unreachable, falls back to counting existing users.
+        This ensures the system continues to function even if counter bin fails.
+    """
+    if not JSONBIN_COUNTER_URL or not JSONBIN_SECRET:
+        # Fallback: count existing users
+        return len(list_users()) + 1
+    
+    try:
+        # Get current count
+        current = get_user_count()
+        new_count = current + 1
+        
+        # Write new count
+        h = {
+            "X-Master-Key": JSONBIN_SECRET,
+            "Content-Type": "application/json"
+        }
+        payload = {"count": new_count}
+        
+        if _USE_HTTPX:
+            with _http.Client(timeout=10) as cx:  # type: ignore[attr-defined]
+                r = cx.put(JSONBIN_COUNTER_URL, headers=h, json=payload)
+                r.raise_for_status()
+        else:
+            r = _http.put(JSONBIN_COUNTER_URL, headers=h, json=payload, timeout=10)
+            r.raise_for_status()
+        
+        return new_count
+    except Exception:
+        # Fallback: count existing users (slower, but safe)
+        return len(list_users()) + 1
+
 def _upgrade_all_local_cache() -> None:
     global _CACHE
     _CACHE = [normalize_user_data(r) for r in _CACHE]
@@ -429,6 +500,7 @@ def _upgrade_all_local_cache() -> None:
 __all__ = [
     "JSONBIN_URL",
     "JSONBIN_SECRET",
+    "JSONBIN_COUNTER_URL",
     "normalize_user_data",
     "_get",
     "_put",
@@ -437,4 +509,6 @@ __all__ = [
     "credit_aigx",
     "get_user",
     "list_users",
+    "get_user_count",
+    "increment_user_count",
 ]
