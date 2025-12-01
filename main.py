@@ -31,7 +31,8 @@ from agent_spending import (
     get_spending_summary
 )
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.12"))  # single source of truth
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.025"))  # 2.5% transaction fee
+PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.30"))  # 30¢ fixed fee
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -39,7 +40,14 @@ from starlette.concurrency import run_in_threadpool
 from venture_builder_agent import get_agent_graph
 from log_to_jsonbin_merged import (
     log_agent_update, append_intent_ledger, credit_aigx as credit_aigx_srv,
-    log_metaloop, log_autoconnect, log_metabridge, log_metahive
+    log_metaloop, log_autoconnect, log_metabridge, log_metahive,
+    get_user_count, increment_user_count  # NEW: Counter functions
+)
+
+from aigx_config import (
+    AIGX_CONFIG,
+    determine_early_adopter_tier,
+    calculate_user_tier
 )
 # Admin normalize uses the classic module (keep both available)
 from log_to_jsonbin import _get as _bin_get, _put as _bin_put, normalize_user_data
@@ -1298,12 +1306,26 @@ async def mint_user(request: Request):
         
         # Import functions we need
         from log_to_jsonbin import get_user, log_agent_update, normalize_user_data
+        from log_to_jsonbin_merged import increment_user_count
+        from aigx_config import determine_early_adopter_tier
         
         # Check if user already exists
         existing_user = get_user(username)
         if existing_user:
             logger.info(f"✅ User already exists: {username}")
             return {"ok": True, "record": existing_user, "already_exists": True}
+        
+        # ============================================================
+        # 🎯 EARLY ADOPTER TIER DETECTION (BEFORE USER CREATION)
+        # ============================================================
+        
+        # Get sequential user number
+        user_number = increment_user_count()
+        logger.info(f"👤 User number assigned: {user_number}")
+        
+        # Determine early adopter tier
+        early_adopter = determine_early_adopter_tier(user_number)
+        logger.info(f"🎖️ Early adopter tier: {early_adopter['tier']} (multiplier: {early_adopter['multiplier']}x, bonus: {early_adopter['bonus']} AIGx)")
         
         # Create new user with complete structure
         now = datetime.now(timezone.utc).isoformat()
@@ -1331,6 +1353,19 @@ async def mint_user(request: Request):
             "customInput": custom_input,
             "meta_role": role_map.get(company_type, "CEO"),
             "role": role_map.get(company_type, "CEO"),
+            
+            # Early Adopter Fields
+            "userNumber": user_number,
+            "earlyAdopterTier": early_adopter["tier"],
+            "earlyAdopterBadge": early_adopter["badge"],
+            "aigxMultiplier": early_adopter["multiplier"],
+            "currentTier": "free",
+            "lifetimeRevenue": 0.0,
+            "aigxEarningRate": {
+                "tier_multiplier": 1.0,
+                "early_adopter_multiplier": early_adopter["multiplier"],
+                "total_multiplier": early_adopter["multiplier"]
+            },
             
             # Traits
             "traits": [company_type, "founder", "autonomous", "aigentsy"],
@@ -1523,36 +1558,56 @@ async def mint_user(request: Request):
                     logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
                     
                     # ============================================================
-                    # 💎 RECORD IN OWNERSHIP LEDGER
+                    # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
                     # ============================================================
                     
                     # Reload user to get updated data
                     saved_user = get_user(username)
                     
+                    apex_aigx = 100  # Base APEX ULTRA activation
+                    amg_aigx = 50 if amg_result.get("ok") else 0  # AMG activation bonus
+                    signup_bonus = early_adopter["bonus"]  # 10k, 5k, 1k, or 0
+                    
                     # Record APEX ULTRA activation
                     saved_user["ownership"]["ledger"].append({
                         "ts": now,
-                        "amount": 100,
+                        "amount": apex_aigx,
                         "currency": "AIGx",
                         "basis": "apex_ultra_activation",
                         "systems_activated": systems_activated,
                         "template": apex_template,
                         "automation_mode": "pro"
                     })
-                    saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + 100
+                    saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + apex_aigx
                     
-                    # Record AMG activation separately
-                    if amg_result.get("ok"):
+                    # Record AMG activation (if successful)
+                    if amg_aigx > 0:
                         saved_user["ownership"]["ledger"].append({
                             "ts": now,
-                            "amount": 50,
+                            "amount": amg_aigx,
                             "currency": "AIGx",
                             "basis": "amg_revenue_brain_activation",
                             "graph_initialized": amg_result.get("graph_initialized", False),
                             "first_cycle_complete": amg_result.get("first_cycle_complete", False),
                             "actions_queued": amg_result.get("actions_queued", 0)
                         })
-                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + 50
+                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + amg_aigx
+                    
+                    # Record early adopter signup bonus (if applicable)
+                    if signup_bonus > 0:
+                        saved_user["ownership"]["ledger"].append({
+                            "ts": now,
+                            "amount": signup_bonus,
+                            "currency": "AIGx",
+                            "basis": "early_adopter_signup_bonus",
+                            "tier": early_adopter["tier"],
+                            "badge": early_adopter["badge"],
+                            "user_number": user_number,
+                            "multiplier": early_adopter["multiplier"]
+                        })
+                        saved_user["ownership"]["aigx"] = saved_user["ownership"].get("aigx", 0) + signup_bonus
+                    
+                    total_aigx_granted = apex_aigx + amg_aigx + signup_bonus
                     
                     # Record each major system activation as equity grants
                     major_systems = ["ocl", "factoring", "ipvault", "metabridge", "jv_mesh"]
@@ -1566,7 +1621,7 @@ async def mint_user(request: Request):
                                 "note": f"Future equity unlock when {system} generates revenue"
                             })
                     
-                    logger.info(f"💎 Ownership ledger updated: +150 AIGx granted")
+                    logger.info(f"💎 Ownership ledger updated: +{total_aigx_granted} AIGx granted (APEX: {apex_aigx}, AMG: {amg_aigx}, Bonus: {signup_bonus})")
                     
                     # ============================================================
                     # 📚 RECORD IN IPVAULT
@@ -1586,7 +1641,9 @@ async def mint_user(request: Request):
                                 "amg_active": amg_result.get("ok", False),
                                 "activation_date": now,
                                 "referral": referral,
-                                "company_type": company_type
+                                "company_type": company_type,
+                                "user_number": user_number,
+                                "early_adopter_tier": early_adopter["tier"]
                             }
                         )
                         
@@ -1613,9 +1670,11 @@ async def mint_user(request: Request):
                         "company_type": company_type,
                         "systems_activated": systems_activated,
                         "amg_revenue_brain": amg_result.get("ok", False),
-                        "aigx_granted": 150,
+                        "aigx_granted": total_aigx_granted,
                         "activation_timestamp": now,
-                        "major_unlocks": major_systems
+                        "major_unlocks": major_systems,
+                        "user_number": user_number,
+                        "early_adopter_tier": early_adopter["tier"]
                     }
                     
                     logger.info(f"🧠 Memory context prepared for future conversations")
@@ -1639,10 +1698,18 @@ async def mint_user(request: Request):
                             }
                         },
                         "ownership": {
-                            "aigx_granted": 150,
+                            "aigx_granted": total_aigx_granted,
                             "total_aigx": saved_user["ownership"]["aigx"],
                             "ledger_entries": len(saved_user["ownership"]["ledger"]),
                             "equity_unlocks_pending": len(major_systems)
+                        },
+                        "early_adopter": {
+                            "user_number": user_number,
+                            "tier": early_adopter["tier"],
+                            "badge": early_adopter["badge"],
+                            "multiplier": early_adopter["multiplier"],
+                            "signup_bonus": signup_bonus,
+                            "perks": early_adopter.get("perks", [])
                         },
                         "ipvault": {
                             "asset_created": True,
