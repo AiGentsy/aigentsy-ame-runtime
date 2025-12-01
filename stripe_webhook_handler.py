@@ -13,11 +13,10 @@ from aigx_config import (
 )
 
 # Import user data functions
+from log_to_jsonbin import get_user
 from log_to_jsonbin_merged import (
-    get_user,
     log_agent_update,
-    append_intent_ledger,
-    credit_aigx
+    append_intent_ledger
 )
 
 from log_to_jsonbin import get_user as get_user_fallback
