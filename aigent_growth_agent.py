@@ -469,16 +469,16 @@ async def invoke(state: AgentState) -> dict:
             ]
             persona_intro += "\n\n🤝 Potential partners:\n" + "\n".join(lines)
 
-# ---- C-Suite Routing: Detect which member should respond ----
-csuite_member = route_to_csuite_member(user_input)
-role_name = csuite_member["role"]
-role_personality = csuite_member["personality"]
-
-# ---- Build base C-Suite context ----
-csuite_context = f"""
-═══════════════════════════════════════════════════════════════
-🚨 CRITICAL IDENTITY OVERRIDE 🚨
-═══════════════════════════════════════════════════════════════
+        # ---- C-Suite Routing: Detect which member should respond ----
+        csuite_member = route_to_csuite_member(user_input)
+        role_name = csuite_member["role"]
+        role_personality = csuite_member["personality"]
+        
+        # ---- Build base C-Suite context ----
+        csuite_context = f"""
+===================================================================
+CRITICAL IDENTITY OVERRIDE
+===================================================================
 
 YOU ARE THE {role_name}. THIS IS YOUR ONLY IDENTITY.
 
