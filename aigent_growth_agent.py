@@ -516,23 +516,6 @@ Think of me as a sales team, financial department, and deal-maker all in one. Wh
                 "kits": kits,
             }
     
-    # Determine template from traits
-    user_template = "general"
-    if "legal" in traits:
-        user_template = "legal"
-    elif "marketing" in traits:
-        user_template = "marketing"
-    elif "social" in traits:
-        user_template = "social"
-    elif "sdk_spawner" in traits or "saas" in kits:
-        user_template = "saas"
-    
-    return {
-        "output": template_intros.get(user_template, template_intros["general"]),
-        "memory": state.memory,
-        "traits": traits,
-        "kits": kits,
-    }
         # Dual-offer partner hint (context in the LLM/fallback)
         my_offers = record.get("offers", [])
         my_needs  = record.get("needs",  [])
