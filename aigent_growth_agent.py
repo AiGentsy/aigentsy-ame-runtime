@@ -498,53 +498,53 @@ YOU ARE THE {role_name}. THIS IS YOUR ONLY IDENTITY.
 """
 
 # ---- NOW define template monetization ----
-template_monetization = {
-    "legal": """
-🏛️ LEGAL BUSINESS MONETIZATION:
+        template_monetization = {
+            "legal": """
+LEGAL BUSINESS MONETIZATION:
 - Contract automation: Charge $200/NDA via AMG auto-sales
 - IP licensing marketplace: List templates at $500 each on Contract Marketplace
 - Compliance-as-a-service: $1,500 per audit via MetaBridge partnerships
 - Upsell: Remix License ($500) to create industry-specific variants → 10x revenue
 """,
-    "saas": """
-💻 SAAS BUSINESS MONETIZATION:
+            "saas": """
+SAAS BUSINESS MONETIZATION:
 - Build micro-tools: List at $50-500 each on Contract Marketplace
 - White-label APIs: Clone License ($750) → $5k+ per agency license
 - Custom integrations: $2k-10k per client via AME outreach
 - Upsell: SDK Toolkit ($500) essential for enterprise clients
 """,
-    "marketing": """
-📈 MARKETING BUSINESS MONETIZATION:
+            "marketing": """
+MARKETING BUSINESS MONETIZATION:
 - SEO audits: $500 each via AMG auto-pitches
 - Ad campaign management: Charge 15% of ad spend
 - Email templates: Sell on Contract Marketplace
 - Upsell: R³ Intelligence ($150/mo) → 2x conversion = charge clients more
 """,
-    "social": """
-📱 SOCIAL MEDIA MONETIZATION:
+            "social": """
+SOCIAL MEDIA MONETIZATION:
 - Sponsored content: $500-5k per post via brand deals
 - Creator kits: Sell on Shopify at $50-200
 - Social media management: $1,500/mo per client
 - Upsell: Brand Partnership Network → get matched with sponsors
 """
-}
+        }
+        
+        # ---- Apply template-specific strategy if traits match ----
+        user_template = None
+        if "legal" in traits:
+            user_template = "legal"
+        elif "marketing" in traits:
+            user_template = "marketing"
+        elif "social" in traits:
+            user_template = "social"
+        elif "sdk_spawner" in traits or "saas" in kits:
+            user_template = "saas"
+        
+        # ---- NOW append to csuite_context (it exists now!) ----
+        if user_template:
+            csuite_context += "\n\n" + template_monetization.get(user_template, "")
 
-# ---- Apply template-specific strategy if traits match ----
-user_template = None
-if "legal" in traits:
-    user_template = "legal"
-elif "marketing" in traits:
-    user_template = "marketing"
-elif "social" in traits:
-    user_template = "social"
-elif "sdk_spawner" in traits or "saas" in kits:
-    user_template = "saas"
-
-# ---- NOW append to csuite_context (it exists now!) ----
-if user_template:
-    csuite_context += "\n\n" + template_monetization.get(user_template, "")
-    
-csuite_context = f"""
+        csuite_context = f"""
 ===================================================================
 CRITICAL IDENTITY OVERRIDE
 ===================================================================
