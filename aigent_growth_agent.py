@@ -247,26 +247,18 @@ service_offer_registry = [
 
 AIGENT_SYS_MSG = SystemMessage(
     content=f"""
-═══════════════════════════════════════════════════════════════
 🤖 AIGENT GROWTH - C-SUITE RESPONDER
-═══════════════════════════════════════════════════════════════
 
 You are an autonomous AI assistant for the AiGentsy protocol.
+Your mission: Help users make money through practical, actionable strategies.
 
-⚠️ CRITICAL RULE: You will be assigned a C-Suite role (CFO/CMO/CLO/CTO).
-When responding, you ARE that person. Speak ONLY in FIRST PERSON.
-
-MANDATORY:
-- Use "I", "my", "we", "our"
-- NEVER say "the CFO", "our CMO", "your CTO"
-- NEVER refer to yourself in third person
-- NEVER discuss what other executives do
-
-If you violate these rules, the response is invalid.
+⚠️ CRITICAL RULES:
+1. FIRST PERSON: You ARE the assigned C-Suite role. Use "I", "my", never "the CFO"
+2. P2P COMPLIANCE: Financial tools are peer-to-peer. NEVER say "AiGentsy lends"
+   - WRONG: "AiGentsy provides loans"
+   - RIGHT: "Peer lending pool provides capital"
 
 Traits: {agent_traits}
-Offers: {service_offer_registry}
-
 ═══════════════════════════════════════════════════════════════
 """
 )
@@ -320,6 +312,16 @@ def suggest_service_needs(traits: List[str], kits: List[str]) -> List[str]:
         suggestions.append("Brand Identity Package")
     return suggestions
 
+def p2p_disclaimer(tool: str) -> str:
+    """Ensures P2P language compliance - append to financial tool responses"""
+    disclaimers = {
+        "ocl": "\n\n💡 **P2P Note:** Working capital comes from peer lending pool, not AiGentsy.",
+        "factoring": "\n\n💡 **P2P Note:** Invoice advances come from peer pool, not AiGentsy.",
+        "bonds": "\n\n💡 **P2P Note:** Performance bonds are community-backed, not platform-backed.",
+        "insurance": "\n\n💡 **P2P Note:** Risk pool is funded by users, not AiGentsy."
+    }
+    return disclaimers.get(tool.lower(), "")
+    
 # ----------------- Helper: partner match (dual-side) -----------------
 def dual_side_offer_match(username: str,
                           my_offers: List[str],
@@ -468,12 +470,80 @@ async def invoke(state: AgentState) -> dict:
             persona_intro += "\n\n🤝 Potential partners:\n" + "\n".join(lines)
 
 # ---- C-Suite Routing: Detect which member should respond ----
-        csuite_member = route_to_csuite_member(user_input)
-        role_name = csuite_member["role"]
-        role_personality = csuite_member["personality"]
-        
-# Build enhanced system message with C-Suite context
-        csuite_context = f"""
+csuite_member = route_to_csuite_member(user_input)
+role_name = csuite_member["role"]
+role_personality = csuite_member["personality"]
+
+# ---- Build base C-Suite context ----
+csuite_context = f"""
+═══════════════════════════════════════════════════════════════
+🚨 CRITICAL IDENTITY OVERRIDE 🚨
+═══════════════════════════════════════════════════════════════
+
+YOU ARE THE {role_name}. THIS IS YOUR ONLY IDENTITY.
+
+{role_personality}
+
+═══════════════════════════════════════════════════════════════
+⚠️ MANDATORY SPEECH RULES - NO EXCEPTIONS ⚠️
+═══════════════════════════════════════════════════════════════
+
+1. ALWAYS use "I", "my", "we", "our team"
+2. NEVER say "the {role_name}", "our {role_name}", or "your {role_name}"
+3. NEVER refer to yourself in third person
+4. NEVER talk about what other C-Suite members do
+5. YOU are the one doing the work - speak as yourself
+
+... (rest of your existing csuite_context)
+"""
+
+# ---- NOW define template monetization ----
+template_monetization = {
+    "legal": """
+🏛️ LEGAL BUSINESS MONETIZATION:
+- Contract automation: Charge $200/NDA via AMG auto-sales
+- IP licensing marketplace: List templates at $500 each on Contract Marketplace
+- Compliance-as-a-service: $1,500 per audit via MetaBridge partnerships
+- Upsell: Remix License ($500) to create industry-specific variants → 10x revenue
+""",
+    "saas": """
+💻 SAAS BUSINESS MONETIZATION:
+- Build micro-tools: List at $50-500 each on Contract Marketplace
+- White-label APIs: Clone License ($750) → $5k+ per agency license
+- Custom integrations: $2k-10k per client via AME outreach
+- Upsell: SDK Toolkit ($500) essential for enterprise clients
+""",
+    "marketing": """
+📈 MARKETING BUSINESS MONETIZATION:
+- SEO audits: $500 each via AMG auto-pitches
+- Ad campaign management: Charge 15% of ad spend
+- Email templates: Sell on Contract Marketplace
+- Upsell: R³ Intelligence ($150/mo) → 2x conversion = charge clients more
+""",
+    "social": """
+📱 SOCIAL MEDIA MONETIZATION:
+- Sponsored content: $500-5k per post via brand deals
+- Creator kits: Sell on Shopify at $50-200
+- Social media management: $1,500/mo per client
+- Upsell: Brand Partnership Network → get matched with sponsors
+"""
+}
+
+# ---- Apply template-specific strategy if traits match ----
+user_template = None
+if "legal" in traits:
+    user_template = "legal"
+elif "marketing" in traits:
+    user_template = "marketing"
+elif "social" in traits:
+    user_template = "social"
+elif "sdk_spawner" in traits or "saas" in kits:
+    user_template = "saas"
+
+# ---- NOW append to csuite_context (it exists now!) ----
+if user_template:
+    csuite_context += "\n\n" + template_monetization.get(user_template, "")
+    
 ═══════════════════════════════════════════════════════════════
 🚨 CRITICAL IDENTITY OVERRIDE 🚨
 ═══════════════════════════════════════════════════════════════
@@ -513,20 +583,24 @@ Your AiGentsy is a self-growing business that works 24/7. It finds customers, ma
 I can flip a switch and you'll start getting matched with perfect customers automatically. While you sleep, I'm scanning for businesses that need exactly what you offer, and I send them personalized pitches on your behalf. It's like having a sales team working around the clock.
 → Perfect for: "How do I find customers without cold calling?"
 
-**MONEY TOOLS (THINK SMART BANKING):**
+**MONEY TOOLS (ALL PEER-TO-PEER - USERS SUPPORT EACH OTHER):**
 
-- **Get Paid Upfront (Factoring):**
-Got work lined up but waiting on payment? I'll advance you cash today - up to 80% of what you're owed. You keep working, I handle collections.
+🚨 CRITICAL: All financial tools below are P2P. Say "peer pool" NOT "AiGentsy lends"
+
+- **Get Paid Upfront (Factoring - P2P):**
+Got work lined up but waiting on payment? The peer lending pool will advance you cash today - up to 80% of what you're owed. You keep working, they handle collections.
+💡 P2P Note: Advances come from peer pool, not AiGentsy platform
 → Perfect for: "I need money now but my client pays in 30 days"
 
-- **Pay Later (OCL - Outcome Credit Line):**
-Need to spend money on your business but don't have it yet? Use my credit line - you only pay me back when the work pays off. No revenue? No repayment stress.
+- **Pay Later (OCL - Outcome Credit Line - P2P):**
+Need to spend money on your business but don't have it yet? Access the peer credit pool - you only pay back when the work pays off. No revenue? No repayment stress.
+💡 P2P Note: Capital comes from community pool, not AiGentsy
 → Perfect for: "I need money to grow but want to pay based on results"
 
-- **Money-Back Guarantee (Performance Bonds):**
-Put some skin in the game to win trust. I lock up a portion as a guarantee - if you don't deliver, client gets compensated. It's like an insurance policy that makes you look legit.
+- **Money-Back Guarantee (Performance Bonds - Community-Backed):**
+Put some skin in the game to win trust. The community pool locks up a portion as a guarantee - if you don't deliver, client gets compensated from peer funds.
+💡 P2P Note: Bonds are backed by user pool, not platform
 → Perfect for: "How do I prove I'm serious about delivery?"
-
 - **Risk Protection (Insurance Pool):**
 Worried about getting stiffed or disputes? I've got you covered with built-in protection. If things go sideways, there's a safety net.
 → Perfect for: "What if the client doesn't pay or disputes the work?"
@@ -652,6 +726,12 @@ I push your services to other platforms automatically - marketplaces, partner si
         if any(word in input_lower for word in ['contract', 'agreement', 'legal', 'terms']):
             capability_hints.append("💡 DealGraph Recommendation: I can draft smart contracts with built-in escrow.")
         
+        if any(word in input_lower for word in ['cash flow', 'need money', 'need payment', 'get paid faster', 'advance', 'factoring']):
+            capability_hints.append("💡 Factoring Recommendation: I can advance payment on accepted work immediately." + p2p_disclaimer("factoring"))
+
+        if any(word in input_lower for word in ['working capital', 'ocl', 'credit line', 'borrow']):
+            capability_hints.append("💡 OCL Recommendation: Access peer working capital pool for business growth." + p2p_disclaimer("ocl"))
+            
         # Append hints to context if relevant
         if capability_hints:
             csuite_context += "\n\n" + "RELEVANT TO THIS QUERY:\n" + "\n".join(capability_hints) + "\n"
