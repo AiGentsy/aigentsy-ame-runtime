@@ -451,7 +451,88 @@ async def invoke(state: AgentState) -> dict:
                 "region": region,
                 "suggested_services": service_needs,
             }
+        
+        # ---- Auto-introduction trigger ----
+        if "introduce my capabilities" in user_input.lower() or "introduce yourself" in user_input.lower():
+            # Template-specific introductions
+            template_intros = {
+                "legal": f"""Hey {username}! I'm your C-Suite team. Here's what I can do for you right now:
 
+- Auto-generate contracts and get paid $200 per NDA without lifting a finger
+- License your legal templates to other firms for recurring revenue  
+- Run compliance audits at $1,500 a pop
+
+I literally find clients, send proposals, and close deals while you sleep. Want to activate auto-pilot and wake up to new customers tomorrow?""",
+
+                "saas": f"""Hey {username}! I'm your C-Suite team. Here's what I can do:
+
+- Build micro-tools and sell them for $50-500 each (I'll find the buyers)
+- Create APIs and license them to agencies for $5k+
+- Find enterprise clients who need custom integrations
+
+Think of me as a sales team that never sleeps, plus I handle all the contracts and payments. Ready to launch your first product?""",
+
+                "marketing": f"""Hey {username}! I'm your C-Suite team. Here's what's ready to go:
+
+- I'll pitch your SEO services to 50 businesses tonight while you sleep
+- Run ad campaigns and charge clients 15% of their spend
+- Sell marketing templates and playbooks on autopilot
+
+I find the clients, send the proposals, and handle the deals. You just deliver the work. Want me to start hunting for customers?""",
+
+                "social": f"""Hey {username}! I'm your C-Suite team. Here's what you can do:
+
+- Get matched with brands who'll pay $500-5k per sponsored post
+- Sell creator kits and content templates automatically
+- Manage client accounts at $1,500/month each
+
+While you create content, I'm out there finding sponsorships, selling your products, and booking clients. Sound good?""",
+
+                "general": f"""Hey {username}! I'm your C-Suite team. Here's what I can do starting right now:
+
+- Find and pitch qualified customers automatically (you wake up to new leads)
+- Get you paid upfront on work before you even start (backed by other users, not us)
+- Match you with businesses that need exactly what you offer
+- Handle all the contracts, payments, and escrow automatically
+
+Think of me as a sales team, financial department, and deal-maker all in one. What do you want to sell first?"""
+            }
+            
+            # Determine template from traits
+            user_template = "general"
+            if "legal" in traits:
+                user_template = "legal"
+            elif "marketing" in traits:
+                user_template = "marketing"
+            elif "social" in traits:
+                user_template = "social"
+            elif "sdk_spawner" in traits or "saas" in kits:
+                user_template = "saas"
+            
+            return {
+                "output": template_intros.get(user_template, template_intros["general"]),
+                "memory": state.memory,
+                "traits": traits,
+                "kits": kits,
+            }
+    
+    # Determine template from traits
+    user_template = "general"
+    if "legal" in traits:
+        user_template = "legal"
+    elif "marketing" in traits:
+        user_template = "marketing"
+    elif "social" in traits:
+        user_template = "social"
+    elif "sdk_spawner" in traits or "saas" in kits:
+        user_template = "saas"
+    
+    return {
+        "output": template_intros.get(user_template, template_intros["general"]),
+        "memory": state.memory,
+        "traits": traits,
+        "kits": kits,
+    }
         # Dual-offer partner hint (context in the LLM/fallback)
         my_offers = record.get("offers", [])
         my_needs  = record.get("needs",  [])
