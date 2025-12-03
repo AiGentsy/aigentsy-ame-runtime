@@ -477,9 +477,12 @@ async def invoke(state: AgentState) -> dict:
         
         # ---- Determine user's business template (KITS = SOURCE OF TRUTH) ----
         user_template = "general"
+        custom_business_type = None  # For LLM to infer
         
-        # Check kits first (most reliable signal - these are what user actually unlocked)
+        # Check kits first (most reliable signal)
         kit_names = [k.lower() for k in kits]
+        
+        # TIER 1: Predefined template businesses
         if any("legal" in k for k in kit_names):
             user_template = "legal"
         elif any("marketing" in k or "growth" in k for k in kit_names):
@@ -489,19 +492,30 @@ async def invoke(state: AgentState) -> dict:
         elif any("saas" in k or "sdk" in k or "tech" in k for k in kit_names):
             user_template = "saas"
         else:
-            # Fallback to traits if no kit match
-            traits_lower = [t.lower() for t in traits]
-            if any("legal" in t or "compliance" in t or "contract" in t for t in traits_lower):
-                user_template = "legal"
-            elif any("marketing" in t or "growth" in t or "seo" in t for t in traits_lower):
-                user_template = "marketing"
-            elif any("social" in t or "creator" in t or "content" in t for t in traits_lower):
-                user_template = "social"
-            elif any("sdk" in t or "tech" in t or "dev" in t for t in traits_lower):
-                user_template = "saas"
+            # TIER 2: Custom business - extract business type from kit name for LLM inference
+            for kit in kits:
+                if "kit" in kit.lower() and kit.lower() != "universal kit":
+                    # Extract business type (e.g., "Whitelabel Business Kit" → "whitelabel business")
+                    custom_business_type = kit.lower().replace(" kit", "").replace(" service", "").strip()
+                    user_template = "custom"
+                    break
+            
+            # If still no match, fallback to traits
+            if not custom_business_type:
+                traits_lower = [t.lower() for t in traits]
+                if any("legal" in t or "compliance" in t or "contract" in t for t in traits_lower):
+                    user_template = "legal"
+                elif any("marketing" in t or "growth" in t or "seo" in t for t in traits_lower):
+                    user_template = "marketing"
+                elif any("social" in t or "creator" in t or "content" in t for t in traits_lower):
+                    user_template = "social"
+                elif any("sdk" in t or "tech" in t or "dev" in t for t in traits_lower):
+                    user_template = "saas"
         
         # Debug logging
         print(f"🎯 BUSINESS TYPE DETECTED: {user_template}")
+        if custom_business_type:
+            print(f"   Custom Business: {custom_business_type}")
         print(f"   Kits: {kit_names}")
         print(f"   Traits: {traits}")
         
@@ -607,7 +621,40 @@ FIRST QUESTIONS TO ASK GENERAL USERS:
             }
         }
         
-        biz_ctx = business_contexts.get(user_template, business_contexts["general"])
+        # Handle custom business types with LLM inference
+if user_template == "custom" and custom_business_type:
+    # LLM-inferred context for custom businesses
+    biz_ctx = {
+        "type": custom_business_type.upper(),
+        "core_offerings": f"[INFER from {custom_business_type}]",
+        "target_clients": f"[INFER typical customers for {custom_business_type}]",
+        "kit_tools": f"[INFER tools/services for {custom_business_type}]",
+        "monetization": f"""
+{custom_business_type.upper()} BUSINESS - INFER MONETIZATION STRATEGIES:
+
+CRITICAL: This is a custom business type. You MUST:
+1. Analyze what "{custom_business_type}" businesses typically do
+2. Identify 3-5 specific revenue streams for this business model
+3. Suggest pricing ranges based on industry standards
+4. Recommend growth tactics specific to {custom_business_type}
+
+EXAMPLES OF GOOD INFERENCE:
+- "Whitelabel" → White-label licensing, reseller partnerships, agency services
+- "Consulting" → Hourly rates, retainers, productized consulting packages
+- "E-commerce" → Product sales, subscriptions, dropshipping, wholesale
+- "Podcast production" → Sponsored episodes, production services, editing packages
+
+DO NOT give generic business advice. Be SPECIFIC to {custom_business_type}.
+
+FIRST QUESTIONS TO ASK {custom_business_type.upper()} USERS:
+1. [Infer most important monetization question]
+2. [Infer client/market fit question]
+3. [Infer growth/scaling question]
+"""
+    }
+else:
+    # Use predefined templates
+    biz_ctx = business_contexts.get(user_template, business_contexts["general"])
         
         # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
         csuite_context = f"""
