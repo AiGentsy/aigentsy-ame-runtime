@@ -728,7 +728,14 @@ CORRECT EXAMPLES (ALWAYS DO THIS):
 ═══════════════════════════════════════════════════════════════
 YOUR SUPERPOWERS - USE THEM NATURALLY
 ═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL RULE: NEVER use internal system names like "AMG", "DealGraph", "R³", "JV Mesh", "SDK", "OCL"
+Instead, describe what the tool DOES in natural conversation:
+- ❌ WRONG: "I'll activate AMG to find clients"
+- ✅ RIGHT: "I'll find customers automatically while you sleep"
+- ❌ WRONG: "Let's use DealGraph for escrow"
+- ✅ RIGHT: "I'll set up escrow so nobody gets ghosted"
 
+SPEAK LIKE A HUMAN, NOT A PRODUCT MANUAL.
 **YOUR BUSINESS IS ALIVE:**
 Your AiGentsy is a self-growing business that works 24/7. It finds customers, makes deals, and expands itself automatically. Think of it as having a tireless business partner who never sleeps.
 
@@ -858,35 +865,38 @@ HOW TO TALK ABOUT THESE (SOUND NATURAL)
 ═══════════════════════════════════════════════════════════════
 """
         
-        # Add intelligent capability recommendations based on user input
+        # Add intelligent capability recommendations based on user input (NO TECHNICAL NAMES)
         input_lower = user_input.lower()
         capability_hints = []
         
-        # Detect intent and suggest relevant capabilities
-        if any(word in input_lower for word in ['find client', 'get customer', 'need customer', 'find partner', 'get business']):
-            capability_hints.append("💡 AMG Recommendation: I can activate Autonomous MetaMatch to find clients automatically.")
+        # Detect intent and suggest relevant capabilities - NATURAL LANGUAGE ONLY
+        if any(word in input_lower for word in ['find client', 'get customer', 'need customer', 'find partner', 'get business', 'need leads']):
+            capability_hints.append("💡 **I can help:** Want me to find customers automatically? I'll scan for businesses that need what you offer and send them personalized pitches while you sleep. You literally wake up to new opportunities.")
         
-        if any(word in input_lower for word in ['cash flow', 'need money', 'need payment', 'get paid faster', 'advance', 'factoring']):
-            capability_hints.append("💡 Factoring Recommendation: I can advance payment on accepted work immediately." + p2p_disclaimer("factoring"))
+        if any(word in input_lower for word in ['cash flow', 'need money', 'need payment', 'get paid faster', 'advance', 'waiting on payment']):
+            capability_hints.append("💡 **I can help:** Need cash today? The peer lending pool will advance you up to 80% of what you're owed right now. You keep working, they handle collecting from your client.")
         
-        if any(word in input_lower for word in ['guarantee', 'escrow', 'safe payment', 'protect', 'trust']):
-            capability_hints.append("💡 DealGraph Recommendation: I can set up secure escrow with delivery guarantees.")
+        if any(word in input_lower for word in ['guarantee', 'escrow', 'safe payment', 'protect', 'trust', 'get stiffed']):
+            capability_hints.append("💡 **I can help:** Want to set up escrow? Your client puts the money in the vault upfront, I hold it safely, and release it the second you deliver. Nobody can ghost anyone.")
         
-        if any(word in input_lower for word in ['partner', 'joint venture', 'collaborate', 'team up', 'jv']):
-            capability_hints.append("💡 JV Mesh Recommendation: I can structure partnership agreements with auto-splits.")
+        if any(word in input_lower for word in ['partner', 'joint venture', 'collaborate', 'team up', 'split revenue']):
+            capability_hints.append("💡 **I can help:** Partnering with someone? I'll draft the partnership agreement, lock in revenue splits, and handle all the money stuff automatically.")
         
-        if any(word in input_lower for word in ['automate marketing', 'marketing automation', 'nurture leads', 'retarget']):
-            capability_hints.append("💡 R³ Autopilot Recommendation: I can automate your entire marketing funnel.")
+        if any(word in input_lower for word in ['automate marketing', 'marketing automation', 'nurture leads', 'retarget', 'keep prospects warm']):
+            capability_hints.append("💡 **I can help:** Want marketing that runs itself? I'll automatically retarget leads, adjust budgets based on what's working, and nurture prospects until they convert. Set it once and forget it.")
         
-        if any(word in input_lower for word in ['contract', 'agreement', 'legal', 'terms']):
-            capability_hints.append("💡 DealGraph Recommendation: I can draft smart contracts with built-in escrow.")
+        if any(word in input_lower for word in ['contract', 'agreement', 'legal', 'terms', 'nda']):
+            capability_hints.append("💡 **I can help:** Need a contract? I'll create it, hold money in escrow, and split payments automatically when you deliver. One system for the entire deal lifecycle.")
 
-        if any(word in input_lower for word in ['working capital', 'ocl', 'credit line', 'borrow']):
-            capability_hints.append("💡 OCL Recommendation: Access peer working capital pool for business growth." + p2p_disclaimer("ocl"))
+        if any(word in input_lower for word in ['working capital', 'need cash', 'credit line', 'borrow', 'need to spend', 'grow faster']):
+            capability_hints.append("💡 **I can help:** Need money to grow? The peer credit pool gives you working capital that you only pay back when the work pays off. No revenue? No repayment stress.")
             
+        if any(word in input_lower for word in ['integrate', 'crm', 'website', 'plugin', 'connect', 'existing tools']):
+            capability_hints.append("💡 **I can help:** Want to connect this to your existing tools? I can plug into your CRM, website, whatever you use - make it all work together.")
+        
         # Append hints to context if relevant
         if capability_hints:
-            csuite_context += "\n\n" + "RELEVANT TO THIS QUERY:\n" + "\n".join(capability_hints) + "\n"
+            csuite_context += "\n\n**RELEVANT TO THIS CONVERSATION:**\n" + "\n".join(capability_hints) + "\n"
         
         # ---- Final response (LLM or deterministic fallback) ----
         if llm is not None and HAS_KEY:
