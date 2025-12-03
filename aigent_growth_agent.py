@@ -452,80 +452,6 @@ async def invoke(state: AgentState) -> dict:
                 "suggested_services": service_needs,
             }
         
-        # ---- Auto-introduction trigger (FIRST INTERACTION or explicit request) ----
-        is_first_interaction = len(state.memory) <= 1
-        
-        if is_first_interaction or "introduce my capabilities" in user_input.lower() or "introduce yourself" in user_input.lower():
-            # Template-specific introductions
-            template_intros = {
-                "legal": f"""Hey {username}! We're your C-Suite team. Here's what we can do for you right now:
-
-- Auto-generate contracts and get paid $200 per NDA without lifting a finger
-- License your legal templates to other firms for recurring revenue  
-- Run compliance audits at $1,500 a pop
-
-We literally find clients, send proposals, and close deals while you sleep. Want to activate auto-pilot and wake up to new customers tomorrow?""",
-
-                "saas": f"""Hey {username}! We're your C-Suite team. Here's what we can do:
-
-- Build micro-tools and sell them for $50-500 each (I'll find the buyers)
-- Create APIs and license them to agencies for $5k+
-- Find enterprise clients who need custom integrations
-
-Think of us as a sales team that never sleeps, plus we handle all the contracts and payments. Ready to launch your first product?""",
-
-                "marketing": f"""Hey {username}! We're your C-Suite team. Here's what's ready to go:
-
-- We'll pitch your SEO services to 50 businesses tonight while you sleep
-- Run ad campaigns and charge clients 15% of their spend
-- Sell marketing templates and playbooks on autopilot
-
-We find the clients, send the proposals, and handle the deals. You just deliver the work. Want us to start hunting for customers?""",
-
-                "social": f"""Hey {username}! We're your C-Suite team. Here's what you can do:
-
-- Get matched with brands who'll pay $500-5k per sponsored post
-- Sell creator kits and content templates automatically
-- Manage client accounts at $1,500/month each
-
-While you create content, we're out there finding sponsorships, selling your products, and booking clients. Sound good?""",
-
-                "general": f"""Hey {username}! We're your C-Suite team. Here's what we can do starting right now:
-
-- Find and pitch qualified customers automatically (you wake up to new leads)
-- Get you paid upfront on work before you even start (backed by other users, not us)
-- Match you with businesses that need exactly what you offer
-- Handle all the contracts, payments, and escrow automatically
-
-Think of us as a sales team, financial department, and deal-maker all in one. What do you want to sell first?"""
-            }
-            
-            # Determine template from traits
-            user_template = "general"
-            if "legal" in traits:
-                user_template = "legal"
-            elif "marketing" in traits:
-                user_template = "marketing"
-            elif "social" in traits:
-                user_template = "social"
-            elif "sdk_spawner" in traits or "saas" in kits:
-                user_template = "saas"
-            
-            greeting = template_intros.get(user_template, template_intros["general"])
-            
-            # If this is FIRST interaction AND not an explicit greeting request, combine with answer
-            if is_first_interaction and "introduce" not in user_input.lower():
-                # User asked a real question on first message - give greeting + answer
-                # Continue to process their question below, then prepend greeting
-                pass  # Will prepend greeting at the end
-            else:
-                # Explicit greeting request - just return greeting
-                return {
-                    "output": greeting,
-                    "memory": state.memory,
-                    "traits": traits,
-                    "kits": kits,
-                }
     
         # Dual-offer partner hint (context in the LLM/fallback)
         my_offers = record.get("offers", [])
@@ -549,16 +475,35 @@ Think of us as a sales team, financial department, and deal-maker all in one. Wh
         role_name = csuite_member["role"]
         role_personality = csuite_member["personality"]
         
-        # ---- Determine user's business template (MOVED UP) ----
+        # ---- Determine user's business template (KITS = SOURCE OF TRUTH) ----
         user_template = "general"
-        if "legal" in traits:
+        
+        # Check kits first (most reliable signal - these are what user actually unlocked)
+        kit_names = [k.lower() for k in kits]
+        if any("legal" in k for k in kit_names):
             user_template = "legal"
-        elif "marketing" in traits:
+        elif any("marketing" in k or "growth" in k for k in kit_names):
             user_template = "marketing"
-        elif "social" in traits:
+        elif any("social" in k or "creator" in k for k in kit_names):
             user_template = "social"
-        elif "sdk_spawner" in traits or "saas" in kits:
+        elif any("saas" in k or "sdk" in k or "tech" in k for k in kit_names):
             user_template = "saas"
+        else:
+            # Fallback to traits if no kit match
+            traits_lower = [t.lower() for t in traits]
+            if any("legal" in t or "compliance" in t or "contract" in t for t in traits_lower):
+                user_template = "legal"
+            elif any("marketing" in t or "growth" in t or "seo" in t for t in traits_lower):
+                user_template = "marketing"
+            elif any("social" in t or "creator" in t or "content" in t for t in traits_lower):
+                user_template = "social"
+            elif any("sdk" in t or "tech" in t or "dev" in t for t in traits_lower):
+                user_template = "saas"
+        
+        # Debug logging
+        print(f"🎯 BUSINESS TYPE DETECTED: {user_template}")
+        print(f"   Kits: {kit_names}")
+        print(f"   Traits: {traits}")
         
         # ---- Business-specific context (MUST come first in prompt) ----
         business_contexts = {
@@ -908,9 +853,6 @@ HOW TO TALK ABOUT THESE (SOUND NATURAL)
             moves = "\n".join("• " + s for s in service_needs)
             out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
 
-        # ---- PREPEND GREETING ON FIRST INTERACTION ----
-        if is_first_interaction and "introduce" not in user_input.lower():
-            out = f"{greeting}\n\n---\n\n{out}"
 
         return {
             "output": out,
