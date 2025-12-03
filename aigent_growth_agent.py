@@ -452,8 +452,10 @@ async def invoke(state: AgentState) -> dict:
                 "suggested_services": service_needs,
             }
         
-        # ---- Auto-introduction trigger ----
-        if "introduce my capabilities" in user_input.lower() or "introduce yourself" in user_input.lower():
+        # ---- Auto-introduction trigger (FIRST INTERACTION or explicit request) ----
+        is_first_interaction = len(state.memory) <= 1
+        
+        if is_first_interaction or "introduce my capabilities" in user_input.lower() or "introduce yourself" in user_input.lower():
             # Template-specific introductions
             template_intros = {
                 "legal": f"""Hey {username}! We're your C-Suite team. Here's what we can do for you right now:
@@ -486,7 +488,7 @@ We find the clients, send the proposals, and handle the deals. You just deliver 
 - Sell creator kits and content templates automatically
 - Manage client accounts at $1,500/month each
 
-While you create content, We're out there finding sponsorships, selling your products, and booking clients. Sound good?""",
+While you create content, we're out there finding sponsorships, selling your products, and booking clients. Sound good?""",
 
                 "general": f"""Hey {username}! We're your C-Suite team. Here's what we can do starting right now:
 
@@ -509,12 +511,21 @@ Think of us as a sales team, financial department, and deal-maker all in one. Wh
             elif "sdk_spawner" in traits or "saas" in kits:
                 user_template = "saas"
             
-            return {
-                "output": template_intros.get(user_template, template_intros["general"]),
-                "memory": state.memory,
-                "traits": traits,
-                "kits": kits,
-            }
+            greeting = template_intros.get(user_template, template_intros["general"])
+            
+            # If this is FIRST interaction AND not an explicit greeting request, combine with answer
+            if is_first_interaction and "introduce" not in user_input.lower():
+                # User asked a real question on first message - give greeting + answer
+                # Continue to process their question below, then prepend greeting
+                pass  # Will prepend greeting at the end
+            else:
+                # Explicit greeting request - just return greeting
+                return {
+                    "output": greeting,
+                    "memory": state.memory,
+                    "traits": traits,
+                    "kits": kits,
+                }
     
         # Dual-offer partner hint (context in the LLM/fallback)
         my_offers = record.get("offers", [])
@@ -896,6 +907,10 @@ HOW TO TALK ABOUT THESE (SOUND NATURAL)
         else:
             moves = "\n".join("• " + s for s in service_needs)
             out = f"**{role_name}:** " + persona_intro + ("\n\n📊 Next best moves:\n" + moves if moves else "")
+
+        # ---- PREPEND GREETING ON FIRST INTERACTION ----
+        if is_first_interaction and "introduce" not in user_input.lower():
+            out = f"{greeting}\n\n---\n\n{out}"
 
         return {
             "output": out,
