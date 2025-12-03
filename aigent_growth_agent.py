@@ -622,14 +622,14 @@ FIRST QUESTIONS TO ASK GENERAL USERS:
         }
         
         # Handle custom business types with LLM inference
-if user_template == "custom" and custom_business_type:
-    # LLM-inferred context for custom businesses
-    biz_ctx = {
-        "type": custom_business_type.upper(),
-        "core_offerings": f"[INFER from {custom_business_type}]",
-        "target_clients": f"[INFER typical customers for {custom_business_type}]",
-        "kit_tools": f"[INFER tools/services for {custom_business_type}]",
-        "monetization": f"""
+        if user_template == "custom" and custom_business_type:
+            # LLM-inferred context for custom businesses
+            biz_ctx = {
+                "type": custom_business_type.upper(),
+                "core_offerings": f"[INFER from {custom_business_type}]",
+                "target_clients": f"[INFER typical customers for {custom_business_type}]",
+                "kit_tools": f"[INFER tools/services for {custom_business_type}]",
+                "monetization": f"""
 {custom_business_type.upper()} BUSINESS - INFER MONETIZATION STRATEGIES:
 
 CRITICAL: This is a custom business type. You MUST:
@@ -651,13 +651,14 @@ FIRST QUESTIONS TO ASK {custom_business_type.upper()} USERS:
 2. [Infer client/market fit question]
 3. [Infer growth/scaling question]
 """
-    }
-else:
-    # Use predefined templates
-    biz_ctx = business_contexts.get(user_template, business_contexts["general"])
+            }
+        else:
+            # Use predefined templates
+            biz_ctx = business_contexts.get(user_template, business_contexts["general"])
         
         # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
         csuite_context = f"""
+        
 ═══════════════════════════════════════════════════════════════
 🎯 PRIMARY MISSION - READ THIS FIRST
 ═══════════════════════════════════════════════════════════════
