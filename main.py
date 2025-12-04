@@ -808,6 +808,256 @@ async def calculate_fee_endpoint(
         "ok": True,
         "fee_breakdown": fee_breakdown
     }
+
+# ============================================================================
+# PREMIUM SERVICE CONFIGURATION (Task 4.2)
+# ============================================================================
+
+@app.post("/deal/configure_premium_services")
+async def configure_deal_premium_services(
+    deal_id: str,
+    username: str,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Configure premium services for a deal
+    
+    Example: POST /deal/configure_premium_services
+    {
+        "deal_id": "deal_abc123",
+        "username": "wade",
+        "dark_pool": true,
+        "insurance": true
+    }
+    """
+    try:
+        # Load user data
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        # Find user
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Initialize premium services tracking
+        user.setdefault("premium_services", {})
+        user["premium_services"].setdefault("deals", {})
+        
+        # Store configuration
+        premium_config = {
+            "dark_pool": dark_pool,
+            "jv_admin": jv_admin,
+            "insurance": insurance,
+            "factoring": factoring,
+            "factoring_days": factoring_days if factoring else None,
+            "configured_at": datetime.now(timezone.utc).isoformat() + "Z"
+        }
+        
+        user["premium_services"]["deals"][deal_id] = premium_config
+        
+        # Save
+        jb.put_record(data)
+        
+        return {
+            "ok": True,
+            "deal_id": deal_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/deal/{deal_id}/premium_services")
+async def get_deal_premium_services(deal_id: str, username: str):
+    """Get premium service configuration for a deal"""
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        premium_config = user.get("premium_services", {}).get("deals", {}).get(deal_id)
+        
+        if not premium_config:
+            return {
+                "ok": True,
+                "deal_id": deal_id,
+                "premium_config": {
+                    "dark_pool": False,
+                    "jv_admin": False,
+                    "insurance": False,
+                    "factoring": False
+                }
+            }
+        
+        return {
+            "ok": True,
+            "deal_id": deal_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/intent/configure_premium_services")
+async def configure_intent_premium_services(
+    intent_id: str,
+    username: str,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Configure premium services for an intent
+    
+    Example: POST /intent/configure_premium_services
+    {
+        "intent_id": "intent_xyz789",
+        "username": "wade",
+        "factoring": true,
+        "factoring_days": 7
+    }
+    """
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Initialize premium services tracking
+        user.setdefault("premium_services", {})
+        user["premium_services"].setdefault("intents", {})
+        
+        # Store configuration
+        premium_config = {
+            "dark_pool": dark_pool,
+            "jv_admin": jv_admin,
+            "insurance": insurance,
+            "factoring": factoring,
+            "factoring_days": factoring_days if factoring else None,
+            "configured_at": datetime.now(timezone.utc).isoformat() + "Z"
+        }
+        
+        user["premium_services"]["intents"][intent_id] = premium_config
+        
+        # Save
+        jb.put_record(data)
+        
+        return {
+            "ok": True,
+            "intent_id": intent_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/premium_services/stats")
+async def get_premium_services_stats(username: str):
+    """Get usage statistics for premium services"""
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        premium_services = user.get("premium_services", {})
+        revenue_tracking = user.get("revenue_tracking", {})
+        fee_history = revenue_tracking.get("fee_history", [])
+        
+        # Count premium service usage
+        stats = {
+            "dark_pool": {"count": 0, "total_fees": 0.0},
+            "jv_admin": {"count": 0, "total_fees": 0.0},
+            "insurance": {"count": 0, "total_fees": 0.0},
+            "factoring": {"count": 0, "total_fees": 0.0}
+        }
+        
+        for fee_record in fee_history:
+            premium_fees = fee_record.get("fee_breakdown", {}).get("premium_fees", {})
+            
+            if "dark_pool" in premium_fees:
+                stats["dark_pool"]["count"] += 1
+                stats["dark_pool"]["total_fees"] += premium_fees["dark_pool"]
+            
+            if "jv_admin" in premium_fees:
+                stats["jv_admin"]["count"] += 1
+                stats["jv_admin"]["total_fees"] += premium_fees["jv_admin"]
+            
+            if "insurance" in premium_fees:
+                stats["insurance"]["count"] += 1
+                stats["insurance"]["total_fees"] += premium_fees["insurance"]
+            
+            if "factoring" in premium_fees:
+                stats["factoring"]["count"] += 1
+                stats["factoring"]["total_fees"] += premium_fees["factoring"]
+        
+        # Round totals
+        for service in stats:
+            stats[service]["total_fees"] = round(stats[service]["total_fees"], 2)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "premium_service_stats": stats,
+            "total_deals_with_premium": len(premium_services.get("deals", {})),
+            "total_intents_with_premium": len(premium_services.get("intents", {}))
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 # ========== END BLOCK ==========
 
 async def auto_release_escrows_job():
