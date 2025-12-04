@@ -136,7 +136,7 @@ def calculate_full_fee_with_premium(
     }
 
 
-# ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION + PREMIUM SERVICES ============
+# ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION + PREMIUM SERVICES + MULTIPLIERS ============
 
 async def ingest_shopify_order(
     username: str, 
@@ -213,8 +213,31 @@ async def ingest_shopify_order(
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "shopify", "order_id": order_id})
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": "shopify",
+            "order_id": order_id,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": "shopify",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -240,7 +263,9 @@ async def ingest_shopify_order(
                 "premium_fees": fee_calc["premium_total"],
                 "reinvest": reinvest_amount,
                 "user": user_net
-            }
+            },
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -328,11 +353,34 @@ async def ingest_affiliate_commission(
             "ts": now_iso()
         })
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": source, "product_id": product_id})
-
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": source,
+            "product_id": product_id,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": f"{source}_affiliate",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -353,7 +401,9 @@ async def ingest_affiliate_commission(
             "ok": True,
             "revenue": revenue_usd,
             "platform": platform,
-            "user_net": user_net
+            "user_net": user_net,
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -437,11 +487,34 @@ async def ingest_content_cpm(
             "ts": now_iso()
         })
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": platform, "views": views})
-
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": platform,
+            "views": views,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": f"{platform}_cpm",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -463,7 +536,9 @@ async def ingest_content_cpm(
             "revenue": amount_usd,
             "platform": platform_normalized,
             "views": views,
-            "user_net": user_net
+            "user_net": user_net,
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -539,11 +614,34 @@ async def ingest_service_payment(
             "ts": now_iso()
         })
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "service", "invoice_id": invoice_id})
-
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": "service",
+            "invoice_id": invoice_id,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": "service_payment",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -564,7 +662,9 @@ async def ingest_service_payment(
             "ok": True,
             "amount": amount_usd,
             "platform": platform,
-            "user_net": user_net
+            "user_net": user_net,
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -640,9 +740,6 @@ async def ingest_ame_conversion(
             "ts": now_iso()
         })
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "ame", "pitch_id": pitch_id})
-        
         # Save updated user
         log_agent_update(user)
         
@@ -651,6 +748,32 @@ async def ingest_ame_conversion(
         
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": "ame",
+            "pitch_id": pitch_id,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": "ame_conversion",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -670,7 +793,9 @@ async def ingest_ame_conversion(
             "revenue": amount_usd,
             "platform": platform,
             "user_net": user_net,
-            "total_revenue": user["revenue"]["total"]
+            "total_revenue": user["revenue"]["total"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
         
     except Exception as e:
@@ -744,9 +869,6 @@ async def ingest_intent_settlement(
             "ts": now_iso()
         })
         
-        # Credit AIGx
-        credit_aigx(username, user_net, {"source": "intent_exchange", "intent_id": intent_id})
-        
         # Save updated user
         log_agent_update(user)
         
@@ -755,6 +877,32 @@ async def ingest_intent_settlement(
         
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
+        
+        # Apply early adopter multiplier
+        from log_to_jsonbin import apply_early_adopter_multiplier
+        multiplier_result = apply_early_adopter_multiplier(username, user_net)
+
+        # Credit AIGx with multiplier
+        credit_aigx(username, multiplier_result["total_amount"], {
+            "source": "intent_exchange",
+            "intent_id": intent_id,
+            "base_amount": multiplier_result["base_amount"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus_amount": multiplier_result["bonus_amount"],
+            "tier": multiplier_result.get("tier", "standard")
+        })
+
+        # Log multiplier bonus if applicable
+        if multiplier_result["bonus_amount"] > 0:
+            append_intent_ledger(username, {
+                "event": "early_adopter_bonus",
+                "source": "intent_exchange",
+                "base_amount": multiplier_result["base_amount"],
+                "bonus_amount": multiplier_result["bonus_amount"],
+                "multiplier": multiplier_result["multiplier"],
+                "tier": multiplier_result["tier"],
+                "ts": now_iso()
+            })
         
         # Track PAID outcome with full fee breakdown
         on_event({
@@ -773,11 +921,12 @@ async def ingest_intent_settlement(
             "revenue": amount_usd,
             "platform": platform,
             "user_net": user_net,
-            "total_revenue": user["revenue"]["total"]
+            "total_revenue": user["revenue"]["total"],
+            "multiplier": multiplier_result["multiplier"],
+            "bonus": multiplier_result["bonus_amount"]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
 
 # ============ AUTO-REINVESTMENT ============
 
