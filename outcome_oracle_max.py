@@ -350,6 +350,52 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
                     "features": unlocked,
                     "paid_count": user.get("outcomeFunnel", {}).get("paid", 0)
                 })
+
+    # NEW: Track revenue by source and transaction fees (Task 4.1)
+            source = evt.get("source", "unknown")
+            rt = user.setdefault("revenue_tracking", {
+                "total_revenue_usd": 0.0,
+                "revenue_by_source": {},
+                "total_fees_paid": 0.0,
+                "fee_history": [],
+                "last_payment_date": None
+            })
+            
+            # Track revenue by source
+            rt["total_revenue_usd"] = round(rt["total_revenue_usd"] + usd, 2)
+            rt["revenue_by_source"].setdefault(source, 0.0)
+            rt["revenue_by_source"][source] = round(rt["revenue_by_source"][source] + usd, 2)
+            rt["last_payment_date"] = _now()
+            
+            # Track transaction fees if provided
+            fee_breakdown = evt.get("fee_breakdown")
+            if fee_breakdown:
+                total_fee = float(fee_breakdown.get("total_fee", 0))
+                rt["total_fees_paid"] = round(rt["total_fees_paid"] + total_fee, 2)
+                
+                # Store detailed fee history
+                fee_record = {
+                    "timestamp": _now(),
+                    "deal_id": evt.get("deal_id"),
+                    "intent_id": evt.get("intent_id"),
+                    "amount_usd": usd,
+                    "fee_breakdown": {
+                        "base_fee": fee_breakdown.get("base_fee"),
+                        "premium_fees": fee_breakdown.get("premium_fees", {}),
+                        "premium_total": fee_breakdown.get("premium_total", 0),
+                        "total_fee": total_fee,
+                        "effective_rate": fee_breakdown.get("effective_rate", 0)
+                    },
+                    "source": source
+                }
+                
+                rt["fee_history"].append(fee_record)
+                
+                # Keep only last 100 fee records to avoid bloat
+                if len(rt["fee_history"]) > 100:
+                    rt["fee_history"] = rt["fee_history"][-100:]
+                
+                print(f"💰 Fee tracked: ${total_fee:.2f} for {username} ({source})")
         
         if evt.get("bundle_id"):
             _record_bundle(user, evt["bundle_id"], usd)
