@@ -157,7 +157,6 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        
         # Calculate splits with new fee structure (2.8% + 28¢)
         base_fee = calculate_base_fee(revenue_usd)
         platform_cut = base_fee["total"]
@@ -165,7 +164,7 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(revenue_usd, f"{source}_affiliate")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -259,7 +258,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(amount_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(amount_usd, f"{platform}_cpm")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -283,7 +282,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "source": "content_cpm",
             "platform": platform_normalized,
             "platformName": platform,
-            "amount": revenue_usd,
+            "amount": amount_usd,
             "netToUser": user_net,
             "views": views,
             "cpmRate": cpm_rate,
@@ -298,7 +297,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "event": f"{platform}_cpm",
             "views": views,
             "cpm_rate": cpm_rate,
-            "revenue_usd": revenue_usd,
+            "revenue_usd": amount_usd,
             "platform": platform_normalized,
             "platform_fee": platform_cut,
             "reinvestment": reinvest_amount,
@@ -328,7 +327,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         
         return {
             "ok": True,
-            "revenue": revenue_usd,
+            "revenue": amount_usd,
             "platform": platform_normalized,
             "views": views,
             "user_net": user_net
@@ -345,13 +344,13 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             return {"ok": False, "error": "user_not_found"}
         
         # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
+        base_fee = calculate_base_fee(amount_usd)
         platform_cut = base_fee["total"]
-        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
-        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(amount_usd, "service_payment")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -433,13 +432,13 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             return {"ok": False, "error": "user_not_found"}
         
         # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
+        base_fee = calculate_base_fee(amount_usd)
         platform_cut = base_fee["total"]
-        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
-        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(amount_usd, "ame_conversion")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -526,13 +525,13 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             return {"ok": False, "error": "user_not_found"}
         
         # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
+        base_fee = calculate_base_fee(amount_usd)
         platform_cut = base_fee["total"]
-        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
-        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(amount_usd, "intent_exchange")
         
         # Update earnings
         user.setdefault("yield", {})
