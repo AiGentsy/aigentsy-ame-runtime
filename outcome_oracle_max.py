@@ -331,11 +331,7 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
     # PAID: Payment captured (tracked below with revenue events)
     
     # ========== Revenue-affecting events ==========
-    if kind in ("ATTRIBUTED", "PAID"):
-        usd = float(evt.get("value_usd") or evt.get("amount_usd") or 0.0)
-        credit_aigx(user, usd, f"{kind}:{evt.get('provider') or evt.get('channel') or 'unknown'}")
-        
-        if kind == "PAID":
+    if kind == "PAID":
             autostake(user, usd)
             
             # NEW: Track PAID stage in funnel
@@ -350,8 +346,8 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
                     "features": unlocked,
                     "paid_count": user.get("outcomeFunnel", {}).get("paid", 0)
                 })
-
-    # NEW: Track revenue by source and transaction fees (Task 4.1)
+            
+            # NEW: Track revenue by source and transaction fees (Task 4.1)
             source = evt.get("source", "unknown")
             rt = user.setdefault("revenue_tracking", {
                 "total_revenue_usd": 0.0,
