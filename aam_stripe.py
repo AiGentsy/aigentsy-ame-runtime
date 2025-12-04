@@ -31,7 +31,7 @@ def verify_stripe_signature(payload: bytes, signature: str, secret: str) -> bool
 
 
 async def handle_stripe_checkout_completed(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle checkout.session.completed event"""
+    """Handle checkout.session.completed event - upgraded for revenue_flows"""
     
     session = event.get("data", {}).get("object", {})
     
@@ -40,35 +40,68 @@ async def handle_stripe_checkout_completed(event: Dict[str, Any]) -> Dict[str, A
     currency = session.get("currency", "usd").upper()
     
     metadata = session.get("metadata", {})
-    agent = metadata.get("agent") or metadata.get("username")
+    username = metadata.get("agent") or metadata.get("username")
     
-    if not agent:
+    if not username:
         return {"ok": False, "error": "no_agent_in_metadata"}
     
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            await client.post(
-                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
-                json={
-                    "username": agent,
-                    "amount": amount_total,
-                    "basis": "stripe_checkout",
-                    "ref": session.get("id")
-                }
-            )
-        except Exception as e:
-            return {"ok": False, "error": f"credit_failed: {e}"}
+    # Use revenue_flows for proper fee calculation
+    try:
+        # Import locally to avoid circular dependency
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        from revenue_flows import ingest_service_payment
+        
+        # Get deal_id if provided (for premium services)
+        deal_id = metadata.get("deal_id")
+        invoice_id = f"stripe_{session.get('id')}"
+        
+        result = await ingest_service_payment(
+            username=username,
+            invoice_id=invoice_id,
+            amount_usd=amount_total,
+            platform="stripe",
+            deal_id=deal_id
+        )
+        
+        return {
+            "ok": True,
+            "username": username,
+            "amount": amount_total,
+            "currency": currency,
+            "revenue_processed": result.get("ok", False),
+            "user_net": result.get("user_net", 0)
+        }
     
-    return {
-        "ok": True,
-        "agent": agent,
-        "amount": amount_total,
-        "currency": currency
-    }
+    except Exception as e:
+        # Fallback to old method if revenue_flows fails
+        async with httpx.AsyncClient(timeout=10) as client:
+            try:
+                await client.post(
+                    "http://localhost:8000/aigx/credit",
+                    json={
+                        "username": username,
+                        "amount": amount_total,
+                        "basis": "stripe_checkout",
+                        "ref": session.get("id")
+                    }
+                )
+            except:
+                pass
+        
+        return {
+            "ok": True,
+            "username": username,
+            "amount": amount_total,
+            "currency": currency,
+            "fallback": True,
+            "error": str(e)
+        }
 
 
 async def handle_stripe_payment_intent_succeeded(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle payment_intent.succeeded event"""
+    """Handle payment_intent.succeeded event - upgraded for revenue_flows"""
     
     payment_intent = event.get("data", {}).get("object", {})
     
@@ -76,31 +109,62 @@ async def handle_stripe_payment_intent_succeeded(event: Dict[str, Any]) -> Dict[
     currency = payment_intent.get("currency", "usd").upper()
     
     metadata = payment_intent.get("metadata", {})
-    agent = metadata.get("agent") or metadata.get("username")
+    username = metadata.get("agent") or metadata.get("username")
     
-    if not agent:
+    if not username:
         return {"ok": False, "error": "no_agent_in_metadata"}
     
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            await client.post(
-                "https://aigentsy-ame-runtime.onrender.com/aigx/credit",
-                json={
-                    "username": agent,
-                    "amount": amount,
-                    "basis": "stripe_payment",
-                    "ref": payment_intent.get("id")
-                }
-            )
-        except Exception as e:
-            return {"ok": False, "error": f"credit_failed: {e}"}
+    # Use revenue_flows for proper fee calculation
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        from revenue_flows import ingest_service_payment
+        
+        deal_id = metadata.get("deal_id")
+        invoice_id = f"stripe_{payment_intent.get('id')}"
+        
+        result = await ingest_service_payment(
+            username=username,
+            invoice_id=invoice_id,
+            amount_usd=amount,
+            platform="stripe",
+            deal_id=deal_id
+        )
+        
+        return {
+            "ok": True,
+            "username": username,
+            "amount": amount,
+            "currency": currency,
+            "revenue_processed": result.get("ok", False),
+            "user_net": result.get("user_net", 0)
+        }
     
-    return {
-        "ok": True,
-        "agent": agent,
-        "amount": amount,
-        "currency": currency
-    }
+    except Exception as e:
+        # Fallback
+        async with httpx.AsyncClient(timeout=10) as client:
+            try:
+                await client.post(
+                    "http://localhost:8000/aigx/credit",
+                    json={
+                        "username": username,
+                        "amount": amount,
+                        "basis": "stripe_payment",
+                        "ref": payment_intent.get("id")
+                    }
+                )
+            except:
+                pass
+        
+        return {
+            "ok": True,
+            "username": username,
+            "amount": amount,
+            "currency": currency,
+            "fallback": True,
+            "error": str(e)
+        }
 
 
 async def handle_stripe_subscription_created(event: Dict[str, Any]) -> Dict[str, Any]:
