@@ -1058,6 +1058,120 @@ async def get_premium_services_stats(username: str):
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/reputation/{username}")
+async def get_reputation(username: str):
+    """Get user's reputation score and unlocked features"""
+    try:
+        from log_to_jsonbin import get_user, calculate_reputation_score
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate current reputation
+        rep_score = calculate_reputation_score(user)
+        
+        # Get unlocked features
+        runtime_flags = user.get("runtimeFlags", {})
+        unlocked_features = [k for k, v in runtime_flags.items() if v]
+        
+        # Calculate next unlock
+        next_unlock = None
+        rep_thresholds = [
+            (10, "basic_features"),
+            (25, "r3_autopilot"),
+            (50, "advanced_analytics"),
+            (75, "template_publishing"),
+            (100, "metahive_premium"),
+            (150, "white_label")
+        ]
+        
+        for threshold, feature in rep_thresholds:
+            if rep_score < threshold:
+                next_unlock = {
+                    "feature": feature,
+                    "required_reputation": threshold,
+                    "points_needed": threshold - rep_score
+                }
+                break
+        
+        return {
+            "ok": True,
+            "username": username,
+            "reputation_score": rep_score,
+            "unlocked_features": unlocked_features,
+            "next_unlock": next_unlock,
+            "reputation_breakdown": {
+                "deals_completed": user.get("stats", {}).get("deals_completed", 0),
+                "positive_reviews": user.get("stats", {}).get("positive_reviews", 0),
+                "revenue_generated": user.get("revenue", {}).get("total", 0),
+                "community_bonus": user.get("stats", {}).get("community_bonus", 0)
+            }
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/refresh")
+async def refresh_reputation(username: str):
+    """Recalculate reputation and check for new unlocks"""
+    try:
+        from log_to_jsonbin import check_reputation_unlocks
+        
+        result = check_reputation_unlocks(username)
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/deal_completed")
+async def mark_deal_completed(username: str, deal_id: str):
+    """Mark deal as completed and update reputation"""
+    try:
+        from log_to_jsonbin import increment_deal_count
+        
+        result = increment_deal_count(username)
+        
+        if result.get("ok"):
+            return {
+                "ok": True,
+                "deal_id": deal_id,
+                "reputation_score": result.get("reputation_score"),
+                "newly_unlocked": result.get("newly_unlocked", [])
+            }
+        
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/add_review")
+async def add_review(username: str, is_positive: bool, reviewer: str = None):
+    """Add review and update reputation"""
+    try:
+        if not is_positive:
+            return {"ok": True, "message": "negative_review_not_counted"}
+        
+        from log_to_jsonbin import add_positive_review
+        
+        result = add_positive_review(username)
+        
+        if result.get("ok"):
+            return {
+                "ok": True,
+                "reputation_score": result.get("reputation_score"),
+                "newly_unlocked": result.get("newly_unlocked", [])
+            }
+        
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+        
 # ========== END BLOCK ==========
 
 async def auto_release_escrows_job():
