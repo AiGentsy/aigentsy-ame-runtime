@@ -31,8 +31,8 @@ from agent_spending import (
     get_spending_summary
 )
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.025"))  # 2.5% transaction fee
-PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.30"))  # 30¢ fixed fee
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
+PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.28"))  # 28¢ fixed fee
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
