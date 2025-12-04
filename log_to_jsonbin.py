@@ -497,6 +497,167 @@ def _upgrade_all_local_cache() -> None:
     global _CACHE
     _CACHE = [normalize_user_data(r) for r in _CACHE]
 
+# --------- Reputation System (Reputation Gates for Feature Unlocks) ---------
+def calculate_reputation_score(user: dict) -> int:
+    """Calculate user's reputation score from multiple signals"""
+    score = 0
+    
+    # Base reputation (everyone starts at 10)
+    score += 10
+    
+    # Successful deals (+5 each)
+    deals_completed = user.get("stats", {}).get("deals_completed", 0)
+    score += deals_completed * 5
+    
+    # Positive feedback (+3 each)
+    positive_reviews = user.get("stats", {}).get("positive_reviews", 0)
+    score += positive_reviews * 3
+    
+    # Revenue generated (+1 per $100)
+    total_revenue = user.get("revenue", {}).get("total", 0)
+    score += int(total_revenue / 100)
+    
+    # Time on platform (+2 per month)
+    created_at = user.get("consent", {}).get("timestamp")
+    if created_at:
+        try:
+            created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            months = (now - created).days / 30
+            score += int(months) * 2
+        except:
+            pass
+    
+    # Community contributions (manual bonus)
+    community_bonus = user.get("stats", {}).get("community_bonus", 0)
+    score += community_bonus
+    
+    return max(score, 10)  # Minimum reputation is 10
+
+
+def check_reputation_unlocks(username: str) -> dict:
+    """Check and update reputation-based feature unlocks"""
+    global _CACHE
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate current reputation
+        rep_score = calculate_reputation_score(user)
+        
+        # Store reputation in user object
+        user.setdefault("reputation", {})
+        user["reputation"]["score"] = rep_score
+        user["reputation"]["last_calculated"] = _now_iso()
+        
+        # Initialize runtime flags
+        user.setdefault("runtimeFlags", {})
+        
+        # Track what unlocked
+        newly_unlocked = []
+        
+        # Rep 10: Basic features (always available)
+        if rep_score >= 10:
+            if not user["runtimeFlags"].get("basicFeaturesEnabled"):
+                user["runtimeFlags"]["basicFeaturesEnabled"] = True
+                newly_unlocked.append("basic_features")
+        
+        # Rep 25: R³ Autopilot
+        if rep_score >= 25:
+            if not user["runtimeFlags"].get("r3AutopilotEnabled"):
+                user["runtimeFlags"]["r3AutopilotEnabled"] = True
+                newly_unlocked.append("r3_autopilot")
+        
+        # Rep 50: Advanced Analytics
+        if rep_score >= 50:
+            if not user["runtimeFlags"].get("advancedAnalyticsEnabled"):
+                user["runtimeFlags"]["advancedAnalyticsEnabled"] = True
+                newly_unlocked.append("advanced_analytics")
+        
+        # Rep 75: Template Publishing
+        if rep_score >= 75:
+            if not user["runtimeFlags"].get("templatePublishingEnabled"):
+                user["runtimeFlags"]["templatePublishingEnabled"] = True
+                newly_unlocked.append("template_publishing")
+        
+        # Rep 100: MetaHive Premium
+        if rep_score >= 100:
+            if not user["runtimeFlags"].get("metaHivePremium"):
+                user["runtimeFlags"]["metaHivePremium"] = True
+                newly_unlocked.append("metahive_premium")
+        
+        # Rep 150: White Label
+        if rep_score >= 150:
+            if not user["runtimeFlags"].get("whiteLabelEnabled"):
+                user["runtimeFlags"]["whiteLabelEnabled"] = True
+                newly_unlocked.append("white_label")
+        
+        # Save if unlocks occurred
+        if newly_unlocked or user.get("reputation", {}).get("score") != rep_score:
+            log_agent_update(user)
+            
+            # Log unlock event if new unlocks
+            if newly_unlocked:
+                append_intent_ledger(username, {
+                    "event": "reputation_unlocks",
+                    "reputation_score": rep_score,
+                    "unlocked": newly_unlocked,
+                    "ts": _now_iso()
+                })
+                
+                print(f"🎖️ {username} unlocked at Rep {rep_score}: {', '.join(newly_unlocked)}")
+        
+        return {
+            "ok": True,
+            "reputation_score": rep_score,
+            "newly_unlocked": newly_unlocked,
+            "total_unlocks": len([k for k, v in user["runtimeFlags"].items() if v])
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def increment_deal_count(username: str):
+    """Increment completed deals and recalculate reputation"""
+    global _CACHE
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        user.setdefault("stats", {})
+        user["stats"]["deals_completed"] = user["stats"].get("deals_completed", 0) + 1
+        
+        log_agent_update(user)
+        
+        # Recalculate reputation
+        return check_reputation_unlocks(username)
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def add_positive_review(username: str):
+    """Add positive review and recalculate reputation"""
+    global _CACHE
+    try:
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        user.setdefault("stats", {})
+        user["stats"]["positive_reviews"] = user["stats"].get("positive_reviews", 0) + 1
+        
+        log_agent_update(user)
+        
+        # Recalculate reputation
+        return check_reputation_unlocks(username)
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 __all__ = [
     "JSONBIN_URL",
     "JSONBIN_SECRET",
@@ -511,4 +672,8 @@ __all__ = [
     "list_users",
     "get_user_count",
     "increment_user_count",
+    "calculate_reputation_score",
+    "check_reputation_unlocks",
+    "increment_deal_count",
+    "add_positive_review",
 ]
