@@ -54,10 +54,14 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(revenue_usd * PLATFORM_FEE, 2)
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
         reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")
         
         # Update user earnings
         user.setdefault("yield", {})
@@ -217,9 +221,9 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "shopify",
+            "source": f"{source}_affiliate",
             "platform": platform,
-            "order_id": order_id,
+            "product_id": product_id,
             "fee_breakdown": fee_breakdown
         })
         
@@ -239,7 +243,7 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
 async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate: float):
     """Ingest YouTube/TikTok/Instagram CPM revenue with platform tracking"""
     try:
-        revenue_usd = round((views / 1000) * cpm_rate, 2)
+        amount_usd = round((views / 1000) * cpm_rate, 2)
         
         # Normalize platform name
         platform_normalized = platform.lower().replace(" ", "_")
@@ -249,13 +253,13 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             return {"ok": False, "error": "user_not_found"}
         
         # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
+        base_fee = calculate_base_fee(amount_usd)
         platform_cut = base_fee["total"]
-        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
-        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
+        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
         
         # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
+        fee_breakdown = create_fee_breakdown(amount_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -313,9 +317,9 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "shopify",
-            "platform": platform,
-            "order_id": order_id,
+            "source": f"{platform}_cpm",
+            "platform": platform_normalized,
+            "views": views,
             "fee_breakdown": fee_breakdown
         })
         
@@ -402,9 +406,9 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "shopify",
+            "source": "service_payment",
             "platform": platform,
-            "order_id": order_id,
+            "invoice_id": invoice_id,
             "fee_breakdown": fee_breakdown
         })
         
@@ -495,9 +499,10 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "shopify",
+            "source": "ame_conversion",
             "platform": platform,
-            "order_id": order_id,
+            "pitch_id": pitch_id,
+            "recipient": recipient,
             "fee_breakdown": fee_breakdown
         })
         
@@ -587,9 +592,10 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "shopify",
+            "source": "intent_exchange",
             "platform": platform,
-            "order_id": order_id,
+            "intent_id": intent_id,
+            "buyer": buyer,
             "fee_breakdown": fee_breakdown
         })
         
