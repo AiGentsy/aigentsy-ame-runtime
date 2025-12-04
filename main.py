@@ -1171,6 +1171,109 @@ async def add_review(username: str, is_positive: bool, reviewer: str = None):
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+# ========== EARLY ADOPTER TIERS ==========
+
+@app.get("/user/{username}/tier")
+async def get_user_tier(username: str):
+    """Get user's early adopter tier info"""
+    try:
+        from log_to_jsonbin import get_user, get_early_adopter_tier
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        user_number = user.get("user_number")
+        
+        if not user_number:
+            return {
+                "ok": True,
+                "has_tier": False,
+                "message": "User number not assigned yet"
+            }
+        
+        tier_info = get_early_adopter_tier(user_number)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "user_number": user_number,
+            "tier": tier_info,
+            "assigned_at": user.get("early_adopter", {}).get("assigned_at")
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/user/{username}/assign_tier")
+async def assign_user_tier(username: str):
+    """Manually trigger tier assignment (usually happens on signup)"""
+    try:
+        from log_to_jsonbin import assign_user_number_on_signup
+        
+        user_number = assign_user_number_on_signup(username)
+        
+        if user_number == 0:
+            return {"ok": False, "error": "assignment_failed"}
+        
+        from log_to_jsonbin import get_early_adopter_tier
+        tier_info = get_early_adopter_tier(user_number)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "user_number": user_number,
+            "tier": tier_info
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/tiers/leaderboard")
+async def get_tier_leaderboard(limit: int = 100):
+    """Get early adopter leaderboard (first N users)"""
+    try:
+        from log_to_jsonbin import list_users, get_early_adopter_tier
+        
+        users = list_users()
+        
+        # Filter users with numbers
+        users_with_numbers = [
+            u for u in users 
+            if u.get("user_number")
+        ]
+        
+        # Sort by user number
+        users_with_numbers.sort(key=lambda u: u.get("user_number", 999999))
+        
+        # Take top N
+        top_users = users_with_numbers[:limit]
+        
+        leaderboard = []
+        for u in top_users:
+            user_number = u.get("user_number")
+            tier_info = get_early_adopter_tier(user_number)
+            
+            leaderboard.append({
+                "rank": user_number,
+                "username": u.get("consent", {}).get("username") or u.get("username"),
+                "tier": tier_info["name"],
+                "badge": tier_info["badge"],
+                "multiplier": tier_info["multiplier"],
+                "total_revenue": u.get("revenue", {}).get("total", 0)
+            })
+        
+        return {
+            "ok": True,
+            "leaderboard": leaderboard,
+            "total_users": len(users_with_numbers)
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
         
 # ========== END BLOCK ==========
 
