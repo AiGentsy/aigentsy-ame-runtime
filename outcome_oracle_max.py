@@ -331,7 +331,11 @@ def on_event(evt: Dict[str, Any]) -> Dict[str, Any]:
     # PAID: Payment captured (tracked below with revenue events)
     
     # ========== Revenue-affecting events ==========
-    if kind == "PAID":
+    if kind in ("ATTRIBUTED", "PAID"):
+        usd = float(evt.get("value_usd") or evt.get("amount_usd") or 0.0)
+        credit_aigx(user, usd, f"{kind}:{evt.get('provider') or evt.get('channel') or 'unknown'}")
+        
+        if kind == "PAID":
             autostake(user, usd)
             
             # NEW: Track PAID stage in funnel
@@ -477,6 +481,7 @@ def manually_trigger_unlock_check(username: str) -> Dict[str, Any]:
         "unlocked": unlocked,
         "funnel": user.get("outcomeFunnel", {})
     }
+
 # ---------- NEW: TASK 8 - Unlock Notifications ----------
 def _send_unlock_notification(username: str, feature: str, user: Dict[str, Any]) -> None:
     """Send notification to user about unlocked feature"""
