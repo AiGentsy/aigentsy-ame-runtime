@@ -45,6 +45,111 @@ def create_fee_breakdown(amount_usd: float, source: str) -> Dict[str, Any]:
         "effective_rate": round((base_fee["total"] / amount_usd * 100) if amount_usd > 0 else 0, 2)
     }
 
+async def get_premium_config(username: str, deal_id: str = None, intent_id: str = None) -> Dict[str, bool]:
+    """Get premium service configuration for a deal or intent"""
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {
+                "dark_pool": False,
+                "jv_admin": False,
+                "insurance": False,
+                "factoring": False,
+                "factoring_days": 30
+            }
+        
+        premium_services = user.get("premium_services", {})
+        
+        if deal_id:
+            config = premium_services.get("deals", {}).get(deal_id)
+        elif intent_id:
+            config = premium_services.get("intents", {}).get(intent_id)
+        else:
+            config = None
+        
+        if not config:
+            return {
+                "dark_pool": False,
+                "jv_admin": False,
+                "insurance": False,
+                "factoring": False,
+                "factoring_days": 30
+            }
+        
+        return config
+        
+    except Exception as e:
+        print(f"Failed to get premium config: {e}")
+        return {
+            "dark_pool": False,
+            "jv_admin": False,
+            "insurance": False,
+            "factoring": False,
+            "factoring_days": 30
+        }
+
+
+def calculate_full_fee_with_premium(
+    amount_usd: float,
+    premium_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Calculate full fee including premium services"""
+    
+    # Base fee
+    base_fee = calculate_base_fee(amount_usd)
+    
+    # Premium service fees
+    premium_fees = {}
+    premium_total = 0.0
+    
+    if premium_config.get("dark_pool"):
+        dark_pool_fee = amount_usd * 0.05  # 5%
+        premium_fees["dark_pool"] = round(dark_pool_fee, 2)
+        premium_total += dark_pool_fee
+    
+    if premium_config.get("jv_admin"):
+        jv_fee = amount_usd * 0.02  # 2%
+        premium_fees["jv_admin"] = round(jv_fee, 2)
+        premium_total += jv_fee
+    
+    if premium_config.get("insurance"):
+        # 2% for deals under $1k, 1% for $1k+
+        insurance_rate = 0.02 if amount_usd < 1000 else 0.01
+        insurance_fee = amount_usd * insurance_rate
+        premium_fees["insurance"] = round(insurance_fee, 2)
+        premium_total += insurance_fee
+    
+    if premium_config.get("factoring"):
+        # 7 days = 3%, 14 days = 2%, 30+ days = 1%
+        factoring_days = premium_config.get("factoring_days", 30)
+        if factoring_days <= 7:
+            factoring_rate = 0.03
+        elif factoring_days <= 14:
+            factoring_rate = 0.02
+        else:
+            factoring_rate = 0.01
+        
+        factoring_fee = amount_usd * factoring_rate
+        premium_fees["factoring"] = round(factoring_fee, 2)
+        premium_fees["factoring_days"] = factoring_days
+        premium_total += factoring_fee
+    
+    # Total calculation
+    total_fee = base_fee["total"] + premium_total
+    net_to_user = amount_usd - total_fee
+    effective_rate = (total_fee / amount_usd * 100) if amount_usd > 0 else 0
+    
+    return {
+        "amount_usd": round(amount_usd, 2),
+        "base_fee": base_fee,
+        "premium_fees": premium_fees,
+        "premium_total": round(premium_total, 2),
+        "total_fee": round(total_fee, 2),
+        "net_to_user": round(net_to_user, 2),
+        "effective_rate": round(effective_rate, 2)
+    }
 # ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION ============
 
 async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float, cid: str = None, platform: str = "shopify"):
