@@ -6,8 +6,9 @@ from log_to_jsonbin import get_user, log_agent_update, credit_aigx, append_inten
 from outcome_oracle_max import on_event
 from uuid import uuid4
 
-# Platform fee (5%)
-PLATFORM_FEE = 0.05
+# Platform fee (2.8% + 28¢)
+PLATFORM_FEE = 0.028
+PLATFORM_FEE_FIXED = 0.28
 # Auto-reinvestment rate (20%)
 REINVEST_RATE = 0.20
 # Clone royalty rate (30%)
@@ -17,6 +18,32 @@ STAKING_RETURN = 0.10
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+def calculate_base_fee(amount_usd: float) -> Dict[str, Any]:
+    """Calculate base platform fee (2.8% + 28¢)"""
+    percent_fee = round(amount_usd * PLATFORM_FEE, 2)
+    fixed_fee = PLATFORM_FEE_FIXED
+    total_fee = percent_fee + fixed_fee
+    
+    return {
+        "percent_fee": percent_fee,
+        "fixed_fee": fixed_fee,
+        "total": total_fee
+    }
+
+
+def create_fee_breakdown(amount_usd: float, source: str) -> Dict[str, Any]:
+    """Create fee breakdown for outcome tracking"""
+    base_fee = calculate_base_fee(amount_usd)
+    
+    return {
+        "amount_usd": amount_usd,
+        "base_fee": base_fee,
+        "premium_fees": {},
+        "premium_total": 0.0,
+        "total_fee": base_fee["total"],
+        "effective_rate": round((base_fee["total"] / amount_usd * 100) if amount_usd > 0 else 0, 2)
+    }
 
 # ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION ============
 
@@ -88,7 +115,8 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "amount_usd": user_net,
             "source": "shopify",
             "platform": platform,
-            "order_id": order_id
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         # Trigger R³ reinvestment
@@ -125,10 +153,15 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(revenue_usd * PLATFORM_FEE, 2)
+        
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
         reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -184,9 +217,10 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": f"{source}_affiliate",
+            "source": "shopify",
             "platform": platform,
-            "product_id": product_id
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         # Trigger reinvestment
@@ -214,10 +248,14 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(revenue_usd * PLATFORM_FEE, 2)
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
         reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -275,9 +313,10 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": f"{platform}_cpm",
-            "platform": platform_normalized,
-            "views": views
+            "source": "shopify",
+            "platform": platform,
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         # Trigger reinvestment
@@ -301,10 +340,14 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
-        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
-        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
+        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
+        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -359,9 +402,10 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "service_payment",
+            "source": "shopify",
             "platform": platform,
-            "invoice_id": invoice_id
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         # Trigger reinvestment
@@ -384,10 +428,14 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
-        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
-        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
+        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
+        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -447,10 +495,10 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "ame_conversion",
+            "source": "shopify",
             "platform": platform,
-            "pitch_id": pitch_id,
-            "recipient": recipient
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         return {
@@ -472,10 +520,14 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits
-        platform_cut = round(amount_usd * PLATFORM_FEE, 2)
-        reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
-        user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
+        # Calculate splits with new fee structure (2.8% + 28¢)
+        base_fee = calculate_base_fee(revenue_usd)
+        platform_cut = base_fee["total"]
+        reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
+        user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
+        
+        # Create fee breakdown for tracking
+        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")  # Change source per function
         
         # Update earnings
         user.setdefault("yield", {})
@@ -535,10 +587,10 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             "kind": "PAID",
             "username": username,
             "amount_usd": user_net,
-            "source": "intent_exchange",
+            "source": "shopify",
             "platform": platform,
-            "intent_id": intent_id,
-            "buyer": buyer
+            "order_id": order_id,
+            "fee_breakdown": fee_breakdown
         })
         
         return {
