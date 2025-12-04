@@ -31,8 +31,8 @@ from agent_spending import (
     get_spending_summary
 )
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
-PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.025"))  # 2.5% transaction fee
-PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.30"))  # 30¢ fixed fee
+PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
+PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.28"))  # 28¢ fixed fee
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -654,6 +654,8 @@ from ame_routes import register_ame_routes
 register_ame_routes(app)
 from aigx_engine import create_activity_endpoints
 create_activity_endpoints(app)
+from dashboard_api import create_dashboard_endpoints
+create_dashboard_endpoints(app)
 
 async def auto_bid_background():
     """Runs in background forever"""
@@ -683,6 +685,493 @@ async def startup_event():
     """Start background tasks"""
     asyncio.create_task(auto_bid_background())
     print("Auto-bid background task started")
+
+# ============================================================================
+# TRANSACTION FEE CALCULATION (Task 4.1)
+# ============================================================================
+
+def calculate_transaction_fee(
+    amount_usd: float,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+) -> Dict[str, Any]:
+    """
+    Calculate transaction fees with premium service add-ons
+    
+    Base: 2.8% + 28¢
+    Premium Services:
+    - Dark Pool: +5% (anonymous bidding)
+    - JV Admin: +2% (partnership coordination)
+    - Insurance: 1-2% (based on deal size)
+    - Factoring: 1-3% (based on advance speed)
+    """
+    
+    # Base fee calculation
+    base_percent = amount_usd * PLATFORM_FEE
+    base_fixed = PLATFORM_FEE_FIXED
+    base_total = base_percent + base_fixed
+    
+    # Premium service fees
+    premium_fees = {}
+    premium_total = 0.0
+    
+    if dark_pool:
+        dark_pool_fee = amount_usd * 0.05  # 5%
+        premium_fees["dark_pool"] = round(dark_pool_fee, 2)
+        premium_total += dark_pool_fee
+    
+    if jv_admin:
+        jv_fee = amount_usd * 0.02  # 2%
+        premium_fees["jv_admin"] = round(jv_fee, 2)
+        premium_total += jv_fee
+    
+    if insurance:
+        # 2% for deals under $1k, 1% for $1k+
+        insurance_rate = 0.02 if amount_usd < 1000 else 0.01
+        insurance_fee = amount_usd * insurance_rate
+        premium_fees["insurance"] = round(insurance_fee, 2)
+        premium_total += insurance_fee
+    
+    if factoring:
+        # 7 days = 3%, 14 days = 2%, 30+ days = 1%
+        if factoring_days <= 7:
+            factoring_rate = 0.03
+        elif factoring_days <= 14:
+            factoring_rate = 0.02
+        else:
+            factoring_rate = 0.01
+        
+        factoring_fee = amount_usd * factoring_rate
+        premium_fees["factoring"] = round(factoring_fee, 2)
+        premium_fees["factoring_days"] = factoring_days
+        premium_total += factoring_fee
+    
+    # Total calculation
+    total_fee = base_total + premium_total
+    net_to_user = amount_usd - total_fee
+    effective_rate = (total_fee / amount_usd * 100) if amount_usd > 0 else 0
+    
+    return {
+        "amount_usd": round(amount_usd, 2),
+        "base_fee": {
+            "percent_fee": round(base_percent, 2),
+            "fixed_fee": round(base_fixed, 2),
+            "total": round(base_total, 2)
+        },
+        "premium_fees": premium_fees,
+        "premium_total": round(premium_total, 2),
+        "total_fee": round(total_fee, 2),
+        "net_to_user": round(net_to_user, 2),
+        "effective_rate": round(effective_rate, 2)
+    }
+
+
+@app.post("/transaction/calculate_fee")
+async def calculate_fee_endpoint(
+    amount_usd: float,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Calculate transaction fees for a deal
+    
+    Example: POST /transaction/calculate_fee
+    {
+        "amount_usd": 1000,
+        "dark_pool": true,
+        "insurance": true
+    }
+    """
+    
+    if amount_usd <= 0:
+        return {"ok": False, "error": "amount_must_be_positive"}
+    
+    if factoring_days < 1:
+        return {"ok": False, "error": "factoring_days_must_be_positive"}
+    
+    fee_breakdown = calculate_transaction_fee(
+        amount_usd=amount_usd,
+        dark_pool=dark_pool,
+        jv_admin=jv_admin,
+        insurance=insurance,
+        factoring=factoring,
+        factoring_days=factoring_days
+    )
+    
+    return {
+        "ok": True,
+        "fee_breakdown": fee_breakdown
+    }
+
+# ============================================================================
+# PREMIUM SERVICE CONFIGURATION (Task 4.2)
+# ============================================================================
+
+@app.post("/deal/configure_premium_services")
+async def configure_deal_premium_services(
+    deal_id: str,
+    username: str,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Configure premium services for a deal
+    
+    Example: POST /deal/configure_premium_services
+    {
+        "deal_id": "deal_abc123",
+        "username": "wade",
+        "dark_pool": true,
+        "insurance": true
+    }
+    """
+    try:
+        # Load user data
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        # Find user
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Initialize premium services tracking
+        user.setdefault("premium_services", {})
+        user["premium_services"].setdefault("deals", {})
+        
+        # Store configuration
+        premium_config = {
+            "dark_pool": dark_pool,
+            "jv_admin": jv_admin,
+            "insurance": insurance,
+            "factoring": factoring,
+            "factoring_days": factoring_days if factoring else None,
+            "configured_at": datetime.now(timezone.utc).isoformat() + "Z"
+        }
+        
+        user["premium_services"]["deals"][deal_id] = premium_config
+        
+        # Save
+        jb.put_record(data)
+        
+        return {
+            "ok": True,
+            "deal_id": deal_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/deal/{deal_id}/premium_services")
+async def get_deal_premium_services(deal_id: str, username: str):
+    """Get premium service configuration for a deal"""
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        premium_config = user.get("premium_services", {}).get("deals", {}).get(deal_id)
+        
+        if not premium_config:
+            return {
+                "ok": True,
+                "deal_id": deal_id,
+                "premium_config": {
+                    "dark_pool": False,
+                    "jv_admin": False,
+                    "insurance": False,
+                    "factoring": False
+                }
+            }
+        
+        return {
+            "ok": True,
+            "deal_id": deal_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/intent/configure_premium_services")
+async def configure_intent_premium_services(
+    intent_id: str,
+    username: str,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Configure premium services for an intent
+    
+    Example: POST /intent/configure_premium_services
+    {
+        "intent_id": "intent_xyz789",
+        "username": "wade",
+        "factoring": true,
+        "factoring_days": 7
+    }
+    """
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Initialize premium services tracking
+        user.setdefault("premium_services", {})
+        user["premium_services"].setdefault("intents", {})
+        
+        # Store configuration
+        premium_config = {
+            "dark_pool": dark_pool,
+            "jv_admin": jv_admin,
+            "insurance": insurance,
+            "factoring": factoring,
+            "factoring_days": factoring_days if factoring else None,
+            "configured_at": datetime.now(timezone.utc).isoformat() + "Z"
+        }
+        
+        user["premium_services"]["intents"][intent_id] = premium_config
+        
+        # Save
+        jb.put_record(data)
+        
+        return {
+            "ok": True,
+            "intent_id": intent_id,
+            "premium_config": premium_config
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/premium_services/stats")
+async def get_premium_services_stats(username: str):
+    """Get usage statistics for premium services"""
+    try:
+        if not JSONBinClient:
+            return {"ok": False, "error": "jsonbin_not_configured"}
+        
+        jb = JSONBinClient()
+        data = jb.get_latest().get("record") or {}
+        
+        users = data.get("users", [])
+        user = None
+        for u in users:
+            if u.get("id") == username or u.get("consent", {}).get("username") == username:
+                user = u
+                break
+        
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        premium_services = user.get("premium_services", {})
+        revenue_tracking = user.get("revenue_tracking", {})
+        fee_history = revenue_tracking.get("fee_history", [])
+        
+        # Count premium service usage
+        stats = {
+            "dark_pool": {"count": 0, "total_fees": 0.0},
+            "jv_admin": {"count": 0, "total_fees": 0.0},
+            "insurance": {"count": 0, "total_fees": 0.0},
+            "factoring": {"count": 0, "total_fees": 0.0}
+        }
+        
+        for fee_record in fee_history:
+            premium_fees = fee_record.get("fee_breakdown", {}).get("premium_fees", {})
+            
+            if "dark_pool" in premium_fees:
+                stats["dark_pool"]["count"] += 1
+                stats["dark_pool"]["total_fees"] += premium_fees["dark_pool"]
+            
+            if "jv_admin" in premium_fees:
+                stats["jv_admin"]["count"] += 1
+                stats["jv_admin"]["total_fees"] += premium_fees["jv_admin"]
+            
+            if "insurance" in premium_fees:
+                stats["insurance"]["count"] += 1
+                stats["insurance"]["total_fees"] += premium_fees["insurance"]
+            
+            if "factoring" in premium_fees:
+                stats["factoring"]["count"] += 1
+                stats["factoring"]["total_fees"] += premium_fees["factoring"]
+        
+        # Round totals
+        for service in stats:
+            stats[service]["total_fees"] = round(stats[service]["total_fees"], 2)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "premium_service_stats": stats,
+            "total_deals_with_premium": len(premium_services.get("deals", {})),
+            "total_intents_with_premium": len(premium_services.get("intents", {}))
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/reputation/{username}")
+async def get_reputation(username: str):
+    """Get user's reputation score and unlocked features"""
+    try:
+        from log_to_jsonbin import get_user, calculate_reputation_score
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        # Calculate current reputation
+        rep_score = calculate_reputation_score(user)
+        
+        # Get unlocked features
+        runtime_flags = user.get("runtimeFlags", {})
+        unlocked_features = [k for k, v in runtime_flags.items() if v]
+        
+        # Calculate next unlock
+        next_unlock = None
+        rep_thresholds = [
+            (10, "basic_features"),
+            (25, "r3_autopilot"),
+            (50, "advanced_analytics"),
+            (75, "template_publishing"),
+            (100, "metahive_premium"),
+            (150, "white_label")
+        ]
+        
+        for threshold, feature in rep_thresholds:
+            if rep_score < threshold:
+                next_unlock = {
+                    "feature": feature,
+                    "required_reputation": threshold,
+                    "points_needed": threshold - rep_score
+                }
+                break
+        
+        return {
+            "ok": True,
+            "username": username,
+            "reputation_score": rep_score,
+            "unlocked_features": unlocked_features,
+            "next_unlock": next_unlock,
+            "reputation_breakdown": {
+                "deals_completed": user.get("stats", {}).get("deals_completed", 0),
+                "positive_reviews": user.get("stats", {}).get("positive_reviews", 0),
+                "revenue_generated": user.get("revenue", {}).get("total", 0),
+                "community_bonus": user.get("stats", {}).get("community_bonus", 0)
+            }
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/refresh")
+async def refresh_reputation(username: str):
+    """Recalculate reputation and check for new unlocks"""
+    try:
+        from log_to_jsonbin import check_reputation_unlocks
+        
+        result = check_reputation_unlocks(username)
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/deal_completed")
+async def mark_deal_completed(username: str, deal_id: str):
+    """Mark deal as completed and update reputation"""
+    try:
+        from log_to_jsonbin import increment_deal_count
+        
+        result = increment_deal_count(username)
+        
+        if result.get("ok"):
+            return {
+                "ok": True,
+                "deal_id": deal_id,
+                "reputation_score": result.get("reputation_score"),
+                "newly_unlocked": result.get("newly_unlocked", [])
+            }
+        
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reputation/add_review")
+async def add_review(username: str, is_positive: bool, reviewer: str = None):
+    """Add review and update reputation"""
+    try:
+        if not is_positive:
+            return {"ok": True, "message": "negative_review_not_counted"}
+        
+        from log_to_jsonbin import add_positive_review
+        
+        result = add_positive_review(username)
+        
+        if result.get("ok"):
+            return {
+                "ok": True,
+                "reputation_score": result.get("reputation_score"),
+                "newly_unlocked": result.get("newly_unlocked", [])
+            }
+        
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+        
 # ========== END BLOCK ==========
 
 async def auto_release_escrows_job():
