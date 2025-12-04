@@ -685,6 +685,129 @@ async def startup_event():
     """Start background tasks"""
     asyncio.create_task(auto_bid_background())
     print("Auto-bid background task started")
+
+# ============================================================================
+# TRANSACTION FEE CALCULATION (Task 4.1)
+# ============================================================================
+
+def calculate_transaction_fee(
+    amount_usd: float,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+) -> Dict[str, Any]:
+    """
+    Calculate transaction fees with premium service add-ons
+    
+    Base: 2.8% + 28¢
+    Premium Services:
+    - Dark Pool: +5% (anonymous bidding)
+    - JV Admin: +2% (partnership coordination)
+    - Insurance: 1-2% (based on deal size)
+    - Factoring: 1-3% (based on advance speed)
+    """
+    
+    # Base fee calculation
+    base_percent = amount_usd * PLATFORM_FEE
+    base_fixed = PLATFORM_FEE_FIXED
+    base_total = base_percent + base_fixed
+    
+    # Premium service fees
+    premium_fees = {}
+    premium_total = 0.0
+    
+    if dark_pool:
+        dark_pool_fee = amount_usd * 0.05  # 5%
+        premium_fees["dark_pool"] = round(dark_pool_fee, 2)
+        premium_total += dark_pool_fee
+    
+    if jv_admin:
+        jv_fee = amount_usd * 0.02  # 2%
+        premium_fees["jv_admin"] = round(jv_fee, 2)
+        premium_total += jv_fee
+    
+    if insurance:
+        # 2% for deals under $1k, 1% for $1k+
+        insurance_rate = 0.02 if amount_usd < 1000 else 0.01
+        insurance_fee = amount_usd * insurance_rate
+        premium_fees["insurance"] = round(insurance_fee, 2)
+        premium_total += insurance_fee
+    
+    if factoring:
+        # 7 days = 3%, 14 days = 2%, 30+ days = 1%
+        if factoring_days <= 7:
+            factoring_rate = 0.03
+        elif factoring_days <= 14:
+            factoring_rate = 0.02
+        else:
+            factoring_rate = 0.01
+        
+        factoring_fee = amount_usd * factoring_rate
+        premium_fees["factoring"] = round(factoring_fee, 2)
+        premium_fees["factoring_days"] = factoring_days
+        premium_total += factoring_fee
+    
+    # Total calculation
+    total_fee = base_total + premium_total
+    net_to_user = amount_usd - total_fee
+    effective_rate = (total_fee / amount_usd * 100) if amount_usd > 0 else 0
+    
+    return {
+        "amount_usd": round(amount_usd, 2),
+        "base_fee": {
+            "percent_fee": round(base_percent, 2),
+            "fixed_fee": round(base_fixed, 2),
+            "total": round(base_total, 2)
+        },
+        "premium_fees": premium_fees,
+        "premium_total": round(premium_total, 2),
+        "total_fee": round(total_fee, 2),
+        "net_to_user": round(net_to_user, 2),
+        "effective_rate": round(effective_rate, 2)
+    }
+
+
+@app.post("/transaction/calculate_fee")
+async def calculate_fee_endpoint(
+    amount_usd: float,
+    dark_pool: bool = False,
+    jv_admin: bool = False,
+    insurance: bool = False,
+    factoring: bool = False,
+    factoring_days: int = 30
+):
+    """
+    Calculate transaction fees for a deal
+    
+    Example: POST /transaction/calculate_fee
+    {
+        "amount_usd": 1000,
+        "dark_pool": true,
+        "insurance": true
+    }
+    """
+    
+    if amount_usd <= 0:
+        return {"ok": False, "error": "amount_must_be_positive"}
+    
+    if factoring_days < 1:
+        return {"ok": False, "error": "factoring_days_must_be_positive"}
+    
+    fee_breakdown = calculate_transaction_fee(
+        amount_usd=amount_usd,
+        dark_pool=dark_pool,
+        jv_admin=jv_admin,
+        insurance=insurance,
+        factoring=factoring,
+        factoring_days=factoring_days
+    )
+    
+    return {
+        "ok": True,
+        "fee_breakdown": fee_breakdown
+    }
 # ========== END BLOCK ==========
 
 async def auto_release_escrows_job():
