@@ -1,4 +1,3 @@
-# revenue_flows.py — AiGentsy Autonomous Money Flows with Platform Attribution
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import httpx
@@ -32,24 +31,9 @@ def calculate_base_fee(amount_usd: float) -> Dict[str, Any]:
     }
 
 
-def create_fee_breakdown(amount_usd: float, source: str) -> Dict[str, Any]:
-    """Create fee breakdown for outcome tracking"""
-    base_fee = calculate_base_fee(amount_usd)
-    
-    return {
-        "amount_usd": amount_usd,
-        "base_fee": base_fee,
-        "premium_fees": {},
-        "premium_total": 0.0,
-        "total_fee": base_fee["total"],
-        "effective_rate": round((base_fee["total"] / amount_usd * 100) if amount_usd > 0 else 0, 2)
-    }
-
-async def get_premium_config(username: str, deal_id: str = None, intent_id: str = None) -> Dict[str, bool]:
+async def get_premium_config(username: str, deal_id: str = None, intent_id: str = None) -> Dict[str, Any]:
     """Get premium service configuration for a deal or intent"""
     try:
-        from log_to_jsonbin import get_user
-        
         user = get_user(username)
         if not user:
             return {
@@ -150,23 +134,34 @@ def calculate_full_fee_with_premium(
         "net_to_user": round(net_to_user, 2),
         "effective_rate": round(effective_rate, 2)
     }
-# ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION ============
 
-async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float, cid: str = None, platform: str = "shopify"):
-    """Ingest Shopify order revenue and auto-split"""
+
+# ============ REVENUE INGESTION WITH PLATFORM ATTRIBUTION + PREMIUM SERVICES ============
+
+async def ingest_shopify_order(
+    username: str, 
+    order_id: str, 
+    revenue_usd: float, 
+    cid: str = None, 
+    platform: str = "shopify",
+    deal_id: str = None
+):
+    """Ingest Shopify order revenue with premium service fees"""
     try:
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config if deal_id provided
+        premium_config = await get_premium_config(username, deal_id=deal_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(revenue_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, "shopify")
         
         # Update user earnings
         user.setdefault("yield", {})
@@ -179,12 +174,12 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             user["revenue"]["bySource"].get("shopify", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform] = round(
             user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "shopify",
@@ -192,6 +187,8 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "amount": revenue_usd,
             "netToUser": user_net,
             "orderId": order_id,
+            "dealId": deal_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -202,9 +199,11 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         append_intent_ledger(username, {
             "event": "shopify_revenue",
             "order_id": order_id,
+            "deal_id": deal_id,
             "revenue_usd": revenue_usd,
             "platform": platform,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "cid": cid,
@@ -217,7 +216,7 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         # Credit AIGx
         credit_aigx(username, user_net, {"source": "shopify", "order_id": order_id})
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -225,7 +224,8 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "source": "shopify",
             "platform": platform,
             "order_id": order_id,
-            "fee_breakdown": fee_breakdown
+            "deal_id": deal_id,
+            "fee_breakdown": fee_calc
         })
         
         # Trigger R³ reinvestment
@@ -237,6 +237,7 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
             "platform": platform,
             "splits": {
                 "platform": platform_cut,
+                "premium_fees": fee_calc["premium_total"],
                 "reinvest": reinvest_amount,
                 "user": user_net
             }
@@ -245,8 +246,15 @@ async def ingest_shopify_order(username: str, order_id: str, revenue_usd: float,
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_affiliate_commission(username: str, source: str, revenue_usd: float, product_id: str = None, platform: str = None):
-    """Ingest TikTok/Amazon/Instagram affiliate commission with platform tracking"""
+async def ingest_affiliate_commission(
+    username: str, 
+    source: str, 
+    revenue_usd: float, 
+    product_id: str = None, 
+    platform: str = None,
+    deal_id: str = None
+):
+    """Ingest affiliate commission with premium service fees"""
     try:
         # Auto-detect platform from source if not provided
         if not platform:
@@ -262,14 +270,16 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(revenue_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config if deal_id provided
+        premium_config = await get_premium_config(username, deal_id=deal_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(revenue_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(revenue_usd * REINVEST_RATE, 2)
         user_net = round(revenue_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(revenue_usd, f"{source}_affiliate")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -282,12 +292,12 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
             user["revenue"]["bySource"].get("affiliate", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform] = round(
             user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "affiliate",
@@ -296,6 +306,8 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
             "amount": revenue_usd,
             "netToUser": user_net,
             "product": product_id,
+            "dealId": deal_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -305,10 +317,12 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         # Post ledger
         append_intent_ledger(username, {
             "event": f"{source}_affiliate",
+            "deal_id": deal_id,
             "revenue_usd": revenue_usd,
             "platform": platform,
             "product_id": product_id,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "ts": now_iso()
@@ -320,7 +334,7 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -328,7 +342,8 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
             "source": f"{source}_affiliate",
             "platform": platform,
             "product_id": product_id,
-            "fee_breakdown": fee_breakdown
+            "deal_id": deal_id,
+            "fee_breakdown": fee_calc
         })
         
         # Trigger reinvestment
@@ -344,8 +359,14 @@ async def ingest_affiliate_commission(username: str, source: str, revenue_usd: f
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate: float):
-    """Ingest YouTube/TikTok/Instagram CPM revenue with platform tracking"""
+async def ingest_content_cpm(
+    username: str, 
+    platform: str, 
+    views: int, 
+    cpm_rate: float,
+    deal_id: str = None
+):
+    """Ingest CPM revenue with premium service fees"""
     try:
         amount_usd = round((views / 1000) * cpm_rate, 2)
         
@@ -356,14 +377,16 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(amount_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config if deal_id provided
+        premium_config = await get_premium_config(username, deal_id=deal_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(amount_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
         user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(amount_usd, f"{platform}_cpm")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -376,12 +399,12 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             user["revenue"]["bySource"].get("contentCPM", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform_normalized] = round(
             user["revenue"]["byPlatform"].get(platform_normalized, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "content_cpm",
@@ -391,6 +414,8 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "netToUser": user_net,
             "views": views,
             "cpmRate": cpm_rate,
+            "dealId": deal_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -400,11 +425,13 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         # Post ledger
         append_intent_ledger(username, {
             "event": f"{platform}_cpm",
+            "deal_id": deal_id,
             "views": views,
             "cpm_rate": cpm_rate,
             "revenue_usd": amount_usd,
             "platform": platform_normalized,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "ts": now_iso()
@@ -416,7 +443,7 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -424,7 +451,8 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
             "source": f"{platform}_cpm",
             "platform": platform_normalized,
             "views": views,
-            "fee_breakdown": fee_breakdown
+            "deal_id": deal_id,
+            "fee_breakdown": fee_calc
         })
         
         # Trigger reinvestment
@@ -441,21 +469,29 @@ async def ingest_content_cpm(username: str, platform: str, views: int, cpm_rate:
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_service_payment(username: str, invoice_id: str, amount_usd: float, platform: str = "direct"):
-    """Ingest direct service payment (consulting, design, etc.) with platform tracking"""
+async def ingest_service_payment(
+    username: str, 
+    invoice_id: str, 
+    amount_usd: float, 
+    platform: str = "direct",
+    deal_id: str = None
+):
+    """Ingest service payment with premium service fees"""
     try:
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(amount_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config if deal_id provided
+        premium_config = await get_premium_config(username, deal_id=deal_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(amount_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
         user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(amount_usd, "service_payment")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -468,12 +504,12 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             user["revenue"]["bySource"].get("services", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform] = round(
             user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "services",
@@ -481,6 +517,8 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             "amount": amount_usd,
             "netToUser": user_net,
             "invoiceId": invoice_id,
+            "dealId": deal_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -491,9 +529,11 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         append_intent_ledger(username, {
             "event": "service_payment",
             "invoice_id": invoice_id,
+            "deal_id": deal_id,
             "amount_usd": amount_usd,
             "platform": platform,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "ts": now_iso()
@@ -505,7 +545,7 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -513,7 +553,8 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
             "source": "service_payment",
             "platform": platform,
             "invoice_id": invoice_id,
-            "fee_breakdown": fee_breakdown
+            "deal_id": deal_id,
+            "fee_breakdown": fee_calc
         })
         
         # Trigger reinvestment
@@ -529,21 +570,30 @@ async def ingest_service_payment(username: str, invoice_id: str, amount_usd: flo
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float, recipient: str, platform: str):
-    """Ingest revenue from AME auto-sales pitch conversion (REQUIRES platform)"""
+async def ingest_ame_conversion(
+    username: str, 
+    pitch_id: str, 
+    amount_usd: float, 
+    recipient: str, 
+    platform: str,
+    deal_id: str = None
+):
+    """Ingest AME auto-sales conversion with premium service fees"""
     try:
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(amount_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config if deal_id provided
+        premium_config = await get_premium_config(username, deal_id=deal_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(amount_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
         user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(amount_usd, "ame_conversion")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -556,12 +606,12 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             user["revenue"]["bySource"].get("ame", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform] = round(
             user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "ame",
@@ -570,6 +620,8 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             "netToUser": user_net,
             "client": recipient,
             "pitchId": pitch_id,
+            "dealId": deal_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -577,10 +629,12 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
         append_intent_ledger(username, {
             "event": "ame_conversion",
             "pitch_id": pitch_id,
+            "deal_id": deal_id,
             "recipient": recipient,
             "platform": platform,
             "revenue_usd": amount_usd,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "ts": now_iso()
@@ -598,7 +652,7 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -607,7 +661,8 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
             "platform": platform,
             "pitch_id": pitch_id,
             "recipient": recipient,
-            "fee_breakdown": fee_breakdown
+            "deal_id": deal_id,
+            "fee_breakdown": fee_calc
         })
         
         return {
@@ -622,21 +677,29 @@ async def ingest_ame_conversion(username: str, pitch_id: str, amount_usd: float,
         return {"ok": False, "error": str(e)}
 
 
-async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: float, buyer: str, platform: str = "intent_exchange"):
-    """Ingest revenue from intent exchange contract settlement with platform tracking"""
+async def ingest_intent_settlement(
+    username: str, 
+    intent_id: str, 
+    amount_usd: float, 
+    buyer: str, 
+    platform: str = "intent_exchange"
+):
+    """Ingest intent settlement with premium service fees (uses intent_id for premium config)"""
     try:
         user = get_user(username)
         if not user:
             return {"ok": False, "error": "user_not_found"}
         
-        # Calculate splits with new fee structure (2.8% + 28¢)
-        base_fee = calculate_base_fee(amount_usd)
-        platform_cut = base_fee["total"]
+        # Get premium config using intent_id
+        premium_config = await get_premium_config(username, intent_id=intent_id)
+        
+        # Calculate full fees with premium services
+        fee_calc = calculate_full_fee_with_premium(amount_usd, premium_config)
+        platform_cut = fee_calc["total_fee"]
+        
+        # Calculate reinvestment
         reinvest_amount = round(amount_usd * REINVEST_RATE, 2)
         user_net = round(amount_usd - platform_cut - reinvest_amount, 2)
-        
-        # Create fee breakdown for tracking
-        fee_breakdown = create_fee_breakdown(amount_usd, "intent_exchange")
         
         # Update earnings
         user.setdefault("yield", {})
@@ -649,12 +712,12 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             user["revenue"]["bySource"].get("intentExchange", 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Platform tracking
+        # Platform tracking
         user["revenue"]["byPlatform"][platform] = round(
             user["revenue"]["byPlatform"].get(platform, 0.0) + user_net, 2
         )
         
-        # ✅ NEW: Attribution record
+        # Attribution record
         user["revenue"]["attribution"].append({
             "id": f"rev-{str(uuid4())[:8]}",
             "source": "intent_exchange",
@@ -663,6 +726,7 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             "netToUser": user_net,
             "buyer": buyer,
             "intentId": intent_id,
+            "premiumServices": premium_config if any(premium_config.values()) else None,
             "ts": now_iso()
         })
         
@@ -674,6 +738,7 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             "platform": platform,
             "revenue_usd": amount_usd,
             "platform_fee": platform_cut,
+            "premium_fees": fee_calc["premium_fees"],
             "reinvestment": reinvest_amount,
             "user_net": user_net,
             "ts": now_iso()
@@ -691,7 +756,7 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
         # Check unlock milestones
         await check_revenue_milestones(username, user["revenue"]["total"])
         
-        # Track PAID outcome
+        # Track PAID outcome with full fee breakdown
         on_event({
             "kind": "PAID",
             "username": username,
@@ -700,7 +765,7 @@ async def ingest_intent_settlement(username: str, intent_id: str, amount_usd: fl
             "platform": platform,
             "intent_id": intent_id,
             "buyer": buyer,
-            "fee_breakdown": fee_breakdown
+            "fee_breakdown": fee_calc
         })
         
         return {
