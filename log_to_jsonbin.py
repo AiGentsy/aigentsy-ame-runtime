@@ -658,6 +658,134 @@ def add_positive_review(username: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+# --------- Early Adopter Tiers (AIGx Multipliers) ---------
+
+def get_early_adopter_tier(user_number: int) -> Dict[str, Any]:
+    """Get early adopter tier based on signup order"""
+    
+    if user_number <= 100:
+        return {
+            "tier": "founder",
+            "name": "Founder",
+            "multiplier": 3.0,
+            "badge": "🏆",
+            "description": "First 100 users - 3x earnings"
+        }
+    elif user_number <= 500:
+        return {
+            "tier": "pioneer",
+            "name": "Pioneer",
+            "multiplier": 2.5,
+            "badge": "💎",
+            "description": "Users 101-500 - 2.5x earnings"
+        }
+    elif user_number <= 1000:
+        return {
+            "tier": "early",
+            "name": "Early Adopter",
+            "multiplier": 2.0,
+            "badge": "⭐",
+            "description": "Users 501-1000 - 2x earnings"
+        }
+    elif user_number <= 5000:
+        return {
+            "tier": "builder",
+            "name": "Builder",
+            "multiplier": 1.5,
+            "badge": "🔨",
+            "description": "Users 1001-5000 - 1.5x earnings"
+        }
+    else:
+        return {
+            "tier": "standard",
+            "name": "Standard",
+            "multiplier": 1.0,
+            "badge": "",
+            "description": "Standard member"
+        }
+
+
+def apply_early_adopter_multiplier(username: str, base_amount: float) -> Dict[str, Any]:
+    """Apply early adopter multiplier to earnings"""
+    try:
+        user = get_user(username)
+        if not user:
+            return {
+                "base_amount": base_amount,
+                "multiplier": 1.0,
+                "bonus_amount": 0.0,
+                "total_amount": base_amount
+            }
+        
+        # Get user's signup number
+        user_number = user.get("user_number", 999999)
+        
+        # Get tier info
+        tier_info = get_early_adopter_tier(user_number)
+        multiplier = tier_info["multiplier"]
+        
+        # Calculate bonus
+        bonus_amount = round(base_amount * (multiplier - 1.0), 2)
+        total_amount = round(base_amount * multiplier, 2)
+        
+        return {
+            "base_amount": base_amount,
+            "multiplier": multiplier,
+            "bonus_amount": bonus_amount,
+            "total_amount": total_amount,
+            "tier": tier_info["tier"],
+            "tier_name": tier_info["name"],
+            "badge": tier_info["badge"]
+        }
+        
+    except Exception as e:
+        return {
+            "base_amount": base_amount,
+            "multiplier": 1.0,
+            "bonus_amount": 0.0,
+            "total_amount": base_amount,
+            "error": str(e)
+        }
+
+
+def assign_user_number_on_signup(username: str) -> int:
+    """Assign sequential user number when user first signs up"""
+    global _CACHE
+    try:
+        user = get_user(username)
+        if not user:
+            return 0
+        
+        # Check if already has number
+        if user.get("user_number"):
+            return user["user_number"]
+        
+        # Increment counter and assign
+        user_number = increment_user_count()
+        
+        user["user_number"] = user_number
+        user["early_adopter"] = get_early_adopter_tier(user_number)
+        user["early_adopter"]["assigned_at"] = _now_iso()
+        
+        log_agent_update(user)
+        
+        # Log tier assignment
+        append_intent_ledger(username, {
+            "event": "early_adopter_tier_assigned",
+            "user_number": user_number,
+            "tier": user["early_adopter"]["tier"],
+            "multiplier": user["early_adopter"]["multiplier"],
+            "ts": _now_iso()
+        })
+        
+        print(f"🎖️ {username} assigned user #{user_number} - {user['early_adopter']['name']} tier ({user['early_adopter']['multiplier']}x)")
+        
+        return user_number
+        
+    except Exception as e:
+        print(f"Error assigning user number: {e}")
+        return 0
+
 __all__ = [
     "JSONBIN_URL",
     "JSONBIN_SECRET",
@@ -676,4 +804,7 @@ __all__ = [
     "check_reputation_unlocks",
     "increment_deal_count",
     "add_positive_review",
+    "get_early_adopter_tier",
+    "apply_early_adopter_multiplier",
+    "assign_user_number_on_signup",
 ]
