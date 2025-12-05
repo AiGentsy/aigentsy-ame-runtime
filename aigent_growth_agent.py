@@ -6,7 +6,8 @@ import os, requests
 from datetime import datetime
 from functools import lru_cache
 from typing import List, Dict, Optional
-
+# Add to imports section (around line 10)
+from csuite_orchestrator import get_orchestrator
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
