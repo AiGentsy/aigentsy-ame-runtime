@@ -395,20 +395,41 @@ async def invoke(state: AgentState) -> dict:
             "traits": list(agent_traits.keys()),
             "offers": service_offer_registry,
         }
-
     try:
-        # username hint: "... | username"
         username = "growth_default"
         if "|" in user_input:
             maybe = user_input.split("|")[-1].strip()
             if maybe:
                 username = maybe
-
         record = get_jsonbin_record(username)
         traits = record.get("traits", list(agent_traits.keys()))
         kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         region = record.get("region", "Global")
         service_needs = suggest_service_needs(traits, kits)
+        
+        # ========== INTELLIGENCE ORCHESTRATION ==========
+        from csuite_orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        monetization_triggers = [
+            'what should i monetize', 'how do i make money', 'what can i sell',
+            'find clients', 'revenue opportunit', 'make money', 'first sale',
+            'what to sell'
+        ]
+        needs_intelligence = any(t in user_input.lower() for t in monetization_triggers)
+        
+        intelligence = None
+        opportunities = None
+        opp_summary_text = ""
+        
+        if needs_intelligence:
+            intelligence = await orchestrator.analyze_business_state(username)
+            if intelligence.get("ok"):
+                opportunities = await orchestrator.generate_opportunities(username, intelligence)
+                opp_summary_text = await orchestrator.format_opportunities_for_chat(opportunities, intelligence)
+        # ========== END ORCHESTRATION ==========
+        
+        # [REST OF YOUR EXISTING CODE CONTINUES...]
 
         # Locked switch for external MetaMatch
         if os.getenv("MATCH_UNLOCKED", "false").lower() != "true":
@@ -657,8 +678,9 @@ FIRST QUESTIONS TO ASK {custom_business_type.upper()} USERS:
             # Use predefined templates
             biz_ctx = business_contexts.get(user_template, business_contexts["general"])
         
-        # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
-        csuite_context = f"""
+      # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
+csuite_context = f"""
+You are the C-Suite of AiGentsy, an autonomous business platform.
         
 ═══════════════════════════════════════════════════════════════
 🎯 PRIMARY MISSION - READ THIS FIRST
@@ -863,6 +885,20 @@ HOW TO TALK ABOUT THESE (SOUND NATURAL)
 **When user asks: "How do I automate my marketing?"**
 → "I'll activate R³ Autopilot for you. It's like having a marketing manager who never sleeps - automatically retargeting leads, adjusting budgets based on what's working, nurturing prospects until they convert. Pair it with AMG and your entire sales engine runs itself. Want to flip the switch?"
 
+═══════════════════════════════════════════════════════════════
+"""
+        # ⭐ ADD THE INTELLIGENCE BLOCK HERE (AFTER THE CLOSING """) ⭐
+        # Inject opportunities if generated
+        if opp_summary_text:
+            csuite_context += f"""
+
+═══════════════════════════════════════════════════════════════
+🎯 REVENUE OPPORTUNITIES (PRIORITIZED)
+═══════════════════════════════════════════════════════════════
+
+{opp_summary_text}
+
+INSTRUCTION: Present these naturally. Explain WHY they rank this way and ASK which to activate first.
 ═══════════════════════════════════════════════════════════════
 """
         
