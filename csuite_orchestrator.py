@@ -180,6 +180,19 @@ class CSuiteOrchestrator:
         opportunities_map = {
             "legal": [
                 {
+                    "opportunity_id": "legal_safe_agreements",
+                    "title": "SAFE Agreements",
+                    "description": "Sell Y Combinator standard SAFE agreements at $500 each",
+                    "revenue_potential": 4000,  # $500 x 8 per month
+                    "time_to_first_dollar": 2,
+                    "confidence": 0.90,
+                    "pricing": "$500 per SAFE",
+                    "target_customers": "Startups raising seed rounds, angel investors",
+                    "readiness_status": "ready_now",
+                    "required_actions": ["generate_documents", "activate_ame"],
+                    "unlock_requirements": None
+                },
+                {
                     "opportunity_id": "legal_nda_templates",
                     "title": "NDA Templates",
                     "description": "Generate and sell customized NDAs at $200 each",
