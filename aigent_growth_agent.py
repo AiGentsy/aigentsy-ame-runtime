@@ -429,7 +429,6 @@ async def invoke(state: AgentState) -> dict:
                 opp_summary_text = await orchestrator.format_opportunities_for_chat(opportunities, intelligence)
         # ========== END ORCHESTRATION ==========
         
-        # [REST OF YOUR EXISTING CODE CONTINUES...]
 
         # Locked switch for external MetaMatch
         if os.getenv("MATCH_UNLOCKED", "false").lower() != "true":
@@ -678,8 +677,8 @@ FIRST QUESTIONS TO ASK {custom_business_type.upper()} USERS:
             # Use predefined templates
             biz_ctx = business_contexts.get(user_template, business_contexts["general"])
         
-      # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
-csuite_context = f"""
+        # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
+        csuite_context = f"""
 You are the C-Suite of AiGentsy, an autonomous business platform.
         
 ═══════════════════════════════════════════════════════════════
