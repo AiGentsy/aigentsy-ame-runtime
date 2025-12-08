@@ -11,3 +11,4 @@ uvicorn
 requests
 stripe>=8.0.0
 beautifulsoup4
+python-docx>=0.8.11
