@@ -10,7 +10,7 @@ import time as _time
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
 # ============================
-import os, httpx, uuid, json, hmac, hashlib, csv, io, logging
+import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
@@ -1168,6 +1168,109 @@ async def add_review(username: str, is_positive: bool, reviewer: str = None):
             }
         
         return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# ========== EARLY ADOPTER TIERS ==========
+
+@app.get("/user/{username}/tier")
+async def get_user_tier(username: str):
+    """Get user's early adopter tier info"""
+    try:
+        from log_to_jsonbin import get_user, get_early_adopter_tier
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "user_not_found"}
+        
+        user_number = user.get("user_number")
+        
+        if not user_number:
+            return {
+                "ok": True,
+                "has_tier": False,
+                "message": "User number not assigned yet"
+            }
+        
+        tier_info = get_early_adopter_tier(user_number)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "user_number": user_number,
+            "tier": tier_info,
+            "assigned_at": user.get("early_adopter", {}).get("assigned_at")
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/user/{username}/assign_tier")
+async def assign_user_tier(username: str):
+    """Manually trigger tier assignment (usually happens on signup)"""
+    try:
+        from log_to_jsonbin import assign_user_number_on_signup
+        
+        user_number = assign_user_number_on_signup(username)
+        
+        if user_number == 0:
+            return {"ok": False, "error": "assignment_failed"}
+        
+        from log_to_jsonbin import get_early_adopter_tier
+        tier_info = get_early_adopter_tier(user_number)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "user_number": user_number,
+            "tier": tier_info
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/tiers/leaderboard")
+async def get_tier_leaderboard(limit: int = 100):
+    """Get early adopter leaderboard (first N users)"""
+    try:
+        from log_to_jsonbin import list_users, get_early_adopter_tier
+        
+        users = list_users()
+        
+        # Filter users with numbers
+        users_with_numbers = [
+            u for u in users 
+            if u.get("user_number")
+        ]
+        
+        # Sort by user number
+        users_with_numbers.sort(key=lambda u: u.get("user_number", 999999))
+        
+        # Take top N
+        top_users = users_with_numbers[:limit]
+        
+        leaderboard = []
+        for u in top_users:
+            user_number = u.get("user_number")
+            tier_info = get_early_adopter_tier(user_number)
+            
+            leaderboard.append({
+                "rank": user_number,
+                "username": u.get("consent", {}).get("username") or u.get("username"),
+                "tier": tier_info["name"],
+                "badge": tier_info["badge"],
+                "multiplier": tier_info["multiplier"],
+                "total_revenue": u.get("revenue", {}).get("total", 0)
+            })
+        
+        return {
+            "ok": True,
+            "leaderboard": leaderboard,
+            "total_users": len(users_with_numbers)
+        }
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -13302,22 +13405,160 @@ from fastapi import Request, HTTPException
 # Shopify (HMAC-verified)
 @app.post("/webhook/shopify")
 async def webhook_shopify(request: Request):
+    """Shopify webhook - upgraded to process revenue with fees + premium services"""
+    
     secret = os.getenv("SHOPIFY_API_SECRET") or os.getenv("SHOPIFY_WEBHOOK_SECRET") or ""
     if not secret:
         raise HTTPException(status_code=500, detail="SHOPIFY_API_SECRET/SHOPIFY_WEBHOOK_SECRET not configured")
+    
     topic = request.headers.get("X-Shopify-Topic", "") or "unknown"
     shop_domain = request.headers.get("X-Shopify-Shop-Domain", "")
     received_hmac = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    
     raw = await request.body()
+    
+    # Verify HMAC
     if not _shopify_hmac_valid(secret, raw, received_hmac):
         raise HTTPException(status_code=401, detail="Invalid HMAC")
+    
     try:
         payload = _json.loads(raw.decode("utf-8") or "{}")
     except Exception:
         payload = {}
+    
     payload.setdefault("shop_domain", shop_domain)
+    
+    # Record event (keep existing logging)
     rec = await _record_provider_event("shopify", topic, payload)
+    
+    # NEW: Process revenue for order events
+    if topic in ("orders/paid", "orders/fulfilled", "orders/create"):
+        try:
+            # Resolve username from shop domain
+            username = _resolve_shopify_username(shop_domain)
+            
+            # Extract order details
+            order_id = str(payload.get("id", ""))
+            revenue_usd = float(
+                payload.get("total_price") or 
+                payload.get("current_total_price") or 
+                0.0
+            )
+            
+            # Extract correlation ID
+            cid = _extract_shopify_cid(payload)
+            
+            # Check for deal_id in order metadata
+            deal_id = None
+            note_attributes = payload.get("note_attributes", [])
+            for attr in note_attributes:
+                if attr.get("name") == "deal_id":
+                    deal_id = attr.get("value")
+                    break
+            
+            # Check for duplicate processing
+            user = get_user(username)
+            if user:
+                revenue_attribution = user.get("revenue", {}).get("attribution", [])
+                already_processed = any(
+                    attr.get("orderId") == order_id 
+                    for attr in revenue_attribution
+                )
+                if already_processed:
+                    return {"ok": True, "message": "order_already_processed", **(rec or {})}
+            
+            # Process based on topic
+            if topic == "orders/create":
+                # Attribute revenue (ATTRIBUTED event)
+                on_event({
+                    "kind": "ATTRIBUTED",
+                    "username": username,
+                    "value_usd": revenue_usd,
+                    "source": "shopify",
+                    "order_id": order_id,
+                    "cid": cid
+                })
+            
+            elif topic in ("orders/paid", "orders/fulfilled"):
+                # Ingest revenue with full fee calculation
+                from revenue_flows import ingest_shopify_order
+                
+                revenue_result = await ingest_shopify_order(
+                    username=username,
+                    order_id=order_id,
+                    revenue_usd=revenue_usd,
+                    cid=cid,
+                    platform="shopify",
+                    deal_id=deal_id
+                )
+                
+                return {
+                    "ok": True,
+                    "topic": topic,
+                    "revenue_processed": revenue_result.get("ok", False),
+                    **(rec or {})
+                }
+        
+        except Exception as e:
+            # Log error but return 200 to prevent Shopify retries
+            print(f"Shopify revenue processing error: {e}")
+            return {"ok": True, "webhook_logged": True, "revenue_error": str(e), **(rec or {})}
+    
     return {"ok": True, **(rec or {})}
+
+
+def _resolve_shopify_username(shop_domain: str) -> str:
+    """Resolve shop domain to AiGentsy username"""
+    # Check env var mapping first
+    shop_map_str = os.getenv("SHOPIFY_SHOP_TO_USER", "{}")
+    try:
+        shop_map = _json.loads(shop_map_str)
+        if shop_domain in shop_map:
+            return shop_map[shop_domain]
+    except:
+        pass
+    
+    # Search users for matching Shopify connection
+    if JSONBinClient:
+        try:
+            jb = JSONBinClient()
+            data = jb.get_latest().get("record") or {}
+            users = data.get("users", [])
+            
+            for u in users:
+                shopify = u.get("integrations", {}).get("shopify", {})
+                if shopify.get("shop_domain") == shop_domain:
+                    return u.get("consent", {}).get("username") or u.get("id")
+        except:
+            pass
+    
+    # Fallback to default user
+    return os.getenv("DEFAULT_USERNAME", "demo_user")
+
+
+def _extract_shopify_cid(payload: dict) -> str:
+    """Extract correlation ID from Shopify order"""
+    # Check order notes for cid:xxxxx
+    note = payload.get("note") or ""
+    if isinstance(note, str) and "cid:" in note:
+        try:
+            return note.split("cid:")[1].split()[0].strip()
+        except:
+            pass
+    
+    # Check note attributes
+    note_attributes = payload.get("note_attributes", [])
+    for attr in note_attributes:
+        if attr.get("name") in ("cid", "correlation_id"):
+            return str(attr.get("value", ""))
+    
+    # Fallback to Shopify IDs
+    if "checkout_id" in payload:
+        return str(payload.get("checkout_id"))
+    if "cart_token" in payload:
+        return str(payload.get("cart_token"))
+    
+    return f"shopify-{payload.get('id', 'unknown')}"
 
 # TikTok (signature optional / TODO)
 @app.post("/webhook/tiktok")
