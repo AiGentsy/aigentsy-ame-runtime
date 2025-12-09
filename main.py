@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from mint_generator import get_mint_generator
 from template_library import KIT_SUMMARY
+from opportunity_approval import create_opportunity_endpoints
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
