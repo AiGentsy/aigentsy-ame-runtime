@@ -731,16 +731,16 @@ class CompleteActivationEngine:
                 if result.get("ok"):
                     intents_created.append(result)
         
-                # Find buyer opportunities
-                matches = await find_matches(self.username)
-        
-        # FIX: Check if matches is a list and has items
+            # Find buyer opportunities
+            matches = await find_matches(self.username)
+            
+            # Check if matches is a list and has items
             if not isinstance(matches, list):
                 matches = []
-        
+            
             bids_placed = []
             for match in matches[:3]:  # Bid on top 3
-            # FIX: Check if match is a dict and has required fields
+                # Check if match is a dict and has required fields
                 if isinstance(match, dict) and "intent_id" in match:
                     result = await place_bid(
                         username=self.username,
@@ -749,8 +749,8 @@ class CompleteActivationEngine:
                     )
                     if result.get("ok"):
                         bids_placed.append(result)
-        
-        # Set Intent Exchange active flag
+            
+            # Set Intent Exchange active flag
             self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
         
             print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
