@@ -2281,10 +2281,72 @@ async def mint_user(request: Request):
                     logger.info(f"🧠 Memory context prepared for future conversations")
                     
                     # ============================================================
-                    # 📤 RETURN SUCCESS WITH FULL TRACKING
+                    # 🔗 TEMPLATE INTEGRATION AUTO-TRIGGER
                     # ============================================================
                     
-                    return {
+                    logger.info(f"🔗 Auto-triggering template integration for {username}...")
+                    
+                    integration_result = None
+                    try:
+                        # Auto-trigger template integration
+                        integration_result = await auto_trigger_on_mint(
+                            username=username,
+                            template=apex_template,
+                            user_data=saved_user
+                        )
+                        
+                        if integration_result.get("ok"):
+                            coord_result = integration_result.get("coordination_result", {})
+                            
+                            logger.info(f"✅ Template integration complete:")
+                            logger.info(f"   - Systems: {', '.join(coord_result.get('systems_triggered', []))}")
+                            logger.info(f"   - Opportunities: {coord_result.get('opportunities_stored', 0)}")
+                            
+                            # Add to activation memory
+                            activation_memory["template_integration"] = {
+                                "triggered": True,
+                                "systems": coord_result.get("systems_triggered", []),
+                                "opportunities_created": coord_result.get("opportunities_stored", 0),
+                                "intelligence": coord_result.get("intelligence", {})
+                            }
+                        else:
+                            logger.warning(f"⚠️  Template integration issues: {integration_result.get('error')}")
+                            
+                    except Exception as integration_error:
+                        logger.error(f"⚠️  Template integration failed: {integration_error}")
+                        integration_result = {"ok": False, "error": str(integration_error)}
+                    
+                    # ============================================================
+                    # 🤝 PROCESS REFERRAL
+                    # ============================================================
+                    
+                    referral_deal = None
+                    if body.get("ref") and body.get("deal"):
+                        logger.info(f"🤝 Processing referral signup from {body.get('ref')}...")
+                        
+                        try:
+                            referral_deal = await process_referral_signup(
+                                new_username=username,
+                                referrer_username=body.get("ref"),
+                                deal_template=body.get("deal")
+                            )
+                            
+                            if referral_deal.get("ok"):
+                                logger.info(f"✅ Referral deal: {referral_deal.get('deal_id')}")
+                                activation_memory["referral_deal"] = {
+                                    "created": True,
+                                    "deal_id": referral_deal.get("deal_id"),
+                                    "referrer": body.get("ref")
+                                }
+                        except Exception as ref_error:
+                            logger.error(f"⚠️  Referral deal failed: {ref_error}")
+                            referral_deal = {"ok": False, "error": str(ref_error)}
+                    
+                    # ============================================================
+                    # 📤 RETURN SUCCESS WITH FULL TRACKING + INTEGRATION
+                    # ============================================================
+                    
+                    response = {
                         "ok": True,
                         "record": saved_user,
                         "apex_ultra": {
@@ -2319,6 +2381,29 @@ async def mint_user(request: Request):
                         },
                         "memory": activation_memory
                     }
+                    
+                    # Add integration results to response
+                    if integration_result:
+                        response["template_integration"] = {
+                            "triggered": integration_result.get("ok", False),
+                            "opportunities_created": integration_result.get("coordination_result", {}).get("opportunities_stored", 0),
+                            "systems_activated": integration_result.get("coordination_result", {}).get("systems_triggered", []),
+                            "csuite_intelligence": integration_result.get("coordination_result", {}).get("intelligence", {}),
+                            "error": integration_result.get("error") if not integration_result.get("ok") else None
+                        }
+                    
+                    # Add referral deal to response (if applicable)
+                    if referral_deal:
+                        response["referral_deal"] = {
+                            "created": referral_deal.get("ok", False),
+                            "deal_id": referral_deal.get("deal_id"),
+                            "referrer": body.get("ref"),
+                            "template": body.get("deal"),
+                            "error": referral_deal.get("error") if not referral_deal.get("ok") else None
+                        }
+                    
+                    return response
+                    
                 else:
                     logger.warning(f"⚠️  APEX ULTRA activation had issues for {username}")
                     return {
@@ -2353,6 +2438,43 @@ async def mint_user(request: Request):
         import traceback
         logger.error(traceback.format_exc())
         return {"ok": False, "error": str(e)}
+
+@app.post("/generate-referral-link")
+async def api_generate_referral_link(body: dict):
+    """
+    Generate referral link for external outreach
+    
+    Example:
+        POST /generate-referral-link
+        {
+            "username": "wade",
+            "template_id": "content_calendar",
+            "target_platform": "reddit"
+        }
+    """
+    username = body.get("username")
+    template_id = body.get("template_id")
+    target_platform = body.get("target_platform", "direct")
+    
+    if not username or not template_id:
+        return {"ok": False, "error": "username and template_id required"}
+    
+    link = generate_signup_link(
+        referrer_username=username,
+        template_id=template_id,
+        target_platform=target_platform
+    )
+    
+    return {
+        "ok": True,
+        "link": link,
+        "message": f"Share this link on {target_platform}. When they sign up, a deal will be auto-created.",
+        "tracking": {
+            "referrer": username,
+            "template": template_id,
+            "source": target_platform
+        }
+    }
         
 # ---- POST: unlock (kits/licenses/flags) ----
 @app.post("/unlock")
