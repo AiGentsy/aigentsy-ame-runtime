@@ -83,27 +83,40 @@ async def coordinate_template_activation(
     
     print("\n💰 Running AMG revenue cycle...")
     
-    from amg_orchestrator import AMGOrchestrator
-    
-    amg = AMGOrchestrator(username)
-    
-    # Initialize graph if needed
-    if not amg.user.get("amg", {}).get("graph_initialized"):
-        await amg.initialize_graph()
-    
-    # Run full 10-stage cycle
-    amg_result = await amg.run_cycle()
-    
-    results["amg"] = {
-        "cycle_complete": amg_result.get("cycle_complete"),
-        "opportunities_detected": amg_result.get("results", {}).get("sense", {}).get("opportunities_found", 0),
-        "actions_executed": amg_result.get("results", {}).get("route", {}).get("actions_executed", 0),
-        "revenue": amg_result.get("results", {}).get("settle", {}).get("revenue", 0)
-    }
-    results["systems_triggered"].append("AMGOrchestrator")
-    
-    print(f"   ✅ AMG: {results['amg']['opportunities_detected']} opportunities detected")
-    print(f"   ✅ AMG: {results['amg']['actions_executed']} actions executed")
+    try:
+        from amg_orchestrator import AMGOrchestrator
+        
+        amg = AMGOrchestrator(username)
+        
+        # Initialize graph if needed
+        if not amg.user.get("amg", {}).get("graph_initialized"):
+            await amg.initialize_graph()
+        
+        # Run full 10-stage cycle
+        amg_result = await amg.run_cycle()
+        
+        results["amg"] = {
+            "cycle_complete": amg_result.get("cycle_complete"),
+            "opportunities_detected": amg_result.get("results", {}).get("sense", {}).get("opportunities_found", 0),
+            "actions_executed": amg_result.get("results", {}).get("route", {}).get("actions_executed", 0),
+            "revenue": amg_result.get("results", {}).get("settle", {}).get("revenue", 0)
+        }
+        results["systems_triggered"].append("AMGOrchestrator")
+        
+        print(f"   ✅ AMG: {results['amg']['opportunities_detected']} opportunities detected")
+        print(f"   ✅ AMG: {results['amg']['actions_executed']} actions executed")
+        
+    except Exception as amg_error:
+        print(f"   ⚠️  AMG cycle skipped: {amg_error}")
+        results["amg"] = {
+            "cycle_complete": False,
+            "opportunities_detected": 0,
+            "actions_executed": 0,
+            "revenue": 0,
+            "error": str(amg_error),
+            "skipped": True
+        }
+        # Continue without AMG - CSuite opportunities are more important
     
     # ============================================================
     # STEP 3: MULTI-DEVICE COORDINATION (Use AiGentsy Conductor)
@@ -111,12 +124,12 @@ async def coordinate_template_activation(
     
     print("\n🔧 Scanning device capabilities...")
     
-    from aigentsy_conductor import scan_opportunities, create_execution_plan
-    
-    # Get device_id from user (or default)
-    device_id = user_data.get("primary_device_id", "web_dashboard")
-    
     try:
+        from aigentsy_conductor import scan_opportunities, create_execution_plan
+        
+        # Get device_id from user (or default)
+        device_id = user_data.get("primary_device_id", "web_dashboard")
+        
         # Scan for device-specific opportunities
         device_opps = await scan_opportunities(username, device_id)
         
@@ -141,9 +154,12 @@ async def coordinate_template_activation(
             print(f"   ✅ Conductor: {results['conductor']['device_opportunities']} device opportunities")
             print(f"   ✅ Conductor: Plan {plan.get('plan_id')} created")
         
-    except Exception as e:
-        print(f"   ⚠️  Conductor optional, skipped: {e}")
-        results["conductor"] = {"skipped": True, "reason": str(e)}
+    except Exception as conductor_error:
+        print(f"   ⚠️  Conductor skipped: {conductor_error}")
+        results["conductor"] = {
+            "skipped": True,
+            "error": str(conductor_error)
+        }
     
     # ============================================================
     # STEP 4: STORE IN DASHBOARD
