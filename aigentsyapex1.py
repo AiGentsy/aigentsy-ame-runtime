@@ -731,16 +731,16 @@ class CompleteActivationEngine:
                 if result.get("ok"):
                     intents_created.append(result)
         
-                # Find buyer opportunities
-                matches = await find_matches(self.username)
-        
-        # FIX: Check if matches is a list and has items
+            # Find buyer opportunities
+            matches = await find_matches(self.username)
+            
+            # Check if matches is a list and has items
             if not isinstance(matches, list):
                 matches = []
-        
+            
             bids_placed = []
             for match in matches[:3]:  # Bid on top 3
-            # FIX: Check if match is a dict and has required fields
+                # Check if match is a dict and has required fields
                 if isinstance(match, dict) and "intent_id" in match:
                     result = await place_bid(
                         username=self.username,
@@ -749,8 +749,8 @@ class CompleteActivationEngine:
                     )
                     if result.get("ok"):
                         bids_placed.append(result)
-        
-        # Set Intent Exchange active flag
+            
+            # Set Intent Exchange active flag
             self.user.setdefault("intentExchange", {"active": True, "seller": True, "buyer": True})
         
             print(f"   ✅ Intent Exchange: {len(intents_created)} intents created, {len(bids_placed)} bids placed")
@@ -942,7 +942,7 @@ class CompleteActivationEngine:
                 all_agents = []
             
             # Find potential partners
-            partners = await find_jv_partners(self.username, all_agents)
+            partners = await find_jv_partners(self.user, all_agents)
             
             if "jvMesh" not in self.user:
                 self.user["jvMesh"] = {}
@@ -1167,8 +1167,8 @@ class CompleteActivationEngine:
         """Activate insurance pool"""
     
         try:
-        # Auto-join insurance pool
-            result = await join_insurance_pool(self.username)
+        # Auto-join insurance pool with sample order value
+            result = await join_insurance_pool(100.0)
         
         # FIX: Ensure result is a dict
             if not isinstance(result, dict):
@@ -1206,7 +1206,7 @@ class CompleteActivationEngine:
         """Activate R³ auto-reinvestment"""
     
         try:
-            result = await configure_autopilot(self.username)
+            result = await configure_autopilot(self.user)
         
         # FIX: Check if result is a dict before calling .get()
             if not isinstance(result, dict):
