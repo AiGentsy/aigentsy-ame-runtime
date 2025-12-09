@@ -942,7 +942,7 @@ class CompleteActivationEngine:
                 all_agents = []
             
             # Find potential partners
-            partners = await find_jv_partners(self.username, all_agents)
+            partners = await find_jv_partners(self.user, all_agents)
             
             if "jvMesh" not in self.user:
                 self.user["jvMesh"] = {}
@@ -1167,8 +1167,8 @@ class CompleteActivationEngine:
         """Activate insurance pool"""
     
         try:
-        # Auto-join insurance pool
-            result = await join_insurance_pool(self.username)
+        # Auto-join insurance pool with sample order value
+            result = await join_insurance_pool(100.0)
         
         # FIX: Ensure result is a dict
             if not isinstance(result, dict):
@@ -1206,7 +1206,7 @@ class CompleteActivationEngine:
         """Activate R³ auto-reinvestment"""
     
         try:
-            result = await configure_autopilot(self.username)
+            result = await configure_autopilot(self.user)
         
         # FIX: Check if result is a dict before calling .get()
             if not isinstance(result, dict):
@@ -1511,4 +1511,3 @@ async def activate_apex_ultra(
         "total_systems": result["total_systems"],
         "activation": result
     }
-
