@@ -13,6 +13,13 @@ import time as _time
 import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
+from mint_generator import get_mint_generator
+from template_library import KIT_SUMMARY
+from template_integration_coordinator import (
+    auto_trigger_on_mint,
+    process_referral_signup,
+    generate_signup_link
+)
 
 from revenue_flows import (
     ingest_shopify_order,
@@ -3701,10 +3708,136 @@ try:
 except Exception:
     pass
 
-# ================================
-# >>> Business-in-a-Box: NEW ROUTES <<<
-# ================================
 
+# ===================================================================
+# INTELLIGENCE ENDPOINTS 
+# ===================================================================
+
+@app.get("/intelligence/{username}")
+async def get_user_intelligence(username: str):
+    """
+    Get comprehensive business intelligence for a user
+    Used by orchestrator and can be called directly
+    """
+    from csuite_orchestrator import get_orchestrator
+    orchestrator = get_orchestrator()
+    intelligence = await orchestrator.analyze_business_state(username)
+    return intelligence
+
+@app.get("/opportunities/{username}")
+async def get_user_opportunities(username: str):
+    """
+    Get scored revenue opportunities for a user
+    """
+    from csuite_orchestrator import get_orchestrator
+    orchestrator = get_orchestrator()
+    intelligence = await orchestrator.analyze_business_state(username)
+    
+    if not intelligence.get("ok"):
+        return {"ok": False, "error": "Could not analyze business state"}
+    
+    opportunities = await orchestrator.generate_opportunities(username, intelligence)
+    
+    return {
+        "ok": True,
+        "username": username,
+        "opportunities": opportunities,
+        "intelligence_summary": {
+            "kit_type": intelligence["capabilities"]["kit_type"],
+            "tier": intelligence["capabilities"]["tier"],
+            "reputation": intelligence["reputation"],
+            "multiplier": intelligence["capabilities"]["total_multiplier"]
+        }
+    }
+
+# ===================================================================
+# MINT GENERATION ENDPOINTS (Task #15)
+# ===================================================================
+
+@app.post("/mint/generate-kit")
+async def generate_kit_at_mint(
+    username: str,
+    kit_type: str,
+    company_name: str,
+    jurisdiction: str = "Delaware",
+    industry: str = "Technology",
+    contact_email: str = None,
+    phone: str = None,
+    address: str = None
+):
+    """
+    Generate complete kit deliverables at account creation
+    Called by frontend during onboarding after kit selection
+    """
+    
+    generator = get_mint_generator()
+    
+    user_data = {
+        "company_name": company_name,
+        "jurisdiction": jurisdiction,
+        "industry": industry,
+        "contact_email": contact_email or f"{username}@aigentsy.com",
+        "phone": phone or "[Phone Number]",
+        "address": address or "[Business Address]",
+        "date": datetime.now().strftime("%B %d, %Y"),
+        "username": username
+    }
+    
+    try:
+        result = await generator.generate_kit_deliverables(
+            username=username,
+            kit_type=kit_type,
+            user_data=user_data
+        )
+        
+        # Save manifest for later retrieval
+        await generator.save_kit_manifest(username, result)
+        
+        return result
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"Failed to generate kit: {str(e)}"
+        }
+
+@app.get("/mint/kit-manifest/{username}")
+async def get_kit_manifest(username: str):
+    """
+    Get manifest of generated kit deliverables
+    Used by dashboard to display "Your Kit" section
+    """
+    
+    generator = get_mint_generator()
+    manifest = await generator.get_kit_manifest(username)
+    
+    if not manifest:
+        return {
+            "ok": False,
+            "error": "No kit manifest found"
+        }
+    
+    return manifest
+
+@app.get("/mint/kit-summary/{kit_type}")
+async def get_kit_summary(kit_type: str):
+    """
+    Get summary of what user will receive in kit
+    Used by onboarding UI
+    """
+    
+    summary = KIT_SUMMARY.get(kit_type)
+    
+    if not summary:
+        return {
+            "ok": False,
+            "error": f"Unknown kit type: {kit_type}"
+        }
+    
+    return {
+        "ok": True,
+        **summary
+    }
 # ---------- 1) ORDER-TO-CASH ----------
 @app.post("/quote/create")
 async def quote_create(body: Dict = Body(...)):
