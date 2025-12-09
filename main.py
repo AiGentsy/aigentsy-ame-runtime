@@ -658,12 +658,14 @@ except Exception as e:
     
 app = FastAPI()
 
+# Register opportunity endpoints
 from ame_routes import register_ame_routes
 register_ame_routes(app)
 from aigx_engine import create_activity_endpoints
 create_activity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
+create_opportunity_endpoints(app) 
 
 async def auto_bid_background():
     """Runs in background forever"""
