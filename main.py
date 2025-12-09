@@ -15,6 +15,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from mint_generator import get_mint_generator
 from template_library import KIT_SUMMARY
+from template_integration_coordinator import (
+    auto_trigger_on_mint,
+    process_referral_signup,
+    generate_signup_link
+)
 
 from revenue_flows import (
     ingest_shopify_order,
