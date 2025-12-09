@@ -232,6 +232,25 @@ def get_dashboard_data(username: str) -> Dict:
     }
     
     # ============================================================
+    # OPPORTUNITIES (Template-generated revenue opportunities)
+    # ============================================================
+    
+    opportunities = user.get("opportunities", [])
+    
+    # Enrich opportunities with additional context
+    enriched_opportunities = []
+    for opp in opportunities:
+        enriched_opp = {
+            **opp,
+            "days_since_created": _days_since(opp.get("created_at")),
+            "urgency": _calculate_urgency(opp)
+        }
+        enriched_opportunities.append(enriched_opp)
+    
+    # Sort by estimated value (highest first)
+    enriched_opportunities.sort(key=lambda x: x.get("estimated_value", 0), reverse=True)
+    
+    # ============================================================
     # RECENT ACTIVITY (Last 10 ledger entries)
     # ============================================================
     
@@ -262,6 +281,7 @@ def get_dashboard_data(username: str) -> Dict:
         "referrals": referrals,
         "revenue_stats": revenue_stats,
         "apex_ultra": apex_status,
+        "opportunities": enriched_opportunities,
         "recent_activity": recent_activity,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
@@ -449,6 +469,38 @@ def _format_basis_description(basis: str) -> str:
         "tier_upgrade": "Tier Upgrade"
     }
     return descriptions.get(basis, basis.replace("_", " ").title())
+
+
+def _days_since(timestamp_str: Optional[str]) -> int:
+    """Calculate days since a timestamp"""
+    if not timestamp_str:
+        return 0
+    
+    try:
+        created = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        delta = now - created
+        return delta.days
+    except:
+        return 0
+
+
+def _calculate_urgency(opportunity: Dict) -> str:
+    """Calculate urgency level for an opportunity"""
+    days_old = _days_since(opportunity.get("created_at"))
+    confidence = opportunity.get("confidence", 0)
+    estimated_value = opportunity.get("estimated_value", 0)
+    
+    # High urgency: high value + high confidence + fresh
+    if estimated_value > 5000 and confidence > 0.7 and days_old < 3:
+        return "high"
+    
+    # Medium urgency: decent value or getting old
+    if estimated_value > 1000 or days_old > 7:
+        return "medium"
+    
+    # Low urgency: everything else
+    return "low"
 
 
 # ============================================================
