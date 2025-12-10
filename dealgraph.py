@@ -26,8 +26,9 @@ class DealState(str, Enum):
 
 
 # Platform fee structure
-PLATFORM_FEE = 0.15  # 15% platform cut
-INSURANCE_POOL_CUT = 0.05  # 5% to insurance pool
+PLATFORM_FEE_PERCENT = 0.028  # 2.8% platform cut
+PLATFORM_FEE_FIXED = 0.28     # $0.28 per transaction
+INSURANCE_POOL_CUT = 0.0   
 
 
 def create_deal(
@@ -146,26 +147,18 @@ def calculate_revenue_split(
     """
     distribution = []
     
-    # 1. Platform fee (15%)
-    platform_amount = job_value * PLATFORM_FEE
+    # 1. Platform fee (2.8% + $0.28)
+    platform_amount = (job_value * PLATFORM_FEE_PERCENT) + PLATFORM_FEE_FIXED
     distribution.append({
         "recipient": "platform",
         "type": "platform_fee",
         "amount": platform_amount,
-        "percentage": PLATFORM_FEE
+        "percentage": PLATFORM_FEE_PERCENT,
+        "fixed_fee": PLATFORM_FEE_FIXED
     })
     
-    # 2. Insurance pool (5%)
-    insurance_amount = job_value * INSURANCE_POOL_CUT
-    distribution.append({
-        "recipient": "insurance_pool",
-        "type": "insurance_contribution",
-        "amount": insurance_amount,
-        "percentage": INSURANCE_POOL_CUT
-    })
-    
-    # Agent pool (remaining 80%)
-    agent_pool = job_value * (1 - PLATFORM_FEE - INSURANCE_POOL_CUT)
+    # Agent pool (job value minus platform fee only)
+    agent_pool = job_value - platform_amount
     
     # 3. IP royalties (deducted from agent pool)
     total_royalties = 0.0
@@ -232,11 +225,13 @@ def calculate_revenue_split(
     summary = {
         "job_value": round(job_value, 2),
         "platform_fee": round(platform_amount, 2),
-        "insurance_pool": round(insurance_amount, 2),
+        "platform_fee_percent": PLATFORM_FEE_PERCENT,
+        "platform_fee_fixed": PLATFORM_FEE_FIXED,
         "total_royalties": round(total_royalties, 2),
         "total_jv_splits": round(total_jv_splits, 2),
         "lead_agent_net": round(lead_agent_amount, 2)
     }
+
     
     return {
         "ok": True,
