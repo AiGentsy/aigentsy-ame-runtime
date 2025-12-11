@@ -785,3 +785,322 @@ def export_uol_receipts(username: str, format: str = "json") -> Any:
             })
         
         return export_poos
+
+
+# ============================================================
+# VALUE ROUTER - YIELD STATEMENT
+# ============================================================
+
+def get_yield_statement(username: str, period_days: int = 30) -> Dict[str, Any]:
+    """
+    Get unified yield statement showing all revenue sources.
+    
+    Aggregates revenue from:
+    - Shopify orders
+    - Affiliate commissions
+    - Service revenue
+    - SaaS subscriptions
+    - CPM/ads
+    - Bundles
+    - Value chains
+    
+    Args:
+        username: User to query
+        period_days: Number of days to look back (default 30)
+        
+    Returns:
+        dict: Unified yield statement with all revenue sources
+    """
+    from log_to_jsonbin import get_user
+    
+    user = get_user(username)
+    if not user:
+        return {
+            "ok": False,
+            "error": "user_not_found"
+        }
+    
+    # ============================================
+    # PULL REVENUE DATA FROM USER RECORD
+    # ============================================
+    
+    revenue_tracking = user.get("revenue_tracking", {})
+    
+    # Get all-time totals by source
+    revenue_by_source = revenue_tracking.get("revenue_by_source", {})
+    total_revenue_usd = revenue_tracking.get("total_revenue_usd", 0.0)
+    total_fees_paid = revenue_tracking.get("total_fees_paid", 0.0)
+    
+    # ============================================
+    # CALCULATE PERIOD-SPECIFIC (if needed)
+    # ============================================
+    
+    # For now, return all-time totals
+    # Future: Filter fee_history by period_days for time-based view
+    
+    fee_history = revenue_tracking.get("fee_history", [])
+    
+    # Calculate period fees (last N days)
+    now = datetime.now(timezone.utc)
+    period_start = now - timedelta(days=period_days)
+    
+    period_fees = 0.0
+    for fee_record in fee_history:
+        try:
+            timestamp = fee_record.get("timestamp", "")
+            fee_date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if fee_date >= period_start:
+                period_fees += fee_record.get("fee_breakdown", {}).get("total_fee", 0)
+        except:
+            continue
+    
+    # ============================================
+    # FORMAT BY SOURCE WITH PERCENTAGES
+    # ============================================
+    
+    by_source = {}
+    for source, amount in revenue_by_source.items():
+        percentage = round((amount / total_revenue_usd * 100), 1) if total_revenue_usd > 0 else 0
+        by_source[source] = {
+            "amount": round(amount, 2),
+            "percentage": percentage,
+            "formatted": f"${amount:,.2f} ({percentage}%)"
+        }
+    
+    # Sort by amount descending
+    by_source = dict(sorted(by_source.items(), key=lambda x: x[1]["amount"], reverse=True))
+    
+    # ============================================
+    # CALCULATE NET REVENUE
+    # ============================================
+    
+    net_revenue = total_revenue_usd - total_fees_paid
+    effective_fee_rate = round((total_fees_paid / total_revenue_usd * 100), 2) if total_revenue_usd > 0 else 0
+    
+    return {
+        "ok": True,
+        "username": username,
+        "period_days": period_days,
+        "summary": {
+            "total_revenue": round(total_revenue_usd, 2),
+            "total_fees_paid": round(total_fees_paid, 2),
+            "period_fees_paid": round(period_fees, 2),
+            "net_revenue": round(net_revenue, 2),
+            "effective_fee_rate": effective_fee_rate
+        },
+        "by_source": by_source,
+        "source_count": len(by_source),
+        "generated_at": _now()
+    }
+
+
+def get_revenue_breakdown(username: str, period_days: int = 30) -> Dict[str, Any]:
+    """
+    Get detailed revenue breakdown with trend analysis.
+    
+    Args:
+        username: User to query
+        period_days: Number of days for current period
+        
+    Returns:
+        dict: Revenue breakdown with trends
+    """
+    from log_to_jsonbin import get_user
+    
+    user = get_user(username)
+    if not user:
+        return {
+            "ok": False,
+            "error": "user_not_found"
+        }
+    
+    revenue_tracking = user.get("revenue_tracking", {})
+    fee_history = revenue_tracking.get("fee_history", [])
+    
+    # ============================================
+    # CALCULATE CURRENT PERIOD
+    # ============================================
+    
+    now = datetime.now(timezone.utc)
+    current_period_start = now - timedelta(days=period_days)
+    
+    current_period_revenue = 0.0
+    current_period_fees = 0.0
+    current_period_by_source = {}
+    
+    for fee_record in fee_history:
+        try:
+            timestamp = fee_record.get("timestamp", "")
+            fee_date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            
+            if fee_date >= current_period_start:
+                amount = fee_record.get("amount_usd", 0)
+                source = fee_record.get("source", "unknown")
+                fee = fee_record.get("fee_breakdown", {}).get("total_fee", 0)
+                
+                current_period_revenue += amount
+                current_period_fees += fee
+                
+                current_period_by_source.setdefault(source, 0)
+                current_period_by_source[source] += amount
+        except:
+            continue
+    
+    # ============================================
+    # CALCULATE PREVIOUS PERIOD (for comparison)
+    # ============================================
+    
+    previous_period_start = current_period_start - timedelta(days=period_days)
+    
+    previous_period_revenue = 0.0
+    
+    for fee_record in fee_history:
+        try:
+            timestamp = fee_record.get("timestamp", "")
+            fee_date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            
+            if previous_period_start <= fee_date < current_period_start:
+                amount = fee_record.get("amount_usd", 0)
+                previous_period_revenue += amount
+        except:
+            continue
+    
+    # ============================================
+    # CALCULATE TREND
+    # ============================================
+    
+    if previous_period_revenue > 0:
+        growth_rate = round(((current_period_revenue - previous_period_revenue) / previous_period_revenue * 100), 1)
+    else:
+        growth_rate = 0.0
+    
+    trend = "growing" if growth_rate > 5 else "declining" if growth_rate < -5 else "stable"
+    
+    # ============================================
+    # DAILY AVERAGE
+    # ============================================
+    
+    daily_avg = round(current_period_revenue / period_days, 2) if period_days > 0 else 0
+    
+    return {
+        "ok": True,
+        "username": username,
+        "period_days": period_days,
+        "current_period": {
+            "revenue": round(current_period_revenue, 2),
+            "fees": round(current_period_fees, 2),
+            "net": round(current_period_revenue - current_period_fees, 2),
+            "by_source": current_period_by_source,
+            "daily_avg": daily_avg
+        },
+        "previous_period": {
+            "revenue": round(previous_period_revenue, 2)
+        },
+        "trend": {
+            "status": trend,
+            "growth_rate": growth_rate,
+            "description": f"{abs(growth_rate)}% {'increase' if growth_rate > 0 else 'decrease'} vs previous {period_days} days"
+        },
+        "generated_at": _now()
+    }
+
+
+def get_revenue_by_rail(username: str) -> Dict[str, Any]:
+    """
+    Get revenue breakdown by "rail" (source category).
+    
+    Rails:
+    - Services (one-time project work)
+    - SaaS (recurring subscriptions)
+    - Affiliate (commission-based)
+    - CPM (ad-based)
+    - Shopify (e-commerce)
+    - Other
+    
+    Args:
+        username: User to query
+        
+    Returns:
+        dict: Revenue by rail with totals
+    """
+    from log_to_jsonbin import get_user
+    
+    user = get_user(username)
+    if not user:
+        return {
+            "ok": False,
+            "error": "user_not_found"
+        }
+    
+    revenue_tracking = user.get("revenue_tracking", {})
+    revenue_by_source = revenue_tracking.get("revenue_by_source", {})
+    
+    # ============================================
+    # MAP SOURCES TO RAILS
+    # ============================================
+    
+    rail_mapping = {
+        "services": ["services", "intent_exchange", "proposal", "deal"],
+        "saas": ["saas", "subscription", "recurring"],
+        "affiliate": ["affiliate", "referral", "partner"],
+        "cpm": ["cpm", "ads", "advertising"],
+        "shopify": ["shopify", "ecommerce", "store"],
+        "bundles": ["bundle", "bundle_sale"],
+        "chains": ["chain", "value_chain"]
+    }
+    
+    by_rail = {
+        "services": {"amount": 0, "sources": []},
+        "saas": {"amount": 0, "sources": []},
+        "affiliate": {"amount": 0, "sources": []},
+        "cpm": {"amount": 0, "sources": []},
+        "shopify": {"amount": 0, "sources": []},
+        "bundles": {"amount": 0, "sources": []},
+        "chains": {"amount": 0, "sources": []},
+        "other": {"amount": 0, "sources": []}
+    }
+    
+    # Map each source to a rail
+    for source, amount in revenue_by_source.items():
+        mapped = False
+        
+        for rail, keywords in rail_mapping.items():
+            if any(keyword in source.lower() for keyword in keywords):
+                by_rail[rail]["amount"] += amount
+                by_rail[rail]["sources"].append(source)
+                mapped = True
+                break
+        
+        if not mapped:
+            by_rail["other"]["amount"] += amount
+            by_rail["other"]["sources"].append(source)
+    
+    # ============================================
+    # FORMAT WITH PERCENTAGES
+    # ============================================
+    
+    total = sum(rail["amount"] for rail in by_rail.values())
+    
+    formatted_rails = {}
+    for rail, data in by_rail.items():
+        if data["amount"] > 0:  # Only include rails with revenue
+            percentage = round((data["amount"] / total * 100), 1) if total > 0 else 0
+            formatted_rails[rail] = {
+                "amount": round(data["amount"], 2),
+                "percentage": percentage,
+                "sources": data["sources"],
+                "source_count": len(data["sources"]),
+                "formatted": f"${data['amount']:,.2f} ({percentage}%)"
+            }
+    
+    # Sort by amount descending
+    formatted_rails = dict(sorted(formatted_rails.items(), key=lambda x: x[1]["amount"], reverse=True))
+    
+    return {
+        "ok": True,
+        "username": username,
+        "total_revenue": round(total, 2),
+        "by_rail": formatted_rails,
+        "rail_count": len(formatted_rails),
+        "generated_at": _now()
+    }
