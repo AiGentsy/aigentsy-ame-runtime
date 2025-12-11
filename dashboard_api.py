@@ -715,3 +715,80 @@ def create_dashboard_endpoints(app):
         }
         
         return await explain_price(base_price, agent, intent_id, context)
+    
+    # ============================================================
+    # DELIVERY MODE - DIY/DWY/DFY ENDPOINTS
+    # ============================================================
+    
+    @app.get("/pricing/modes")
+    async def pricing_modes_get(base_price: float, modes: str = "DIY,DWY,DFY"):
+        """
+        Get pricing breakdown for all delivery modes.
+        
+        Returns pricing for DIY (Do-It-Yourself), DWY (Done-With-You),
+        and DFY (Done-For-You) delivery modes.
+        
+        Args:
+            base_price: Base DFY (full service) price
+            modes: Comma-separated list of modes (default: all)
+            
+        Example:
+            GET /pricing/modes?base_price=11500
+            
+        Returns:
+            {
+              "by_mode": {
+                "DIY": {"price": 4200, "savings_pct": 64, ...},
+                "DWY": {"price": 6800, "savings_pct": 41, ...},
+                "DFY": {"price": 11500, "savings_pct": 0, ...}
+              }
+            }
+        """
+        from pricing_oracle import calculate_mode_pricing
+        
+        mode_list = [m.strip().upper() for m in modes.split(",")]
+        return calculate_mode_pricing(base_price, mode_list)
+    
+    @app.get("/pricing/mode/calculate")
+    async def pricing_mode_calculate_get(base_price: float, mode: str):
+        """
+        Calculate price for a specific delivery mode.
+        
+        Args:
+            base_price: Base DFY price
+            mode: Delivery mode (DIY/DWY/DFY)
+            
+        Returns:
+            Calculated price for the specified mode
+        """
+        from pricing_oracle import calculate_mode_price
+        
+        mode_price = calculate_mode_price(base_price, mode)
+        
+        return {
+            "ok": True,
+            "base_price": base_price,
+            "mode": mode.upper(),
+            "mode_price": mode_price
+        }
+    
+    @app.get("/pricing/mode/recommend")
+    async def pricing_mode_recommend_get(
+        buyer_budget: float,
+        buyer_experience: str = "beginner",
+        buyer_time: str = "limited"
+    ):
+        """
+        Recommend optimal delivery mode based on buyer context.
+        
+        Args:
+            buyer_budget: Buyer's maximum budget
+            buyer_experience: Experience level (beginner/intermediate/advanced)
+            buyer_time: Time availability (limited/moderate/abundant)
+            
+        Returns:
+            Recommended mode with reasoning
+        """
+        from pricing_oracle import recommend_mode
+        
+        return recommend_mode(buyer_budget, buyer_experience, buyer_time)
