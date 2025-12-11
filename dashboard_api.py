@@ -1035,3 +1035,110 @@ def create_dashboard_endpoints(app):
         """
         from ocl_p2p_lending import list_available_offers
         return list_available_offers(min_amount, max_interest)
+    
+    # ============================================================
+    # DARK POOL - PREMIUM INTENTS ENDPOINTS
+    # ============================================================
+    
+    @app.get("/dark_pool/access/{username}")
+    async def dark_pool_access_get(username: str):
+        """
+        Check user's dark pool access level based on UoO score.
+        
+        Returns:
+            {
+              "current_tier": "gold",
+              "access_level": "premium",
+              "can_access_dark_pool": true,
+              "deal_value_range": {"min": 5000, "max": 20000},
+              "next_tier": "platinum",
+              "uoo_needed_for_next_tier": 80
+            }
+        """
+        from dark_pool import check_dark_pool_access
+        return check_dark_pool_access(username)
+    
+    @app.get("/dark_pool/qualify")
+    async def dark_pool_qualify_get(username: str, intent_value: float):
+        """
+        Check if user qualifies for specific dark pool intent.
+        
+        Args:
+            username: Agent username
+            intent_value: Deal value of intent
+            
+        Returns qualification status and requirements.
+        """
+        from dark_pool import qualify_for_dark_pool_intent
+        return qualify_for_dark_pool_intent(username, intent_value)
+    
+    @app.post("/dark_pool/auction/create")
+    async def dark_pool_auction_create_post(
+        intent: Dict[str, Any],
+        min_uoo_required: float = 200,
+        min_reputation_tier: str = "gold",
+        auction_duration_hours: int = 48
+    ):
+        """
+        Create premium dark pool auction.
+        
+        Args:
+            intent: Intent to auction
+            min_uoo_required: Minimum UoO to participate (default: 200)
+            min_reputation_tier: Minimum reputation tier (default: gold)
+            auction_duration_hours: Duration in hours (default: 48)
+        """
+        from dark_pool import create_premium_dark_pool_auction
+        return create_premium_dark_pool_auction(
+            intent,
+            min_uoo_required,
+            min_reputation_tier,
+            auction_duration_hours
+        )
+    
+    @app.post("/dark_pool/bid/submit")
+    async def dark_pool_bid_submit_post(
+        auction: Dict[str, Any],
+        agent_user: Dict[str, Any],
+        bid_amount: float,
+        delivery_hours: int,
+        proposal_summary: str = ""
+    ):
+        """
+        Submit bid to premium dark pool auction.
+        
+        Includes automatic qualification checks.
+        """
+        from dark_pool import submit_premium_dark_pool_bid
+        return submit_premium_dark_pool_bid(
+            auction,
+            agent_user,
+            bid_amount,
+            delivery_hours,
+            proposal_summary
+        )
+    
+    @app.get("/dark_pool/leaderboard")
+    async def dark_pool_leaderboard_get(limit: int = 10):
+        """
+        Get dark pool leaderboard of top performers.
+        
+        Args:
+            limit: Number of top performers to return (default: 10)
+        """
+        # This would need access to all auctions - implementation depends on storage
+        return {
+            "ok": True,
+            "leaderboard": [],
+            "message": "Leaderboard requires auction storage implementation"
+        }
+    
+    @app.get("/dark_pool/unlock/{username}")
+    async def dark_pool_unlock_get(username: str):
+        """
+        Check if user has unlocked dark pool access.
+        
+        Returns milestone status and badge if earned.
+        """
+        from dark_pool import unlock_dark_pool_milestone
+        return unlock_dark_pool_milestone(username)
