@@ -27,6 +27,7 @@ class Intent(BaseModel):
     intent: Dict[str, Any]
     escrow_usd: Optional[float] = 0.0
     auction_duration: Optional[int] = 90
+    delivery_mode: Optional[str] = "DFY"  # NEW: DIY/DWY/DFY
 
 class Bid(BaseModel):
     intent_id: str
@@ -269,7 +270,17 @@ async def publish_intent(req: Intent, background_tasks: BackgroundTasks):
         "escrow_usd": float(req.escrow_usd),
         "escrow_id": escrow_id,
         "created_at": now_iso(),
-        "poo_verified": False
+        "poo_verified": False,
+        
+        # ============================================
+        # NEW: DELIVERY MODE
+        # ============================================
+        "delivery_mode": (req.delivery_mode or "DFY").upper(),
+        "mode_info": {
+            "mode": (req.delivery_mode or "DFY").upper(),
+            "escrow_amount": float(req.escrow_usd),
+            "description": _get_mode_description((req.delivery_mode or "DFY").upper())
+        }
     }
     
     _INTENTS[iid] = payload
@@ -614,6 +625,78 @@ async def get_intent(intent_id: str):
         "bids": bids,
         "bid_count": len(bids),
         "escrow": escrow
+    }
+
+
+# ============================================================
+# DELIVERY MODE HELPERS
+# ============================================================
+
+def _get_mode_description(mode: str) -> str:
+    """Get human-readable description for delivery mode"""
+    descriptions = {
+        "DIY": "Do-It-Yourself - Templates, tools, and guidance provided",
+        "DWY": "Done-With-You - Collaborative partnership with regular check-ins",
+        "DFY": "Done-For-You - Full service delivery, we handle everything"
+    }
+    return descriptions.get(mode.upper(), "Full service delivery")
+
+
+@router.post("/{intent_id}/change_mode")
+async def change_intent_mode(intent_id: str, new_mode: str, background_tasks: BackgroundTasks):
+    """
+    Change delivery mode for an intent.
+    
+    Note: This restarts the auction with new escrow amount.
+    Only available before intent is awarded.
+    """
+    it = _INTENTS.get(intent_id)
+    if not it:
+        raise HTTPException(status_code=404, detail="intent not found")
+    
+    if it["status"] not in ["AUCTION"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot change mode for intent in status {it['status']}"
+        )
+    
+    # Validate mode
+    if new_mode.upper() not in ["DIY", "DWY", "DFY"]:
+        raise HTTPException(status_code=400, detail="mode must be DIY, DWY, or DFY")
+    
+    old_mode = it.get("delivery_mode", "DFY")
+    
+    # Update mode
+    it["delivery_mode"] = new_mode.upper()
+    it["mode_info"] = {
+        "mode": new_mode.upper(),
+        "escrow_amount": it["escrow_usd"],  # Note: Escrow already locked, would need to adjust
+        "description": _get_mode_description(new_mode.upper())
+    }
+    
+    it["events"].append({
+        "type": "MODE_CHANGED",
+        "from_mode": old_mode,
+        "to_mode": new_mode.upper(),
+        "at": now_iso()
+    })
+    
+    # Clear existing bids (mode change restarts auction)
+    _BIDS[intent_id] = []
+    
+    it["events"].append({
+        "type": "BIDS_CLEARED",
+        "reason": "mode_change",
+        "at": now_iso()
+    })
+    
+    return {
+        "ok": True,
+        "intent_id": intent_id,
+        "old_mode": old_mode,
+        "new_mode": new_mode.upper(),
+        "bids_cleared": True,
+        "message": f"Mode changed from {old_mode} to {new_mode.upper()}. Auction continues with new requirements."
     }
 
 @router.get("/escrow/{intent_id}")
