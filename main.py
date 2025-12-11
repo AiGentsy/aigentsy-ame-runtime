@@ -21,7 +21,11 @@ from template_integration_coordinator import (
     process_referral_signup,
     generate_signup_link
 )
-
+from badge_engine import (
+    get_user_badges,
+    get_badge_progress,
+    get_social_proof
+)
 from revenue_flows import (
     ingest_shopify_order,
     ingest_affiliate_commission,
@@ -665,7 +669,9 @@ from aigx_engine import create_activity_endpoints
 create_activity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
-create_opportunity_endpoints(app) 
+create_opportunity_endpoints(app)
+from dashboard_api import create_dashboard_endpoints
+create_dashboard_endpoints(app)
 
 async def auto_bid_background():
     """Runs in background forever"""
