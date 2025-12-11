@@ -636,3 +636,82 @@ def create_dashboard_endpoints(app):
                     "Content-Disposition": f"attachment; filename=uol_export_{username}.csv"
                 }
             )
+    
+    # ============================================================
+    # VALUE ROUTER - REVENUE ENDPOINTS
+    # ============================================================
+    
+    @app.get("/revenue/yield_statement")
+    async def revenue_yield_statement_get(username: str, period_days: int = 30):
+        """
+        Get unified yield statement showing all revenue sources.
+        
+        Returns revenue breakdown by source (Shopify, Affiliate, Services, SaaS, etc.)
+        with percentages and totals.
+        
+        Args:
+            period_days: Number of days to look back (default 30)
+        """
+        from analytics_engine import get_yield_statement
+        return get_yield_statement(username, period_days)
+    
+    @app.get("/revenue/by_rail")
+    async def revenue_by_rail_get(username: str):
+        """
+        Get revenue breakdown by "rail" (source category).
+        
+        Rails include: Services, SaaS, Affiliate, CPM, Shopify, Bundles, Chains, Other
+        """
+        from analytics_engine import get_revenue_by_rail
+        return get_revenue_by_rail(username)
+    
+    @app.get("/revenue/breakdown")
+    async def revenue_breakdown_get(username: str, period_days: int = 30):
+        """
+        Get detailed revenue breakdown with trend analysis.
+        
+        Includes:
+        - Current period revenue
+        - Previous period comparison
+        - Growth rate
+        - Trend status (growing/declining/stable)
+        
+        Args:
+            period_days: Number of days for current period (default 30)
+        """
+        from analytics_engine import get_revenue_breakdown
+        return get_revenue_breakdown(username, period_days)
+    
+    @app.get("/pricing/explain")
+    async def pricing_explain_get(
+        base_price: float,
+        agent: str,
+        intent_id: str = None,
+        service_type: str = "general",
+        buyer: str = None
+    ):
+        """
+        Get pricing explanation for "Why this price?" modal.
+        
+        Returns:
+        - Market analysis (similar deals, price range)
+        - Agent's historical average
+        - Price adjustments breakdown
+        - Win probability
+        - Confidence score
+        
+        Args:
+            base_price: Recommended price to explain
+            agent: Agent username
+            intent_id: Optional intent ID
+            service_type: Type of service
+            buyer: Optional buyer username
+        """
+        from pricing_oracle import explain_price
+        
+        context = {
+            "service_type": service_type,
+            "buyer": buyer
+        }
+        
+        return await explain_price(base_price, agent, intent_id, context)
