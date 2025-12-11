@@ -1281,3 +1281,222 @@ def create_dashboard_endpoints(app):
         """
         from subscription_engine import calculate_mrr
         return calculate_mrr()
+    
+    # ========================================
+    # FEATURE #8: WARRANTIES & GUARANTEES
+    # ========================================
+    
+    @app.post("/warranties/create")
+    async def warranty_create_post(
+        agent_username: str,
+        warranty_type: str,
+        outcome_price: float,
+        custom_terms: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Create a warranty offer for an outcome.
+        
+        Args:
+            agent_username: Agent offering warranty
+            warranty_type: money_back_100, unlimited_revisions, etc
+            outcome_price: Price of outcome being warranted
+            custom_terms: Optional custom terms
+        
+        Returns:
+            Warranty with bond requirement
+        """
+        from warranty_engine import create_warranty
+        return create_warranty(agent_username, warranty_type, outcome_price, custom_terms)
+    
+    @app.post("/warranties/stake_bond")
+    async def warranty_stake_bond_post(
+        warranty_id: str,
+        agent_username: str,
+        amount: float,
+        payment_method: str = "stripe"
+    ):
+        """
+        Stake warranty bond to activate warranty.
+        
+        Args:
+            warranty_id: Warranty ID
+            agent_username: Agent staking bond
+            amount: Bond amount
+            payment_method: Payment method
+        
+        Returns:
+            Bond staking confirmation
+        """
+        from warranty_engine import stake_warranty_bond
+        return stake_warranty_bond(warranty_id, agent_username, amount, payment_method)
+    
+    @app.post("/warranties/claim")
+    async def warranty_claim_post(
+        buyer_username: str,
+        outcome_id: str,
+        warranty_id: str,
+        claim_reason: str,
+        evidence: Optional[str] = None,
+        desired_resolution: str = "refund"
+    ):
+        """
+        File a warranty claim.
+        
+        Args:
+            buyer_username: Buyer filing claim
+            outcome_id: Outcome ID
+            warranty_id: Warranty ID
+            claim_reason: Reason for claim
+            evidence: Supporting evidence
+            desired_resolution: refund or revision
+        
+        Returns:
+            Claim record
+        """
+        from warranty_engine import file_warranty_claim
+        return file_warranty_claim(
+            buyer_username,
+            outcome_id,
+            warranty_id,
+            claim_reason,
+            evidence,
+            desired_resolution
+        )
+    
+    @app.post("/warranties/claim/process")
+    async def warranty_claim_process_post(
+        claim_id: str,
+        approved: bool,
+        reviewer: str = "aigentsy_admin",
+        review_notes: Optional[str] = None
+    ):
+        """
+        Process (approve/deny) a warranty claim.
+        
+        Admin endpoint.
+        
+        Args:
+            claim_id: Claim ID
+            approved: True to approve, False to deny
+            reviewer: Reviewer username
+            review_notes: Review notes
+        
+        Returns:
+            Claim processing result with refund/bond info
+        """
+        from warranty_engine import process_warranty_claim
+        return process_warranty_claim(claim_id, approved, reviewer, review_notes)
+    
+    @app.post("/warranties/revision/request")
+    async def warranty_revision_request_post(
+        buyer_username: str,
+        outcome_id: str,
+        warranty_id: str,
+        revision_feedback: str,
+        revision_details: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Request a revision under warranty.
+        
+        Args:
+            buyer_username: Buyer requesting
+            outcome_id: Outcome ID
+            warranty_id: Warranty ID
+            revision_feedback: Feedback for revision
+            revision_details: Detailed requirements
+        
+        Returns:
+            Revision request with SLA deadline
+        """
+        from warranty_engine import request_revision
+        return request_revision(
+            buyer_username,
+            outcome_id,
+            warranty_id,
+            revision_feedback,
+            revision_details
+        )
+    
+    @app.post("/warranties/revision/deliver")
+    async def warranty_revision_deliver_post(
+        agent_username: str,
+        revision_id: str,
+        revised_outcome: Dict[str, Any],
+        revision_notes: Optional[str] = None
+    ):
+        """
+        Agent delivers a revision.
+        
+        Args:
+            agent_username: Agent delivering
+            revision_id: Revision request ID
+            revised_outcome: Revised outcome data
+            revision_notes: Notes about revision
+        
+        Returns:
+            Delivery confirmation with SLA status
+        """
+        from warranty_engine import deliver_revision
+        return deliver_revision(agent_username, revision_id, revised_outcome, revision_notes)
+    
+    @app.get("/warranties/terms/{warranty_id}")
+    async def warranty_terms_get(warranty_id: str):
+        """
+        Get warranty terms and details.
+        
+        Returns:
+            Complete warranty information
+        """
+        from warranty_engine import get_warranty_terms
+        return get_warranty_terms(warranty_id)
+    
+    @app.get("/warranties/agent/{username}")
+    async def warranty_agent_get(username: str):
+        """
+        Get all warranties offered by an agent.
+        
+        Returns:
+            Agent's warranties, bonds, claims
+        """
+        from warranty_engine import get_agent_warranties
+        return get_agent_warranties(username)
+    
+    @app.get("/warranties/types")
+    async def warranty_types_get():
+        """
+        Get all available warranty types.
+        
+        Returns:
+            Warranty types with terms and bond requirements
+        """
+        from warranty_engine import get_all_warranty_types
+        return get_all_warranty_types()
+    
+    @app.get("/warranties/calculate_bond")
+    async def warranty_calculate_bond_get(
+        warranty_type: str,
+        outcome_price: float
+    ):
+        """
+        Calculate bond requirement for warranty.
+        
+        Args:
+            warranty_type: Type of warranty
+            outcome_price: Outcome price
+        
+        Returns:
+            Bond calculation details
+        """
+        from warranty_engine import calculate_bond_requirement
+        return calculate_bond_requirement(warranty_type, outcome_price)
+    
+    @app.get("/warranties/buyer_claims/{username}")
+    async def warranty_buyer_claims_get(username: str):
+        """
+        Get all claims filed by a buyer.
+        
+        Returns:
+            Buyer's claim history and refunds
+        """
+        from warranty_engine import get_buyer_claims
+        return get_buyer_claims(username)
