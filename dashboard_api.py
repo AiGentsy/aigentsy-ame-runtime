@@ -12,7 +12,7 @@ Provides comprehensive dashboard data for users:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List
 
 from aigx_config import (
     AIGX_CONFIG,
