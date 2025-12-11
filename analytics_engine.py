@@ -473,3 +473,315 @@ def detect_financial_alerts(
         })
     
     return alerts
+
+
+# ============================================================
+# UNIVERSAL OUTCOME LEDGER (UoL) ANALYTICS
+# ============================================================
+
+def get_uol_summary(username: str) -> Dict[str, Any]:
+    """
+    Get Universal Outcome Ledger summary for a user.
+    
+    Aggregates UoO from all verified PoO receipts.
+    Calculates percentile ranking vs all users.
+    
+    Args:
+        username: User to query
+        
+    Returns:
+        dict: UoL summary with aggregates and percentile
+    """
+    from outcome_oracle import list_poos
+    
+    # Get all verified PoOs for this user
+    poos_result = list_poos(agent=username, status="VERIFIED")
+    poos = poos_result.get("poos", [])
+    
+    if not poos:
+        return {
+            "ok": True,
+            "username": username,
+            "total_outcomes": 0,
+            "total_uoo": 0,
+            "average_uoo": 0,
+            "by_archetype": {},
+            "by_difficulty": {},
+            "by_value_band": {},
+            "percentile": 0
+        }
+    
+    # ============================================
+    # AGGREGATE UoO TOTALS
+    # ============================================
+    
+    total_uoo = sum(p.get("uoo", {}).get("uoo_score", 0) for p in poos)
+    avg_uoo = total_uoo / len(poos) if poos else 0
+    
+    # ============================================
+    # BY ARCHETYPE
+    # ============================================
+    
+    by_archetype = {}
+    for poo in poos:
+        if "uoo" in poo:
+            archetype = poo["uoo"]["archetype"]
+            archetype_name = poo["uoo"]["archetype_name"]
+            uoo_score = poo["uoo"]["uoo_score"]
+            
+            if archetype not in by_archetype:
+                by_archetype[archetype] = {
+                    "name": archetype_name,
+                    "count": 0,
+                    "total_uoo": 0
+                }
+            
+            by_archetype[archetype]["count"] += 1
+            by_archetype[archetype]["total_uoo"] += uoo_score
+    
+    # Round and add averages
+    for archetype_data in by_archetype.values():
+        archetype_data["total_uoo"] = round(archetype_data["total_uoo"], 3)
+        archetype_data["avg_uoo"] = round(
+            archetype_data["total_uoo"] / archetype_data["count"], 3
+        ) if archetype_data["count"] > 0 else 0
+    
+    # ============================================
+    # BY DIFFICULTY
+    # ============================================
+    
+    by_difficulty = {}
+    for poo in poos:
+        if "uoo" in poo:
+            difficulty = poo["uoo"]["difficulty"]
+            uoo_score = poo["uoo"]["uoo_score"]
+            
+            if difficulty not in by_difficulty:
+                by_difficulty[difficulty] = {"count": 0, "total_uoo": 0}
+            
+            by_difficulty[difficulty]["count"] += 1
+            by_difficulty[difficulty]["total_uoo"] += uoo_score
+    
+    # Round
+    for difficulty_data in by_difficulty.values():
+        difficulty_data["total_uoo"] = round(difficulty_data["total_uoo"], 3)
+    
+    # ============================================
+    # BY VALUE BAND
+    # ============================================
+    
+    by_value_band = {}
+    for poo in poos:
+        if "uoo" in poo:
+            value_band = poo["uoo"]["value_band"]
+            uoo_score = poo["uoo"]["uoo_score"]
+            
+            if value_band not in by_value_band:
+                by_value_band[value_band] = {"count": 0, "total_uoo": 0}
+            
+            by_value_band[value_band]["count"] += 1
+            by_value_band[value_band]["total_uoo"] += uoo_score
+    
+    # Round
+    for band_data in by_value_band.values():
+        band_data["total_uoo"] = round(band_data["total_uoo"], 3)
+    
+    # ============================================
+    # PERCENTILE CALCULATION
+    # ============================================
+    
+    # Get all users and calculate their UoO totals
+    from outcome_oracle import _POO_LEDGER
+    
+    # Get unique agents from ledger
+    all_agents = set(p["agent"] for p in _POO_LEDGER.values() if p["status"] == "VERIFIED")
+    
+    # Calculate UoO for each agent
+    agent_totals = []
+    for agent in all_agents:
+        agent_poos = [p for p in _POO_LEDGER.values() 
+                      if p["agent"] == agent and p["status"] == "VERIFIED"]
+        agent_uoo = sum(p.get("uoo", {}).get("uoo_score", 0) for p in agent_poos)
+        agent_totals.append(agent_uoo)
+    
+    # Calculate percentile
+    percentile = 0
+    if agent_totals:
+        agent_totals.sort()
+        rank = sum(1 for t in agent_totals if t < total_uoo)
+        percentile = round((rank / len(agent_totals)) * 100)
+    
+    return {
+        "ok": True,
+        "username": username,
+        "total_outcomes": len(poos),
+        "total_uoo": round(total_uoo, 3),
+        "average_uoo": round(avg_uoo, 3),
+        "by_archetype": by_archetype,
+        "by_difficulty": by_difficulty,
+        "by_value_band": by_value_band,
+        "percentile": percentile
+    }
+
+
+def get_uol_by_date(username: str, days: int = 30) -> Dict[str, Any]:
+    """
+    Get UoO aggregates over time (daily buckets).
+    
+    Args:
+        username: User to query
+        days: Number of days to look back
+        
+    Returns:
+        dict: Daily UoO time series
+    """
+    from outcome_oracle import list_poos
+    
+    # Get all verified PoOs for user
+    poos_result = list_poos(agent=username, status="VERIFIED")
+    poos = poos_result.get("poos", [])
+    
+    # Calculate date range
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+    
+    # Group by date
+    by_date = {}
+    for poo in poos:
+        verified_at = poo.get("verified_at")
+        if not verified_at:
+            continue
+        
+        try:
+            poo_date = datetime.fromisoformat(verified_at.replace("Z", "+00:00"))
+        except:
+            continue
+        
+        if poo_date < start_date:
+            continue
+        
+        date_key = poo_date.strftime("%Y-%m-%d")
+        uoo_score = poo.get("uoo", {}).get("uoo_score", 0)
+        
+        if date_key not in by_date:
+            by_date[date_key] = {"count": 0, "total_uoo": 0}
+        
+        by_date[date_key]["count"] += 1
+        by_date[date_key]["total_uoo"] += uoo_score
+    
+    # Fill missing dates with zeros (create continuous series)
+    date_series = []
+    for i in range(days):
+        date = now - timedelta(days=days - i - 1)
+        date_key = date.strftime("%Y-%m-%d")
+        
+        if date_key in by_date:
+            date_series.append({
+                "date": date_key,
+                "count": by_date[date_key]["count"],
+                "total_uoo": round(by_date[date_key]["total_uoo"], 3)
+            })
+        else:
+            date_series.append({
+                "date": date_key,
+                "count": 0,
+                "total_uoo": 0
+            })
+    
+    return {
+        "ok": True,
+        "username": username,
+        "days": days,
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": now.strftime("%Y-%m-%d"),
+        "by_date": date_series,
+        "total_outcomes": sum(d["count"] for d in date_series),
+        "total_uoo": round(sum(d["total_uoo"] for d in date_series), 3)
+    }
+
+
+def export_uol_receipts(username: str, format: str = "json") -> Any:
+    """
+    Export all PoO receipts with UoO metadata.
+    
+    Args:
+        username: User to export
+        format: "json" or "csv"
+        
+    Returns:
+        list (json) or str (csv): Exported receipts
+    """
+    from outcome_oracle import list_poos
+    import csv
+    import io
+    
+    # Get all verified PoOs for user
+    poos_result = list_poos(agent=username, status="VERIFIED")
+    poos = poos_result.get("poos", [])
+    
+    if format == "csv":
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Header
+        writer.writerow([
+            "poo_id",
+            "intent_id",
+            "title",
+            "submitted_at",
+            "verified_at",
+            "verified_by",
+            "uoo_score",
+            "archetype",
+            "archetype_name",
+            "difficulty",
+            "value_band",
+            "deal_value",
+            "confidence",
+            "verified",
+            "metrics"
+        ])
+        
+        # Rows
+        for poo in poos:
+            uoo = poo.get("uoo", {})
+            writer.writerow([
+                poo.get("id", ""),
+                poo.get("intent_id", ""),
+                poo.get("title", ""),
+                poo.get("submitted_at", ""),
+                poo.get("verified_at", ""),
+                poo.get("verified_by", ""),
+                uoo.get("uoo_score", 0),
+                uoo.get("archetype", ""),
+                uoo.get("archetype_name", ""),
+                uoo.get("difficulty", ""),
+                uoo.get("value_band", ""),
+                uoo.get("deal_value", 0),
+                uoo.get("confidence", 0),
+                uoo.get("verified", False),
+                str(poo.get("metrics", {}))
+            ])
+        
+        return output.getvalue()
+    
+    else:  # JSON format
+        # Clean up for export (remove internal fields)
+        export_poos = []
+        for poo in poos:
+            export_poos.append({
+                "poo_id": poo.get("id"),
+                "intent_id": poo.get("intent_id"),
+                "title": poo.get("title"),
+                "description": poo.get("description"),
+                "submitted_at": poo.get("submitted_at"),
+                "verified_at": poo.get("verified_at"),
+                "verified_by": poo.get("verified_by"),
+                "buyer_feedback": poo.get("buyer_feedback"),
+                "evidence_urls": poo.get("evidence_urls", []),
+                "metrics": poo.get("metrics", {}),
+                "uoo": poo.get("uoo", {})
+            })
+        
+        return export_poos
