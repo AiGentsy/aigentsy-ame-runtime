@@ -792,3 +792,115 @@ def create_dashboard_endpoints(app):
         from pricing_oracle import recommend_mode
         
         return recommend_mode(buyer_budget, buyer_experience, buyer_time)
+    
+    # ============================================================
+    # PASSPORT BADGES & SOCIAL PROOF ENDPOINTS
+    # ============================================================
+    
+    @app.get("/badges/user/{username}")
+    async def badges_user_get(username: str):
+        """
+        Get all earned badges for a user.
+        
+        Returns badges, badge count, total points, and user stats.
+        
+        Example:
+            GET /badges/user/wade
+            
+        Returns:
+            {
+              "badges": [...],
+              "badge_count": 8,
+              "total_points": 1235,
+              "stats": {...}
+            }
+        """
+        from badge_engine import get_user_badges
+        return get_user_badges(username)
+    
+    @app.get("/badges/progress/{username}")
+    async def badges_progress_get(username: str):
+        """
+        Get progress toward earning locked badges.
+        
+        Shows which badges user hasn't earned yet and how close they are.
+        
+        Example:
+            GET /badges/progress/wade
+            
+        Returns:
+            {
+              "locked_badges": [
+                {
+                  "name": "Elite Producer",
+                  "progress": {"verified_outcomes": {"current": 75, "required": 100}},
+                  "overall_progress": 75.0
+                }
+              ]
+            }
+        """
+        from badge_engine import get_badge_progress
+        return get_badge_progress(username)
+    
+    @app.get("/badges/catalog")
+    async def badges_catalog_get():
+        """
+        Get complete badge catalog.
+        
+        Returns all available badges with criteria and rewards.
+        
+        Example:
+            GET /badges/catalog
+            
+        Returns:
+            {
+              "badges": [...],
+              "total_badges": 17,
+              "tiers": ["bronze", "silver", "gold", "platinum"]
+            }
+        """
+        from badge_engine import list_all_badges
+        return list_all_badges()
+    
+    @app.get("/badges/info/{badge_id}")
+    async def badge_info_get(badge_id: str):
+        """
+        Get details for a specific badge.
+        
+        Args:
+            badge_id: Badge identifier (e.g., "first_outcome", "uoo_100")
+            
+        Returns:
+            Badge definition with criteria and rewards
+        """
+        from badge_engine import get_badge_info
+        return get_badge_info(badge_id)
+    
+    @app.get("/social_proof/{username}")
+    async def social_proof_get(username: str):
+        """
+        Get social proof signals for a user.
+        
+        Includes:
+        - Badges earned
+        - Verification status
+        - Rating/outcome score
+        - Portfolio highlights
+        - Trust signals
+        
+        Used to display trust indicators on profiles and proposals.
+        
+        Example:
+            GET /social_proof/wade
+            
+        Returns:
+            {
+              "verification_level": "elite",
+              "rating": {"stars": 4.3, "outcome_score": 86},
+              "badges": {"count": 8, "top_tier": "gold"},
+              "portfolio_highlights": [...],
+              "trust_signals": [...]
+            }
+        """
+        from badge_engine import get_social_proof
+        return get_social_proof(username)
