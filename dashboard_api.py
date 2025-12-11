@@ -1142,3 +1142,142 @@ def create_dashboard_endpoints(app):
         """
         from dark_pool import unlock_dark_pool_milestone
         return unlock_dark_pool_milestone(username)
+    
+    # ========================================
+    # FEATURE #7: OUTCOME SUBSCRIPTIONS
+    # ========================================
+    
+    @app.post("/subscriptions/create")
+    async def subscription_create_post(
+        username: str,
+        tier: str,
+        billing_cycle: str = "monthly",
+        stripe_subscription_id: Optional[str] = None
+    ):
+        """
+        Create a new outcome subscription.
+        
+        Args:
+            username: User's username
+            tier: bronze/silver/gold/platinum
+            billing_cycle: monthly or annual
+            stripe_subscription_id: Stripe subscription ID (optional)
+        
+        Returns:
+            Subscription object with credits allocated
+        """
+        from subscription_engine import create_subscription
+        return create_subscription(username, tier, billing_cycle, stripe_subscription_id)
+    
+    @app.get("/subscriptions/status/{username}")
+    async def subscription_status_get(username: str):
+        """
+        Get user's subscription status.
+        
+        Returns:
+            Current subscription, credits, billing info
+        """
+        from subscription_engine import get_subscription_status
+        return get_subscription_status(username)
+    
+    @app.post("/subscriptions/use_credit")
+    async def subscription_use_credit_post(
+        username: str,
+        intent_id: str,
+        credits_to_use: int = 1
+    ):
+        """
+        Use subscription credit(s) for an intent.
+        
+        Args:
+            username: User's username
+            intent_id: Intent ID being funded
+            credits_to_use: Number of credits (default 1)
+        
+        Returns:
+            Usage record and updated credit balance
+        """
+        from subscription_engine import use_subscription_credit
+        return use_subscription_credit(username, intent_id, credits_to_use)
+    
+    @app.post("/subscriptions/cancel")
+    async def subscription_cancel_post(
+        subscription_id: str,
+        immediate: bool = False
+    ):
+        """
+        Cancel a subscription.
+        
+        Args:
+            subscription_id: Subscription ID
+            immediate: Cancel now (true) or at period end (false)
+        
+        Returns:
+            Cancellation confirmation
+        """
+        from subscription_engine import cancel_subscription
+        return cancel_subscription(subscription_id, immediate)
+    
+    @app.get("/subscriptions/tiers")
+    async def subscription_tiers_get():
+        """
+        Get all available subscription tiers.
+        
+        Returns:
+            Tier pricing, features, and benefits
+        """
+        from subscription_engine import get_all_subscription_tiers
+        return get_all_subscription_tiers()
+    
+    @app.get("/subscriptions/savings")
+    async def subscription_savings_get(
+        tier: str,
+        billing_cycle: str = "monthly"
+    ):
+        """
+        Calculate savings for a subscription tier.
+        
+        Args:
+            tier: bronze/silver/gold/platinum
+            billing_cycle: monthly or annual
+        
+        Returns:
+            Savings vs one-time purchase pricing
+        """
+        from subscription_engine import calculate_subscription_savings
+        return calculate_subscription_savings(tier, billing_cycle)
+    
+    @app.get("/subscriptions/priority/{username}")
+    async def subscription_priority_get(username: str):
+        """
+        Check subscriber priority queue status.
+        
+        Returns:
+            Priority level and tier info
+        """
+        from subscription_engine import check_subscriber_priority
+        return check_subscriber_priority(username)
+    
+    @app.get("/subscriptions/history/{username}")
+    async def subscription_history_get(username: str):
+        """
+        Get user's complete subscription history.
+        
+        Returns:
+            All subscriptions, usage, and totals
+        """
+        from subscription_engine import get_user_subscription_history
+        return get_user_subscription_history(username)
+    
+    @app.get("/subscriptions/mrr")
+    async def subscription_mrr_get():
+        """
+        Calculate Monthly Recurring Revenue.
+        
+        Admin endpoint for business metrics.
+        
+        Returns:
+            MRR, ARR, subscriber counts by tier
+        """
+        from subscription_engine import calculate_mrr
+        return calculate_mrr()
