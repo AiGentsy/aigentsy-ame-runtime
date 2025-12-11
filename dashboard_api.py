@@ -1500,3 +1500,103 @@ def create_dashboard_endpoints(app):
         """
         from warranty_engine import get_buyer_claims
         return get_buyer_claims(username)
+    
+    # ========================================
+    # FEATURE #9: EXPRESS SLOs
+    # ========================================
+    
+    @app.get("/slo/tiers")
+    async def slo_tiers_get():
+        """
+        Get all available SLO tiers.
+        
+        Returns:
+            All SLO tiers with pricing and delivery times
+        """
+        from slo_engine import get_all_slo_tiers
+        return get_all_slo_tiers()
+    
+    @app.get("/slo/pricing")
+    async def slo_pricing_get(
+        base_price: float,
+        tier: str
+    ):
+        """
+        Calculate SLO pricing breakdown.
+        
+        Args:
+            base_price: Base outcome price
+            tier: SLO tier (express/premium/standard/economy)
+        
+        Returns:
+            Detailed pricing breakdown
+        """
+        from slo_engine import calculate_slo_pricing_detailed
+        return calculate_slo_pricing_detailed(base_price, tier)
+    
+    @app.get("/slo/compare")
+    async def slo_compare_get(base_price: float):
+        """
+        Compare all SLO tiers for a base price.
+        
+        Args:
+            base_price: Base outcome price
+        
+        Returns:
+            Comparison table of all tiers
+        """
+        from slo_engine import compare_slo_tiers
+        return compare_slo_tiers(base_price)
+    
+    @app.get("/slo/status/{contract_id}")
+    async def slo_status_get(contract_id: str):
+        """
+        Get SLO contract status.
+        
+        Returns:
+            Contract status with timeline and metrics
+        """
+        from slo_engine import get_slo_contract_status
+        return get_slo_contract_status(contract_id)
+    
+    @app.get("/slo/agent_dashboard/{username}")
+    async def slo_agent_dashboard_get(username: str):
+        """
+        Get agent's SLO performance dashboard.
+        
+        Returns:
+            Performance metrics and active contracts
+        """
+        from slo_engine import get_agent_slo_dashboard
+        return get_agent_slo_dashboard(username)
+    
+    @app.get("/slo/buyer_dashboard/{username}")
+    async def slo_buyer_dashboard_get(username: str):
+        """
+        Get buyer's SLO contracts dashboard.
+        
+        Returns:
+            Active contracts and protection status
+        """
+        from slo_engine import get_buyer_slo_dashboard
+        return get_buyer_slo_dashboard(username)
+    
+    @app.get("/slo/recommend")
+    async def slo_recommend_get(
+        urgency: str = "medium",
+        budget_flexible: bool = True,
+        quality_priority: bool = True
+    ):
+        """
+        Get SLO tier recommendation.
+        
+        Args:
+            urgency: low/medium/high/critical
+            budget_flexible: Can pay premium
+            quality_priority: Prioritize quality over speed
+        
+        Returns:
+            Recommended tier with reasoning
+        """
+        from slo_engine import recommend_slo_tier
+        return recommend_slo_tier(urgency, budget_flexible, quality_priority)
