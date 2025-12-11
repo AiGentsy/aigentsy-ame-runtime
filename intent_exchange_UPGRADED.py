@@ -27,7 +27,9 @@ class Intent(BaseModel):
     intent: Dict[str, Any]
     escrow_usd: Optional[float] = 0.0
     auction_duration: Optional[int] = 90
-    delivery_mode: Optional[str] = "DFY"  # NEW: DIY/DWY/DFY
+    delivery_mode: Optional[str] = "DFY"  # DIY/DWY/DFY
+    funded_by_subscription: Optional[bool] = False  # NEW: Feature #7
+    subscription_credits_used: Optional[int] = 0  # NEW: Feature #7
 
 class Bid(BaseModel):
     intent_id: str
@@ -280,7 +282,13 @@ async def publish_intent(req: Intent, background_tasks: BackgroundTasks):
             "mode": (req.delivery_mode or "DFY").upper(),
             "escrow_amount": float(req.escrow_usd),
             "description": _get_mode_description((req.delivery_mode or "DFY").upper())
-        }
+        },
+        
+        # ============================================
+        # NEW: SUBSCRIPTION FUNDING (Feature #7)
+        # ============================================
+        "funded_by_subscription": req.funded_by_subscription or False,
+        "subscription_credits_used": req.subscription_credits_used or 0
     }
     
     _INTENTS[iid] = payload
