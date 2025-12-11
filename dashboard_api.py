@@ -267,6 +267,22 @@ def get_dashboard_data(username: str) -> Dict:
     recent_activity.reverse()  # Most recent first
     
     # ============================================================
+    # UNIVERSAL OUTCOME LEDGER (UoL) WIDGET
+    # ============================================================
+    
+    from analytics_engine import get_uol_summary
+    
+    uol_data = get_uol_summary(username)
+    
+    uol_widget = {
+        "total_outcomes": uol_data.get("total_outcomes", 0),
+        "total_uoo": uol_data.get("total_uoo", 0),
+        "average_uoo": uol_data.get("average_uoo", 0),
+        "percentile": uol_data.get("percentile", 0),
+        "by_archetype": uol_data.get("by_archetype", {})
+    }
+    
+    # ============================================================
     # RETURN COMPLETE DASHBOARD DATA
     # ============================================================
     
@@ -283,6 +299,7 @@ def get_dashboard_data(username: str) -> Dict:
         "apex_ultra": apex_status,
         "opportunities": enriched_opportunities,
         "recent_activity": recent_activity,
+        "uol": uol_widget,  # NEW: UoL widget data
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
@@ -530,3 +547,92 @@ def create_dashboard_endpoints(app):
     async def platform_stats_get():
         """Get platform-wide statistics"""
         return get_platform_stats()
+    
+    # ============================================================
+    # UNIVERSAL OUTCOME LEDGER (UoL) ENDPOINTS
+    # ============================================================
+    
+    @app.get("/uol/summary")
+    async def uol_summary_get(username: str):
+        """
+        Get UoL summary for user.
+        
+        Returns total outcomes, UoO score, percentile, and breakdowns
+        by archetype, difficulty, and value band.
+        """
+        from analytics_engine import get_uol_summary
+        return get_uol_summary(username)
+    
+    @app.get("/uol/by_sku")
+    async def uol_by_sku_get(username: str):
+        """
+        Get UoO breakdown by SKU (archetype).
+        
+        Useful for showing which types of work the user excels at.
+        """
+        from analytics_engine import get_uol_summary
+        
+        summary = get_uol_summary(username)
+        
+        if not summary.get("ok"):
+            return summary
+        
+        by_archetype = summary.get("by_archetype", {})
+        
+        # Format for frontend
+        sku_breakdown = []
+        for archetype, data in by_archetype.items():
+            sku_breakdown.append({
+                "sku": archetype,
+                "sku_name": data.get("name", archetype.title()),
+                "count": data.get("count", 0),
+                "total_uoo": data.get("total_uoo", 0),
+                "avg_uoo": data.get("avg_uoo", 0)
+            })
+        
+        # Sort by total_uoo descending
+        sku_breakdown.sort(key=lambda x: x["total_uoo"], reverse=True)
+        
+        return {
+            "ok": True,
+            "username": username,
+            "total_outcomes": summary.get("total_outcomes", 0),
+            "total_uoo": summary.get("total_uoo", 0),
+            "by_sku": sku_breakdown
+        }
+    
+    @app.get("/uol/by_date")
+    async def uol_by_date_get(username: str, days: int = 30):
+        """
+        Get UoO over time (daily aggregates).
+        
+        Useful for charts showing outcome velocity.
+        Args:
+            days: Number of days to look back (default 30)
+        """
+        from analytics_engine import get_uol_by_date
+        return get_uol_by_date(username, days)
+    
+    @app.get("/uol/export")
+    async def uol_export_get(username: str, format: str = "csv"):
+        """
+        Export all PoO receipts with UoO metadata.
+        
+        Args:
+            format: "csv" or "json" (default csv)
+        """
+        from analytics_engine import export_uol_receipts
+        from fastapi.responses import PlainTextResponse
+        
+        if format == "json":
+            receipts = export_uol_receipts(username, format="json")
+            return {"ok": True, "receipts": receipts, "count": len(receipts)}
+        else:
+            csv_content = export_uol_receipts(username, format="csv")
+            return PlainTextResponse(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=uol_export_{username}.csv"
+                }
+            )
