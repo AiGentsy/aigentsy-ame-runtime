@@ -430,3 +430,207 @@ async def explain_price(
         },
         "generated_at": now_iso()
     }
+
+
+# ============================================================
+# DELIVERY MODE PRICING - DIY/DWY/DFY
+# ============================================================
+
+def calculate_mode_pricing(
+    base_price: float,
+    modes: List[str] = None
+) -> Dict[str, Any]:
+    """
+    Calculate pricing for all delivery modes.
+    
+    Modes:
+    - DIY (Do-It-Yourself): 36% of base - Templates + Tools + Guidance
+    - DWY (Done-With-You): 59% of base - Collaborative Partnership
+    - DFY (Done-For-You): 100% of base - Full Service Delivery
+    
+    Args:
+        base_price: Base DFY (full service) price
+        modes: List of modes to calculate (default: all)
+        
+    Returns:
+        dict: Pricing breakdown for each mode
+    """
+    
+    if modes is None:
+        modes = ["DIY", "DWY", "DFY"]
+    
+    mode_multipliers = {
+        "DIY": {
+            "multiplier": 0.36,
+            "name": "Do-It-Yourself",
+            "description": "You do the work with our templates, tools, and guidance",
+            "work_split": {"buyer": 100, "agent": 0},
+            "includes": [
+                "Access to premium templates",
+                "Step-by-step guides",
+                "Tool recommendations",
+                "Email support",
+                "Documentation library"
+            ]
+        },
+        "DWY": {
+            "multiplier": 0.59,
+            "name": "Done-With-You",
+            "description": "We work together - you lead, we support and guide",
+            "work_split": {"buyer": 60, "agent": 40},
+            "includes": [
+                "Everything in DIY",
+                "Weekly collaboration sessions",
+                "Review and feedback",
+                "Strategic guidance",
+                "Direct chat support"
+            ]
+        },
+        "DFY": {
+            "multiplier": 1.00,
+            "name": "Done-For-You",
+            "description": "We handle everything - you review and approve",
+            "work_split": {"buyer": 0, "agent": 100},
+            "includes": [
+                "Everything in DWY",
+                "Complete execution",
+                "Project management",
+                "Unlimited revisions",
+                "Priority support"
+            ]
+        }
+    }
+    
+    pricing = {}
+    for mode in modes:
+        if mode.upper() not in mode_multipliers:
+            continue
+        
+        mode_key = mode.upper()
+        config = mode_multipliers[mode_key]
+        
+        price = round(base_price * config["multiplier"], 2)
+        savings = round(base_price - price, 2)
+        savings_pct = round((savings / base_price * 100), 1) if savings > 0 else 0
+        
+        pricing[mode_key] = {
+            "name": config["name"],
+            "price": price,
+            "multiplier": config["multiplier"],
+            "savings": savings,
+            "savings_pct": savings_pct,
+            "description": config["description"],
+            "work_split": config["work_split"],
+            "includes": config["includes"],
+            "formatted": f"${price:,.2f}" + (f" (Save {savings_pct}%)" if savings > 0 else "")
+        }
+    
+    # Add comparison
+    all_prices = [p["price"] for p in pricing.values()]
+    pricing_comparison = {
+        "lowest": min(all_prices) if all_prices else 0,
+        "highest": max(all_prices) if all_prices else 0,
+        "range": max(all_prices) - min(all_prices) if all_prices else 0
+    }
+    
+    return {
+        "ok": True,
+        "base_price": base_price,
+        "by_mode": pricing,
+        "comparison": pricing_comparison,
+        "generated_at": now_iso()
+    }
+
+
+def get_mode_multiplier(mode: str) -> float:
+    """
+    Get price multiplier for a delivery mode.
+    
+    Args:
+        mode: Delivery mode (DIY/DWY/DFY)
+        
+    Returns:
+        float: Multiplier (0.36, 0.59, or 1.0)
+    """
+    multipliers = {
+        "DIY": 0.36,
+        "DWY": 0.59,
+        "DFY": 1.00
+    }
+    return multipliers.get(mode.upper(), 1.0)
+
+
+def calculate_mode_price(base_price: float, mode: str) -> float:
+    """
+    Calculate price for a specific delivery mode.
+    
+    Args:
+        base_price: Base DFY price
+        mode: Delivery mode (DIY/DWY/DFY)
+        
+    Returns:
+        float: Mode-adjusted price
+    """
+    multiplier = get_mode_multiplier(mode)
+    return round(base_price * multiplier, 2)
+
+
+def recommend_mode(
+    buyer_budget: float,
+    buyer_experience: str = "beginner",
+    buyer_time_availability: str = "limited"
+) -> Dict[str, Any]:
+    """
+    Recommend optimal delivery mode based on buyer context.
+    
+    Args:
+        buyer_budget: Buyer's max budget
+        buyer_experience: Experience level (beginner/intermediate/advanced)
+        buyer_time_availability: Time availability (limited/moderate/abundant)
+        
+    Returns:
+        dict: Recommended mode with reasoning
+    """
+    
+    # Calculate what modes fit budget
+    # Assume base DFY price
+    estimated_dfy = buyer_budget / 0.36  # Reverse calculate from DIY
+    
+    mode_prices = {
+        "DIY": calculate_mode_price(estimated_dfy, "DIY"),
+        "DWY": calculate_mode_price(estimated_dfy, "DWY"),
+        "DFY": calculate_mode_price(estimated_dfy, "DFY")
+    }
+    
+    affordable_modes = [m for m, p in mode_prices.items() if p <= buyer_budget]
+    
+    # Recommendation logic
+    if not affordable_modes:
+        recommended = "DIY"
+        reason = "Budget-friendly option to get started"
+    elif buyer_experience == "beginner" and "DWY" in affordable_modes:
+        recommended = "DWY"
+        reason = "Guidance helps beginners succeed"
+    elif buyer_time_availability == "abundant" and "DIY" in affordable_modes:
+        recommended = "DIY"
+        reason = "You have time to learn - save money with DIY"
+    elif buyer_time_availability == "limited" and "DFY" in affordable_modes:
+        recommended = "DFY"
+        reason = "Save time with full service"
+    else:
+        # Default to most expensive affordable mode
+        recommended = affordable_modes[-1] if affordable_modes else "DIY"
+        reason = "Best value for your situation"
+    
+    return {
+        "ok": True,
+        "recommended_mode": recommended,
+        "reason": reason,
+        "affordable_modes": affordable_modes,
+        "estimated_prices": mode_prices,
+        "buyer_context": {
+            "budget": buyer_budget,
+            "experience": buyer_experience,
+            "time_availability": buyer_time_availability
+        }
+    }
