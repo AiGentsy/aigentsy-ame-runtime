@@ -904,3 +904,134 @@ def create_dashboard_endpoints(app):
         """
         from badge_engine import get_social_proof
         return get_social_proof(username)
+    
+    # ============================================================
+    # OCL P2P LENDING ENDPOINTS
+    # ============================================================
+    
+    @app.get("/ocl/credit_score/{username}")
+    async def ocl_credit_score_get(username: str):
+        """
+        Get UoO-based credit score for user.
+        
+        Credit score: 300-850 (FICO-like scale)
+        Based on: UoO (40%), verification rate (30%), revenue (20%), account age (10%)
+        
+        Returns:
+            {
+              "credit_score": 720,
+              "tier": "good",
+              "max_loan_amount": 25000,
+              "components": {...}
+            }
+        """
+        from ocl_p2p_lending import calculate_credit_score
+        return calculate_credit_score(username)
+    
+    @app.post("/ocl/loan_offer/create")
+    async def ocl_loan_offer_create_post(
+        lender_username: str,
+        amount: float,
+        interest_rate: float,
+        duration_days: int,
+        min_credit_score: int = 600
+    ):
+        """
+        Create loan offer (lender stakes capital).
+        
+        Args:
+            lender_username: Username of lender
+            amount: Amount to lend
+            interest_rate: Annual interest rate (e.g., 12.0 for 12%)
+            duration_days: Loan duration
+            min_credit_score: Minimum credit score required
+        """
+        from ocl_p2p_lending import create_loan_offer
+        return create_loan_offer(lender_username, amount, interest_rate, duration_days, min_credit_score)
+    
+    @app.post("/ocl/loan_request/create")
+    async def ocl_loan_request_create_post(
+        borrower_username: str,
+        amount: float,
+        purpose: str,
+        duration_days: int = 30
+    ):
+        """
+        Create loan request (borrower seeks capital).
+        
+        Auto-matches with available loan offers.
+        
+        Args:
+            borrower_username: Username of borrower
+            amount: Amount needed
+            purpose: Loan purpose
+            duration_days: Desired duration
+        """
+        from ocl_p2p_lending import create_loan_request
+        return create_loan_request(borrower_username, amount, purpose, duration_days)
+    
+    @app.post("/ocl/loan/accept")
+    async def ocl_loan_accept_post(request_id: str, offer_id: str):
+        """
+        Accept loan offer (complete the loan).
+        
+        Transfers funds and creates active loan.
+        """
+        from ocl_p2p_lending import accept_loan_offer
+        return accept_loan_offer(request_id, offer_id)
+    
+    @app.post("/ocl/loan/payment")
+    async def ocl_loan_payment_post(loan_id: str, payment_amount: float):
+        """
+        Make payment toward loan.
+        """
+        from ocl_p2p_lending import make_loan_payment
+        return make_loan_payment(loan_id, payment_amount)
+    
+    @app.post("/ocl/loan/auto_repay")
+    async def ocl_loan_auto_repay_post(
+        username: str,
+        earnings_amount: float,
+        repayment_percentage: float = 0.5
+    ):
+        """
+        Auto-repay loans from earnings.
+        
+        Default: 50% of earnings go to loan repayment.
+        """
+        from ocl_p2p_lending import auto_repay_from_earnings
+        return auto_repay_from_earnings(username, earnings_amount, repayment_percentage)
+    
+    @app.get("/ocl/loans/active/{username}")
+    async def ocl_loans_active_get(username: str, role: str = "borrower"):
+        """
+        Get active loans for user.
+        
+        Args:
+            username: User to query
+            role: "borrower" or "lender"
+        """
+        from ocl_p2p_lending import get_active_loans
+        return get_active_loans(username, role)
+    
+    @app.get("/ocl/loans/history/{username}")
+    async def ocl_loans_history_get(username: str):
+        """
+        Get complete loan history for user.
+        
+        Returns loans as both borrower and lender.
+        """
+        from ocl_p2p_lending import get_loan_history
+        return get_loan_history(username)
+    
+    @app.get("/ocl/offers/available")
+    async def ocl_offers_available_get(min_amount: float = 0, max_interest: float = 100):
+        """
+        List all available loan offers in marketplace.
+        
+        Args:
+            min_amount: Minimum loan amount
+            max_interest: Maximum interest rate
+        """
+        from ocl_p2p_lending import list_available_offers
+        return list_available_offers(min_amount, max_interest)
