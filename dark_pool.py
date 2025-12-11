@@ -467,3 +467,378 @@ def get_agent_dark_pool_history(
         "win_rate": win_rate,
         "bids": agent_bids
     }
+
+
+# ============================================================
+# UoO-BASED DARK POOL ACCESS CONTROL
+# ============================================================
+
+# Access tiers based on UoO score
+DARK_POOL_ACCESS_TIERS = {
+    "bronze": {
+        "min_uoo": 0,
+        "max_uoo": 49,
+        "access_level": "none",
+        "description": "No dark pool access",
+        "min_deal_value": None,
+        "max_deal_value": None
+    },
+    "silver": {
+        "min_uoo": 50,
+        "max_uoo": 99,
+        "access_level": "basic",
+        "description": "Access to standard dark pool deals",
+        "min_deal_value": 1000,
+        "max_deal_value": 5000
+    },
+    "gold": {
+        "min_uoo": 100,
+        "max_uoo": 199,
+        "access_level": "premium",
+        "description": "Access to premium dark pool deals",
+        "min_deal_value": 5000,
+        "max_deal_value": 20000
+    },
+    "platinum": {
+        "min_uoo": 200,
+        "max_uoo": 499,
+        "access_level": "elite",
+        "description": "Access to elite dark pool deals",
+        "min_deal_value": 20000,
+        "max_deal_value": 100000
+    },
+    "diamond": {
+        "min_uoo": 500,
+        "max_uoo": 999999,
+        "access_level": "unlimited",
+        "description": "Unlimited dark pool access",
+        "min_deal_value": 0,
+        "max_deal_value": None
+    }
+}
+
+
+def check_dark_pool_access(username: str) -> Dict[str, Any]:
+    """
+    Check user's dark pool access level based on UoO score.
+    
+    Access tiers:
+    - Bronze (0-49 UoO): No access
+    - Silver (50-99 UoO): Standard deals ($1k-$5k)
+    - Gold (100-199 UoO): Premium deals ($5k-$20k)
+    - Platinum (200-499 UoO): Elite deals ($20k-$100k)
+    - Diamond (500+ UoO): Unlimited access
+    """
+    from analytics_engine import get_uol_summary
+    
+    uol = get_uol_summary(username)
+    if not uol.get("ok"):
+        return {"ok": False, "error": "user_not_found"}
+    
+    total_uoo = uol.get("total_uoo", 0)
+    
+    # Determine access tier
+    current_tier = None
+    for tier_name, tier_config in DARK_POOL_ACCESS_TIERS.items():
+        if tier_config["min_uoo"] <= total_uoo <= tier_config["max_uoo"]:
+            current_tier = tier_name
+            break
+    
+    if not current_tier:
+        current_tier = "bronze"
+    
+    tier_config = DARK_POOL_ACCESS_TIERS[current_tier]
+    
+    # Calculate progress to next tier
+    tier_order = ["bronze", "silver", "gold", "platinum", "diamond"]
+    current_idx = tier_order.index(current_tier)
+    
+    next_tier = None
+    uoo_needed = None
+    if current_idx < len(tier_order) - 1:
+        next_tier = tier_order[current_idx + 1]
+        next_tier_config = DARK_POOL_ACCESS_TIERS[next_tier]
+        uoo_needed = next_tier_config["min_uoo"] - total_uoo
+    
+    return {
+        "ok": True,
+        "username": username,
+        "total_uoo": total_uoo,
+        "current_tier": current_tier,
+        "access_level": tier_config["access_level"],
+        "description": tier_config["description"],
+        "can_access_dark_pool": tier_config["access_level"] != "none",
+        "deal_value_range": {
+            "min": tier_config["min_deal_value"],
+            "max": tier_config["max_deal_value"]
+        },
+        "next_tier": next_tier,
+        "uoo_needed_for_next_tier": uoo_needed,
+        "progress_to_next": {
+            "current": total_uoo,
+            "required": DARK_POOL_ACCESS_TIERS[next_tier]["min_uoo"] if next_tier else None,
+            "percentage": round((total_uoo / DARK_POOL_ACCESS_TIERS[next_tier]["min_uoo"] * 100), 1) if next_tier else 100
+        } if next_tier else None
+    }
+
+
+def qualify_for_dark_pool_intent(
+    username: str,
+    intent_value: float
+) -> Dict[str, Any]:
+    """
+    Check if user qualifies to bid on specific dark pool intent.
+    
+    Args:
+        username: Agent username
+        intent_value: Deal value of the intent
+    """
+    access_check = check_dark_pool_access(username)
+    
+    if not access_check.get("ok"):
+        return access_check
+    
+    if not access_check["can_access_dark_pool"]:
+        return {
+            "ok": False,
+            "qualified": False,
+            "reason": "no_dark_pool_access",
+            "current_tier": access_check["current_tier"],
+            "uoo_needed": access_check.get("uoo_needed_for_next_tier"),
+            "message": f"Need {access_check.get('uoo_needed_for_next_tier')} more UoO to unlock dark pool access"
+        }
+    
+    # Check if intent value is within user's range
+    deal_range = access_check["deal_value_range"]
+    
+    if deal_range["min"] is not None and intent_value < deal_range["min"]:
+        return {
+            "ok": False,
+            "qualified": False,
+            "reason": "deal_value_too_low",
+            "intent_value": intent_value,
+            "your_min": deal_range["min"],
+            "message": f"Your tier only allows deals ≥${deal_range['min']}"
+        }
+    
+    if deal_range["max"] is not None and intent_value > deal_range["max"]:
+        return {
+            "ok": False,
+            "qualified": False,
+            "reason": "deal_value_too_high",
+            "intent_value": intent_value,
+            "your_max": deal_range["max"],
+            "message": f"Upgrade to {access_check.get('next_tier', 'platinum')} tier for deals >${deal_range['max']}"
+        }
+    
+    return {
+        "ok": True,
+        "qualified": True,
+        "access_level": access_check["access_level"],
+        "current_tier": access_check["current_tier"],
+        "intent_value": intent_value,
+        "message": f"Qualified for ${intent_value} dark pool deal"
+    }
+
+
+def create_premium_dark_pool_auction(
+    intent: Dict[str, Any],
+    min_uoo_required: float = 200,
+    min_reputation_tier: str = "gold",
+    auction_duration_hours: int = 48
+) -> Dict[str, Any]:
+    """
+    Create premium dark pool auction with UoO requirements.
+    
+    Args:
+        intent: Intent to auction
+        min_uoo_required: Minimum UoO score to participate
+        min_reputation_tier: Minimum reputation tier
+        auction_duration_hours: Auction duration
+    """
+    from uuid import uuid4
+    
+    auction_id = f"darkpremium_{uuid4().hex[:12]}"
+    intent_value = intent.get("budget", 0)
+    
+    # Determine access tier based on value
+    access_tier = "gold"
+    for tier_name, tier_config in DARK_POOL_ACCESS_TIERS.items():
+        min_val = tier_config["min_deal_value"]
+        max_val = tier_config["max_deal_value"]
+        
+        if min_val is None:
+            continue
+        
+        if max_val is None:
+            if intent_value >= min_val:
+                access_tier = tier_name
+                break
+        else:
+            if min_val <= intent_value <= max_val:
+                access_tier = tier_name
+                break
+    
+    auction = {
+        "id": auction_id,
+        "intent_id": intent.get("id"),
+        "intent_summary": {
+            "brief": intent.get("brief", ""),
+            "budget": intent_value,
+            "delivery_days": intent.get("delivery_days", 7)
+        },
+        "type": "premium_dark_pool",
+        "status": "open",
+        "access_requirements": {
+            "min_uoo_required": min_uoo_required,
+            "min_reputation_tier": min_reputation_tier,
+            "access_tier": access_tier
+        },
+        "created_at": _now(),
+        "closes_at": (datetime.now(timezone.utc) + timedelta(hours=auction_duration_hours)).isoformat(),
+        "bids": [],
+        "qualified_agents": 0,
+        "rejected_agents": [],
+        "winner": None,
+        "matching_algorithm": "reputation_weighted_price"
+    }
+    
+    return auction
+
+
+def submit_premium_dark_pool_bid(
+    auction: Dict[str, Any],
+    agent_user: Dict[str, Any],
+    bid_amount: float,
+    delivery_hours: int,
+    proposal_summary: str = ""
+) -> Dict[str, Any]:
+    """
+    Submit bid to premium dark pool with qualification checks.
+    """
+    agent_username = agent_user.get("consent", {}).get("username") or agent_user.get("username")
+    
+    # Check basic auction status
+    if auction["status"] != "open":
+        return {"ok": False, "error": "auction_closed"}
+    
+    if auction["closes_at"] < _now():
+        return {"ok": False, "error": "auction_expired"}
+    
+    # Check UoO qualification
+    intent_value = auction["intent_summary"]["budget"]
+    qualification = qualify_for_dark_pool_intent(agent_username, intent_value)
+    
+    if not qualification.get("qualified"):
+        auction["rejected_agents"].append({
+            "agent": agent_username,
+            "reason": qualification.get("reason"),
+            "rejected_at": _now()
+        })
+        return {
+            "ok": False,
+            "error": "not_qualified",
+            "qualification": qualification
+        }
+    
+    # Check reputation requirement
+    outcome_score = int(agent_user.get("outcomeScore", 0))
+    reputation = get_reputation_tier(outcome_score)
+    
+    min_tier = auction["access_requirements"]["min_reputation_tier"]
+    tier_order = list(REPUTATION_TIERS.keys())
+    
+    if tier_order.index(reputation["tier"]) < tier_order.index(min_tier):
+        auction["rejected_agents"].append({
+            "agent": agent_username,
+            "reason": "reputation_too_low",
+            "rejected_at": _now()
+        })
+        return {
+            "ok": False,
+            "error": "reputation_too_low",
+            "agent_tier": reputation["tier"],
+            "required_tier": min_tier
+        }
+    
+    # Submit bid (use regular dark pool bid logic)
+    bid_result = submit_dark_pool_bid(auction, agent_user, bid_amount, delivery_hours, proposal_summary)
+    
+    if bid_result.get("ok"):
+        auction["qualified_agents"] += 1
+        bid_result["qualification"] = qualification
+    
+    return bid_result
+
+
+def get_dark_pool_leaderboard(
+    auctions: List[Dict[str, Any]],
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Get dark pool leaderboard of top performers.
+    """
+    agent_stats = {}
+    
+    for auction in auctions:
+        if auction.get("status") != "closed":
+            continue
+        
+        winner = auction.get("winner")
+        if not winner:
+            continue
+        
+        agent = winner.get("real_agent")
+        if not agent:
+            continue
+        
+        if agent not in agent_stats:
+            agent_stats[agent] = {
+                "agent": agent,
+                "wins": 0,
+                "total_value": 0,
+                "avg_bid": 0,
+                "reputation_tier": winner.get("reputation", {}).get("tier")
+            }
+        
+        agent_stats[agent]["wins"] += 1
+        agent_stats[agent]["total_value"] += winner.get("bid_amount", 0)
+    
+    # Calculate averages
+    for agent, stats in agent_stats.items():
+        stats["avg_bid"] = round(stats["total_value"] / stats["wins"], 2) if stats["wins"] > 0 else 0
+    
+    # Sort by total value won
+    leaderboard = sorted(agent_stats.values(), key=lambda x: x["total_value"], reverse=True)[:limit]
+    
+    return {
+        "ok": True,
+        "leaderboard": leaderboard,
+        "total_agents": len(agent_stats)
+    }
+
+
+def unlock_dark_pool_milestone(username: str) -> Dict[str, Any]:
+    """
+    Check if user has unlocked dark pool access and award badge.
+    """
+    access_check = check_dark_pool_access(username)
+    
+    if not access_check.get("ok"):
+        return access_check
+    
+    if access_check["can_access_dark_pool"]:
+        return {
+            "ok": True,
+            "milestone": "dark_pool_unlocked",
+            "tier": access_check["current_tier"],
+            "message": f"🎉 Dark Pool Unlocked! You now have {access_check['access_level']} access.",
+            "badge_earned": "🔐 Dark Pool Access"
+        }
+    
+    return {
+        "ok": False,
+        "milestone": "not_reached",
+        "uoo_needed": access_check.get("uoo_needed_for_next_tier"),
+        "message": f"Earn {access_check.get('uoo_needed_for_next_tier')} more UoO to unlock dark pool access"
+    }
