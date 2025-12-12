@@ -14084,6 +14084,8 @@ if dealgraph_router:
 if r3_router:
     app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
 
+app.mount("/week1", week1_app)
+
 # Mount expansion router (for any remaining stubs)
 try:
     app.include_router(_expansion_router)
