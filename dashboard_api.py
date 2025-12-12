@@ -1600,3 +1600,438 @@ def create_dashboard_endpoints(app):
         """
         from slo_engine import recommend_slo_tier
         return recommend_slo_tier(urgency, budget_flexible, quality_priority)
+    
+    # ========================================
+    # FEATURE #10: BOOSTERS
+    # ========================================
+    
+    @app.post("/boosters/activate")
+    async def booster_activate_post(
+        username: str,
+        booster_type: str,
+        source: str = "automatic",
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Activate a booster for a user.
+        
+        Args:
+            username: User's username
+            booster_type: Type of booster
+            source: How triggered (automatic/referral/purchase)
+            metadata: Additional metadata
+        
+        Returns:
+            Activated booster
+        """
+        from booster_engine import activate_booster
+        return activate_booster(username, booster_type, source, metadata)
+    
+    @app.get("/boosters/active/{username}")
+    async def booster_active_get(username: str):
+        """
+        Get all active boosters for a user.
+        
+        Returns:
+            Active boosters with total multiplier
+        """
+        from booster_engine import get_active_boosters
+        return get_active_boosters(username)
+    
+    @app.get("/boosters/earnings")
+    async def booster_earnings_get(
+        base_amount: float,
+        username: str,
+        outcome_id: Optional[str] = None
+    ):
+        """
+        Calculate boosted earnings.
+        
+        Args:
+            base_amount: Base earnings
+            username: User's username
+            outcome_id: Outcome ID (for single-use boosters)
+        
+        Returns:
+            Boosted earnings breakdown
+        """
+        from booster_engine import calculate_boosted_earnings
+        return calculate_boosted_earnings(base_amount, username, outcome_id)
+    
+    @app.post("/boosters/referral/track")
+    async def booster_referral_track_post(
+        referrer_username: str,
+        referee_username: str,
+        referral_code: Optional[str] = None
+    ):
+        """
+        Track a referral.
+        
+        Args:
+            referrer_username: User who referred
+            referee_username: User who signed up
+            referral_code: Referral code used
+        
+        Returns:
+            Referral tracking confirmation
+        """
+        from booster_engine import track_referral
+        return track_referral(referrer_username, referee_username, referral_code)
+    
+    @app.post("/boosters/referral/milestone")
+    async def booster_referral_milestone_post(
+        referrer_username: str,
+        milestone: str,
+        referee_username: str
+    ):
+        """
+        Award referral milestone bonus.
+        
+        Args:
+            referrer_username: Referrer
+            milestone: first_outcome/subscription
+            referee_username: Referee who hit milestone
+        
+        Returns:
+            Bonus award confirmation
+        """
+        from booster_engine import award_referral_milestone_bonus
+        return award_referral_milestone_bonus(referrer_username, milestone, referee_username)
+    
+    @app.post("/boosters/streak/check")
+    async def booster_streak_check_post(
+        username: str,
+        last_active: str
+    ):
+        """
+        Check and update activity streak.
+        
+        Args:
+            username: User's username
+            last_active: ISO timestamp of last activity
+        
+        Returns:
+            Streak status and booster awards
+        """
+        from booster_engine import check_streak
+        return check_streak(username, last_active)
+    
+    @app.post("/boosters/purchase")
+    async def booster_purchase_post(
+        username: str,
+        power_up_type: str,
+        payment_method: str = "stripe"
+    ):
+        """
+        Purchase a power-up booster.
+        
+        Args:
+            username: User purchasing
+            power_up_type: Type of power-up
+            payment_method: Payment method
+        
+        Returns:
+            Purchase confirmation
+        """
+        from booster_engine import purchase_power_up
+        return purchase_power_up(username, power_up_type, payment_method)
+    
+    @app.get("/boosters/available")
+    async def booster_available_get(username: Optional[str] = None):
+        """
+        Get all available boosters.
+        
+        Returns:
+            Categorized list of boosters
+        """
+        from booster_engine import get_available_boosters
+        return get_available_boosters(username or "guest")
+    
+    @app.get("/boosters/leaderboard")
+    async def booster_leaderboard_get(limit: int = 10):
+        """
+        Get booster leaderboard.
+        
+        Args:
+            limit: Number of top users
+        
+        Returns:
+            Top boosted users
+        """
+        from booster_engine import get_booster_leaderboard
+        return get_booster_leaderboard(limit)
+    
+    # ========================================
+    # FEATURE #11: PAY-WITH-PERFORMANCE (PWP)
+    # ========================================
+    
+    @app.post("/pwp/create")
+    async def pwp_create_post(
+        buyer_username: str,
+        agent_username: str,
+        outcome_id: str,
+        outcome_price: float,
+        pwp_plan: str,
+        outcome_type: str = "marketing_campaign",
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Create PWP contract.
+        
+        Args:
+            buyer_username: Buyer deferring payment
+            agent_username: Agent receiving upfront
+            outcome_id: Outcome ID
+            outcome_price: Outcome price
+            pwp_plan: PWP plan type
+            outcome_type: Outcome type
+            metadata: Additional metadata
+        
+        Returns:
+            PWP contract
+        """
+        from pwp_engine import create_pwp_contract
+        return create_pwp_contract(
+            buyer_username, agent_username, outcome_id,
+            outcome_price, pwp_plan, outcome_type, metadata
+        )
+    
+    @app.post("/pwp/payment")
+    async def pwp_payment_post(
+        contract_id: str,
+        revenue_amount: float,
+        payment_source: str = "stripe",
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Record revenue payment.
+        
+        Args:
+            contract_id: PWP contract ID
+            revenue_amount: Buyer's revenue
+            payment_source: Payment source
+            metadata: Payment metadata
+        
+        Returns:
+            Payment record
+        """
+        from pwp_engine import record_revenue_payment
+        return record_revenue_payment(contract_id, revenue_amount, payment_source, metadata)
+    
+    @app.get("/pwp/status/{contract_id}")
+    async def pwp_status_get(contract_id: str):
+        """
+        Get PWP contract status.
+        
+        Returns:
+            Contract status
+        """
+        from pwp_engine import get_pwp_contract_status
+        return get_pwp_contract_status(contract_id)
+    
+    @app.get("/pwp/check_expiry/{contract_id}")
+    async def pwp_check_expiry_get(contract_id: str):
+        """
+        Check contract expiry.
+        
+        Returns:
+            Expiry status
+        """
+        from pwp_engine import check_pwp_contract_expiry
+        return check_pwp_contract_expiry(contract_id)
+    
+    @app.get("/pwp/pricing")
+    async def pwp_pricing_get(
+        outcome_price: float,
+        pwp_plan: str,
+        outcome_type: str = "marketing_campaign"
+    ):
+        """
+        Calculate PWP pricing.
+        
+        Args:
+            outcome_price: Outcome price
+            pwp_plan: PWP plan
+            outcome_type: Outcome type
+        
+        Returns:
+            Pricing breakdown
+        """
+        from pwp_engine import calculate_pwp_pricing
+        return calculate_pwp_pricing(outcome_price, pwp_plan, outcome_type)
+    
+    @app.get("/pwp/buyer_dashboard/{username}")
+    async def pwp_buyer_dashboard_get(username: str):
+        """
+        Get buyer's PWP dashboard.
+        
+        Returns:
+            Buyer's contracts
+        """
+        from pwp_engine import get_buyer_pwp_dashboard
+        return get_buyer_pwp_dashboard(username)
+    
+    @app.get("/pwp/capital_pool")
+    async def pwp_capital_pool_get():
+        """
+        Get capital pool status.
+        
+        Returns:
+            Pool metrics
+        """
+        from pwp_engine import get_capital_pool_status
+        return get_capital_pool_status()
+    
+    @app.get("/pwp/plans")
+    async def pwp_plans_get():
+        """
+        Get all PWP plans.
+        
+        Returns:
+            All available plans
+        """
+        from pwp_engine import get_all_pwp_plans
+        return get_all_pwp_plans()
+    
+    # ========================================
+    # FEATURE #12: TEMPLATE FRANCHISE RIGHTS
+    # ========================================
+    
+    @app.post("/franchise/template/create")
+    async def franchise_template_create_post(
+        creator_username: str,
+        template_name: str,
+        category: str,
+        description: str,
+        base_price: float,
+        available_licenses: List[str] = ["basic", "professional"],
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Create franchisable template.
+        
+        Args:
+            creator_username: Template creator
+            template_name: Template name
+            category: Template category
+            description: Description
+            base_price: Base outcome price
+            available_licenses: License types offered
+            metadata: Template files/instructions
+        
+        Returns:
+            Created template
+        """
+        from franchise_engine import create_template
+        return create_template(
+            creator_username, template_name, category,
+            description, base_price, available_licenses, metadata
+        )
+    
+    @app.post("/franchise/license/purchase")
+    async def franchise_license_purchase_post(
+        franchisee_username: str,
+        template_id: str,
+        license_type: str,
+        territory: Optional[str] = None,
+        niche: Optional[str] = None
+    ):
+        """
+        Purchase template license.
+        
+        Args:
+            franchisee_username: Franchisee
+            template_id: Template to license
+            license_type: License type
+            territory: Geographic territory
+            niche: Industry niche
+        
+        Returns:
+            License agreement
+        """
+        from franchise_engine import purchase_license
+        return purchase_license(franchisee_username, template_id, license_type, territory, niche)
+    
+    @app.post("/franchise/outcome/record")
+    async def franchise_outcome_record_post(
+        license_id: str,
+        outcome_id: str,
+        revenue_amount: float,
+        buyer_username: str
+    ):
+        """
+        Record franchise outcome.
+        
+        Args:
+            license_id: Franchisee's license
+            outcome_id: Outcome delivered
+            revenue_amount: Revenue from outcome
+            buyer_username: Buyer
+        
+        Returns:
+            Revenue split
+        """
+        from franchise_engine import record_franchise_outcome
+        return record_franchise_outcome(license_id, outcome_id, revenue_amount, buyer_username)
+    
+    @app.get("/franchise/marketplace")
+    async def franchise_marketplace_get(
+        category: Optional[str] = None,
+        sort_by: str = "popular"
+    ):
+        """
+        Get template marketplace.
+        
+        Args:
+            category: Filter by category
+            sort_by: popular/revenue/recent/rating
+        
+        Returns:
+            Marketplace listings
+        """
+        from franchise_engine import get_template_marketplace
+        return get_template_marketplace(category, sort_by)
+    
+    @app.get("/franchise/franchisee_dashboard/{username}")
+    async def franchise_franchisee_dashboard_get(username: str):
+        """
+        Get franchisee dashboard.
+        
+        Returns:
+            Franchisee's licenses and performance
+        """
+        from franchise_engine import get_franchisee_dashboard
+        return get_franchisee_dashboard(username)
+    
+    @app.get("/franchise/creator_dashboard/{username}")
+    async def franchise_creator_dashboard_get(username: str):
+        """
+        Get creator dashboard.
+        
+        Returns:
+            Creator's templates and earnings
+        """
+        from franchise_engine import get_creator_dashboard
+        return get_creator_dashboard(username)
+    
+    @app.get("/franchise/template/performance/{template_id}")
+    async def franchise_template_performance_get(template_id: str):
+        """
+        Get template performance.
+        
+        Returns:
+            Performance metrics
+        """
+        from franchise_engine import get_template_performance
+        return get_template_performance(template_id)
+    
+    @app.get("/franchise/license_types")
+    async def franchise_license_types_get():
+        """
+        Get all license types.
+        
+        Returns:
+            All available license types
+        """
+        from franchise_engine import get_all_license_types
+        return get_all_license_types()
