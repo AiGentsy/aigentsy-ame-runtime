@@ -684,24 +684,33 @@ def get_available_boosters(username: str) -> Dict[str, Any]:
     }
     
     for booster_type, config in BOOSTER_TYPES.items():
-        category = config["category"]
-        
-        booster_info = {
-            "type": booster_type,
-            "name": config["name"],
-            "icon": config["icon"],
-            "description": config["description"],
-            "multiplier": config["multiplier"],
-            "boost_percent": (config["multiplier"] - 1.0) * 100,
-            "stackable": config.get("stackable", False)
-        }
-        
-        # Add category-specific info
-        if category == "power_up":
-            booster_info["cost_usd"] = config.get("cost_usd", 0)
-            booster_info["duration"] = _format_duration(config)
-        
-        categorized[category].append(booster_info)
+        try:
+            category = config.get("category", "other")
+            
+            # Skip if category not in our list
+            if category not in categorized:
+                continue
+            
+            booster_info = {
+                "type": booster_type,
+                "name": config.get("name", "Unknown Booster"),
+                "icon": config.get("icon", "⚡"),
+                "description": config.get("description", ""),
+                "multiplier": config.get("multiplier", 1.0),
+                "boost_percent": (config.get("multiplier", 1.0) - 1.0) * 100,
+                "stackable": config.get("stackable", False)
+            }
+            
+            # Add category-specific info
+            if category == "power_up":
+                booster_info["cost_usd"] = config.get("cost_usd", 0)
+                booster_info["duration"] = _format_duration(config)
+            
+            categorized[category].append(booster_info)
+        except Exception as e:
+            # Skip problematic boosters instead of crashing
+            print(f"Warning: Skipping booster {booster_type}: {e}")
+            continue
     
     return {
         "categories": categorized,
