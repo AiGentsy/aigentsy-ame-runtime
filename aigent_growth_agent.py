@@ -1233,6 +1233,65 @@ def get_agent_graph():
     graph.set_finish_point("agent")
     return graph.compile()
 
+@app.post("/agent")
+async def agent_endpoint(request: Request):
+    """
+    Main agent endpoint - accepts user input and returns Growth agent response.
+    Prioritizes businessType from frontend over JSONBin kits.
+    """
+    try:
+        data = await request.json()
+        user_input = data.get("input", "")
+        memory = data.get("memory", [])
+        username = data.get("username", "user")
+        business_type = data.get("businessType", None)  # ✅ From frontend
+        context = data.get("context", {})
+        
+        if not user_input:
+            return {"output": "No input provided."}
+        
+        # Get user record from JSONBin
+        record = get_jsonbin_record(username)
+        
+        # ✨ CRITICAL FIX: Prioritize frontend businessType
+        if business_type:
+            kit_mapping = {
+                "social": "social media kit",
+                "saas": "saas kit",
+                "marketing": "marketing kit",
+                "legal": "legal services kit",
+                "general": "universal kit"
+            }
+            
+            kit_name = kit_mapping.get(business_type, "universal kit")
+            record["kits"] = {kit_name: {"unlocked": True}}
+            
+            if business_type != "general":
+                existing_traits = record.get("traits", [])
+                if business_type not in [t.lower() for t in existing_traits]:
+                    record["traits"] = existing_traits + [business_type]
+        
+        # Run the agent graph
+        graph = get_agent_graph()
+        result = await graph.ainvoke({
+            "input": user_input,
+            "memory": memory,
+            "traits": record.get("traits", []),
+            "kits": list(record.get("kits", {}).keys()),
+            "username": username
+        })
+        
+        return {
+            "output": result.get("output", "No response generated."),
+            "memory": result.get("memory", memory)
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ /agent error: {str(e)}")
+        print(traceback.format_exc())
+        return {"output": f"Sorry, I encountered an error: {str(e)}"}
+
 # ---- Simple trigger callable from main.py ----
 def trigger_metamatch(user_record: dict) -> dict:
     """
