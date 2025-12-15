@@ -223,12 +223,16 @@ def get_dashboard_data(username: str) -> Dict:
     # APEX ULTRA STATUS
     # ============================================================
     
+    # Get APEX ULTRA data from user record (set during mint)
+    apex_ultra_data = user.get("apexUltra", {})
+    systems_operational = apex_ultra_data.get("systemsActivated", 43)  # Defaults to 43
+
     apex_status = {
-        "activated": True,  # All users get APEX on mint
-        "systems_operational": 37,  # From your spec
+        "activated": apex_ultra_data.get("activated", True),
+        "systems_operational": systems_operational,  # ← NOW READS FROM USER!
         "total_systems": 43,
-        "success_rate": round((37/43) * 100, 1),
-        "template": user.get("template", "whitelabel_general")
+        "success_rate": round((systems_operational/43) * 100, 1),
+        "template": apex_ultra_data.get("template", user.get("template", "whitelabel_general"))
     }
     
     # ============================================================
