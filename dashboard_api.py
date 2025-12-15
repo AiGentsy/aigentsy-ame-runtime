@@ -222,17 +222,33 @@ def get_dashboard_data(username: str) -> Dict:
     # ============================================================
     # APEX ULTRA STATUS
     # ============================================================
-    
+
     # Get APEX ULTRA data from user record (set during mint)
     apex_ultra_data = user.get("apexUltra", {})
-    systems_operational = apex_ultra_data.get("systemsActivated", 43)  # Defaults to 43
+    apex_activated = apex_ultra_data.get("activated", False)
+
+    # Get actual systems count from mint activation
+    systems_operational = apex_ultra_data.get("systemsActivated", 0)
+
+    # If APEX ULTRA was activated but no count stored, assume all 43
+    if apex_activated and systems_operational == 0:
+        systems_operational = 43
+
+    total_systems = 43  # As defined in aigentsy_apex_ultra.py
+
+    # Calculate success rate
+    success_rate = 0
+    if total_systems > 0:
+        success_rate = round((systems_operational / total_systems) * 100, 1)
 
     apex_status = {
-        "activated": apex_ultra_data.get("activated", True),
-        "systems_operational": systems_operational,  # ← NOW READS FROM USER!
-        "total_systems": 43,
-        "success_rate": round((systems_operational/43) * 100, 1),
-        "template": apex_ultra_data.get("template", user.get("template", "whitelabel_general"))
+        "activated": apex_activated,
+        "systems_operational": systems_operational,  # ← NOW READS FROM USER RECORD!
+        "total_systems": total_systems,
+        "success_rate": success_rate,
+        "template": apex_ultra_data.get("template", user.get("template", "whitelabel_general")),
+        "automation_mode": apex_ultra_data.get("automationMode", "pro"),
+        "activation_date": apex_ultra_data.get("activationDate")
     }
     
     # ============================================================
