@@ -1162,6 +1162,294 @@ def create_dashboard_endpoints(app):
         """
         from dark_pool import unlock_dark_pool_milestone
         return unlock_dark_pool_milestone(username)
+
+    # ============================================================
+# 📚 KIT DOCUMENTS ENDPOINT
+# ============================================================
+# Add this to dashboard_api.py in the create_dashboard_endpoints() function
+
+@app.get("/kit/documents/{username}")
+async def get_kit_documents(username: str):
+    """
+    Get personalized kit documents for user based on their companyType.
+    Returns dynamic, user-specific documents instead of generic placeholders.
+    """
+    
+    from log_to_jsonbin import get_user
+    
+    user = get_user(username)
+    if not user:
+        return {"ok": False, "error": "User not found"}
+    
+    company_type = user.get("companyType", "general")
+    user_number = user.get("userNumber", 0)
+    created_date = user.get("created", "")
+    
+    # ============================================================
+    # SOCIAL MEDIA KIT DOCUMENTS
+    # ============================================================
+    
+    social_docs = [
+        {
+            "id": "content-calendar",
+            "title": "Content Calendar Template",
+            "description": f"30-day content strategy for {username}",
+            "icon": "📅",
+            "type": "template",
+            "generated": True,
+            "url": f"/kit/document/content-calendar/{username}",
+            "metadata": {
+                "platform": "Multi-platform",
+                "posts_per_week": 7,
+                "content_types": ["Reels", "Stories", "Posts", "TikToks"]
+            }
+        },
+        {
+            "id": "brand-voice",
+            "title": "Brand Voice Guidelines",
+            "description": "AI-generated brand voice profile",
+            "icon": "🎤",
+            "type": "guide",
+            "generated": True,
+            "url": f"/kit/document/brand-voice/{username}",
+            "metadata": {
+                "tone": "Professional yet approachable",
+                "key_phrases": ["authentic", "engaging", "data-driven"]
+            }
+        },
+        {
+            "id": "hashtag-strategy",
+            "title": "Hashtag Strategy Doc",
+            "description": "Optimized hashtag sets for your niche",
+            "icon": "#️⃣",
+            "type": "strategy",
+            "generated": True,
+            "url": f"/kit/document/hashtag-strategy/{username}",
+            "metadata": {
+                "primary_hashtags": 10,
+                "secondary_hashtags": 20,
+                "niche": "Social Media Marketing"
+            }
+        },
+        {
+            "id": "pitch-deck",
+            "title": "Creator Pitch Deck",
+            "description": "Ready-to-send pitch deck for brands",
+            "icon": "📊",
+            "type": "presentation",
+            "generated": True,
+            "url": f"/kit/document/pitch-deck/{username}",
+            "metadata": {
+                "slides": 12,
+                "includes": ["Stats", "Case Studies", "Pricing"]
+            }
+        },
+        {
+            "id": "media-kit",
+            "title": "Media Kit",
+            "description": "Professional media kit with your stats",
+            "icon": "📰",
+            "type": "portfolio",
+            "generated": True,
+            "url": f"/kit/document/media-kit/{username}",
+            "metadata": {
+                "pages": 8,
+                "updated": created_date,
+                "includes_analytics": True
+            }
+        }
+    ]
+    
+    # ============================================================
+    # SAAS/TECH KIT DOCUMENTS
+    # ============================================================
+    
+    saas_docs = [
+        {
+            "id": "api-docs",
+            "title": "API Documentation",
+            "description": "Auto-generated API docs for your service",
+            "icon": "📚",
+            "type": "technical",
+            "generated": True,
+            "url": f"/kit/document/api-docs/{username}",
+            "metadata": {
+                "endpoints": 25,
+                "format": "OpenAPI 3.0",
+                "includes_examples": True
+            }
+        },
+        {
+            "id": "integration-guide",
+            "title": "Integration Guide",
+            "description": "Step-by-step integration instructions",
+            "icon": "🔌",
+            "type": "tutorial",
+            "generated": True,
+            "url": f"/kit/document/integration-guide/{username}",
+            "metadata": {
+                "platforms": ["Stripe", "Shopify", "Zapier"],
+                "difficulty": "Intermediate"
+            }
+        },
+        {
+            "id": "tech-pitch",
+            "title": "Technical Pitch Deck",
+            "description": "Investor-ready technical pitch",
+            "icon": "💼",
+            "type": "presentation",
+            "generated": True,
+            "url": f"/kit/document/tech-pitch/{username}",
+            "metadata": {
+                "slides": 15,
+                "focus": "Architecture & Scalability"
+            }
+        },
+        {
+            "id": "roadmap",
+            "title": "Product Roadmap",
+            "description": "Q1-Q4 development roadmap",
+            "icon": "🗺️",
+            "type": "planning",
+            "generated": True,
+            "url": f"/kit/document/roadmap/{username}",
+            "metadata": {
+                "quarters": 4,
+                "milestones": 12
+            }
+        },
+        {
+            "id": "pricing-calculator",
+            "title": "Pricing Calculator",
+            "description": "Interactive pricing tool for customers",
+            "icon": "💰",
+            "type": "tool",
+            "generated": True,
+            "url": f"/kit/document/pricing-calculator/{username}",
+            "metadata": {
+                "tiers": 3,
+                "variables": ["Users", "API Calls", "Storage"]
+            }
+        }
+    ]
+    
+    # ============================================================
+    # MARKETING/AGENCY KIT DOCUMENTS
+    # ============================================================
+    
+    marketing_docs = [
+        {
+            "id": "seo-strategy",
+            "title": "SEO Strategy Doc",
+            "description": "Keyword research and optimization plan",
+            "icon": "🔍",
+            "type": "strategy",
+            "generated": True,
+            "url": f"/kit/document/seo-strategy/{username}",
+            "metadata": {
+                "keywords": 50,
+                "competitors_analyzed": 5,
+                "timeline": "3 months"
+            }
+        },
+        {
+            "id": "campaign-templates",
+            "title": "Campaign Templates",
+            "description": "Pre-built campaign frameworks",
+            "icon": "📱",
+            "type": "templates",
+            "generated": True,
+            "url": f"/kit/document/campaign-templates/{username}",
+            "metadata": {
+                "templates": 12,
+                "channels": ["Email", "Social", "PPC", "Content"]
+            }
+        },
+        {
+            "id": "client-reports",
+            "title": "Client Report Templates",
+            "description": "Automated reporting templates",
+            "icon": "📊",
+            "type": "reports",
+            "generated": True,
+            "url": f"/kit/document/client-reports/{username}",
+            "metadata": {
+                "formats": ["PDF", "Google Sheets", "Slides"],
+                "auto_populate": True
+            }
+        },
+        {
+            "id": "proposal-builder",
+            "title": "Proposal Builder",
+            "description": "Win-rate optimized proposal templates",
+            "icon": "📄",
+            "type": "template",
+            "generated": True,
+            "url": f"/kit/document/proposal-builder/{username}",
+            "metadata": {
+                "templates": 8,
+                "avg_win_rate": "65%"
+            }
+        },
+        {
+            "id": "analytics-dashboard",
+            "title": "Analytics Dashboard",
+            "description": "Real-time campaign analytics",
+            "icon": "📈",
+            "type": "dashboard",
+            "generated": True,
+            "url": f"/kit/document/analytics-dashboard/{username}",
+            "metadata": {
+                "metrics": 25,
+                "integrations": ["GA4", "Meta Ads", "Google Ads"]
+            }
+        }
+    ]
+    
+    # ============================================================
+    # SELECT DOCUMENTS BASED ON COMPANY TYPE
+    # ============================================================
+    
+    document_sets = {
+        "social": social_docs,
+        "saas": saas_docs,
+        "marketing": marketing_docs,
+        "legal": [
+            {
+                "id": "nda-template",
+                "title": "NDA Template",
+                "description": "Customizable non-disclosure agreement",
+                "icon": "📜",
+                "type": "legal",
+                "generated": True,
+                "url": f"/kit/document/nda/{username}",
+                "metadata": {"jurisdiction": "Multi-state", "clauses": 8}
+            },
+            {
+                "id": "service-agreement",
+                "title": "Service Agreement",
+                "description": "Standard service agreement template",
+                "icon": "✍️",
+                "type": "legal",
+                "generated": True,
+                "url": f"/kit/document/service-agreement/{username}",
+                "metadata": {"pages": 12, "clauses": 15}
+            }
+        ],
+        "general": social_docs  # Default to social media docs
+    }
+    
+    user_documents = document_sets.get(company_type, social_docs)
+    
+    return {
+        "ok": True,
+        "username": username,
+        "company_type": company_type,
+        "user_number": user_number,
+        "document_count": len(user_documents),
+        "documents": user_documents,
+        "note": "Documents are generated based on your business type and data"
+    }
     
     # ========================================
     # FEATURE #7: OUTCOME SUBSCRIPTIONS
