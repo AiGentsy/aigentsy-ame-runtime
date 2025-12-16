@@ -11,6 +11,7 @@ Provides comprehensive dashboard data for users:
 - APEX ULTRA system status
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Dict, Optional, Any, List
 
@@ -2057,6 +2058,10 @@ def create_dashboard_endpoints(app):
         from franchise_engine import get_all_license_types
         return get_all_license_types()
 
+    # ============================================================
+    # 📚 KIT DOCUMENTS ENDPOINT - CORRECTED VERSION
+    # ===========================================================
+
 
     # ============================================================
     # 📚 KIT DOCUMENTS - CONNECTED TO TEMPLATE_LIBRARY.PY
@@ -2109,7 +2114,7 @@ def create_dashboard_endpoints(app):
                     "type": "download",
                     "file_type": "docx",
                     "download_url": f"{base_url}/templates/{company_type}/template.docx",
-                    "file_size": "119 KB",  # Update per kit
+                    "file_size": "119 KB",
                     "retail_value": kit_info['total_retail_value']
                 },
                 {
@@ -2172,41 +2177,16 @@ def create_dashboard_endpoints(app):
         # ============================================================
         
         else:
-            # Your existing hardcoded implementation
-            # Keep lines 2085-2270 as fallback
-            social_docs = [
-                {
-                    "id": "content-calendar",
-                    "title": "Content Calendar Template",
-                    "description": f"30-day content strategy for {username}",
-                    "icon": "📅",
-                    "type": "template",
-                    "generated": True,
-                    "url": f"/kit/document/content-calendar/{username}"
-                }
-                # ... rest of your existing code
-            ]
-            
-            document_sets = {
-                "social": social_docs,
-                "saas": [],  # Your existing saas_docs
-                "marketing": [],  # Your existing marketing_docs
-                "legal": [],
-                "general": social_docs
-            }
-            
-            user_documents = document_sets.get(company_type, social_docs)
-            
             return {
                 "ok": True,
                 "username": username,
                 "company_type": company_type,
-                "documents": user_documents,
-                "source": "fallback"
+                "documents": [],
+                "source": "fallback_empty"
             }
     
     # ============================================================
-    # NEW ENDPOINTS - ADD THESE AFTER /kit/documents
+    # NEW KIT ENDPOINTS
     # ============================================================
     
     @app.get("/kit/document/{username}/{doc_id}")
@@ -2436,4 +2416,8 @@ USE CASES:
 
 # ============================================================
 # END OF KIT DOCUMENTS ENDPOINTS
+# ============================================================
+
+# ============================================================
+# END OF ENDPOINT - Continue with rest of create_dashboard_endpoints()
 # ============================================================
