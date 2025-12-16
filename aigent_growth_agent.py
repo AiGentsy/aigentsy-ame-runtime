@@ -1156,48 +1156,110 @@ async def cold_lead_pitch(request: Request):
 @app.post("/scan_external_content")
 async def scan_external_content(request: Request):
     """
-    Fetch a URL, extract visible text lightly, infer offer, match, and persist proposals.
+    🆕 ENHANCED: Can now scrape specific URL OR run platform discovery
+    
+    Input Option 1 (URL scraping):
+    {
+        "username": "user123",
+        "url": "https://example.com/job-posting"
+    }
+    
+    Input Option 2 (Platform discovery):
+    {
+        "username": "user123",
+        "platform": "github",  # or "upwork", "reddit", etc.
+        "query": "react developer"  # Optional
+    }
     """
     try:
         payload = await request.json()
         username = payload.get("username", "growth_default")
         target_url = payload.get("url")
-        if not target_url:
-            return {"status": "error", "message": "No URL provided."}
-
-        page = HTTP.get(target_url, timeout=10)
-        raw_text = page.text
-        clean_text = " ".join(raw_text.split("<")).replace(">", " ")[:2000]
-
-        inferred_offer = clean_text[:120]
-        if llm is not None and HAS_KEY:
-            extract_msg = HumanMessage(content=f"From this page text, give a 1-line offering/need:\n\n{clean_text}")
-            resp = await llm.ainvoke([extract_msg])
-            inferred_offer = (resp.content or inferred_offer).strip()
-
-        matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
-        proposals = proposal_generator(inferred_offer, matches, username)
-        for p in proposals:
-            _post_json("/submit_proposal", p)
-
-        if deliver_proposal:
-            try:
-                deliver_proposal(query=inferred_offer, matches=matches, originator=username)
-            except Exception as e:
-                print("⚠️ deliver_proposal failed:", str(e))
-        else:
-            proposal_dispatch_log(username, proposals, match_target=matches[0].get("username") if matches else None)
-
-        return {
-            "status": "ok",
-            "url": target_url,
-            "detected_offer": inferred_offer,
-            "match_count": len(matches),
-            "matches": matches,
-            "proposals": proposals
+        platform = payload.get("platform")
+        
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
         }
+        
+        # OPTION 1: Scrape specific URL (existing functionality)
+        if target_url:
+            page = HTTP.get(target_url, timeout=10)
+            raw_text = page.text
+            clean_text = " ".join(raw_text.split("<")).replace(">", " ")[:2000]
+            
+            inferred_offer = clean_text[:120]
+            if llm is not None and HAS_KEY:
+                extract_msg = HumanMessage(
+                    content=f"From this page text, give a 1-line offering/need:\n\n{clean_text}"
+                )
+                resp = await llm.ainvoke([extract_msg])
+                inferred_offer = (resp.content or inferred_offer).strip()
+            
+            matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
+            proposals = proposal_generator(inferred_offer, matches, username)
+            
+            for p in proposals:
+                _post_json("/submit_proposal", p)
+            
+            return {
+                "status": "ok",
+                "url": target_url,
+                "detected_offer": inferred_offer,
+                "match_count": len(matches),
+                "matches": matches,
+                "proposals": proposals
+            }
+        
+        # OPTION 2: Scrape specific platform (NEW)
+        elif platform:
+            opportunities = []
+            
+            if platform == "github":
+                opportunities = await scrape_github(user_profile)
+            elif platform == "linkedin":
+                opportunities = await scrape_linkedin(user_profile)
+            elif platform == "upwork":
+                opportunities = await scrape_upwork(user_profile)
+            elif platform == "reddit":
+                opportunities = await scrape_reddit(user_profile)
+            elif platform == "hackernews":
+                opportunities = await scrape_hackernews(user_profile)
+            elif platform == "indiehackers":
+                opportunities = await scrape_indiehackers(user_profile)
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Platform '{platform}' not supported"
+                }
+            
+            # Store opportunities
+            user_record.setdefault("opportunities", []).extend(opportunities)
+            _post_json(f"/update_user/{username}", {"opportunities": user_record["opportunities"]})
+            
+            return {
+                "status": "ok",
+                "platform": platform,
+                "opportunities_found": len(opportunities),
+                "opportunities": opportunities
+            }
+        
+        else:
+            return {
+                "status": "error",
+                "message": "Must provide either 'url' or 'platform'"
+            }
+    
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()[:500]
+        }
 
 @app.post("/metabridge")
 async def metabridge(request: Request):
