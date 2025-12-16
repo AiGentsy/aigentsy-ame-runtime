@@ -17,6 +17,18 @@ from langgraph.graph import StateGraph
 
 from events import emit
 from log_to_jsonbin_aam_patched import log_event
+# ADD AFTER EXISTING IMPORTS:
+from ultimate_discovery_engine import (
+    discover_all_opportunities,
+    scrape_github,
+    scrape_linkedin,
+    scrape_upwork,
+    scrape_reddit,
+    scrape_hackernews,
+    scrape_indiehackers,
+    auto_bid_on_opportunity,
+    start_realtime_monitoring
+)
 
 def emit_both(kind: str, data: dict):
     try:
