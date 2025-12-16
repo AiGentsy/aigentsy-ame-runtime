@@ -507,6 +507,35 @@ async def invoke(state: AgentState) -> dict:
         csuite_member = route_to_csuite_member(user_input)
         role_name = csuite_member["role"]
         role_personality = csuite_member["personality"]
+
+        # ========== AUTO-DISCOVERY TRIGGERS ==========
+        discovery_triggers = [
+            'find clients', 'get customers', 'need opportunities',
+            'find work', 'get gigs', 'need projects', 'find jobs'
+        ]
+        
+        should_discover = any(trigger in user_input.lower() for trigger in discovery_triggers)
+        
+        if should_discover and os.getenv("AUTO_DISCOVERY_ENABLED", "false").lower() == "true":
+            # Trigger discovery in background
+            asyncio.create_task(
+                discover_all_opportunities(
+                    username=username,
+                    user_profile={
+                        "username": username,
+                        "skills": traits,
+                        "kits": kits,
+                        "companyType": record.get("companyType", "general")
+                    },
+                    platforms=["github", "upwork", "reddit", "hackernews"]
+                )
+            )
+            
+            # Add hint to response
+            csuite_context += """
+\n\n🔍 **LIVE DISCOVERY ACTIVATED**: I'm scanning GitHub, Upwork, Reddit, and Hacker News for opportunities right now. You'll see them in your dashboard within 60 seconds.
+"""
+        # ========== END AUTO-DISCOVERY ==========
         
         # ---- Determine user's business template (KITS = SOURCE OF TRUTH) ----
         user_template = "general"
