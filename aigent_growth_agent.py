@@ -1236,6 +1236,121 @@ async def metabridge(request: Request):
         "proposals": proposals,
     }
 
+@app.post("/discover")
+async def discover_opportunities_endpoint(request: Request):
+    """
+    🆕 ULTIMATE DISCOVERY - Scrape all platforms for opportunities
+    
+    Input: {
+        "username": "user123",
+        "platforms": ["github", "upwork", "reddit"],  # Optional
+        "auto_bid": false  # Optional: auto-bid on 95+ matches
+    }
+    
+    Output: {
+        "ok": true,
+        "opportunities": [...],
+        "by_platform": {...},
+        "total_found": 47
+    }
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        platforms = payload.get("platforms")  # None = all platforms
+        auto_bid = payload.get("auto_bid", False)
+        
+        # Get user profile
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
+        }
+        
+        # Run discovery
+        result = await discover_all_opportunities(
+            username=username,
+            user_profile=user_profile,
+            platforms=platforms
+        )
+        
+        # Optional: Auto-bid on ultra-high matches
+        if auto_bid:
+            auto_bids = []
+            for opp in result["opportunities"]:
+                if opp.get("match_score", 0) >= 95:
+                    bid_result = await auto_bid_on_opportunity(opp, user_profile)
+                    if bid_result.get("ok"):
+                        auto_bids.append(bid_result)
+            
+            result["auto_bids"] = auto_bids
+        
+        # Store opportunities in user record
+        user_record.setdefault("opportunities", []).extend(result["opportunities"])
+        
+        # Save via backend
+        _post_json(f"/update_user/{username}", {"opportunities": user_record["opportunities"]})
+        
+        return {
+            "status": "ok",
+            **result
+        }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()[:500]
+        }
+
+
+@app.post("/discover/start-monitoring")
+async def start_monitoring_endpoint(request: Request):
+    """
+    🔴 START REAL-TIME MONITORING
+    
+    Continuously monitors platforms for new opportunities
+    Auto-bids on 95+ matches
+    
+    Input: {
+        "username": "user123",
+        "platforms": ["github", "upwork", "reddit"]
+    }
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        platforms = payload.get("platforms", ["github", "upwork", "reddit"])
+        
+        # Get user profile
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
+        }
+        
+        # Start monitoring in background
+        asyncio.create_task(
+            start_realtime_monitoring(username, user_profile, platforms)
+        )
+        
+        return {
+            "status": "ok",
+            "message": f"Real-time monitoring started for {username}",
+            "platforms": platforms
+        }
+    
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 # ----------------- Graph compile -----------------
 @lru_cache
 def get_agent_graph():
