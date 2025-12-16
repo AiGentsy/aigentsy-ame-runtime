@@ -76,6 +76,294 @@ async def coordinate_template_activation(
     
     print(f"   ✅ Intelligence: {intelligence['capabilities']['kit_type']} kit, Rep {intelligence['reputation']}")
     print(f"   ✅ Opportunities: {len(opportunities)} found")
+
+    """
+UPGRADE: template_integration_coordinator.py
+ADD GROWTH AGENT DISCOVERY
+
+ADD THIS SECTION to coordinate_template_activation()
+After CSuite generates opportunities (around line 80)
+"""
+
+# ============================================================
+# STEP 1.5: EXTERNAL DISCOVERY (GROWTH AGENT)
+# ============================================================
+
+print("\n🔍 Discovering external opportunities (Growth Agent)...")
+
+try:
+    # Call Growth Agent's discovery endpoint
+    import httpx
+    
+    BACKEND_BASE = os.getenv("BACKEND_BASE", "http://localhost:8000").rstrip("/")
+    
+    async with httpx.AsyncClient() as client:
+        discovery_payload = {
+            "username": username,
+            "platforms": ["github", "upwork", "reddit", "hackernews"],
+            "auto_bid": False  # Don't auto-bid at mint, let user approve
+        }
+        
+        discovery_response = await client.post(
+            f"{BACKEND_BASE}/discover",
+            json=discovery_payload,
+            timeout=30.0
+        )
+        
+        if discovery_response.status_code == 200:
+            discovery_result = discovery_response.json()
+            
+            if discovery_result.get("status") == "ok":
+                external_opps = discovery_result.get("opportunities", [])
+                
+                results["external_opportunities"] = len(external_opps)
+                results["systems_triggered"].append("GrowthAgentDiscovery")
+                
+                print(f"   ✅ External opportunities: {len(external_opps)}")
+                print(f"   ✅ Platforms scraped: {', '.join(discovery_result.get('platforms_scraped', []))}")
+                
+                # Store external opportunities in user data
+                for opp in external_opps:
+                    user_data["opportunities"].append(opp)
+            else:
+                print(f"   ⚠️  Discovery returned status: {discovery_result.get('status')}")
+        else:
+            print(f"   ⚠️  Discovery endpoint returned {discovery_response.status_code}")
+
+except Exception as e:
+    print(f"   ⚠️  Growth Agent discovery error: {e}")
+    results["external_opportunities"] = 0
+
+
+# ============================================================
+# COMPLETE UPDATED FUNCTION
+# ============================================================
+
+"""
+Here's the COMPLETE updated coordinate_template_activation() function:
+"""
+
+async def coordinate_template_activation(
+    template_id: str,
+    username: str,
+    user_data: Dict = None
+) -> Dict[str, Any]:
+    """
+    UPGRADED: Now includes Growth Agent discovery
+    
+    Flow:
+    1. CSuiteOrchestrator generates internal opportunities ✅
+    2. Growth Agent discovers external opportunities 🆕
+    3. AMGOrchestrator runs full 10-stage cycle ✅
+    4. AiGentsy Conductor creates execution plan ✅
+    5. Store EVERYTHING in dashboard
+    """
+    
+    print(f"\n{'='*70}")
+    print(f"🔗 TEMPLATE INTEGRATION COORDINATOR (UPGRADED)")
+    print(f"   Template: {template_id}")
+    print(f"   User: {username}")
+    print(f"{'='*70}\n")
+    
+    if not user_data:
+        user_data = get_user(username)
+    
+    results = {
+        "ok": True,
+        "template_id": template_id,
+        "username": username,
+        "systems_triggered": [],
+        "opportunities": {
+            "internal": [],
+            "external": []
+        }
+    }
+    
+    # ============================================================
+    # STEP 1: INTERNAL OPPORTUNITIES (CSuite)
+    # ============================================================
+    
+    print("🧠 Analyzing business state (CSuite)...")
+    
+    try:
+        from csuite_orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        intelligence = await orchestrator.analyze_business_state(username)
+        
+        if intelligence.get("ok"):
+            opportunities = await orchestrator.generate_opportunities(username, intelligence)
+            
+            results["intelligence"] = {
+                "kit_type": intelligence["capabilities"]["kit_type"],
+                "tier": intelligence["capabilities"]["tier"],
+                "reputation": intelligence["reputation"],
+                "apex_ready": intelligence["systems"]["apex_ultra_active"]
+            }
+            results["opportunities"]["internal"] = opportunities
+            results["systems_triggered"].append("CSuiteOrchestrator")
+            
+            print(f"   ✅ Internal opportunities: {len(opportunities)}")
+    
+    except Exception as e:
+        print(f"   ⚠️  CSuite error: {e}")
+        results["opportunities"]["internal"] = []
+    
+    # ============================================================
+    # STEP 2: EXTERNAL DISCOVERY (GROWTH AGENT) 🆕
+    # ============================================================
+    
+    print("\n🔍 Discovering external opportunities (Growth Agent)...")
+    
+    try:
+        import httpx
+        
+        BACKEND_BASE = os.getenv("BACKEND_BASE", "http://localhost:8000").rstrip("/")
+        
+        async with httpx.AsyncClient() as client:
+            discovery_payload = {
+                "username": username,
+                "platforms": ["github", "upwork", "reddit", "hackernews"],
+                "auto_bid": False
+            }
+            
+            discovery_response = await client.post(
+                f"{BACKEND_BASE}/discover",
+                json=discovery_payload,
+                timeout=30.0
+            )
+            
+            if discovery_response.status_code == 200:
+                discovery_result = discovery_response.json()
+                
+                if discovery_result.get("status") == "ok":
+                    external_opps = discovery_result.get("opportunities", [])
+                    
+                    results["opportunities"]["external"] = external_opps
+                    results["external_count"] = len(external_opps)
+                    results["platforms_scraped"] = discovery_result.get("platforms_scraped", [])
+                    results["systems_triggered"].append("GrowthAgentDiscovery")
+                    
+                    print(f"   ✅ External opportunities: {len(external_opps)}")
+                    print(f"   ✅ Platforms: {', '.join(results['platforms_scraped'])}")
+                    
+                    # Store in user data
+                    for opp in external_opps:
+                        user_data["opportunities"].append(opp)
+    
+    except Exception as e:
+        print(f"   ⚠️  Growth Agent discovery error: {e}")
+        results["opportunities"]["external"] = []
+    
+    # ============================================================
+    # STEP 3: AMG REVENUE LOOP
+    # ============================================================
+    
+    print("\n💰 Running AMG revenue cycle...")
+    
+    try:
+        from amg_orchestrator import AMGOrchestrator
+        
+        amg = AMGOrchestrator(username)
+        
+        if not amg.user.get("amg", {}).get("graph_initialized"):
+            await amg.initialize_graph()
+        
+        amg_result = await amg.run_cycle()
+        
+        results["amg"] = {
+            "cycle_complete": amg_result.get("cycle_complete"),
+            "opportunities_detected": amg_result.get("results", {}).get("sense", {}).get("opportunities_found", 0),
+            "actions_executed": amg_result.get("results", {}).get("route", {}).get("actions_executed", 0),
+            "revenue": amg_result.get("results", {}).get("settle", {}).get("revenue", 0)
+        }
+        results["systems_triggered"].append("AMGOrchestrator")
+        
+        print(f"   ✅ AMG: {results['amg']['opportunities_detected']} opportunities detected")
+    
+    except Exception as amg_error:
+        print(f"   ⚠️  AMG cycle skipped: {amg_error}")
+        results["amg"] = {"skipped": True, "error": str(amg_error)}
+    
+    # ============================================================
+    # STEP 4: CONDUCTOR COORDINATION
+    # ============================================================
+    
+    print("\n🔧 Creating execution plan (Conductor)...")
+    
+    try:
+        from aigentsy_conductor import scan_opportunities, create_execution_plan
+        
+        device_id = user_data.get("primary_device_id", "web_dashboard")
+        device_opps = await scan_opportunities(username, device_id)
+        
+        if device_opps.get("ok"):
+            plan = await create_execution_plan(
+                username=username,
+                device_id=device_id,
+                opportunities=device_opps.get("opportunities", []),
+                max_actions=10
+            )
+            
+            results["conductor"] = {
+                "device_opportunities": device_opps.get("count", 0),
+                "plan_id": plan.get("plan_id"),
+                "auto_approved": plan.get("summary", {}).get("auto_approved", 0),
+                "needs_approval": plan.get("summary", {}).get("needs_approval", 0)
+            }
+            results["systems_triggered"].append("AiGentsyConductor")
+            
+            print(f"   ✅ Conductor: Plan {plan.get('plan_id')} created")
+    
+    except Exception as conductor_error:
+        print(f"   ⚠️  Conductor skipped: {conductor_error}")
+        results["conductor"] = {"skipped": True}
+    
+    # ============================================================
+    # STEP 5: STORE IN DASHBOARD
+    # ============================================================
+    
+    print("\n💾 Storing in dashboard...")
+    
+    if "opportunities" not in user_data:
+        user_data["opportunities"] = []
+    
+    # Store internal opportunities
+    for opp in results["opportunities"]["internal"][:5]:
+        dashboard_opp = {
+            "id": f"internal_{opp['opportunity_id']}",
+            "source": "template_activation",
+            "type": opp["opportunity_id"],
+            "title": opp["title"],
+            "description": opp["description"],
+            "estimated_value": opp["revenue_potential"],
+            "confidence": opp["confidence"],
+            "status": "pending_approval",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        user_data["opportunities"].append(dashboard_opp)
+    
+    # External opportunities already stored above
+    
+    log_agent_update(user_data)
+    
+    total_stored = len(results["opportunities"]["internal"][:5]) + len(results["opportunities"]["external"])
+    
+    print(f"   ✅ Stored {total_stored} opportunities")
+    
+    # ============================================================
+    # SUMMARY
+    # ============================================================
+    
+    print(f"\n{'='*70}")
+    print(f"✅ COORDINATION COMPLETE")
+    print(f"   Systems: {', '.join(results['systems_triggered'])}")
+    print(f"   Internal: {len(results['opportunities']['internal'])}")
+    print(f"   External: {len(results['opportunities']['external'])}")
+    print(f"   Total: {total_stored} ready for approval")
+    print(f"{'='*70}\n")
+    
+    return results
     
     # ============================================================
     # STEP 2: REVENUE LOOP (Use AMGOrchestrator)
