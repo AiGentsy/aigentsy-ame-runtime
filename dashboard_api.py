@@ -370,6 +370,168 @@ def get_discovery_stats(username: str) -> Dict:
         "external_platforms": external_platforms
     }
 
+# ============================================================
+# ADD FUNCTION #1: get_user_templates() 
+# INSERT AFTER get_discovery_stats() function
+# ============================================================
+
+def get_user_templates(username: str) -> Dict:
+    """
+    🆕 Get templates for user's kit
+    Returns template metadata for dashboard display
+    """
+    
+    user = get_user(username)
+    if not user:
+        return {"ok": False, "error": "User not found"}
+    
+    kit_type = user.get("companyType", "general")
+    
+    # Template metadata by kit
+    templates_by_kit = {
+        "saas": {
+            "kit_name": "SaaS Kit",
+            "total_items": 15,
+            "templates": [
+                {
+                    "id": "openapi_yaml",
+                    "title": "OpenAPI Specification (YAML)",
+                    "type": "download",
+                    "icon": "📄",
+                    "description": "Complete API specification in YAML format"
+                },
+                {
+                    "id": "swagger_ui",
+                    "title": "Self-Hosted Swagger UI",
+                    "type": "download",
+                    "icon": "🌐",
+                    "description": "Interactive API documentation"
+                },
+                {
+                    "id": "postman_collection",
+                    "title": "Postman Collection v2.1",
+                    "type": "download",
+                    "icon": "📬",
+                    "description": "Import into Postman for testing"
+                },
+                {
+                    "id": "insomnia_workspace",
+                    "title": "Insomnia Workspace v4",
+                    "type": "download",
+                    "icon": "📬",
+                    "description": "Alternative REST client"
+                },
+                {
+                    "id": "curl_examples",
+                    "title": "cURL Command Examples",
+                    "type": "download",
+                    "icon": "💻",
+                    "description": "Ready-to-use cURL commands"
+                }
+            ]
+        },
+        "marketing": {
+            "kit_name": "Marketing Kit",
+            "total_items": 15,
+            "templates": [
+                {
+                    "id": "landing_page_1",
+                    "title": "Landing Page: Direct/Product-Focused",
+                    "type": "editable",
+                    "icon": "📄",
+                    "description": "SaaS products, agencies, service businesses"
+                },
+                {
+                    "id": "landing_page_2",
+                    "title": "Landing Page: Aspirational/Benefit-Focused",
+                    "type": "editable",
+                    "icon": "📄",
+                    "description": "Professional services, consultancy"
+                },
+                {
+                    "id": "email_sequence_1",
+                    "title": "Welcome Series (3 emails)",
+                    "type": "editable",
+                    "icon": "📧",
+                    "description": "Onboard new subscribers"
+                },
+                {
+                    "id": "email_sequence_2",
+                    "title": "Nurture Sequence (5 emails)",
+                    "type": "editable",
+                    "icon": "📧",
+                    "description": "Convert leads to customers"
+                },
+                {
+                    "id": "ad_copy_1",
+                    "title": "Ad Copy Templates",
+                    "type": "editable",
+                    "icon": "📣",
+                    "description": "Google Ads, Facebook, LinkedIn"
+                }
+            ]
+        },
+        "social": {
+            "kit_name": "Social Kit",
+            "total_items": 10,
+            "templates": [
+                {
+                    "id": "twitter_bundle",
+                    "title": "Twitter Content Pack (20 templates)",
+                    "type": "editable",
+                    "icon": "🐦",
+                    "description": "Viral tweets, threads, giveaways"
+                },
+                {
+                    "id": "linkedin_bundle",
+                    "title": "LinkedIn Content Pack (12 templates)",
+                    "type": "editable",
+                    "icon": "💼",
+                    "description": "B2B thought leadership"
+                },
+                {
+                    "id": "instagram_bundle",
+                    "title": "Instagram Content Pack (12 templates)",
+                    "type": "editable",
+                    "icon": "📸",
+                    "description": "Posts, Stories, Reels"
+                },
+                {
+                    "id": "tiktok_bundle",
+                    "title": "TikTok Content Pack (6 templates)",
+                    "type": "editable",
+                    "icon": "🎵",
+                    "description": "Short-form video scripts"
+                },
+                {
+                    "id": "content_calendar",
+                    "title": "Content Calendar Template",
+                    "type": "editable",
+                    "icon": "📅",
+                    "description": "30-day posting schedule"
+                }
+            ]
+        }
+    }
+    
+    kit_data = templates_by_kit.get(kit_type, {"kit_name": "General", "templates": []})
+    
+    # Add real-time editing status
+    custom_docs = user.get("customKitDocuments", {})
+    
+    for template in kit_data.get("templates", []):
+        template_id = template["id"]
+        template["edited"] = template_id in custom_docs
+        template["last_edited"] = custom_docs.get(f"{template_id}_modified")
+    
+    return {
+        "ok": True,
+        "kit_type": kit_type,
+        "kit_name": kit_data.get("kit_name"),
+        "total_items": kit_data.get("total_items", 0),
+        "templates": kit_data.get("templates", [])
+    }
+
 def get_leaderboard(metric: str = "aigx", limit: int = 100) -> Dict:
     """
     Get leaderboard for various metrics.
