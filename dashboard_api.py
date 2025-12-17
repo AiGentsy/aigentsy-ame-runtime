@@ -21,7 +21,8 @@ from aigx_config import (
     calculate_equity_value,
     get_platform_fee
 )
-from log_to_jsonbin import get_user, list_users, update_user
+# ✅ CORRECT
+from log_to_jsonbin import get_user, list_users, log_agent_update
 
 
 def get_dashboard_data(username: str) -> Dict:
@@ -330,12 +331,45 @@ def get_discovery_stats(username: str) -> Dict:
     🆕 Get Growth Agent discovery statistics
     Shows how many external opportunities were found
     """
-    from log_to_jsonbin import get_user
     
     user = get_user(username)
     if not user:
         return {"ok": False, "error": "User not found"}
-
+    
+    # ← ADD THIS IMMEDIATELY:
+    all_opportunities = user.get("opportunities", [])
+    
+    # Count by source
+    by_source = {}
+    for opp in all_opportunities:
+        source = opp.get("source", "internal")
+        by_source[source] = by_source.get(source, 0) + 1
+    
+    # External platforms
+    external_platforms = [
+        "github", "linkedin", "upwork", "reddit",
+        "hackernews", "indiehackers", "stackoverflow"
+    ]
+    
+    external_count = sum(by_source.get(p, 0) for p in external_platforms)
+    internal_count = by_source.get("template_activation", 0) + by_source.get("internal", 0)
+    
+    # Get high-value opportunities (>$1000)
+    high_value = [o for o in all_opportunities if o.get("estimated_value", 0) > 1000]
+    
+    # Get high-relevance opportunities (score >= 80)
+    high_relevance = [o for o in all_opportunities if o.get("match_score", 0) >= 80]
+    
+    return {
+        "ok": True,
+        "total_opportunities": len(all_opportunities),
+        "internal_count": internal_count,
+        "external_count": external_count,
+        "by_source": by_source,
+        "high_value_count": len(high_value),
+        "high_relevance_count": len(high_relevance),
+        "external_platforms": external_platforms
+    }
 
 
 def get_approval_queue(username: str) -> Dict:
