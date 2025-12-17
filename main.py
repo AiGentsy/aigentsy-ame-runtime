@@ -14757,3 +14757,9 @@ try:
     app.include_router(_expansion_router)
 except Exception:
     pass
+
+@app.get("/api/discovery/stats/{username}")
+async def api_discovery_stats(username: str):
+    """Get Growth Agent discovery statistics"""
+    from dashboard_api import get_discovery_stats
+    return get_discovery_stats(username)
