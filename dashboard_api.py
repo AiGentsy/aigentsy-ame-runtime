@@ -21,7 +21,7 @@ from aigx_config import (
     calculate_equity_value,
     get_platform_fee
 )
-from log_to_jsonbin import get_user, list_users
+from log_to_jsonbin import get_user, list_users, update_user
 
 
 def get_dashboard_data(username: str) -> Dict:
@@ -335,6 +335,142 @@ def get_discovery_stats(username: str) -> Dict:
     user = get_user(username)
     if not user:
         return {"ok": False, "error": "User not found"}
+
+
+
+def get_approval_queue(username: str) -> Dict:
+    """
+    🆕 UPGRADED: Better separation of internal vs external opportunities
+    Now includes match_score sorting and quality metrics
+    """
+    user = get_user(username)
+    if not user:
+        return {"ok": False, "error": "User not found"}
+    all_opportunities = user.get("opportunities", [])
+    pending = [o for o in all_opportunities if o.get("status") == "pending_approval"]
+    external_platforms = ["github", "linkedin", "upwork", "reddit", "hackernews", "indiehackers", "stackoverflow"]
+    internal = [o for o in pending if o.get("source") not in external_platforms]
+    external = [o for o in pending if o.get("source") in external_platforms]
+    base_reward = 10.0
+    multiplier = user.get("aigxMultiplier", 1.0)
+    potential_aigx = len(pending) * base_reward * multiplier
+    total_value = sum(o.get("estimated_value", 0) for o in pending)
+    pending_sorted = sorted(pending, key=lambda o: o.get("match_score", 0), reverse=True)
+    internal_sorted = sorted(internal, key=lambda o: o.get("match_score", 0), reverse=True)
+    external_sorted = sorted(external, key=lambda o: o.get("match_score", 0), reverse=True)
+    return {
+        "ok": True,
+        "queue": {"pending": pending_sorted, "internal": internal_sorted, "external": external_sorted},
+        "counts": {"total": len(pending), "internal": len(internal), "external": len(external)},
+        "value": {
+            "total": total_value,
+            "internal": sum(o.get("estimated_value", 0) for o in internal),
+            "external": sum(o.get("estimated_value", 0) for o in external)
+        },
+        "aigx": {"potential_total": potential_aigx, "per_approval": base_reward * multiplier, "multiplier": multiplier},
+        "quality": {
+            "high_relevance": len([o for o in pending if o.get("match_score", 0) >= 80]),
+            "medium_relevance": len([o for o in pending if 50 <= o.get("match_score", 0) < 80]),
+            "low_relevance": len([o for o in pending if o.get("match_score", 0) < 50])
+        }
+    }
+
+def approve_opportunity(username: str, opportunity_id: str) -> Dict:
+    """
+    🆕 Approve opportunity and earn AIGx
+    """
+    user = get_user(username)
+    if not user:
+        return {"ok": False, "error": "User not found"}
+    opportunities = user.get("opportunities", [])
+    opp = None
+    opp_index = None
+    for i, o in enumerate(opportunities):
+        if o.get("id") == opportunity_id:
+            opp = o
+            opp_index = i
+            break
+    if not opp:
+        return {"ok": False, "error": "Opportunity not found"}
+    if opp.get("status") != "pending_approval":
+        return {"ok": False, "error": "Opportunity already processed"}
+    opp["status"] = "approved"
+    from datetime import datetime, timezone
+    opp["approved_at"] = datetime.now(timezone.utc).isoformat()
+    opportunities[opp_index] = opp
+    base_reward = 10.0
+    multiplier = user.get("aigxMultiplier", 1.0)
+    aigx_earned = base_reward * multiplier
+    try:
+        from aigx_engine import _award_aigx
+        _award_aigx(user, aigx_earned, "opportunity_approval", {"opportunity_id": opportunity_id})
+    except Exception:
+        if "ownership" not in user:
+            user["ownership"] = {"aigx": 0, "ledger": []}
+        user["ownership"]["aigx"] += aigx_earned
+        user["ownership"]["ledger"].append({
+            "amount": aigx_earned,
+            "currency": "AIGx",
+            "basis": "opportunity_approval",
+            "ts": datetime.now(timezone.utc).isoformat()
+        })
+    if "deliverables" not in user:
+        user["deliverables"] = []
+    deliverable = {
+        "id": f"deliverable_{opportunity_id}",
+        "opportunity_id": opportunity_id,
+        "title": opp.get("title"),
+        "content": "",
+        "status": "draft",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    user["deliverables"].append(deliverable)
+    if "approvals" not in user:
+        user["approvals"] = {"total": 0}
+    user["approvals"]["total"] += 1
+    update_user(username, user)
+    new_balance = user.get("ownership", {}).get("aigx", 0)
+    return {"ok": True, "aigx_earned": aigx_earned, "new_balance": new_balance,
+            "deliverable_created": True, "deliverable_id": deliverable["id"]}
+
+def get_complete_dashboard(username: str) -> Dict:
+    """
+    🆕 Complete dashboard hydration
+    Combines existing dashboard data + templates + discovery + approval queue
+    """
+    base_dashboard = get_dashboard_data(username)
+    if not base_dashboard.get("ok"):
+        return base_dashboard
+    templates_result = get_user_templates(username)
+    base_dashboard["templates"] = templates_result.get("templates", [])
+    base_dashboard["kit_type"] = templates_result.get("kit_type")
+    base_dashboard["kit_name"] = templates_result.get("kit_name")
+    queue_result = get_approval_queue(username)
+    base_dashboard["approval_queue"] = queue_result.get("queue", {})
+    base_dashboard["approval_counts"] = queue_result.get("counts", {})
+    base_dashboard["approval_value"] = queue_result.get("value", {})
+    base_dashboard["approval_aigx"] = queue_result.get("aigx", {})
+    base_dashboard["approval_quality"] = queue_result.get("quality", {})
+    user = get_user(username)
+    deliverables = user.get("deliverables", []) if user else []
+    base_dashboard["deliverables"] = {
+        "list": deliverables,
+        "total": len(deliverables),
+        "draft": len([d for d in deliverables if d.get("status") == "draft"]),
+        "in_progress": len([d for d in deliverables if d.get("status") == "in_progress"]),
+        "delivered": len([d for d in deliverables if d.get("status") == "delivered"])
+    }
+    discovery_stats = get_discovery_stats(username)
+    base_dashboard["discovery"] = {
+        "total_opportunities": discovery_stats.get("total_opportunities", 0),
+        "internal_count": discovery_stats.get("internal_count", 0),
+        "external_count": discovery_stats.get("external_count", 0),
+        "by_source": discovery_stats.get("by_source", {}),
+        "high_value_count": discovery_stats.get("high_value_count", 0),
+        "high_relevance_count": discovery_stats.get("high_relevance_count", 0)
+    }
+    return base_dashboard
+
     
     all_opportunities = user.get("opportunities", [])
     
@@ -2628,3 +2764,28 @@ USE CASES:
 # ============================================================
 # END OF ENDPOINT - Continue with rest of create_dashboard_endpoints()
 # ============================================================
+
+
+    @app.get("/api/dashboard/complete/{username}")
+    async def dashboard_complete_get(username: str):
+        """🆕 Get COMPLETE dashboard with all Growth Agent integrations"""
+        return get_complete_dashboard(username)
+
+    @app.get("/api/discovery/stats/{username}")
+    async def discovery_stats_get(username: str):
+        """🆕 Get Growth Agent discovery statistics"""
+        return get_discovery_stats(username)
+
+    @app.post("/api/opportunity/approve")
+    async def opportunity_approve_post(data: dict):
+        """🆕 Approve opportunity and earn AIGx"""
+        username = data.get("username")
+        opportunity_id = data.get("opportunity_id")
+        if not username or not opportunity_id:
+            return {"ok": False, "error": "Missing username or opportunity_id"}
+        return approve_opportunity(username, opportunity_id)
+
+    @app.get("/api/templates/{username}")
+    async def templates_get(username: str):
+        """🆕 Get user's kit templates"""
+        return get_user_templates(username)
