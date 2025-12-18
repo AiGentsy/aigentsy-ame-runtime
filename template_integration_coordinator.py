@@ -252,34 +252,36 @@ async def coordinate_template_activation(
 # MINT INTEGRATION (UNCHANGED - ALREADY WORKS)
 # ============================================================
 
-async def auto_trigger_on_mint(username: str, company_type: str) -> Dict:
+async def auto_trigger_on_mint(username: str, template: str = None, company_type: str = None) -> Dict:
     """
-    Called from /mint endpoint
-    Now returns internal + external opportunities via Growth Agent
+    Called from /mint endpoint to auto-trigger integration
     """
     
-    print(f"🚀 AUTO-TRIGGERING at mint for {username}")
+    # Accept either parameter name for backwards compatibility
+    kit_type = template or company_type or "general"
     
+    print(f"🚀 AUTO-TRIGGERING template integration for {username} at mint")
+    
+    # Get user data
+    user_data = get_user(username)
+    
+    # Run coordination
     result = await coordinate_template_activation(
-        template_id=company_type,
+        template_id=kit_type,
         username=username,
-        user_data=get_user(username)
+        user_data=user_data
     )
-    
-    internal_count = len(result["opportunities"]["internal"])
-    external_count = len(result["opportunities"]["external"])
-    total_count = internal_count + external_count
     
     return {
         "ok": True,
         "auto_triggered": True,
-        "template": company_type,
+        "template": kit_type,
+        "coordination_result": result,
         "opportunities": {
-            "internal": internal_count,
-            "external": external_count,
-            "total": total_count
-        },
-        "message": f"Welcome! {total_count} opportunities ready ({internal_count} internal + {external_count} external)"
+            "internal": len(result.get("opportunities", {}).get("internal", [])),
+            "external": len(result.get("opportunities", {}).get("external", [])),
+            "total": len(result.get("opportunities", {}).get("internal", [])) + len(result.get("opportunities", {}).get("external", []))
+        }
     }
 
 
