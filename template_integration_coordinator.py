@@ -252,36 +252,58 @@ async def coordinate_template_activation(
 # MINT INTEGRATION (UNCHANGED - ALREADY WORKS)
 # ============================================================
 
-async def auto_trigger_on_mint(username: str, template: str = None, company_type: str = None) -> Dict:
+async def auto_trigger_on_mint(username: str, template: str, user_data: Dict) -> Dict:
     """
-    Called from /mint endpoint to auto-trigger integration
+    🚀 Called from /mint endpoint to auto-trigger template integration
+    
+    This triggers the COMPLETE flow:
+    1. CSuite internal opportunities (10 opportunities)
+    2. Growth Agent external discovery (35 opportunities)
+    3. AMG revenue cycle
+    4. Conductor execution plan
+    
+    Args:
+        username: User's username
+        template: Template/kit type (marketing, saas, social, general)
+        user_data: Complete user data dict from JSONBin
+        
+    Returns:
+        dict: Integration result with opportunities created
     """
     
-    # Accept either parameter name for backwards compatibility
-    kit_type = template or company_type or "general"
+    print(f"🚀 AUTO-TRIGGERING template integration for {username}")
+    print(f"   Template: {template}")
+    print(f"   User data provided: {bool(user_data)}")
     
-    print(f"🚀 AUTO-TRIGGERING template integration for {username} at mint")
-    
-    # Get user data
-    user_data = get_user(username)
-    
-    # Run coordination
+    # Run the complete coordination flow
     result = await coordinate_template_activation(
-        template_id=kit_type,
+        template_id=template,
         username=username,
         user_data=user_data
     )
     
+    # Count opportunities created
+    internal_opps = result.get("opportunities", {}).get("internal", [])
+    external_opps = result.get("opportunities", {}).get("external", [])
+    
+    total_opportunities = len(internal_opps) + len(external_opps)
+    
+    print(f"✅ Template integration complete:")
+    print(f"   Internal opportunities: {len(internal_opps)}")
+    print(f"   External opportunities: {len(external_opps)}")
+    print(f"   Total: {total_opportunities}")
+    
     return {
         "ok": True,
         "auto_triggered": True,
-        "template": kit_type,
-        "coordination_result": result,
+        "template": template,
         "opportunities": {
-            "internal": len(result.get("opportunities", {}).get("internal", [])),
-            "external": len(result.get("opportunities", {}).get("external", [])),
-            "total": len(result.get("opportunities", {}).get("internal", [])) + len(result.get("opportunities", {}).get("external", []))
-        }
+            "internal": len(internal_opps),
+            "external": len(external_opps),
+            "total": total_opportunities
+        },
+        "systems_activated": result.get("systems_activated", []),
+        "coordination_result": result
     }
 
 
