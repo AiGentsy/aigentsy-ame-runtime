@@ -105,7 +105,7 @@ async def coordinate_template_activation(
             }
             
             discovery_response = await client.post(
-                f"{BACKEND_BASE}/discover",
+                f"{BACKEND_BASE}/chains/discover",
                 json=discovery_payload,
                 timeout=30.0
             )
