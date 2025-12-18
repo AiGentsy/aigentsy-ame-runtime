@@ -95,7 +95,7 @@ async def coordinate_template_activation(
     try:
         import httpx
         
-        BACKEND_BASE = os.getenv("BACKEND_BASE", "http://localhost:8000").rstrip("/")
+        BACKEND_BASE = os.getenv("BACKEND_BASE", "https://aigentsy-ame-runtime.onrender.com").rstrip("/")
         
         async with httpx.AsyncClient() as client:
             discovery_payload = {
