@@ -467,6 +467,60 @@ def process_all_active_users() -> Dict:
 # API ENDPOINTS HELPERS
 # ============================================================
 
+async def credit_aigx(username: str, amount: int, metadata: dict) -> bool:
+    """
+    Credit AIGx to user's account
+    
+    Args:
+        username: User's username
+        amount: Amount of AIGx to credit
+        metadata: Context about why AIGx was credited
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    from log_to_jsonbin import get_user, update_user
+    
+    try:
+        # Get user
+        user = get_user(username)
+        if not user:
+            print(f"User {username} not found")
+            return False
+        
+        # Get current AIGx balance
+        current_aigx = user.get("yield", {}).get("aigxEarned", 0)
+        new_aigx = current_aigx + amount
+        
+        # Update balance
+        if "yield" not in user:
+            user["yield"] = {}
+        
+        user["yield"]["aigxEarned"] = new_aigx
+        
+        # Log the transaction
+        if "aigx_transactions" not in user:
+            user["aigx_transactions"] = []
+        
+        user["aigx_transactions"].append({
+            "amount": amount,
+            "balance_after": new_aigx,
+            "metadata": metadata,
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z"
+        })
+        
+        # Save
+        success = update_user(username, user)
+        
+        if success:
+            print(f"✅ Credited {amount} AIGx to {username} (new balance: {new_aigx})")
+        
+        return success
+        
+    except Exception as e:
+        print(f"Error crediting AIGx: {e}")
+        return False
+        
 def create_activity_endpoints(app):
     """
     Helper to add activity reward endpoints to FastAPI app.
