@@ -17,6 +17,7 @@ from mint_generator import get_mint_generator
 from template_library import KIT_SUMMARY
 from opportunity_approval import create_opportunity_endpoints
 from week1_api import app as week1_app
+from actionization_routes import router as actionization_router
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
@@ -673,6 +674,7 @@ create_dashboard_endpoints(app)
 create_opportunity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
+app.include_router(actionization_router)
 
 async def auto_bid_background():
     """Runs in background forever"""
