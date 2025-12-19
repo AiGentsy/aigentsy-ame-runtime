@@ -339,6 +339,66 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
             return normalize_user_data(rec)
     return None
 
+def update_user(username: str, user_data: dict) -> bool:
+    """
+    Update user data in JSONBin
+    
+    Args:
+        username: User's username
+        user_data: Complete user object with updates
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        import requests
+        
+        # Get current data
+        response = requests.get(
+            JSONBIN_URL,
+            headers={"X-Master-Key": JSONBIN_SECRET}
+        )
+        
+        if response.status_code != 200:
+            print(f"Failed to get current data: {response.status_code}")
+            return False
+        
+        data = response.json()
+        users = data.get("record", [])
+        
+        # Find and update user
+        updated = False
+        for i, user in enumerate(users):
+            if user.get("username") == username:
+                users[i] = user_data
+                updated = True
+                break
+        
+        if not updated:
+            print(f"User {username} not found")
+            return False
+        
+        # Save back to JSONBin
+        update_response = requests.put(
+            JSONBIN_URL,
+            headers={
+                "Content-Type": "application/json",
+                "X-Master-Key": JSONBIN_SECRET
+            },
+            json=users
+        )
+        
+        if update_response.status_code == 200:
+            print(f"✅ Updated user: {username}")
+            return True
+        else:
+            print(f"Failed to update: {update_response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating user: {e}")
+        return False
+
 def list_users() -> List[Dict[str, Any]]:
     existing, _raw = _read_jsonbin()
     pool = existing if existing is not None else _CACHE
