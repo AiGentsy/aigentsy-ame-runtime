@@ -529,3 +529,50 @@ def get_agent_poo_stats(username: str) -> Dict[str, Any]:
             "by_archetype": uoo_by_archetype
         }
     }
+
+async def record_outcome(username: str, outcome_type: str, metadata: dict) -> bool:
+    """
+    Record an outcome for tracking and PoO system
+    
+    Args:
+        username: User's username
+        outcome_type: Type of outcome (e.g., "SITE_PUBLISHED", "DEAL_CLOSED")
+        metadata: Additional data about the outcome
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    from log_to_jsonbin import get_user, update_user
+    from datetime import datetime, timezone
+    
+    try:
+        # Get user
+        user = get_user(username)
+        if not user:
+            print(f"User {username} not found")
+            return False
+        
+        # Initialize outcomes list if needed
+        if "outcomes" not in user:
+            user["outcomes"] = []
+        
+        # Create outcome record
+        outcome = {
+            "type": outcome_type,
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "metadata": metadata
+        }
+        
+        user["outcomes"].append(outcome)
+        
+        # Save
+        success = update_user(username, user)
+        
+        if success:
+            print(f"✅ Recorded outcome: {outcome_type} for {username}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"Error recording outcome: {e}")
+        return False
