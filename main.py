@@ -2223,27 +2223,6 @@ async def mint_user(request: Request):
                     
                     # Save updated user with storefront info
                     log_agent_update(saved_user)
-                    
-                    # ============================================================
-                    # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
-                    # ============================================================
-                    
-                    # Reload user to get updated data
-                    saved_user = get_user(username)
-                    
-                    # ... REST OF YOUR EXISTING APEX ULTRA CODE CONTINUES HERE ...
-                    # (AIGx grants, IP vault, etc.)
-            
-            except Exception as apex_error:
-                logger.error(f"❌ APEX ULTRA activation failed: {apex_error}", exc_info=True)
-                # Continue even if APEX fails
-        
-        except Exception as save_error:
-            logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
-            return {
-                "ok": False,
-                "error": f"Failed to save user: {str(save_error)}"
-            }
 
 
                     # ============================================================
