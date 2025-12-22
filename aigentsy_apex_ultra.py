@@ -1462,7 +1462,7 @@ class CompleteActivationEngine:
         
     # ============ PUBLIC API ============
 
-    async def activate_apex_ultra(
+async def activate_apex_ultra(
     username: str,
     template: str = "whitelabel_general",
     automation_mode: str = "pro",
@@ -1552,4 +1552,3 @@ class CompleteActivationEngine:
         "total_systems": result["total_systems"],
         "activation": result
     }
-
