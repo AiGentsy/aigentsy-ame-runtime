@@ -1462,10 +1462,11 @@ class CompleteActivationEngine:
         
     # ============ PUBLIC API ============
 
-async def activate_apex_ultra(
+    async def activate_apex_ultra(
     username: str,
     template: str = "whitelabel_general",
-    automation_mode: str = "pro"
+    automation_mode: str = "pro",
+    sku_config: Dict = None  # NEW parameter
 ) -> Dict[str, Any]:
     """
     Main entry point: Activate ALL AiGentsy systems for a user
@@ -1474,6 +1475,7 @@ async def activate_apex_ultra(
         username: User to activate for
         template: Business template (content_creator, ecommerce, saas_tech, consulting_agency, whitelabel_general)
         automation_mode: beginner, pro, or agi
+        sku_config: SKU configuration dict (optional, for template/custom SKUs)
     
     Returns:
         Activation results with all systems status
@@ -1492,19 +1494,51 @@ async def activate_apex_ultra(
     # Create activation engine
     engine = CompleteActivationEngine(username, template)
     
+    # ============================================================
+    # NEW: Pass SKU config to engine if provided
+    # ============================================================
+    
+    if sku_config:
+        # Store SKU config in engine for system configuration
+        engine.sku_config = sku_config
+        
+        # Configure AMG with SKU platforms if specified
+        if "autonomous_systems" in sku_config:
+            amg_config = sku_config["autonomous_systems"].get("amg", {})
+            if "platforms" in amg_config:
+                # AMG will use platforms from SKU config
+                engine.amg_platforms = amg_config["platforms"]
+            
+            # Configure AME with SKU email sequences if specified
+            ame_config = sku_config["autonomous_systems"].get("ame", {})
+            if "auto_pitch_delay_hours" in ame_config:
+                engine.ame_delay = ame_config["auto_pitch_delay_hours"]
+        
+        # Pass email sequences to AME
+        if "email_sequences" in sku_config:
+            engine.email_sequences = sku_config["email_sequences"]
+    
     # Activate everything
     result = await engine.activate_all_systems()
     
     # Store activation in user record
     user = get_user(username)
     if user:
-        user.setdefault("apexUltra", {
+        apex_ultra_record = {
             "activated": True,
             "activationDate": datetime.now(timezone.utc).isoformat(),
             "template": template,
             "automationMode": automation_mode,
             "systemsActivated": result["systems_activated"]
-        })
+        }
+        
+        # NEW: Store SKU info if provided
+        if sku_config:
+            apex_ultra_record["skuId"] = sku_config.get("sku_id")
+            apex_ultra_record["skuName"] = sku_config.get("sku_name")
+            apex_ultra_record["skuType"] = sku_config.get("sku_type", "template")
+        
+        user.setdefault("apexUltra", apex_ultra_record)
         log_agent_update(user)
     
     return {
@@ -1512,7 +1546,10 @@ async def activate_apex_ultra(
         "username": username,
         "template": template,
         "automation_mode": automation_mode,
+        "sku_id": sku_config.get("sku_id") if sku_config else None,  # NEW
+        "sku_name": sku_config.get("sku_name") if sku_config else None,  # NEW
         "systems_activated": result["systems_activated"],
         "total_systems": result["total_systems"],
         "activation": result
     }
+
