@@ -2118,112 +2118,132 @@ async def mint_user(request: Request):
             logger.error(f"Normalization failed: {norm_error}")
             normalized = new_user
 
-        # Save to JSONBin
+         # Save to JSONBin
         try:
             saved_user = log_agent_update(normalized)
             logger.info(f"💾 Saved new user to JSONBin: {username}")
-    
-        # Log the mint event
-        try:
-            from log_to_jsonbin import append_intent_ledger
-            append_intent_ledger(username, {
-                "event": "mint",
-                "referral": referral,
-                "companyType": company_type,
-                "timestamp": now
-            })
-        except Exception as ledger_error:
-            logger.warning(f"Ledger append failed: {ledger_error}")
-    
-        # ============================================================
-        # 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
-        # ============================================================
-    
-        logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
-    
-        try:
-            from aigentsy_apex_ultra import activate_apex_ultra
-            from ipvault import create_ip_asset
-            from sku_config_loader import load_sku_config
-            from storefront_deployer import deploy_storefront
-        
-            # Map companyType to template
-            template_map = {
-                "legal": "consulting_agency",
-                "marketing": "consulting_agency",
-                "social": "content_creator",
-                "saas": "saas_tech",
-                "custom": "whitelabel_general",
-                "general": "whitelabel_general"
-            }
-        
-            apex_template = template_map.get(company_type, "whitelabel_general")
-        
-            # Override with explicit template if provided
-            if template:
-                apex_template = template
-        
+            
+            # Log the mint event
+            try:
+                from log_to_jsonbin import append_intent_ledger
+                append_intent_ledger(username, {
+                    "event": "mint",
+                    "referral": referral,
+                    "companyType": company_type,
+                    "timestamp": now
+                })
+            except Exception as ledger_error:
+                logger.warning(f"Ledger append failed: {ledger_error}")
+            
             # ============================================================
-            # 🎯 LOAD SKU CONFIGURATION
+            # 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
             # ============================================================
-        
-            logger.info(f"📦 Loading SKU configuration for {company_type}...")
-        
-            sku_config = load_sku_config(company_type)  # Loads marketing/saas/social config
-        
-            logger.info(f"   ✅ SKU loaded: {sku_config['sku_name']}")
-        
-            # Activate ALL AiGentsy systems
-            apex_result = await activate_apex_ultra(
-                username=username,
-                template=apex_template,
-                automation_mode="pro",
-                sku_config=sku_config
-            )
-        
-            if apex_result.get("ok"):
-                systems_activated = apex_result.get("systems_activated", 0)
-                amg_result = apex_result.get("results", {}).get("amg", {})
             
-                logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+            logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
             
-                # ============================================================
-                # 🌐 AUTO-DEPLOY STOREFRONT
-                # ============================================================
-            
-                logger.info(f"🚀 Deploying storefront for {username}...")
-            
-                try:
-                    # User picks template variation on signup (get from body)
-                    template_variation = body.get("templateVariation", "professional")
+            try:
+                from aigentsy_apex_ultra import activate_apex_ultra
+                from ipvault import create_ip_asset
+                from sku_config_loader import load_sku_config
+                from storefront_deployer import deploy_storefront
                 
-                    storefront_result = await deploy_storefront(
-                        username=username,
-                        sku_config=sku_config,
-                        template_choice=template_variation,
-                        user_data=saved_user
-                    )
+                # Map companyType to template
+                template_map = {
+                    "legal": "consulting_agency",
+                    "marketing": "consulting_agency",
+                    "social": "content_creator",
+                    "saas": "saas_tech",
+                    "custom": "whitelabel_general",
+                    "general": "whitelabel_general"
+                }
                 
-                    if storefront_result.get('ok'):
-                        # Store storefront URL in user record
-                        saved_user["storefront_url"] = storefront_result["url"]
-                        saved_user["storefront_template"] = storefront_result["template"]
-                        saved_user["storefront_deployed_at"] = storefront_result["deployed_at"]
+                apex_template = template_map.get(company_type, "whitelabel_general")
+                
+                # Override with explicit template if provided
+                if template:
+                    apex_template = template
+                
+                # ============================================================
+                # 🎯 LOAD SKU CONFIGURATION
+                # ============================================================
+                
+                logger.info(f"📦 Loading SKU configuration for {company_type}...")
+                
+                sku_config = load_sku_config(company_type)  # Loads marketing/saas/social config
+                
+                logger.info(f"   ✅ SKU loaded: {sku_config['sku_name']}")
+                
+                # Activate ALL AiGentsy systems
+                apex_result = await activate_apex_ultra(
+                    username=username,
+                    template=apex_template,
+                    automation_mode="pro",
+                    sku_config=sku_config
+                )
+                
+                if apex_result.get("ok"):
+                    systems_activated = apex_result.get("systems_activated", 0)
+                    amg_result = apex_result.get("results", {}).get("amg", {})
                     
-                        logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
-                    else:
-                        logger.warning(f"   ⚠️  Storefront deployment pending: {storefront_result.get('error')}")
+                    logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+                    
+                    # ============================================================
+                    # 🌐 AUTO-DEPLOY STOREFRONT
+                    # ============================================================
+                    
+                    logger.info(f"🚀 Deploying storefront for {username}...")
+                    
+                    try:
+                        # User picks template variation on signup (get from body)
+                        template_variation = body.get("templateVariation", "professional")
+                        
+                        storefront_result = await deploy_storefront(
+                            username=username,
+                            sku_config=sku_config,
+                            template_choice=template_variation,
+                            user_data=saved_user
+                        )
+                        
+                        if storefront_result.get('ok'):
+                            # Store storefront URL in user record
+                            saved_user["storefront_url"] = storefront_result["url"]
+                            saved_user["storefront_template"] = storefront_result["template"]
+                            saved_user["storefront_deployed_at"] = storefront_result["deployed_at"]
+                            
+                            logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
+                        else:
+                            logger.warning(f"   ⚠️  Storefront deployment pending: {storefront_result.get('error')}")
+                            saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
+                            saved_user["storefront_status"] = "pending"
+                    
+                    except Exception as storefront_error:
+                        logger.error(f"   ❌ Storefront deployment error: {storefront_error}")
                         saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
                         saved_user["storefront_status"] = "pending"
+                    
+                    # Save updated user with storefront info
+                    log_agent_update(saved_user)
+                    
+                    # ============================================================
+                    # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
+                    # ============================================================
+                    
+                    # Reload user to get updated data
+                    saved_user = get_user(username)
+                    
+                    # ... REST OF YOUR EXISTING APEX ULTRA CODE CONTINUES HERE ...
+                    # (AIGx grants, IP vault, etc.)
             
-                except Exception as storefront_error:
-                    logger.error(f"   ❌ Storefront deployment error: {storefront_error}")
-                    saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
-                    saved_user["storefront_status"] = "pending"
-            
-                # Save updated user with storefront info
-                log_agent_update(saved_user)
-            
+            except Exception as apex_error:
+                logger.error(f"❌ APEX ULTRA activation failed: {apex_error}", exc_info=True)
+                # Continue even if APEX fails
+        
+        except Exception as save_error:
+            logger.error(f"❌ Failed to save user: {save_error}", exc_info=True)
+            return {
+                "ok": False,
+                "error": f"Failed to save user: {str(save_error)}"
+            }
 
 
                     # ============================================================
