@@ -18,6 +18,9 @@ from template_library import KIT_SUMMARY
 from opportunity_approval import create_opportunity_endpoints
 from week1_api import app as week1_app
 from actionization_routes import router as actionization_router
+from sku_config_loader import load_sku_config
+from storefront_deployer import deploy_storefront
+from business_ingestion import ingest_business_data
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
@@ -2131,45 +2134,98 @@ async def mint_user(request: Request):
                 })
             except Exception as ledger_error:
                 logger.warning(f"Ledger append failed: {ledger_error}")
+
+                # ============================================================
+# 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
+# ============================================================
+
+logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
+
+try:
+    from aigentsy_apex_ultra import activate_apex_ultra
+    from ipvault import create_ip_asset
+    
+    # Map companyType to template
+    template_map = {
+        "legal": "consulting_agency",
+        "marketing": "consulting_agency",
+        "social": "content_creator",
+        "saas": "saas_tech",
+        "custom": "whitelabel_general",
+        "general": "whitelabel_general"
+    }
+    
+    apex_template = template_map.get(company_type, "whitelabel_general")
+    
+    # Override with explicit template if provided
+    if template:
+        apex_template = template
+    
+    # ============================================================
+    # 🎯 LOAD SKU CONFIGURATION
+    # ============================================================
+    
+    logger.info(f"📦 Loading SKU configuration for {company_type}...")
+    
+    sku_config = load_sku_config(company_type)  # Loads marketing/saas/social config
+    
+    logger.info(f"   ✅ SKU loaded: {sku_config['sku_name']}")
+    
+    # Activate ALL AiGentsy systems
+    apex_result = await activate_apex_ultra(
+        username=username,
+        template=apex_template,
+        automation_mode="pro",
+        sku_config=sku_config  # NEW parameter
+    )
+    
+    if apex_result.get("ok"):
+        systems_activated = apex_result.get("systems_activated", 0)
+        amg_result = apex_result.get("results", {}).get("amg", {})
+        
+        logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+        
+        # ============================================================
+        # 🌐 AUTO-DEPLOY STOREFRONT
+        # ============================================================
+        
+        logger.info(f"🚀 Deploying storefront for {username}...")
+        
+        try:
+            # User picks template variation on signup (get from body)
+            template_variation = body.get("templateVariation", "professional")
             
-            # ============================================================
-            # 🌟 APEX ULTRA AUTO-ACTIVATION WITH FULL TRACKING
-            # ============================================================
+            storefront_result = await deploy_storefront(
+                username=username,
+                sku_config=sku_config,
+                template_choice=template_variation,
+                user_data=saved_user
+            )
             
-            logger.info(f"🚀 Auto-activating APEX ULTRA for {username}...")
+            if storefront_result.get('ok'):
+                # Store storefront URL in user record
+                saved_user["storefront_url"] = storefront_result["url"]
+                saved_user["storefront_template"] = storefront_result["template"]
+                saved_user["storefront_deployed_at"] = storefront_result["deployed_at"]
+                
+                logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
+            else:
+                logger.warning(f"   ⚠️  Storefront deployment pending: {storefront_result.get('error')}")
+                saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
+                saved_user["storefront_status"] = "pending"
+        
+        except Exception as storefront_error:
+            logger.error(f"   ❌ Storefront deployment error: {storefront_error}")
+            saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
+            saved_user["storefront_status"] = "pending"
+        
+        # Save updated user with storefront info
+        log_agent_update(saved_user)
+
+               
             
-            try:
-                from aigentsy_apex_ultra import activate_apex_ultra
-                from ipvault import create_ip_asset
-                
-                # Map companyType to template
-                template_map = {
-                    "legal": "consulting_agency",
-                    "marketing": "consulting_agency",
-                    "social": "content_creator",
-                    "saas": "saas_tech",
-                    "custom": "whitelabel_general",
-                    "general": "whitelabel_general"
-                }
-                
-                apex_template = template_map.get(company_type, "whitelabel_general")
-                
-                # Override with explicit template if provided
-                if template:
-                    apex_template = template
-                
-                # Activate ALL AiGentsy systems
-                apex_result = await activate_apex_ultra(
-                    username=username,
-                    template=apex_template,
-                    automation_mode="pro"
-                )
-                
-                if apex_result.get("ok"):
-                    systems_activated = apex_result.get("systems_activated", 0)
-                    amg_result = apex_result.get("results", {}).get("amg", {})
-                    
-                    logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
+            
+          
                     
                     # ============================================================
                     # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
@@ -2993,6 +3049,206 @@ async def payout_request(request: Request, x_api_key: str | None = Header(None, 
         u["payouts"].append(req)
         await _save_users(client, users)
         return {"ok": True, "payout": req, "summary": _money_summary(u)}
+
+@app.post("/actionize-my-business")
+async def actionize_business(request: Request):
+"""
+PATH 2: User brings existing business → AiGentsy actionizes it
+Flow:
+1. User uploads business data (customers, services, pricing)
+2. AI learns business patterns
+3. Creates custom SKU
+4. Activates APEX ULTRA with custom SKU
+5. Deploys storefront
+6. All 160 logics fire contextualized to their business
+
+Body:
+{
+    "username": "wade",
+    "businessProfile": {
+        "business_name": "Paws & Claws Grooming",
+        "industry": "pet_services",
+        "locations": ["SF", "Oakland"],
+        "annual_revenue": 450000,
+        "employees": 8,
+        "existing_website": "https://pawsclaws.com"
+    },
+    "uploadedFiles": [
+        {
+            "type": "customer_list",
+            "content": "name,email,phone,last_visit,lifetime_value\\nJohn,john@email.com,555-1234,2025-09-15,450\\n..."
+        },
+        {
+            "type": "service_menu",
+            "content": "Full Groom - $80\\nBath Only - $40\\nNails - $20"
+        }
+    ]
+}
+"""
+
+try:
+    body = await request.json()
+    username = body.get("username")
+    business_profile = body.get("businessProfile")
+    uploaded_files = body.get("uploadedFiles", [])
+    
+    if not username:
+        return {"ok": False, "error": "Username required"}
+    
+    if not business_profile:
+        return {"ok": False, "error": "Business profile required"}
+    
+    logger.info(f"🏢 ACTIONIZING BUSINESS FOR {username}")
+    logger.info(f"   Business: {business_profile.get('business_name')}")
+    logger.info(f"   Industry: {business_profile.get('industry')}")
+    logger.info(f"   Files uploaded: {len(uploaded_files)}")
+    
+    # ============================================================
+    # STEP 1: CHECK IF USER EXISTS
+    # ============================================================
+    
+    from log_to_jsonbin import get_user, log_agent_update
+    
+    user = get_user(username)
+    
+    if not user:
+        # Create user first
+        logger.info(f"   → Creating new user account...")
+        
+        # Use same user creation logic as /mint
+        # (copy user creation code from /mint or create helper function)
+        
+        return {"ok": False, "error": "User must be created via /mint first"}
+    
+    # ============================================================
+    # STEP 2: INGEST BUSINESS DATA & CREATE CUSTOM SKU
+    # ============================================================
+    
+    logger.info(f"   🧠 Ingesting business data...")
+    
+    ingestion_result = await ingest_business_data(
+        username=username,
+        business_profile=business_profile,
+        uploaded_files=uploaded_files
+    )
+    
+    if not ingestion_result['ok']:
+        return ingestion_result
+    
+    custom_sku_id = ingestion_result['sku_id']
+    
+    logger.info(f"   ✅ Custom SKU created: {custom_sku_id}")
+    logger.info(f"   Customers imported: {len(ingestion_result['business_intelligence']['customers'])}")
+    logger.info(f"   AI insights: {len(ingestion_result['ai_insights'].get('recommendations', []))} recommendations")
+    
+    # ============================================================
+    # STEP 3: LOAD CUSTOM SKU CONFIG
+    # ============================================================
+    
+    sku_config = load_sku_config(custom_sku_id, username=username)
+    
+    # ============================================================
+    # STEP 4: ACTIVATE APEX ULTRA WITH CUSTOM SKU
+    # ============================================================
+    
+    logger.info(f"   🚀 Activating APEX ULTRA with custom SKU...")
+    
+    from aigentsy_apex_ultra import activate_apex_ultra
+    
+    apex_result = await activate_apex_ultra(
+        username=username,
+        template=custom_sku_id,
+        sku_config=sku_config,
+        automation_mode="pro"
+    )
+    
+    logger.info(f"   ✅ APEX ULTRA activated: {apex_result.get('systems_activated', 0)} systems")
+    
+    # ============================================================
+    # STEP 5: DEPLOY STOREFRONT
+    # ============================================================
+    
+    logger.info(f"   🌐 Deploying storefront...")
+    
+    storefront_result = await deploy_storefront(
+        username=username,
+        sku_config=sku_config,
+        template_choice='ai_generated',  # Or connect existing
+        user_data=user
+    )
+    
+    if storefront_result.get('ok'):
+        logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
+    
+    # Update user record
+    user["custom_sku_id"] = custom_sku_id
+    user["business_actionized"] = True
+    user["storefront_url"] = storefront_result.get('url')
+    user["actionized_at"] = datetime.now(timezone.utc).isoformat()
+    
+    log_agent_update(user)
+    
+    # ============================================================
+    # STEP 6: TRIGGER TEMPLATE COORDINATION
+    # ============================================================
+    
+    logger.info(f"   🔗 Triggering coordination (CSuite + AMG + Conductor)...")
+    
+    from template_integration_coordinator import auto_trigger_on_mint
+    
+    coordination = await auto_trigger_on_mint(
+        username=username,
+        template=custom_sku_id,
+        user_data=user
+    )
+    
+    logger.info(f"   ✅ Coordination complete: {coordination.get('opportunities', {}).get('total', 0)} opportunities found")
+    
+    # ============================================================
+    # RETURN SUCCESS
+    # ============================================================
+    
+    return {
+        "ok": True,
+        "message": f"{business_profile['business_name']} is now Powered by AiGentsy!",
+        "username": username,
+        "custom_sku_id": custom_sku_id,
+        "sku_name": sku_config['sku_name'],
+        "industry": business_profile['industry'],
+        
+        # Systems activated
+        "systems_activated": apex_result.get('systems_activated', 0),
+        "systems_operational": True,
+        
+        # Business intelligence
+        "customers_imported": len(ingestion_result['business_intelligence']['customers']),
+        "services_identified": len(ingestion_result['business_intelligence']['services']),
+        "ai_insights": len(ingestion_result['ai_insights'].get('recommendations', [])),
+        
+        # Opportunities
+        "opportunities_found": coordination.get('opportunities', {}).get('total', 0),
+        "internal_opportunities": coordination.get('opportunities', {}).get('internal', 0),
+        "external_opportunities": coordination.get('opportunities', {}).get('external', 0),
+        
+        # Storefront
+        "storefront_url": storefront_result.get('url'),
+        "storefront_deployed": storefront_result.get('ok', False),
+        
+        # Next steps
+        "dashboard_url": f"https://app.aigentsy.com/dashboard/{username}",
+        "next_steps": ingestion_result['next_steps'],
+        
+        # Outcome
+        "outcome": "Dashboard hydrated with business-specific C-Suite, storefront deployed, all 160 logics firing contextualized to your business",
+        "powered_by": "AiGentsy"
+    }
+
+except Exception as e:
+    logger.error(f"❌ Actionize business error: {e}")
+    return {
+        "ok": False,
+        "error": str(e)
+    }
 
 # ---- POST: Autonomy Level AL0–AL5 ----
 @app.post("/autonomy")
