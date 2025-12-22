@@ -14,8 +14,9 @@ class CSuiteOrchestrator:
     Master AI coordinator that runs autonomous business intelligence
     """
     
-    def __init__(self):
+    def __init__(self, sku_config: Dict = None):
         self.backend_base = os.getenv("BACKEND_BASE", "https://aigentsy-ame-runtime.onrender.com")
+        self.sku_config = sku_config  # NEW: Store SKU configuration
     
     async def analyze_business_state(self, username: str) -> Dict:
         """
