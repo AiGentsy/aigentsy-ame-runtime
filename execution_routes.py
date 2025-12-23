@@ -8,12 +8,20 @@ Key Principles:
 - Wade approves execution milestones (engage, execute, deliver)
 - All major decisions require explicit human approval
 """
-# At the very top of execution_routes.py, before any other imports:
+
+# MUST import FastAPI FIRST, before any prints
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+import asyncio
 import sys
+
+# Now debug prints
 print("=" * 50)
 print("LOADING EXECUTION_ROUTES.PY")
 print("=" * 50)
 
+# Import execution infrastructure with error handling
 try:
     from execution_orchestrator import ExecutionOrchestrator
     print("✓ ExecutionOrchestrator imported")
@@ -40,36 +48,41 @@ except Exception as e:
 # Create router
 router = APIRouter(prefix="/execution", tags=["execution"])
 
+# Initialize engines with error handling
 try:
     orchestrator = ExecutionOrchestrator()
     print("✓ ExecutionOrchestrator initialized")
 except Exception as e:
     print(f"✗ ExecutionOrchestrator initialization failed: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
-# ... rest of file
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-import asyncio
+try:
+    scorer = ExecutionScorer()
+    print("✓ ExecutionScorer initialized")
+except Exception as e:
+    print(f"✗ ExecutionScorer initialization failed: {e}")
+    sys.exit(1)
 
-# Import execution infrastructure
-from execution_orchestrator import ExecutionOrchestrator
-from execution_scorer import ExecutionScorer
-from alpha_discovery_engine import AlphaDiscoveryEngine
+try:
+    discovery_engine = AlphaDiscoveryEngine()
+    print("✓ AlphaDiscoveryEngine initialized")
+except Exception as e:
+    print(f"✗ AlphaDiscoveryEngine initialization failed: {e}")
+    sys.exit(1)
 
-# Create router
-router = APIRouter(prefix="/execution", tags=["execution"])
-
-# Initialize engines
-orchestrator = ExecutionOrchestrator()
-scorer = ExecutionScorer()
-discovery_engine = AlphaDiscoveryEngine()
+print("=" * 50)
+print("EXECUTION_ROUTES.PY LOADED SUCCESSFULLY")
+print("=" * 50)
 
 # In-memory state (would use JSONBin in production)
 PENDING_USER_APPROVALS = {}  # {opportunity_id: {...}}
 PENDING_WADE_APPROVALS = {}  # {opportunity_id: {...}}
 EXECUTION_STAGES = {}  # {execution_id: {stage, data}}
+
+
+# ... rest of your routes below
 
 
 # ============================================================
