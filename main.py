@@ -5535,8 +5535,9 @@ async def discover_for_user(username: str, platforms: List[str] = None):
     '''
     
     try:
-        # Get user data
-        user_data = load_user_data(username)
+        # Get user data - FIX: Use your existing JSONBin function
+        from log_to_jsonbin import load_user_data as jsonbin_load_user
+        user_data = jsonbin_load_user(username)
         
         if not user_data:
             return {'ok': False, 'error': 'User not found'}
