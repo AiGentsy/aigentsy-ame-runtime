@@ -13969,6 +13969,27 @@ async def concierge_triage(text: str):
     suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
     return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
 
+@app.get("/execution/health/detail")
+async def health_detail():
+    '''
+    Detailed health check - shows exactly which systems are broken
+    '''
+    result = await health_checker.check_all_systems()
+    return result
+
+
+@app.get("/execution/health/broken")
+async def health_broken_only():
+    '''
+    Quick view of just broken systems
+    '''
+    broken = health_checker.get_broken_systems_summary()
+    return {
+        "ok": True,
+        "broken_count": len(broken),
+        "broken_systems": broken
+    }
+
 # ============================================================
 # COMPLETE /discover ENDPOINT - ALL 40+ PLATFORMS
 # Add to main.py around line 13000
