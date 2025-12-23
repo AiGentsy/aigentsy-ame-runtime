@@ -23,13 +23,11 @@ try:
     from bundle_engine import create_bundle
     from fraud_detector import check_fraud_signals
     from compliance_oracle import check_transaction_allowed
-    
-    # NEW: Import execution infrastructure
-    from execution_orchestrator import ExecutionOrchestrator
-    from execution_scorer import ExecutionScorer
-    from opportunity_engagement import OpportunityEngagement
 except Exception as e:
     print(f"Conductor import warning: {e}")
+
+# DON'T import execution_orchestrator here - creates circular import
+# execution_routes.py imports both separately
 
 _EXECUTION_QUEUE: List[Dict[str, Any]] = []
 _DEVICE_REGISTRY: Dict[str, Dict[str, Any]] = {}
