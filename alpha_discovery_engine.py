@@ -1,9 +1,9 @@
 """
-ALPHA DISCOVERY ENGINE - UPGRADED WITH EXECUTION LAYER
+ALPHA DISCOVERY ENGINE - DEPLOY-SAFE VERSION
 The monetization railway for the AI/AGI economy
 
-NEW: Integrated with ExecutionScorer for win probability calculation
-NEW: Integrated with ExecutionOrchestrator for full pipeline execution
+NO REQUIRED DEPENDENCIES - Works standalone
+Optional execution layer can be enabled later
 
 7 Discovery Dimensions:
 1. Explicit Marketplaces (GitHub, Upwork, Reddit, HN)
@@ -21,9 +21,24 @@ from datetime import datetime, timezone
 import hashlib
 from enum import Enum
 
-# Import execution infrastructure
-from execution_scorer import ExecutionScorer
-from execution_orchestrator import ExecutionOrchestrator
+# Optional execution infrastructure (graceful degradation)
+try:
+    from execution_scorer import ExecutionScorer
+    SCORER_AVAILABLE = True
+except:
+    SCORER_AVAILABLE = False
+    print("⚠️ execution_scorer not available - running without scoring")
+
+try:
+    from execution_orchestrator_FIXED import ExecutionOrchestrator
+    ORCHESTRATOR_AVAILABLE = True
+except:
+    try:
+        from execution_orchestrator import ExecutionOrchestrator
+        ORCHESTRATOR_AVAILABLE = True
+    except:
+        ORCHESTRATOR_AVAILABLE = False
+        print("⚠️ execution_orchestrator not available - running without auto-execution")
 
 
 # ============================================================
@@ -487,26 +502,26 @@ class MultiAIOrchestrator:
 
 
 # ============================================================
-# ALPHA DISCOVERY ENGINE - MAIN CLASS (UPGRADED)
+# ALPHA DISCOVERY ENGINE - MAIN CLASS
 # ============================================================
 
 class AlphaDiscoveryEngine:
     """
     The ultimate opportunity detection, scoring, and routing system
     
-    NEW: Integrated with ExecutionScorer for win probability
-    NEW: Can trigger full execution via ExecutionOrchestrator
+    DEPLOY-SAFE: Works without execution_orchestrator
+    Optional: Can enable scoring and auto-execution when dependencies available
     
-    7 Dimensions of Discovery + Execution Pipeline
+    7 Dimensions of Discovery + Optional Execution Pipeline
     """
     
     def __init__(self):
         self.router = AlphaDiscoveryRouter()
         self.ai_orchestrator = MultiAIOrchestrator()
         
-        # NEW: Execution infrastructure
-        self.scorer = ExecutionScorer()
-        self.orchestrator = ExecutionOrchestrator()
+        # Optional execution infrastructure
+        self.scorer = ExecutionScorer() if SCORER_AVAILABLE else None
+        self.orchestrator = ExecutionOrchestrator() if ORCHESTRATOR_AVAILABLE else None
         
         # Dimension 1: Explicit marketplace scrapers
         from explicit_marketplace_scrapers import ExplicitMarketplaceScrapers
@@ -536,26 +551,26 @@ class AlphaDiscoveryEngine:
         self, 
         platforms: Optional[List[str]] = None, 
         dimensions: Optional[List[int]] = None,
-        score_opportunities: bool = True,
-        auto_execute: bool = False
+        score_opportunities: bool = False,  # Default False (optional)
+        auto_execute: bool = False  # Default False (optional)
     ) -> Dict:
         """
         Main discovery pipeline:
         1. Discover opportunities from all sources (7 dimensions)
         2. Route each opportunity intelligently
-        3. NEW: Score win probability for each opportunity
-        4. NEW: Optionally auto-execute high-probability opportunities
+        3. OPTIONAL: Score win probability for each opportunity
+        4. OPTIONAL: Auto-execute high-probability opportunities
         5. Return categorized results
         
         Args:
             platforms: Optional list of specific platforms to scrape
             dimensions: Optional list of dimensions to use [1, 2, 3...7]
-            score_opportunities: If True, calculate win probability for each
-            auto_execute: If True, automatically execute high-probability opportunities
+            score_opportunities: If True AND scorer available, calculate win probability
+            auto_execute: If True AND orchestrator available, auto-execute high-prob opportunities
         """
         
         print("\n" + "="*70)
-        print("🚀 ALPHA DISCOVERY ENGINE - 7 DIMENSIONS + EXECUTION")
+        print("🚀 ALPHA DISCOVERY ENGINE - 7 DIMENSIONS")
         print("="*70)
         
         if dimensions is None:
@@ -632,8 +647,8 @@ class AlphaDiscoveryEngine:
         for opp in all_opportunities:
             routing = await self.router.route_opportunity(opp)
             
-            # NEW: Score win probability
-            if score_opportunities:
+            # OPTIONAL: Score win probability
+            if score_opportunities and SCORER_AVAILABLE and self.scorer:
                 capability = routing.get('capability', {'confidence': 0.8})
                 user_data = routing.get('user_data', {}).get('user_data') if routing.get('user_data') else None
                 
@@ -645,8 +660,8 @@ class AlphaDiscoveryEngine:
                 'routing': routing
             })
         
-        # NEW: Auto-execute high-probability opportunities
-        if auto_execute:
+        # OPTIONAL: Auto-execute high-probability opportunities
+        if auto_execute and ORCHESTRATOR_AVAILABLE and self.orchestrator:
             print(f"\n⚡ AUTO-EXECUTING HIGH-PROBABILITY OPPORTUNITIES...")
             await self._auto_execute_batch(routed_results)
         
@@ -663,8 +678,8 @@ class AlphaDiscoveryEngine:
         user_revenue = sum(r['routing']['economics'].get('aigentsy_fee', 0) for r in user_routed)
         aigentsy_profit = sum(r['routing']['economics'].get('estimated_profit', 0) for r in aigentsy_routed)
         
-        # NEW: Calculate expected value based on win probability
-        if score_opportunities:
+        # OPTIONAL: Calculate expected value based on win probability
+        if score_opportunities and SCORER_AVAILABLE:
             total_expected_value = sum(
                 r['routing'].get('execution_score', {}).get('expected_value', 0) 
                 for r in routed_results
@@ -713,8 +728,12 @@ class AlphaDiscoveryEngine:
     async def _auto_execute_batch(self, routed_results: List[Dict]):
         """
         Auto-execute opportunities with high win probability
-        Only executes if win_probability > 0.75 and expected_value > $500
+        Only if orchestrator available
         """
+        
+        if not self.orchestrator:
+            print("   → Orchestrator not available, skipping auto-execution")
+            return
         
         executable = []
         
@@ -757,11 +776,8 @@ if __name__ == "__main__":
     async def test_discovery():
         engine = AlphaDiscoveryEngine()
         
-        # Discover, route, and score opportunities
-        results = await engine.discover_and_route(
-            score_opportunities=True,  # Calculate win probability
-            auto_execute=False  # Don't auto-execute yet
-        )
+        # Discover and route (no optional features)
+        results = await engine.discover_and_route()
         
         print("\n✅ ALPHA DISCOVERY ENGINE TEST COMPLETE")
         print(f"   Total opportunities: {results['total_opportunities']}")
