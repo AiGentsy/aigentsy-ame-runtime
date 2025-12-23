@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{business_name} | Enterprise SaaS Solution</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --ivory: #faf8f5;
+            --charcoal: #2a2a2a;
+            --accent: #1a5f7a;
+            --gold: #c9a961;
+            --border: #e5e1da;
+        }
+        
+        body {
+            font-family: 'Work Sans', sans-serif;
+            background: var(--ivory);
+            color: var(--charcoal);
+            line-height: 1.7;
+        }
+        
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(250, 248, 245, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000;
+            padding: 1.5rem 3rem;
+        }
+        
+        nav {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            letter-spacing: -0.02em;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 3rem;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            color: var(--charcoal);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            position: relative;
+            transition: color 0.3s;
+        }
+        
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 1px;
+            background: var(--accent);
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .nav-links a:hover {
+            color: var(--accent);
+        }
+        
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+        
+        .hero {
+            padding: 10rem 3rem 6rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+        
+        .hero-content h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(3rem, 6vw, 5.5rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            color: var(--charcoal);
+            letter-spacing: -0.02em;
+        }
+        
+        .hero-content .accent-line {
+            display: inline-block;
+            color: var(--accent);
+            position: relative;
+        }
+        
+        .hero-content .accent-line::after {
+            content: '';
+            position: absolute;
+            bottom: 0.2em;
+            left: 0;
+            width: 100%;
+            height: 0.08em;
+            background: var(--gold);
+            opacity: 0.4;
+        }
+        
+        .hero-content p {
+            font-size: 1.2rem;
+            color: #6a6a6a;
+            margin-bottom: 3rem;
+            line-height: 1.8;
+        }
+        
+        .stats-row {
+            display: flex;
+            gap: 3rem;
+            margin-bottom: 3rem;
+        }
+        
+        .stat {
+            flex: 1;
+        }
+        
+        .stat-number {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6a6a6a;
+            font-weight: 500;
+        }
+        
+        .cta-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 1rem 2.5rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 0;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            letter-spacing: 0.02em;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: 2px solid var(--accent);
+        }
+        
+        .btn-primary:hover {
+            background: var(--charcoal);
+            border-color: var(--charcoal);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--charcoal);
+            border: 2px solid var(--charcoal);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--charcoal);
+            color: var(--ivory);
+        }
+        
+        .hero-visual {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 3rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.05);
+        }
+        
+        .visual-header {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .visual-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border);
+        }
+        
+        .visual-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .visual-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .visual-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--ivory);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .visual-bar {
+            flex: 1;
+            height: 8px;
+            background: var(--ivory);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .visual-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: var(--accent);
+            border-radius: 4px;
+            animation: growBar 2s ease forwards;
+        }
+        
+        .visual-row:nth-child(1) .visual-bar::after { width: 85%; }
+        .visual-row:nth-child(2) .visual-bar::after { width: 92%; animation-delay: 0.2s; }
+        .visual-row:nth-child(3) .visual-bar::after { width: 78%; animation-delay: 0.4s; }
+        
+        @keyframes growBar {
+            from { width: 0; }
+        }
+        
+        .features {
+            padding: 6rem 3rem;
+            background: white;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .section-header {
+            max-width: 1400px;
+            margin: 0 auto 4rem;
+            text-align: center;
+        }
+        
+        .section-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gold);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        
+        .section-header h2 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 1rem;
+        }
+        
+        .features-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 3rem;
+        }
+        
+        .feature-card {
+            padding: 2.5rem;
+            border: 1px solid var(--border);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .feature-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 10px 40px rgba(26, 95, 122, 0.1);
+        }
+        
+        .feature-number {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gold);
+            margin-bottom: 1.5rem;
+        }
+        
+        .feature-card h3 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--charcoal);
+        }
+        
+        .feature-card p {
+            color: #6a6a6a;
+            line-height: 1.7;
+        }
+        
+        .cta-section {
+            padding: 8rem 3rem;
+            background: var(--charcoal);
+            color: var(--ivory);
+            text-align: center;
+        }
+        
+        .cta-section h2 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .cta-section .btn-primary {
+            background: var(--ivory);
+            color: var(--charcoal);
+            border-color: var(--ivory);
+        }
+        
+        .cta-section .btn-primary:hover {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: var(--charcoal);
+        }
+        
+        footer {
+            padding: 3rem;
+            text-align: center;
+            background: var(--ivory);
+            border-top: 1px solid var(--border);
+        }
+        
+        footer p {
+            color: #6a6a6a;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 968px) {
+            .hero-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">{business_name}</div>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#solutions">Solutions</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div class="hero-grid">
+            <div class="hero-content">
+                <h1>
+                    Enterprise-grade<br>
+                    <span class="accent-line">solutions</span> for<br>
+                    modern teams
+                </h1>
+                <p>
+                    {tagline}
+                </p>
+                
+                <div class="stats-row">
+                    <div class="stat">
+                        <div class="stat-number">99.9%</div>
+                        <div class="stat-label">Uptime SLA</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">500+</div>
+                        <div class="stat-label">Enterprise Clients</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">24/7</div>
+                        <div class="stat-label">Premium Support</div>
+                    </div>
+                </div>
+                
+                <div class="cta-group">
+                    <a href="mailto:{contact_email}" class="btn btn-primary">Schedule Demo</a>
+                    <a href="#features" class="btn btn-secondary">Learn More</a>
+                </div>
+            </div>
+            
+            <div class="hero-visual">
+                <div class="visual-header">
+                    <div class="visual-dot"></div>
+                    <div class="visual-dot"></div>
+                    <div class="visual-dot"></div>
+                </div>
+                <div class="visual-content">
+                    <div class="visual-row">
+                        <div class="visual-icon">⚡</div>
+                        <div class="visual-bar"></div>
+                    </div>
+                    <div class="visual-row">
+                        <div class="visual-icon">🔒</div>
+                        <div class="visual-bar"></div>
+                    </div>
+                    <div class="visual-row">
+                        <div class="visual-icon">📊</div>
+                        <div class="visual-bar"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="section-header">
+            <div class="section-label">Core Capabilities</div>
+            <h2>Built for Scale</h2>
+        </div>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-number">01</div>
+                <h3>Enterprise Security</h3>
+                <p>SOC 2 Type II certified with end-to-end encryption, SSO integration, and advanced access controls.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-number">02</div>
+                <h3>Global Infrastructure</h3>
+                <p>Deploy across 50+ regions with automatic failover and sub-50ms latency worldwide.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-number">03</div>
+                <h3>Advanced Analytics</h3>
+                <p>Real-time insights, custom dashboards, and predictive intelligence for data-driven decisions.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section">
+        <h2>Ready to transform your business?</h2>
+        <a href="mailto:{contact_email}" class="btn btn-primary">Contact Sales Team</a>
+    </section>
+
+    <footer>
+        <p>© 2025 {business_name} • Powered by AiGentsy • {contact_email}</p>
+    </footer>
+</body>
+</html>
