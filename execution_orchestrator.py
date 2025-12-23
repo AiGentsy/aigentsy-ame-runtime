@@ -54,8 +54,9 @@ except:
 try:
     from aigentsy_conductor import execute_content_task, execute_consulting, execute_generic_task
     CONDUCTOR_AVAILABLE = True
-except:
+except Exception as e:
     CONDUCTOR_AVAILABLE = False
+    print(f"⚠️ aigentsy_conductor not available: {e}")
 
 try:
     from openai_agent_deployer import OpenAIAgentDeployer
