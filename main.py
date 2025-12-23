@@ -23,7 +23,8 @@ from storefront_deployer import deploy_storefront
 from business_ingestion import ingest_business_data
 from alpha_discovery_engine import AlphaDiscoveryEngine
 from wade_approval_dashboard import fulfillment_queue
-from execution_routes_COMPLETE import router as execution_router
+from execution_routes import router as execution_router
+from autonomous_routes import router as autonomous_router
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
@@ -683,6 +684,7 @@ from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
 app.include_router(actionization_router)
 app.include_router(execution_router)
+app.include_router(autonomous_router)
 
 async def auto_bid_background():
     """Runs in background forever"""
