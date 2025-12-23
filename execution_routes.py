@@ -8,7 +8,46 @@ Key Principles:
 - Wade approves execution milestones (engage, execute, deliver)
 - All major decisions require explicit human approval
 """
+# At the very top of execution_routes.py, before any other imports:
+import sys
+print("=" * 50)
+print("LOADING EXECUTION_ROUTES.PY")
+print("=" * 50)
 
+try:
+    from execution_orchestrator import ExecutionOrchestrator
+    print("✓ ExecutionOrchestrator imported")
+except Exception as e:
+    print(f"✗ ExecutionOrchestrator import failed: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    from execution_scorer import ExecutionScorer
+    print("✓ ExecutionScorer imported")
+except Exception as e:
+    print(f"✗ ExecutionScorer import failed: {e}")
+    sys.exit(1)
+
+try:
+    from alpha_discovery_engine import AlphaDiscoveryEngine
+    print("✓ AlphaDiscoveryEngine imported")
+except Exception as e:
+    print(f"✗ AlphaDiscoveryEngine import failed: {e}")
+    sys.exit(1)
+
+# Create router
+router = APIRouter(prefix="/execution", tags=["execution"])
+
+try:
+    orchestrator = ExecutionOrchestrator()
+    print("✓ ExecutionOrchestrator initialized")
+except Exception as e:
+    print(f"✗ ExecutionOrchestrator initialization failed: {e}")
+    sys.exit(1)
+
+# ... rest of file
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional, List
 from datetime import datetime
