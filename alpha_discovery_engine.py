@@ -539,38 +539,120 @@ class AlphaDiscoveryEngine:
         self.router = AlphaDiscoveryRouter()
         self.ai_orchestrator = MultiAIOrchestrator()
         
-        # Phase 1: Explicit marketplace scrapers
+        # Dimension 1: Explicit marketplace scrapers
         from explicit_marketplace_scrapers import ExplicitMarketplaceScrapers
         self.scrapers = ExplicitMarketplaceScrapers()
+        
+        # Dimension 2: Pain point detector
+        from pain_point_detector import PainPointDetector
+        self.pain_detector = PainPointDetector()
+        
+        # Dimension 3: Flow arbitrage detector
+        from flow_arbitrage_detector import FlowArbitrageDetector
+        self.arbitrage_detector = FlowArbitrageDetector()
+        
+        # Dimensions 4-7: Advanced discovery
+        from advanced_discovery_dimensions import (
+            PredictiveIntelligenceEngine,
+            NetworkAmplificationEngine,
+            OpportunityCreationEngine,
+            EmergentPatternDetector
+        )
+        self.predictive_engine = PredictiveIntelligenceEngine()
+        self.network_amplifier = NetworkAmplificationEngine()
+        self.opportunity_creator = OpportunityCreationEngine()
+        self.emergent_detector = EmergentPatternDetector()
     
-    async def discover_and_route(self, platforms: Optional[List[str]] = None) -> Dict:
+    async def discover_and_route(self, platforms: Optional[List[str]] = None, dimensions: Optional[List[int]] = None) -> Dict:
         """
         Main discovery pipeline:
-        1. Discover opportunities from all sources
+        1. Discover opportunities from all sources (7 dimensions)
         2. Route each opportunity intelligently
         3. Return categorized results
+        
+        Args:
+            platforms: Optional list of specific platforms to scrape
+            dimensions: Optional list of dimensions to use [1, 2, 3...7]
+                       If None, uses all available dimensions
         """
         
         print("\n" + "="*70)
-        print("🚀 ALPHA DISCOVERY ENGINE - DISCOVERY & ROUTING")
+        print("🚀 ALPHA DISCOVERY ENGINE - 7 DIMENSIONS")
         print("="*70)
         
-        # STEP 1: Discover opportunities
-        print("\n📡 DISCOVERING OPPORTUNITIES...")
+        if dimensions is None:
+            dimensions = [1, 2, 3, 4, 5, 6, 7]  # All dimensions
         
-        opportunities = await self.scrapers.scrape_all(platforms=platforms)
+        all_opportunities = []
         
-        total_found = len(opportunities)
-        total_value = sum(o.get('value', 0) for o in opportunities)
+        # DIMENSION 1: Explicit Marketplaces
+        if 1 in dimensions:
+            print("\n📡 DIMENSION 1: EXPLICIT MARKETPLACES")
+            d1_opps = await self.scrapers.scrape_all(platforms=platforms)
+            all_opportunities.extend(d1_opps)
+            print(f"   → Found {len(d1_opps)} opportunities")
         
-        print(f"\n✅ DISCOVERED: {total_found} opportunities (${total_value:,.0f} total value)")
+        # DIMENSION 2: Pain Point Detection
+        if 2 in dimensions:
+            print("\n💢 DIMENSION 2: PAIN POINT DETECTION")
+            d2_opps = await self.pain_detector.detect_all_pain_points()
+            all_opportunities.extend(d2_opps)
+            print(f"   → Found {len(d2_opps)} opportunities")
+        
+        # DIMENSION 3: Flow Arbitrage
+        if 3 in dimensions:
+            print("\n🌊 DIMENSION 3: FLOW ARBITRAGE")
+            d3_opps = await self.arbitrage_detector.detect_all_arbitrage()
+            all_opportunities.extend(d3_opps)
+            print(f"   → Found {len(d3_opps)} opportunities")
+        
+        # DIMENSION 4: Predictive Intelligence
+        if 4 in dimensions:
+            print("\n🔮 DIMENSION 4: PREDICTIVE INTELLIGENCE")
+            d4_opps = await self.predictive_engine.predict_all_opportunities()
+            all_opportunities.extend(d4_opps)
+            print(f"   → Found {len(d4_opps)} opportunities")
+        
+        # DIMENSION 5: Network Amplification
+        if 5 in dimensions:
+            print("\n🔗 DIMENSION 5: NETWORK AMPLIFICATION")
+            d5_opps = await self.network_amplifier.amplify_via_network()
+            all_opportunities.extend(d5_opps)
+            print(f"   → Found {len(d5_opps)} opportunities")
+        
+        # DIMENSION 6: Opportunity Creation
+        if 6 in dimensions:
+            print("\n⚡ DIMENSION 6: OPPORTUNITY CREATION")
+            d6_opps = await self.opportunity_creator.create_all_opportunities()
+            all_opportunities.extend(d6_opps)
+            print(f"   → Found {len(d6_opps)} opportunities")
+        
+        # DIMENSION 7: Emergent Patterns
+        if 7 in dimensions:
+            print("\n🤖 DIMENSION 7: EMERGENT PATTERNS")
+            # Aggregate all signals for AI analysis
+            all_signals = {
+                'explicit_markets': d1_opps if 1 in dimensions else [],
+                'pain_points': d2_opps if 2 in dimensions else [],
+                'arbitrage': d3_opps if 3 in dimensions else [],
+                'predictions': d4_opps if 4 in dimensions else []
+            }
+            d7_opps = await self.emergent_detector.detect_emergent_patterns(all_signals)
+            all_opportunities.extend(d7_opps)
+            print(f"   → Found {len(d7_opps)} opportunities")
+        
+        total_found = len(all_opportunities)
+        total_value = sum(o.get('value', 0) for o in all_opportunities)
+        
+        print(f"\n✅ TOTAL DISCOVERED: {total_found} opportunities (${total_value:,.0f} total value)")
+        print(f"   Dimensions used: {dimensions}")
         
         # STEP 2: Route each opportunity
         print(f"\n🎯 ROUTING {total_found} OPPORTUNITIES...")
         
         routed_results = []
         
-        for opp in opportunities:
+        for opp in all_opportunities:
             routing = await self.router.route_opportunity(opp)
             
             routed_results.append({
@@ -606,6 +688,7 @@ class AlphaDiscoveryEngine:
             'ok': True,
             'total_opportunities': total_found,
             'total_value': total_value,
+            'dimensions_used': dimensions,
             'routing': {
                 'user_routed': {
                     'count': len(user_routed),
