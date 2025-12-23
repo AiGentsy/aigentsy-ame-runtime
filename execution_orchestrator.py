@@ -552,17 +552,21 @@ class ExecutionOrchestrator:
         fees = calculate_base_fee(amount)
         
         if is_aigentsy:
-            # AiGentsy opportunity - Wade gets 70% margin
-            payment['gross'] = amount
-            payment['cost'] = amount * 0.30
-            payment['net'] = amount * 0.70
-            payment['aigentsy_revenue'] = amount * 0.70
-        else:
-            # User opportunity - User gets 97.2%, AiGentsy gets 2.8%
-            payment['gross'] = amount
-            payment['platform_fee'] = fees['total']
-            payment['user_revenue'] = amount * 0.972
-            payment['aigentsy_revenue'] = fees['total']
+    # AiGentsy opportunity - Wade executes, keeps 100% of profit
+    cost = opportunity.get('estimated_cost', amount * 0.30)
+    profit = amount - cost
+    
+    payment['gross'] = amount
+    payment['cost'] = cost
+    payment['profit'] = profit
+    payment['wade_keeps'] = profit  # 100% of profit after costs
+else:
+    # User opportunity - User gets 97.2%, AiGentsy gets 2.8%
+    payment['gross'] = amount
+    payment['platform_fee'] = fees['total']
+    payment['user_revenue'] = amount * 0.972
+    payment['aigentsy_revenue'] = fees['total']
+    payment['wade_keeps'] = fees['total']  # Wade keeps platform fee
         
         # Track payment
         if PAYMENT_TRACKING_AVAILABLE:
