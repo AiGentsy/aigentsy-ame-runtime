@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[YOUR_AGENCY] - Performance Marketing That Delivers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        /* Header/Nav */
+        nav {
+            background: #fff;
+            padding: 20px 5%;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            color: #000;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        .nav-links a:hover {
+            color: #00bfff;
+        }
+        
+        .cta-button {
+            background: #00bfff;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 191, 255, 0.3);
+        }
+        
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 120px 5%;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 56px;
+            font-weight: 800;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+        
+        .hero .tagline {
+            font-size: 24px;
+            margin-bottom: 15px;
+            opacity: 0.95;
+        }
+        
+        .hero .subtext {
+            font-size: 18px;
+            margin-bottom: 40px;
+            opacity: 0.85;
+        }
+        
+        .hero .cta-button {
+            font-size: 18px;
+            padding: 18px 40px;
+        }
+        
+        /* Stats Section */
+        .stats {
+            background: #f8f9fa;
+            padding: 80px 5%;
+            text-align: center;
+        }
+        
+        .stats h2 {
+            font-size: 42px;
+            margin-bottom: 60px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .stat-item {
+            padding: 30px;
+        }
+        
+        .stat-number {
+            font-size: 48px;
+            font-weight: 800;
+            color: #00bfff;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            font-size: 18px;
+            color: #666;
+        }
+        
+        /* Why Different Section */
+        .why-different {
+            padding: 100px 5%;
+            background: white;
+        }
+        
+        .why-different h2 {
+            font-size: 42px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .why-different .subtitle {
+            text-align: center;
+            font-size: 20px;
+            color: #666;
+            margin-bottom: 60px;
+        }
+        
+        .comparison {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+        }
+        
+        .comparison-column h3 {
+            font-size: 28px;
+            margin-bottom: 30px;
+            color: #00bfff;
+        }
+        
+        .comparison-column.traditional h3 {
+            color: #999;
+        }
+        
+        .comparison-column ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .comparison-column li {
+            padding: 15px 0;
+            padding-left: 30px;
+            position: relative;
+            color: #555;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .comparison-column li:before {
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+        
+        .comparison-column.traditional li:before {
+            content: "❌";
+        }
+        
+        .comparison-column.us li:before {
+            content: "✓";
+            color: #00bfff;
+        }
+        
+        /* Services Section */
+        .services {
+            padding: 100px 5%;
+            background: #f8f9fa;
+        }
+        
+        .services h2 {
+            font-size: 42px;
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .service-card {
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .service-card h3 {
+            font-size: 24px;
+            margin-bottom: 15px;
+            color: #00bfff;
+        }
+        
+        .service-card p {
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 20px;
+        }
+        
+        .service-card .advantage {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        /* How We Do It Section */
+        .how-we-do-it {
+            padding: 100px 5%;
+            background: white;
+        }
+        
+        .how-we-do-it h2 {
+            font-size: 42px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .how-we-do-it .intro {
+            text-align: center;
+            font-size: 20px;
+            color: #666;
+            max-width: 800px;
+            margin: 0 auto 60px;
+            line-height: 1.8;
+        }
+        
+        .edge-grid {
+            display: grid;
+            gap: 50px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .edge-card {
+            background: #f8f9fa;
+            padding: 45px;
+            border-radius: 12px;
+            border-left: 5px solid #00bfff;
+        }
+        
+        .edge-card h3 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: #00bfff;
+        }
+        
+        .edge-card .what {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .edge-card .how {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .edge-card .how p {
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 10px;
+        }
+        
+        .edge-card .result {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .powered-by {
+            text-align: center;
+            margin-top: 60px;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+        
+        .powered-by p {
+            font-size: 16px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        
+        .powered-by .badge {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+        
+        /* Case Studies */
+        .case-studies {
+            padding: 100px 5%;
+            background: #f8f9fa;
+        }
+        
+        .case-studies h2 {
+            font-size: 42px;
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        
+        .case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .case-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .case-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .case-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+        
+        .case-header h3 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .case-header .category {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .case-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding: 30px;
+        }
+        
+        .case-stat {
+            text-align: center;
+        }
+        
+        .case-stat .number {
+            font-size: 32px;
+            font-weight: 800;
+            color: #00bfff;
+        }
+        
+        .case-stat .label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Testimonials */
+        .testimonials {
+            padding: 100px 5%;
+            background: white;
+        }
+        
+        .testimonials h2 {
+            font-size: 42px;
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .testimonial-card {
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #00bfff;
+        }
+        
+        .testimonial-text {
+            font-size: 18px;
+            font-style: italic;
+            color: #333;
+            margin-bottom: 20px;
+            line-height: 1.8;
+        }
+        
+        .testimonial-author {
+            font-weight: 600;
+            color: #00bfff;
+        }
+        
+        /* CTA Section */
+        .final-cta {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 5%;
+            text-align: center;
+        }
+        
+        .final-cta h2 {
+            font-size: 48px;
+            margin-bottom: 30px;
+        }
+        
+        .final-cta p {
+            font-size: 20px;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+        
+        .final-cta .cta-button {
+            background: white;
+            color: #667eea;
+            font-size: 18px;
+            padding: 18px 40px;
+        }
+        
+        /* Contact Form */
+        .contact-form {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        .submit-button {
+            background: #00bfff;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        
+        .submit-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        /* Footer */
+        footer {
+            background: #1a1a1a;
+            color: white;
+            padding: 60px 5%;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto 40px;
+        }
+        
+        .footer-column h4 {
+            margin-bottom: 20px;
+            color: #00bfff;
+        }
+        
+        .footer-column a {
+            display: block;
+            color: #ccc;
+            text-decoration: none;
+            margin-bottom: 10px;
+            transition: color 0.3s;
+        }
+        
+        .footer-column a:hover {
+            color: white;
+        }
+        
+        .footer-bottom {
+            text-align: center;
+            padding-top: 40px;
+            border-top: 1px solid #333;
+            color: #999;
+        }
+        
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 36px;
+            }
+            
+            .hero .tagline {
+                font-size: 18px;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+            
+            .case-stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">[YOUR_AGENCY]</div>
+        <ul class="nav-links">
+            <li><a href="#services">Services</a></li>
+            <li><a href="#how">How We're Different</a></li>
+            <li><a href="#results">Results</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+        <a href="#contact" class="cta-button">Free Audit</a>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>Performance Marketing That Delivers</h1>
+        <p class="tagline">Data-driven campaigns across 8+ platforms. Optimized 24/7. Results you can measure.</p>
+        <p class="subtext">We run your campaigns while you run your business.</p>
+        <a href="#contact" class="cta-button">Get Your Free Marketing Audit</a>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats">
+        <h2>Why Businesses Choose Us</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number">485%</div>
+                <div class="stat-label">Average ROAS</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">24/7</div>
+                <div class="stat-label">Campaign Optimization</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">8+</div>
+                <div class="stat-label">Platforms Managed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">60 Sec</div>
+                <div class="stat-label">Avg Response Time</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Different -->
+    <section class="why-different">
+        <h2>How We're Different</h2>
+        <p class="subtitle">Traditional agencies vs. our approach</p>
+        
+        <div class="comparison">
+            <div class="comparison-column traditional">
+                <h3>Traditional Agency</h3>
+                <ul>
+                    <li>$10K/month retainer (pay regardless of results)</li>
+                    <li>Limited to business hours (9-5)</li>
+                    <li>Test one platform at a time</li>
+                    <li>Monthly competitor check-ins</li>
+                    <li>Manual partnership outreach</li>
+                    <li>Wait 30-60 days for payment</li>
+                </ul>
+            </div>
+            
+            <div class="comparison-column us">
+                <h3>Our Agency</h3>
+                <ul>
+                    <li>Pay 2.8% + $0.28 only when you earn</li>
+                    <li>Campaigns optimized 24/7</li>
+                    <li>Test 8+ platforms simultaneously</li>
+                    <li>Hourly competitor monitoring</li>
+                    <li>Automated partnership discovery</li>
+                    <li>Flexible payment terms available</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section class="services" id="services">
+        <h2>What We Do</h2>
+        <div class="services-grid">
+            <div class="service-card">
+                <h3>Multi-Platform Campaign Management</h3>
+                <p>We run campaigns across Facebook, Google, LinkedIn, TikTok, Reddit, Twitter, YouTube, and Pinterest - testing what works in parallel, not sequence.</p>
+                <div class="advantage">⚡ Your campaigns never sleep. Budget shifts to highest ROI platform automatically.</div>
+            </div>
+            
+            <div class="service-card">
+                <h3>Competitive Intelligence</h3>
+                <p>We monitor your market continuously, spotting winning tactics from 200+ competitors and adapting your strategy before they get saturated.</p>
+                <div class="advantage">⚡ See what's working Tuesday. Launch better version Wednesday.</div>
+            </div>
+            
+            <div class="service-card">
+                <h3>Strategic Partnerships</h3>
+                <p>We find businesses with your audience but non-competing offers, pitch the partnership, and manage ongoing relationships automatically.</p>
+                <div class="advantage">⚡ Multiply reach without ad spend. We manage 50+ partnerships per client.</div>
+            </div>
+            
+            <div class="service-card">
+                <h3>Lead Management</h3>
+                <p>Instant response to inquiries (average 60 seconds). Automated qualification based on your criteria. Pre-scheduled discovery calls on your calendar.</p>
+                <div class="advantage">⚡ Never lose a lead to slow response time. We respond while competitors sleep.</div>
+            </div>
+            
+            <div class="service-card">
+                <h3>Content & Creative</h3>
+                <p>Campaigns informed by what's converting right now - not last month. We analyze 10M+ campaigns daily to predict what works.</p>
+                <div class="advantage">⚡ Data-informed creative from day one. No guesswork.</div>
+            </div>
+            
+            <div class="service-card">
+                <h3>Analytics & Reporting</h3>
+                <p>Real-time dashboards. Automated A/B testing. Continuous optimization happening while you focus on your business.</p>
+                <div class="advantage">⚡ Always improving. Never static.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How We Do It -->
+    <section class="how-we-do-it" id="how">
+        <h2>Our Competitive Edge</h2>
+        <p class="intro">We use advanced automation to deliver agency-level results at a fraction of the cost. While you sleep, your campaigns are working.</p>
+        
+        <div class="edge-grid">
+            <div class="edge-card">
+                <h3>Cross-Platform Revenue Multiplication</h3>
+                <p class="what">Traditional: Test platforms one at a time over months<br>Us: Test 8+ platforms simultaneously from day one</p>
+                <div class="how">
+                    <p><strong>How it works:</strong></p>
+                    <p>• Create one campaign asset, adapt it for Facebook, Google, LinkedIn, TikTok, Reddit, Twitter, YouTube, Pinterest</p>
+                    <p>• Track which platform delivers YOUR lowest customer acquisition cost</p>
+                    <p>• Auto-shift budget to highest ROI channel every hour</p>
+                    <p>• Your competitors run 1 campaign. You're running 8.</p>
+                </div>
+                <div class="result">One client's $10K budget → $47K return because we found Reddit converted 5x better than Facebook for their specific product. They never would have tested Reddit on their own.</div>
+            </div>
+            
+            <div class="edge-card">
+                <h3>Real-Time Competitive Intelligence</h3>
+                <p class="what">Traditional: Monthly competitive analysis reports<br>Us: Hourly monitoring of what's working right now</p>
+                <div class="how">
+                    <p><strong>How it works:</strong></p>
+                    <p>• Monitor 200+ competitors' ads, content, and partnerships continuously</p>
+                    <p>• Spot what's converting (not just what's trending)</p>
+                    <p>• Alert you within 24 hours of new winning tactics</p>
+                    <p>• Generate counter-strategies automatically</p>
+                </div>
+                <div class="result">Competitor launches winning campaign Tuesday. We see it Tuesday afternoon. You launch better version Wednesday. They spent $50K testing. You spent $0.</div>
+            </div>
+            
+            <div class="edge-card">
+                <h3>Partnership Automation</h3>
+                <p class="what">Traditional: Manually research and pitch partners<br>Us: Automatically find, pitch, and manage 50+ partnerships</p>
+                <div class="how">
+                    <p><strong>How it works:</strong></p>
+                    <p>• Identify businesses with your audience but non-competing offers</p>
+                    <p>• Score partnership fit (audience overlap, value alignment)</p>
+                    <p>• Send personalized proposals with your actual data</p>
+                    <p>• Track which partnerships drive real revenue</p>
+                </div>
+                <div class="result">Average client closes 8 partnerships in first 90 days. Each partnership = 2-3x audience reach. One client generated $127K from partnerships first year. Zero manual outreach required.</div>
+            </div>
+        </div>
+        
+        <div class="powered-by">
+            <p>Our competitive edge comes from advanced automation and AI systems that work 24/7.</p>
+            <p class="badge">Powered by AiGentsy</p>
+        </div>
+    </section>
+
+    <!-- Case Studies -->
+    <section class="case-studies" id="results">
+        <h2>Client Results</h2>
+        <div class="case-grid">
+            <div class="case-card">
+                <div class="case-header">
+                    <h3>E-Commerce Brand</h3>
+                    <div class="category">Multi-Platform Optimization</div>
+                </div>
+                <div class="case-stats">
+                    <div class="case-stat">
+                        <div class="number">485%</div>
+                        <div class="label">ROAS</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">8</div>
+                        <div class="label">PLATFORMS</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">40</div>
+                        <div class="label">DAYS TO GOAL</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="case-card">
+                <div class="case-header">
+                    <h3>SaaS Company</h3>
+                    <div class="category">Competitive Intelligence + Partnerships</div>
+                </div>
+                <div class="case-stats">
+                    <div class="case-stat">
+                        <div class="number">1,082%</div>
+                        <div class="label">REVENUE GROWTH</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">23</div>
+                        <div class="label">PARTNERSHIPS</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">$12</div>
+                        <div class="label">CAC</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="case-card">
+                <div class="case-header">
+                    <h3>Consumer Brand</h3>
+                    <div class="category">Fast-Follow Strategy</div>
+                </div>
+                <div class="case-stats">
+                    <div class="case-stat">
+                        <div class="number">3</div>
+                        <div class="label">DAYS</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">200%</div>
+                        <div class="label">ROAS INCREASE</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="number">$50K</div>
+                        <div class="label">SAVED</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials">
+        <h2>What Clients Say</h2>
+        <div class="testimonial-grid">
+            <div class="testimonial-card">
+                <p class="testimonial-text">"They respond to our leads faster than we can. Campaigns are optimized while we sleep. It's like having a team of 20 for the price of 2."</p>
+                <div class="testimonial-author">- CEO, Tech Startup</div>
+            </div>
+            <div class="testimonial-card">
+                <p class="testimonial-text">"They spotted our competitor's winning campaign Tuesday and had us running a better version by Thursday. Saved us months of testing and $50K in ad spend."</p>
+                <div class="testimonial-author">- Marketing Director, E-Commerce</div>
+            </div>
+            <div class="testimonial-card">
+                <p class="testimonial-text">"23 active partnerships, all found and managed automatically. Each drives 2-3x our usual reach. This would have taken us years to build ourselves."</p>
+                <div class="testimonial-author">- Founder, SaaS Platform</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="final-cta" id="contact">
+        <h2>Ready to Scale Your Marketing?</h2>
+        <p>Get a free audit of your current campaigns + custom growth strategy</p>
+        
+        <div class="contact-form">
+            <form id="contactForm">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" name="name" required placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" required placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Company</label>
+                    <input type="text" name="company" placeholder="Your company">
+                </div>
+                <div class="form-group">
+                    <label>Current Monthly Ad Spend</label>
+                    <input type="text" name="ad_spend" placeholder="e.g. $10,000">
+                </div>
+                <div class="form-group">
+                    <label>What's your biggest marketing challenge?</label>
+                    <textarea name="message" required placeholder="Tell us what you're trying to achieve..."></textarea>
+                </div>
+                <button type="submit" class="submit-button">Get Free Audit</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-grid">
+            <div class="footer-column">
+                <h4>Company</h4>
+                <a href="#about">About Us</a>
+                <a href="#how">How We're Different</a>
+                <a href="#contact">Contact</a>
+            </div>
+            <div class="footer-column">
+                <h4>Services</h4>
+                <a href="#services">Multi-Platform Campaigns</a>
+                <a href="#services">Competitive Intelligence</a>
+                <a href="#services">Strategic Partnerships</a>
+            </div>
+            <div class="footer-column">
+                <h4>Resources</h4>
+                <a href="#results">Case Studies</a>
+                <a href="#blog">Blog</a>
+                <a href="#guides">Guides</a>
+            </div>
+            <div class="footer-column">
+                <h4>Legal</h4>
+                <a href="#privacy">Privacy Policy</a>
+                <a href="#terms">Terms of Service</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2025 [YOUR_AGENCY]. Powered by AiGentsy.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('contactForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                const response = await fetch('/api/leads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    alert('Thank you! We\'ll send your custom audit within 24 hours.');
+                    e.target.reset();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
