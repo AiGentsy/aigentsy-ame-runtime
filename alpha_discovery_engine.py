@@ -1,17 +1,18 @@
 """
-ALPHA DISCOVERY ENGINE - CORE ORCHESTRATOR
+ALPHA DISCOVERY ENGINE - UPGRADED WITH EXECUTION LAYER
 The monetization railway for the AI/AGI economy
 
-7 Discovery Dimensions:
-1. Explicit Marketplaces (GitHub, Upwork, Reddit, HN) - BUILD NOW
-2. Pain Point Detection (Twitter, App Store reviews) - Week 2
-3. Flow Arbitrage (cross-platform, temporal) - Week 2
-4. Predictive Intelligence (funding→hiring, launches→needs) - Week 3
-5. Network Amplification (internal opportunities) - Week 3
-6. Opportunity Creation (proactive outreach) - Week 4
-7. Emergent Patterns (AI meta-analysis) - Week 4
+NEW: Integrated with ExecutionScorer for win probability calculation
+NEW: Integrated with ExecutionOrchestrator for full pipeline execution
 
-Phase 1: Build Dimension 1 + Core Routing
+7 Discovery Dimensions:
+1. Explicit Marketplaces (GitHub, Upwork, Reddit, HN)
+2. Pain Point Detection (Twitter, App Store reviews)
+3. Flow Arbitrage (cross-platform, temporal)
+4. Predictive Intelligence (funding→hiring, launches→needs)
+5. Network Amplification (internal opportunities)
+6. Opportunity Creation (proactive outreach)
+7. Emergent Patterns (AI meta-analysis)
 """
 
 import asyncio
@@ -19,6 +20,10 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import hashlib
 from enum import Enum
+
+# Import execution infrastructure
+from execution_scorer import ExecutionScorer
+from execution_orchestrator import ExecutionOrchestrator
 
 
 # ============================================================
@@ -225,257 +230,220 @@ class CapabilityMatcher:
             }
         """
         
-        opp_type = opportunity.get('type', '').lower()
-        opp_title = opportunity.get('title', '').lower()
-        opp_description = opportunity.get('description', '').lower()
+        opp_type = opportunity.get('type', 'unknown')
+        value = opportunity.get('value', 1000)
         
-        # Direct match on opportunity type
-        if opp_type in self.aigentsy_capabilities:
-            cap = self.aigentsy_capabilities[opp_type]
-            
-            if not cap.get('can_fulfill', False):
-                return {
-                    'can_fulfill': False,
-                    'reason': cap.get('reason', 'not_in_capability_set'),
-                    'confidence': 0.0
-                }
-            
-            # Estimate cost
-            value = opportunity.get('value', 0)
-            estimated_cost = value * cap['cost_multiplier']
-            
+        # Check if we have capability
+        capability = self.aigentsy_capabilities.get(opp_type)
+        
+        if not capability:
+            # Unknown type - try to infer
+            capability = self._infer_capability(opportunity)
+        
+        if not capability or not capability.get('can_fulfill', False):
             return {
-                'can_fulfill': True,
-                'confidence': cap['confidence'],
-                'method': 'aigentsy_direct',
-                'estimated_cost': estimated_cost,
-                'estimated_profit': value - estimated_cost,
-                'estimated_days': cap['avg_delivery_days'],
-                'ai_models': cap['ai_models'],
-                'tools': cap.get('tools', [])
+                'can_fulfill': False,
+                'confidence': 0.0,
+                'reason': capability.get('reason', 'unknown_type') if capability else 'unknown_type'
             }
         
-        # Fuzzy matching on title/description
-        capability_matches = []
+        # Calculate estimated cost
+        cost_mult = capability['cost_multiplier']
+        estimated_cost = value * cost_mult
         
-        for cap_name, cap_config in self.aigentsy_capabilities.items():
-            if not cap_config.get('can_fulfill', False):
-                continue
-            
-            # Check if capability keywords in title/description
-            if cap_name.replace('_', ' ') in opp_title or cap_name.replace('_', ' ') in opp_description:
-                capability_matches.append((cap_name, cap_config))
+        # Calculate estimated profit
+        estimated_profit = value * (1 - cost_mult)
+        margin = (value - estimated_cost) / value if value > 0 else 0
         
-        if capability_matches:
-            # Use first match (could be improved with scoring)
-            best_match = capability_matches[0]
-            cap_name, cap_config = best_match
-            
-            value = opportunity.get('value', 0)
-            estimated_cost = value * cap_config['cost_multiplier']
-            
-            return {
-                'can_fulfill': True,
-                'confidence': cap_config['confidence'] * 0.8,  # Lower confidence for fuzzy match
-                'method': 'aigentsy_direct',
-                'matched_capability': cap_name,
-                'estimated_cost': estimated_cost,
-                'estimated_profit': value - estimated_cost,
-                'estimated_days': cap_config['avg_delivery_days'],
-                'ai_models': cap_config['ai_models']
-            }
-        
-        # Cannot fulfill
         return {
-            'can_fulfill': False,
-            'reason': 'no_matching_capability',
-            'confidence': 0.0,
-            'recommendation': 'route_to_user_or_recruit'
+            'can_fulfill': True,
+            'confidence': capability['confidence'],
+            'method': 'aigentsy_direct',
+            'estimated_cost': estimated_cost,
+            'estimated_profit': estimated_profit,
+            'estimated_days': capability['avg_delivery_days'],
+            'margin': margin,
+            'ai_models': capability.get('ai_models', ['claude']),
+            'tools': capability.get('tools', [])
         }
     
-    async def find_matching_users(self, opportunity: Dict) -> List[Dict]:
+    def _infer_capability(self, opportunity: Dict) -> Optional[Dict]:
+        """Infer capability from opportunity description/title"""
+        
+        title = opportunity.get('title', '').lower()
+        desc = opportunity.get('description', '').lower()
+        combined = f"{title} {desc}"
+        
+        # Keyword matching
+        if any(word in combined for word in ['code', 'bug', 'api', 'software', 'dev']):
+            return self.aigentsy_capabilities.get('software_development')
+        
+        if any(word in combined for word in ['website', 'web', 'frontend', 'react']):
+            return self.aigentsy_capabilities.get('web_development')
+        
+        if any(word in combined for word in ['content', 'blog', 'article', 'writing']):
+            return self.aigentsy_capabilities.get('content_creation')
+        
+        if any(word in combined for word in ['data', 'analysis', 'excel', 'csv']):
+            return self.aigentsy_capabilities.get('data_analysis')
+        
+        if any(word in combined for word in ['consult', 'strategy', 'advice']):
+            return self.aigentsy_capabilities.get('business_consulting')
+        
+        # Default: unknown
+        return None
+    
+    def check_user_capability(self, opportunity: Dict, user_data: Dict) -> Dict:
         """
-        Find users whose businesses can fulfill this opportunity
+        Can this user fulfill this opportunity?
         
-        Returns list of matching users with scores
+        Returns:
+            {
+                'can_fulfill': bool,
+                'confidence': float,
+                'username': str,
+                'score': float,
+                'reasoning': str
+            }
         """
         
-        # Import here to avoid circular dependency
-        from log_to_jsonbin import list_users
+        opp_type = opportunity.get('type', 'unknown')
+        user_type = user_data.get('companyType', 'unknown')
         
-        try:
-            all_users = list_users()
-        except:
-            return []
+        # Simple type matching
+        type_matches = {
+            'marketing': ['marketing', 'content_creation', 'seo', 'copywriting'],
+            'software_development': ['software_development', 'web_development', 'api_integration'],
+            'consulting': ['business_consulting', 'market_research'],
+            'design': ['design', 'ui_ux', 'branding']
+        }
         
-        matches = []
+        match_score = 0.0
+        reasoning = ""
         
-        for user in all_users:
-            # Check if user has deployed business
-            if not user.get('storefront_url'):
-                continue
-            
-            # Check business type match
-            company_type = user.get('companyType', '').lower()
-            opp_type = opportunity.get('type', '').lower()
-            
-            # Simple matching logic (can be enhanced)
-            score = 0.0
-            
-            # Marketing business matches marketing opportunities
-            if company_type == 'marketing' and any(kw in opp_type for kw in ['marketing', 'seo', 'content', 'social']):
-                score = 0.85
-            
-            # SaaS business matches dev opportunities
-            elif company_type == 'saas' and any(kw in opp_type for kw in ['software', 'development', 'api', 'web', 'app']):
-                score = 0.85
-            
-            # Social business matches content opportunities
-            elif company_type == 'social' and any(kw in opp_type for kw in ['content', 'social', 'video', 'creative']):
-                score = 0.85
-            
-            if score > 0:
-                matches.append({
-                    'username': user['username'],
-                    'company_type': company_type,
-                    'storefront_url': user['storefront_url'],
-                    'score': score,
-                    'user_data': user
-                })
+        for user_category, compatible_types in type_matches.items():
+            if user_type == user_category and opp_type in compatible_types:
+                match_score = 0.85
+                reasoning = f"User {user_data['username']} has matching {user_category} business"
+                break
         
-        # Sort by score
-        matches.sort(key=lambda x: x['score'], reverse=True)
+        if match_score == 0.0:
+            return {
+                'can_fulfill': False,
+                'confidence': 0.0,
+                'reasoning': f"User type '{user_type}' doesn't match opportunity type '{opp_type}'"
+            }
         
-        return matches
+        return {
+            'can_fulfill': True,
+            'confidence': match_score,
+            'username': user_data['username'],
+            'company_type': user_type,
+            'storefront_url': user_data.get('storefront_url'),
+            'score': match_score,
+            'reasoning': reasoning,
+            'user_data': user_data
+        }
 
 
 # ============================================================
-# INTELLIGENT ROUTER
+# ALPHA DISCOVERY ROUTER
 # ============================================================
 
 class AlphaDiscoveryRouter:
     """
-    Smart routing: User first, AiGentsy backstop, Hold if neither
-    
-    PRIORITY:
-    1. USER (always default - infinite scale)
-    2. AIGENTSY (only if we can fulfill - high margins)
-    3. HOLD (recruit user with this capability)
-    4. REJECT (cannot fulfill at all)
+    Intelligent opportunity routing:
+    1. Check: Can existing user fulfill? → Route to user (97.2% to user, 2.8% to AiGentsy)
+    2. Check: Can AiGentsy fulfill? → Add to Wade's approval queue (70% margin)
+    3. Else: Hold for recruitment
     """
     
     def __init__(self):
-        self.capability_matcher = CapabilityMatcher()
+        self.matcher = CapabilityMatcher()
+        self.user_database = self._load_users()
+    
+    def _load_users(self) -> List[Dict]:
+        """Load existing users from JSONBin"""
+        # TODO: Actually fetch from JSONBin
+        # For now, return test user
+        return [
+            {
+                'username': 'wade_sku_test_001',
+                'companyType': 'marketing',
+                'storefront_url': 'https://wade_sku_test_001.aigentsy.com',
+                'storefront_status': 'active'
+            }
+        ]
     
     async def route_opportunity(self, opportunity: Dict) -> Dict:
         """
-        Intelligent routing decision
+        Route opportunity to best fulfillment method
         
         Returns:
             {
                 'fulfillment_method': FulfillmentMethod,
-                'routed_to': username (if user) or 'aigentsy' or None,
+                'routed_to': str or None,
                 'confidence': float,
                 'reasoning': str,
                 'economics': {...}
             }
         """
         
-        print(f"\n🎯 ROUTING: {opportunity['title'][:50]}...")
+        # PRIORITY 1: Check if existing user can fulfill
+        for user in self.user_database:
+            user_capability = self.matcher.check_user_capability(opportunity, user)
+            
+            if user_capability['can_fulfill'] and user_capability['confidence'] > 0.7:
+                # Route to user
+                opp_value = opportunity.get('value', 0)
+                aigentsy_fee = opp_value * 0.028  # 2.8%
+                user_revenue = opp_value - aigentsy_fee
+                
+                return {
+                    'fulfillment_method': FulfillmentMethod.USER,
+                    'routed_to': user['username'],
+                    'confidence': user_capability['confidence'],
+                    'reasoning': user_capability['reasoning'],
+                    'economics': {
+                        'opportunity_value': opp_value,
+                        'user_revenue': user_revenue,
+                        'aigentsy_fee': aigentsy_fee,
+                        'aigentsy_margin': 0.028
+                    },
+                    'user_data': user_capability
+                }
         
-        # STEP 1: Try to match to existing user
-        matching_users = await self.capability_matcher.find_matching_users(opportunity)
+        # PRIORITY 2: Check if AiGentsy can fulfill
+        aigentsy_capability = self.matcher.check_aigentsy_capability(opportunity)
         
-        if matching_users and matching_users[0]['score'] > 0.70:
-            # HIGH CONFIDENCE USER MATCH - Route to user
-            user = matching_users[0]
-            
-            value = opportunity.get('value', 0)
-            user_revenue = value * 0.972  # User gets 97.2%
-            aigentsy_fee = value * 0.028  # AiGentsy gets 2.8%
-            
-            print(f"   ✅ ROUTE TO USER: {user['username']} (confidence: {user['score']})")
-            print(f"   💰 Economics: User gets ${user_revenue:,.0f}, AiGentsy gets ${aigentsy_fee:,.0f}")
-            
-            return {
-                'fulfillment_method': FulfillmentMethod.USER,
-                'routed_to': user['username'],
-                'confidence': user['score'],
-                'reasoning': f"User {user['username']} has matching {user['company_type']} business",
-                'economics': {
-                    'opportunity_value': value,
-                    'user_revenue': user_revenue,
-                    'aigentsy_fee': aigentsy_fee,
-                    'aigentsy_margin': 0.028
-                },
-                'user_data': user
-            }
-        
-        # STEP 2: Check if AiGentsy can fulfill
-        aigentsy_capability = self.capability_matcher.check_aigentsy_capability(opportunity)
-        
-        if aigentsy_capability['can_fulfill'] and aigentsy_capability['confidence'] > 0.70:
-            # AIGENTSY CAN FULFILL - Backstop mode
-            
-            value = opportunity.get('value', 0)
-            cost = aigentsy_capability['estimated_cost']
-            profit = aigentsy_capability['estimated_profit']
-            margin = profit / value if value > 0 else 0
-            
-            print(f"   ✅ ROUTE TO AIGENTSY: {aigentsy_capability.get('matched_capability', opportunity['type'])}")
-            print(f"   💰 Economics: Value ${value:,.0f}, Cost ${cost:,.0f}, Profit ${profit:,.0f} ({margin*100:.0f}% margin)")
-            
+        if aigentsy_capability['can_fulfill']:
+            # Route to AiGentsy (requires Wade approval)
             return {
                 'fulfillment_method': FulfillmentMethod.AIGENTSY,
                 'routed_to': 'aigentsy',
                 'confidence': aigentsy_capability['confidence'],
-                'reasoning': f"AiGentsy can fulfill via {', '.join(aigentsy_capability['ai_models'])}",
+                'reasoning': "AiGentsy can fulfill via " + ", ".join(aigentsy_capability['ai_models']),
                 'economics': {
-                    'opportunity_value': value,
-                    'estimated_cost': cost,
-                    'estimated_profit': profit,
-                    'margin': margin,
+                    'opportunity_value': opportunity.get('value', 0),
+                    'estimated_cost': aigentsy_capability['estimated_cost'],
+                    'estimated_profit': aigentsy_capability['estimated_profit'],
+                    'margin': aigentsy_capability['margin'],
                     'estimated_days': aigentsy_capability['estimated_days']
                 },
                 'capability': aigentsy_capability,
                 'requires_wade_approval': True
             }
         
-        # STEP 3: Check if low-confidence user match exists
-        if matching_users and matching_users[0]['score'] > 0.40:
-            # LOW CONFIDENCE USER MATCH - Still route to user but flag
-            user = matching_users[0]
-            
-            value = opportunity.get('value', 0)
-            user_revenue = value * 0.972
-            aigentsy_fee = value * 0.028
-            
-            print(f"   ⚠️  ROUTE TO USER (low confidence): {user['username']} (confidence: {user['score']})")
-            
-            return {
-                'fulfillment_method': FulfillmentMethod.USER,
-                'routed_to': user['username'],
-                'confidence': user['score'],
-                'reasoning': f"Low confidence match - review recommended",
-                'low_confidence': True,
-                'economics': {
-                    'opportunity_value': value,
-                    'user_revenue': user_revenue,
-                    'aigentsy_fee': aigentsy_fee
-                },
-                'user_data': user
-            }
-        
-        # STEP 4: Hold for future user recruitment
-        print(f"   ⏸️  HOLD: Need to recruit user for {opportunity['type']}")
+        # PRIORITY 3: Hold for user recruitment
+        opp_type = opportunity.get('type', 'unknown')
         
         return {
             'fulfillment_method': FulfillmentMethod.HOLD,
             'routed_to': None,
             'confidence': 0.0,
-            'reasoning': f"No existing capability - recruit user for {opportunity['type']}",
+            'reasoning': f"No existing capability - recruit user for {opp_type}",
             'recommendation': 'recruit_user',
-            'opportunity_type_needed': opportunity['type'],
+            'opportunity_type_needed': opp_type,
             'economics': {
                 'opportunity_value': opportunity.get('value', 0),
                 'potential_aigentsy_fee': opportunity.get('value', 0) * 0.028
@@ -484,27 +452,22 @@ class AlphaDiscoveryRouter:
 
 
 # ============================================================
-# MULTI-AI FULFILLMENT ORCHESTRATOR
+# MULTI-AI ORCHESTRATOR
 # ============================================================
 
 class MultiAIOrchestrator:
     """
-    Coordinates multiple AI models for optimal fulfillment
-    Claude + GPT-4 + Gemini + Perplexity working in tandem
+    Routes execution to appropriate AI models
+    Currently: Claude handles all
+    Future: Add GPT-4, Gemini, Perplexity when API keys available
     """
     
-    def __init__(self):
-        self.claude_available = True  # Always available in this environment
-        self.gpt4_available = False  # Would need OpenAI API key
-        self.gemini_available = False  # Would need Google API key
-        self.perplexity_available = False  # Would need Perplexity API key
-    
-    async def orchestrate_fulfillment(self, opportunity: Dict, routing: Dict) -> Dict:
+    def plan_execution(self, opportunity: Dict, routing: Dict) -> Dict:
         """
-        Decompose work and route to optimal AI for each subtask
+        Plan which AI models to use for execution
         
-        Phase 1: Use Claude for everything
-        Future: Add GPT-4, Gemini, Perplexity when API keys available
+        Currently returns Claude for everything
+        Future: Route different subtasks to different AIs
         """
         
         # For now, Claude handles all work
@@ -524,20 +487,26 @@ class MultiAIOrchestrator:
 
 
 # ============================================================
-# ALPHA DISCOVERY ENGINE - MAIN CLASS
+# ALPHA DISCOVERY ENGINE - MAIN CLASS (UPGRADED)
 # ============================================================
 
 class AlphaDiscoveryEngine:
     """
-    The ultimate opportunity detection and routing system
+    The ultimate opportunity detection, scoring, and routing system
     
-    Phase 1: Explicit Marketplaces + Intelligent Routing
-    Future: 7 dimensions of discovery
+    NEW: Integrated with ExecutionScorer for win probability
+    NEW: Can trigger full execution via ExecutionOrchestrator
+    
+    7 Dimensions of Discovery + Execution Pipeline
     """
     
     def __init__(self):
         self.router = AlphaDiscoveryRouter()
         self.ai_orchestrator = MultiAIOrchestrator()
+        
+        # NEW: Execution infrastructure
+        self.scorer = ExecutionScorer()
+        self.orchestrator = ExecutionOrchestrator()
         
         # Dimension 1: Explicit marketplace scrapers
         from explicit_marketplace_scrapers import ExplicitMarketplaceScrapers
@@ -563,21 +532,30 @@ class AlphaDiscoveryEngine:
         self.opportunity_creator = OpportunityCreationEngine()
         self.emergent_detector = EmergentPatternDetector()
     
-    async def discover_and_route(self, platforms: Optional[List[str]] = None, dimensions: Optional[List[int]] = None) -> Dict:
+    async def discover_and_route(
+        self, 
+        platforms: Optional[List[str]] = None, 
+        dimensions: Optional[List[int]] = None,
+        score_opportunities: bool = True,
+        auto_execute: bool = False
+    ) -> Dict:
         """
         Main discovery pipeline:
         1. Discover opportunities from all sources (7 dimensions)
         2. Route each opportunity intelligently
-        3. Return categorized results
+        3. NEW: Score win probability for each opportunity
+        4. NEW: Optionally auto-execute high-probability opportunities
+        5. Return categorized results
         
         Args:
             platforms: Optional list of specific platforms to scrape
             dimensions: Optional list of dimensions to use [1, 2, 3...7]
-                       If None, uses all available dimensions
+            score_opportunities: If True, calculate win probability for each
+            auto_execute: If True, automatically execute high-probability opportunities
         """
         
         print("\n" + "="*70)
-        print("🚀 ALPHA DISCOVERY ENGINE - 7 DIMENSIONS")
+        print("🚀 ALPHA DISCOVERY ENGINE - 7 DIMENSIONS + EXECUTION")
         print("="*70)
         
         if dimensions is None:
@@ -630,7 +608,6 @@ class AlphaDiscoveryEngine:
         # DIMENSION 7: Emergent Patterns
         if 7 in dimensions:
             print("\n🤖 DIMENSION 7: EMERGENT PATTERNS")
-            # Aggregate all signals for AI analysis
             all_signals = {
                 'explicit_markets': d1_opps if 1 in dimensions else [],
                 'pain_points': d2_opps if 2 in dimensions else [],
@@ -655,10 +632,23 @@ class AlphaDiscoveryEngine:
         for opp in all_opportunities:
             routing = await self.router.route_opportunity(opp)
             
+            # NEW: Score win probability
+            if score_opportunities:
+                capability = routing.get('capability', {'confidence': 0.8})
+                user_data = routing.get('user_data', {}).get('user_data') if routing.get('user_data') else None
+                
+                score = self.scorer.score_opportunity(opp, capability, user_data)
+                routing['execution_score'] = score
+            
             routed_results.append({
                 'opportunity': opp,
                 'routing': routing
             })
+        
+        # NEW: Auto-execute high-probability opportunities
+        if auto_execute:
+            print(f"\n⚡ AUTO-EXECUTING HIGH-PROBABILITY OPPORTUNITIES...")
+            await self._auto_execute_batch(routed_results)
         
         # STEP 3: Categorize results
         user_routed = [r for r in routed_results if r['routing']['fulfillment_method'] == FulfillmentMethod.USER]
@@ -672,6 +662,14 @@ class AlphaDiscoveryEngine:
         
         user_revenue = sum(r['routing']['economics'].get('aigentsy_fee', 0) for r in user_routed)
         aigentsy_profit = sum(r['routing']['economics'].get('estimated_profit', 0) for r in aigentsy_routed)
+        
+        # NEW: Calculate expected value based on win probability
+        if score_opportunities:
+            total_expected_value = sum(
+                r['routing'].get('execution_score', {}).get('expected_value', 0) 
+                for r in routed_results
+            )
+            print(f"\n💎 EXPECTED VALUE (with win probability): ${total_expected_value:,.0f}")
         
         print("\n" + "="*70)
         print("📊 ROUTING SUMMARY")
@@ -711,6 +709,43 @@ class AlphaDiscoveryEngine:
             },
             'total_potential_revenue': user_revenue + aigentsy_profit
         }
+    
+    async def _auto_execute_batch(self, routed_results: List[Dict]):
+        """
+        Auto-execute opportunities with high win probability
+        Only executes if win_probability > 0.75 and expected_value > $500
+        """
+        
+        executable = []
+        
+        for result in routed_results:
+            score = result['routing'].get('execution_score')
+            if not score:
+                continue
+            
+            # Only execute high-confidence, high-value opportunities
+            if score['win_probability'] > 0.75 and score['expected_value'] > 500:
+                executable.append(result)
+        
+        print(f"   → Found {len(executable)} executable opportunities")
+        
+        # Execute in parallel (max 5 at a time)
+        for i in range(0, len(executable), 5):
+            batch = executable[i:i+5]
+            
+            tasks = [
+                self.orchestrator.execute_opportunity(
+                    r['opportunity'],
+                    r['routing'].get('capability', {'confidence': 0.8}),
+                    r['routing'].get('user_data', {}).get('user_data')
+                )
+                for r in batch
+            ]
+            
+            results = await asyncio.gather(*tasks)
+            
+            completed = len([r for r in results if r['status'] == 'completed'])
+            print(f"   → Executed batch {i//5 + 1}: {completed}/{len(batch)} completed")
 
 
 # ============================================================
@@ -722,8 +757,11 @@ if __name__ == "__main__":
     async def test_discovery():
         engine = AlphaDiscoveryEngine()
         
-        # Discover and route all opportunities
-        results = await engine.discover_and_route()
+        # Discover, route, and score opportunities
+        results = await engine.discover_and_route(
+            score_opportunities=True,  # Calculate win probability
+            auto_execute=False  # Don't auto-execute yet
+        )
         
         print("\n✅ ALPHA DISCOVERY ENGINE TEST COMPLETE")
         print(f"   Total opportunities: {results['total_opportunities']}")
