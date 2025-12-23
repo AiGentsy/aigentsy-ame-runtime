@@ -22,3 +22,4 @@ python-docx>=0.8.11
 
 # Configuration
 python-dotenv
+aiohttp==3.9.1
