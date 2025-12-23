@@ -5371,32 +5371,37 @@ async def analytics_track(username: str, event: dict):
 # ============================================================
 
 @app.post("/alpha-discovery/run")
-async def run_alpha_discovery(platforms: List[str] = None):
+async def run_alpha_discovery(request: Request):
     '''
     Run Alpha Discovery Engine
     Discovers opportunities and routes them intelligently
     
-    Args:
-        platforms: Optional list of platforms to scrape
-                  ['github', 'upwork', 'reddit', 'hackernews']
+    Body:
+        {
+            "platforms": ["github", "upwork", "reddit", "hackernews"],  // optional
+            "dimensions": [1, 2, 3, 4, 5, 6, 7]  // optional, defaults to all
+        }
     
     Returns:
         {
             'ok': True,
-            'total_opportunities': 50,
-            'routing': {
-                'user_routed': {...},
-                'aigentsy_routed': {...},
-                'held': {...}
-            }
+            'total_opportunities': 80,
+            'dimensions_used': [1,2,3,4,5,6,7],
+            'routing': {...}
         }
     '''
     
     try:
+        # Parse request body
+        body = await request.json() if request.headers.get('content-type') == 'application/json' else {}
+        
+        platforms = body.get('platforms', None)
+        dimensions = body.get('dimensions', None)  # If None, uses all dimensions
+        
         engine = AlphaDiscoveryEngine()
         
         # Run discovery and routing
-        results = await engine.discover_and_route(platforms=platforms)
+        results = await engine.discover_and_route(platforms=platforms, dimensions=dimensions)
         
         # Add AiGentsy opportunities to Wade's approval queue
         for routed in results['routing']['aigentsy_routed']['opportunities']:
@@ -5416,9 +5421,11 @@ async def run_alpha_discovery(platforms: List[str] = None):
         return results
     
     except Exception as e:
+        import traceback
         return {
             'ok': False,
-            'error': str(e)
+            'error': str(e),
+            'traceback': traceback.format_exc()
         }
 
 
