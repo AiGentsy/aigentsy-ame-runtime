@@ -25,6 +25,15 @@ from alpha_discovery_engine import AlphaDiscoveryEngine
 from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
+from opportunity_filters import (
+    filter_opportunities,
+    get_execute_now_opportunities,
+    is_outlier,
+    should_skip,
+    is_stale,
+    calculate_p95_cap
+)
+from system_health_detail import health_checker, SystemHealthDetail
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
