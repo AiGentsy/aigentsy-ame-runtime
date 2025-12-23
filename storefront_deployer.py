@@ -23,7 +23,7 @@ async def deploy_storefront(
     user_data: Dict = None
 ) -> Dict:
     """
-    Deploy user's public storefront
+    Deploy user's public storefront with unique variations
     
     Args:
         username: User's username
@@ -36,7 +36,8 @@ async def deploy_storefront(
             'ok': True,
             'url': 'https://username.aigentsy.com',
             'template': 'professional',
-            'deployed_at': '2025-12-22T...'
+            'deployed_at': '2025-12-22T...',
+            'variation_id': 'electric-tech-modern-grain'
         }
     """
     
@@ -94,6 +95,35 @@ async def deploy_storefront(
     )
     
     # ============================================================
+    # NEW: STEP 3.5: APPLY UNIQUE VARIATIONS
+    # ============================================================
+    
+    print(f"   → Applying unique variations...")
+    
+    try:
+        from template_variations import generate_unique_variations, apply_variations_to_html
+        
+        # Get user number from user_data
+        user_number = user_data.get('userNumber', 1) if user_data else 1
+        
+        # Generate unique variations
+        variations = generate_unique_variations(username, user_number)
+        
+        print(f"   → Color Palette: {variations['color_palette']['name']}")
+        print(f"   → Font Pair: {variations['font_pair']['name']}")
+        print(f"   → Accent Pattern: {variations['accent_pattern']['name']}")
+        print(f"   → Variation ID: {variations['variation_id']}")
+        
+        # Apply variations to HTML
+        html_content = apply_variations_to_html(html_content, variations)
+        
+        variation_id = variations['variation_id']
+    
+    except Exception as e:
+        print(f"   ⚠️  Variations error: {e}")
+        variation_id = 'default'
+    
+    # ============================================================
     # STEP 4: DEPLOY USING YOUR VERCEL_DEPLOYER.PY
     # ============================================================
     
@@ -122,7 +152,8 @@ async def deploy_storefront(
                 'template_name': template_info.get('name'),
                 'deployed_at': datetime.utcnow().isoformat(),
                 'deployment_type': 'vercel',
-                'vercel_deployment_id': deployment_result.get('deployment_id')
+                'vercel_deployment_id': deployment_result.get('deployment_id'),
+                'variation_id': variation_id  # NEW
             }
         
         else:
@@ -135,7 +166,8 @@ async def deploy_storefront(
                 'url': f"https://{username}.aigentsy.com",
                 'template': template_choice,
                 'deployed_at': None,
-                'deployment_type': 'pending'
+                'deployment_type': 'pending',
+                'variation_id': variation_id
             }
     
     except Exception as e:
@@ -150,7 +182,8 @@ async def deploy_storefront(
             'template': template_choice,
             'deployed_at': None,
             'deployment_type': 'pending',
-            'retry_scheduled': True
+            'retry_scheduled': True,
+            'variation_id': variation_id
         }
 
 
