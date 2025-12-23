@@ -201,10 +201,15 @@ def _load_and_personalize_template(
     - {services} → List of services
     - {contact_email} → User's email
     - {phone} → User's phone
+    
+    Template file should be like: 'marketing/variation-1-professional.html'
     """
     
     # Check if template file exists
-    template_path = f"/templates/{template_file}"
+    # Look in templates/ folder relative to this file
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    template_path = os.path.join(base_dir, 'templates', template_file)
     
     # If template doesn't exist, generate basic HTML
     if not os.path.exists(template_path):
@@ -215,7 +220,7 @@ def _load_and_personalize_template(
         return html_content
     
     # Load template
-    with open(template_path, 'r') as f:
+    with open(template_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
     
     # Fill in placeholders
