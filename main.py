@@ -13978,35 +13978,42 @@ async def concierge_triage(text: str):
 async def discover_opportunities(data: dict):
     """
     🆕 Growth Agent - Discover external opportunities across 40+ platforms
-    
-    Discovers opportunities from:
-    - Social Media (9): LinkedIn, Twitter, Instagram, TikTok, Facebook, YouTube, Pinterest, Snapchat, Reddit
-    - Professional (5): GitHub, GitLab, StackOverflow, Medium, Substack
-    - Business (5): Shopify, Stripe, Square, PayPal, QuickBooks
-    - Communication (6): Gmail, Outlook, Slack, Discord, Telegram, WhatsApp
-    - Marketing (4): Mailchimp, HubSpot, Salesforce, Intercom
-    - Content (4): WordPress, Webflow, Notion, Airtable
-    - Marketplaces (5): Amazon, eBay, Etsy, Gumroad, Patreon
+    NOW WITH FILTERS: Removes outliers, low-probability, and stale opportunities
     
     Request:
         {
             "username": "wade",
             "platforms": ["github", "upwork", "reddit"],  # Optional - defaults to all
-            "auto_bid": false
+            "auto_bid": false,
+            "apply_filters": true  # NEW: Enable sanity filters (default: true)
         }
     
     Returns:
         {
             "status": "ok",
-            "opportunities": [...],  # 35-50 opportunities
+            "opportunities": [...],  # Filtered opportunities
             "platforms_scraped": [...],
-            "total_found": 45
+            "total_found": 45,
+            "filter_stats": {  # NEW: Shows what was filtered
+                "outliers_removed": 1,
+                "skipped_removed": 12,
+                "stale_removed": 8
+            }
         }
     """
+    from opportunity_filters import (
+        filter_opportunities,
+        get_execute_now_opportunities,
+        calculate_p95_cap,
+        is_outlier,
+        should_skip,
+        is_stale
+    )
     
     username = data.get("username")
     requested_platforms = data.get("platforms", [])
     auto_bid = data.get("auto_bid", False)
+    apply_filters = data.get("apply_filters", True)  # NEW: Filter toggle
     
     if not username:
         return {"status": "error", "message": "username required"}
@@ -14080,37 +14087,186 @@ async def discover_opportunities(data: dict):
             match_score = 85 - (i * 3) - (list(ALL_PLATFORMS.keys()).index(platform) * 2)
             match_score = max(50, min(95, match_score))  # Clamp between 50-95
             
+            # Simulate created_at dates (some old, some new)
+            import random
+            from datetime import timedelta
+            days_ago = random.choice([1, 2, 3, 5, 10, 30, 60, 90, 365]) if platform in ["hackernews", "github"] else random.choice([1, 2, 3, 5])
+            created_at = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+            
+            # Calculate win probability for filtering
+            win_probability = confidence * (match_score / 100)
+            
             opportunities.append({
                 "id": f"{platform}_{username}_{i+1}",
                 "source": platform,
+                "platform": platform,  # Add platform field for filtering
                 "title": f"{platform.capitalize()}: {_get_opportunity_title(platform, i+1)}",
                 "description": f"{_get_opportunity_description(platform, i+1)}",
                 "url": f"https://{platform}.com/opportunity/{i+1}",
-                "estimated_value": base_value + (i * increment),
+                "value": base_value + (i * increment),  # Changed from estimated_value to value
+                "estimated_value": base_value + (i * increment),  # Keep for backwards compatibility
                 "match_score": match_score,
                 "confidence": confidence,
+                "win_probability": win_probability,  # NEW: For filtering
+                "recommendation": "EXECUTE" if win_probability > 0.7 else ("CONSIDER" if win_probability > 0.5 else "SKIP"),  # NEW
                 "status": "pending_approval",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "platform": platform
+                "created_at": created_at,  # NEW: For stale filtering
             })
         
         platforms_scraped.append(platform)
         print(f"      {platform}: {count} opportunities (${base_value}-${base_value + (count-1)*increment})")
     
-    total_value = sum(o["estimated_value"] for o in opportunities)
+    total_value_before = sum(o["value"] for o in opportunities)
+    total_before = len(opportunities)
     
     print(f"   ✅ Total: {len(opportunities)} opportunities across {len(platforms_scraped)} platforms")
-    print(f"   💰 Total potential value: ${total_value:,}")
+    print(f"   💰 Total potential value: ${total_value_before:,}")
+    
+    # ============================================================
+    # APPLY FILTERS (NEW)
+    # ============================================================
+    
+    filter_stats = {
+        "total_opportunities": total_before,
+        "outliers_removed": 0,
+        "skipped_removed": 0,
+        "stale_removed": 0,
+        "remaining_opportunities": total_before,
+        "total_value_before": total_value_before,
+        "total_value_after": total_value_before,
+        "p95_cap": 0
+    }
+    
+    filtered_opportunities = opportunities
+    execute_now = []
+    
+    if apply_filters:
+        print(f"   🔧 Applying sanity filters...")
+        
+        # Calculate P95 cap
+        p95_cap = calculate_p95_cap(opportunities)
+        filter_stats["p95_cap"] = p95_cap
+        
+        # Filter opportunities
+        filtered_opportunities = []
+        for opp in opportunities:
+            # Check outlier
+            if is_outlier(opp, p95_cap):
+                filter_stats["outliers_removed"] += 1
+                print(f"      ❌ Outlier removed: {opp['id']} (${opp['value']:,} > ${p95_cap:,})")
+                continue
+            
+            # Check skip (low win probability)
+            score_dict = {
+                "win_probability": opp.get("win_probability", 0),
+                "recommendation": opp.get("recommendation", "")
+            }
+            if should_skip(score_dict):
+                filter_stats["skipped_removed"] += 1
+                continue
+            
+            # Check stale (old HN/GitHub posts)
+            if is_stale(opp, max_age_days=30):
+                filter_stats["stale_removed"] += 1
+                print(f"      ❌ Stale removed: {opp['id']} (created {opp['created_at'][:10]})")
+                continue
+            
+            filtered_opportunities.append(opp)
+        
+        # Update stats
+        filter_stats["remaining_opportunities"] = len(filtered_opportunities)
+        filter_stats["total_value_after"] = sum(o["value"] for o in filtered_opportunities)
+        
+        # Get execute-now opportunities
+        for opp in filtered_opportunities:
+            if opp.get("win_probability", 0) >= 0.7 and "EXECUTE" in opp.get("recommendation", ""):
+                execute_now.append(opp)
+        
+        print(f"   ✅ Filtered: {filter_stats['remaining_opportunities']} opportunities remain")
+        print(f"      Removed: {filter_stats['outliers_removed']} outliers, {filter_stats['skipped_removed']} low-prob, {filter_stats['stale_removed']} stale")
+        print(f"      Execute now: {len(execute_now)} high-priority opportunities")
+    
+    # ============================================================
+    # RETURN RESULTS
+    # ============================================================
     
     return {
         "status": "ok",
-        "opportunities": opportunities,
+        "opportunities": filtered_opportunities,
         "platforms_scraped": platforms_scraped,
-        "total_found": len(opportunities),
-        "total_value": total_value,
+        "total_found": len(filtered_opportunities),
+        "total_value": sum(o["value"] for o in filtered_opportunities),
         "auto_bid": auto_bid,
-        "username": username
+        "username": username,
+        "filter_stats": filter_stats if apply_filters else None,  # NEW
+        "execute_now": execute_now if apply_filters else None  # NEW: High-priority opportunities
     }
+
+
+def _get_opportunity_title(platform: str, index: int) -> str:
+    """Generate realistic opportunity titles"""
+    titles = {
+        "github": [
+            "Fix React state management bug in checkout flow",
+            "Add TypeScript support to legacy codebase",
+            "Implement OAuth2 authentication system",
+            "Optimize database queries for performance",
+            "Build CI/CD pipeline with GitHub Actions",
+            "Create responsive mobile navigation component"
+        ],
+        "upwork": [
+            "Build e-commerce website with Shopify",
+            "Develop React dashboard for analytics",
+            "Create WordPress theme for blog",
+            "Design landing page for SaaS product",
+            "Implement payment integration with Stripe"
+        ],
+        "reddit": [
+            "Looking for developer to build Chrome extension",
+            "Need help with Python data scraping project",
+            "Seeking freelancer for Next.js website",
+            "Looking for help with AWS infrastructure"
+        ],
+        "hackernews": [
+            "Senior Full Stack Engineer at YC Startup",
+            "Remote React Developer for B2B SaaS",
+            "Backend Engineer for Fintech Company"
+        ],
+        "linkedin": [
+            "Full Stack Developer needed for startup",
+            "Senior Software Engineer - Remote",
+            "Frontend Developer for enterprise SaaS",
+            "DevOps Engineer for scaling infrastructure",
+            "Mobile Developer for iOS/Android app"
+        ]
+    }
+    
+    platform_titles = titles.get(platform, ["Generic opportunity"])
+    return platform_titles[min(index - 1, len(platform_titles) - 1)]
+
+
+def _get_opportunity_description(platform: str, index: int) -> str:
+    """Generate realistic opportunity descriptions"""
+    descriptions = {
+        "github": [
+            "State management issue causing cart items to disappear on refresh. Need fix using Context API or Redux.",
+            "Convert 50K line JavaScript codebase to TypeScript. Must maintain backwards compatibility.",
+            "Implement secure OAuth2 flow with Google, GitHub, and Facebook login options.",
+            "Database queries taking 5-10 seconds. Need optimization and indexing strategy.",
+            "Set up automated testing, build, and deployment pipeline using GitHub Actions.",
+            "Build mobile-first navigation with hamburger menu and smooth transitions."
+        ],
+        "upwork": [
+            "Build custom Shopify store with 50+ products, payment integration, and admin panel.",
+            "Create analytics dashboard with charts, real-time data, and export functionality.",
+            "Design and develop custom WordPress theme with page builder integration.",
+            "Design high-converting landing page for B2B SaaS product with A/B testing.",
+            "Integrate Stripe payment processing with subscription management and webhooks."
+        ]
+    }
+    
+    platform_descriptions = descriptions.get(platform, ["Standard opportunity description"])
+    return platform_descriptions[min(index - 1, len(platform_descriptions) - 1)]
 
 
 def _get_opportunity_title(platform: str, index: int) -> str:
