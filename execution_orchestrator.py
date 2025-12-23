@@ -552,21 +552,21 @@ class ExecutionOrchestrator:
         fees = calculate_base_fee(amount)
         
         if is_aigentsy:
-    # AiGentsy opportunity - Wade executes, keeps 100% of profit
-    cost = opportunity.get('estimated_cost', amount * 0.30)
-    profit = amount - cost
-    
-    payment['gross'] = amount
-    payment['cost'] = cost
-    payment['profit'] = profit
-    payment['wade_keeps'] = profit  # 100% of profit after costs
-else:
-    # User opportunity - User gets 97.2%, AiGentsy gets 2.8%
-    payment['gross'] = amount
-    payment['platform_fee'] = fees['total']
-    payment['user_revenue'] = amount * 0.972
-    payment['aigentsy_revenue'] = fees['total']
-    payment['wade_keeps'] = fees['total']  # Wade keeps platform fee
+            # AiGentsy opportunity - Wade executes, keeps 100% of profit
+            cost = opportunity.get('estimated_cost', amount * 0.30)
+            profit = amount - cost
+            
+            payment['gross'] = amount
+            payment['cost'] = cost
+            payment['profit'] = profit
+            payment['wade_keeps'] = profit  # 100% of profit after costs
+        else:
+            # User opportunity - User gets 97.2%, AiGentsy gets 2.8%
+            payment['gross'] = amount
+            payment['platform_fee'] = fees['total']
+            payment['user_revenue'] = amount * 0.972
+            payment['aigentsy_revenue'] = fees['total']
+            payment['wade_keeps'] = fees['total']  # Wade keeps platform fee
         
         # Track payment
         if PAYMENT_TRACKING_AVAILABLE:
@@ -590,7 +590,7 @@ else:
                 # AiGentsy service payment
                 await ingest_service_payment(
                     username='aigentsy',
-                    amount=payment['net'],
+                    amount=payment['profit'],
                     platform=platform,
                     service_type=opportunity.get('type', 'general')
                 )
@@ -642,7 +642,7 @@ else:
             'growth': None
         }
         
-        revenue = payment.get('user_revenue' if not is_aigentsy else 'net', 0)
+        revenue = payment.get('user_revenue' if not is_aigentsy else 'profit', 0)
         
         # R3 Autopilot - auto-reinvest 20%
         if R3_AVAILABLE and not is_aigentsy and username:
