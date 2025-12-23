@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[YOUR_AGENCY] - The Future of Marketing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #fff;
+            background: #000;
+        }
+        
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 30px 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 900;
+            color: #fff;
+            letter-spacing: -1px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
+            transition: opacity 0.3s;
+        }
+        
+        .nav-links a:hover {
+            opacity: 0.7;
+        }
+        
+        /* Hero */
+        .hero {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 100px 5%;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 191, 255, 0.1) 0%, transparent 70%);
+            animation: pulse 15s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 1000px;
+        }
+        
+        .hero h1 {
+            font-size: 80px;
+            font-weight: 900;
+            margin-bottom: 30px;
+            letter-spacing: -2px;
+            line-height: 0.95;
+        }
+        
+        .hero h1 .highlight {
+            background: linear-gradient(135deg, #00bfff 0%, #0080ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero .manifesto {
+            font-size: 24px;
+            margin-bottom: 20px;
+            opacity: 0.8;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .hero .subtext {
+            font-size: 18px;
+            margin-bottom: 50px;
+            opacity: 0.7;
+        }
+        
+        .hero-cta {
+            display: inline-block;
+            padding: 20px 60px;
+            background: linear-gradient(135deg, #00bfff 0%, #0080ff 100%);
+            color: #000;
+            text-decoration: none;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: transform 0.3s, box-shadow 0.3s;
+            font-size: 14px;
+        }
+        
+        .hero-cta:hover {
+            transform: scale(1.05);
+            box-shadow: 0 20px 60px rgba(0, 191, 255, 0.4);
+        }
+        
+        /* Stats Banner */
+        .stats-banner {
+            background: #00bfff;
+            color: #000;
+            padding: 60px 5%;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .stat h3 {
+            font-size: 48px;
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+        
+        .stat p {
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        /* Why Broken */
+        .why-broken {
+            background: #fff;
+            color: #000;
+            padding: 150px 5%;
+            text-align: center;
+        }
+        
+        .why-broken h2 {
+            font-size: 64px;
+            font-weight: 900;
+            margin-bottom: 40px;
+            letter-spacing: -2px;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .why-broken-grid {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: left;
+        }
+        
+        .why-broken-grid p {
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-left: 30px;
+            position: relative;
+            line-height: 1.8;
+        }
+        
+        .why-broken-grid p:before {
+            content: "❌";
+            position: absolute;
+            left: 0;
+        }
+        
+        .alternative {
+            margin-top: 60px;
+            text-align: center;
+        }
+        
+        .alternative h3 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            font-weight: 900;
+        }
+        
+        .alternative p {
+            font-size: 18px;
+            max-width: 600px;
+            margin: 0 auto 10px;
+            padding: 0;
+        }
+        
+        .alternative p:before {
+            content: "";
+        }
+        
+        /* Arsenal */
+        .arsenal {
+            background: #000;
+            color: #fff;
+            padding: 150px 5%;
+        }
+        
+        .arsenal h2 {
+            font-size: 48px;
+            font-weight: 900;
+            text-align: center;
+            margin-bottom: 80px;
+            letter-spacing: -1px;
+        }
+        
+        .arsenal-grid {
+            display: grid;
+            gap: 60px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .arsenal-card {
+            background: #1a1a1a;
+            padding: 60px 40px;
+            border-left: 4px solid #00bfff;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        
+        .arsenal-card:hover {
+            transform: translateX(10px);
+            border-color: #0080ff;
+        }
+        
+        .arsenal-card h3 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            font-weight: 900;
+        }
+        
+        .arsenal-card .tagline {
+            font-size: 16px;
+            color: #999;
+            margin-bottom: 30px;
+        }
+        
+        .arsenal-card .how-it-works {
+            margin-bottom: 30px;
+        }
+        
+        .arsenal-card .how-it-works h4 {
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #00bfff;
+            margin-bottom: 15px;
+        }
+        
+        .arsenal-card .how-it-works ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .arsenal-card .how-it-works li {
+            padding: 8px 0;
+            padding-left: 20px;
+            position: relative;
+            color: #ccc;
+        }
+        
+        .arsenal-card .how-it-works li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #00bfff;
+        }
+        
+        .arsenal-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 40px;
+        }
+        
+        .arsenal-metric {
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 32px;
+            font-weight: 900;
+            color: #00bfff;
+        }
+        
+        .metric-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: 0.5;
+            margin-top: 5px;
+        }
+        
+        /* Tech Stack */
+        .tech-stack {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 150px 5%;
+        }
+        
+        .tech-stack h2 {
+            font-size: 56px;
+            font-weight: 900;
+            text-align: center;
+            margin-bottom: 30px;
+            letter-spacing: -1px;
+        }
+        
+        .tech-stack .intro {
+            text-align: center;
+            font-size: 20px;
+            max-width: 800px;
+            margin: 0 auto 80px;
+            opacity: 0.8;
+        }
+        
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto 80px;
+        }
+        
+        .tech-card {
+            background: #000;
+            padding: 40px;
+            border: 1px solid #333;
+            transition: border-color 0.3s;
+        }
+        
+        .tech-card:hover {
+            border-color: #00bfff;
+        }
+        
+        .tech-card h3 {
+            font-size: 22px;
+            margin-bottom: 15px;
+            font-weight: 900;
+            color: #00bfff;
+        }
+        
+        .tech-card p {
+            opacity: 0.8;
+            line-height: 1.8;
+        }
+        
+        .tech-footer {
+            text-align: center;
+            padding-top: 60px;
+            border-top: 1px solid #333;
+        }
+        
+        .tech-footer p {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .tech-footer .badge {
+            font-size: 14px;
+            opacity: 0.5;
+        }
+        
+        /* Proof */
+        .proof {
+            background: #00bfff;
+            color: #000;
+            padding: 150px 5%;
+            text-align: center;
+        }
+        
+        .proof h2 {
+            font-size: 56px;
+            font-weight: 900;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+        
+        .proof-subtitle {
+            font-size: 18px;
+            margin-bottom: 80px;
+            opacity: 0.8;
+        }
+        
+        .proof-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 60px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .proof-stat {
+            text-align: center;
+        }
+        
+        .proof-number {
+            font-size: 72px;
+            font-weight: 900;
+            margin-bottom: 15px;
+            line-height: 1;
+        }
+        
+        .proof-label {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+        }
+        
+        .proof-context {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        
+        /* Pricing */
+        .pricing-section {
+            background: #000;
+            color: #fff;
+            padding: 150px 5%;
+            text-align: center;
+        }
+        
+        .pricing-section h2 {
+            font-size: 56px;
+            font-weight: 900;
+            margin-bottom: 80px;
+            letter-spacing: -1px;
+        }
+        
+        .pricing-compare {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+        
+        .pricing-box {
+            background: #1a1a1a;
+            padding: 60px 40px;
+            border: 2px solid #333;
+        }
+        
+        .pricing-box.new-way {
+            background: linear-gradient(135deg, #00bfff 0%, #0080ff 100%);
+            color: #000;
+            border: none;
+        }
+        
+        .pricing-box h3 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            font-weight: 900;
+        }
+        
+        .pricing-box .price {
+            font-size: 56px;
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+        
+        .pricing-box .price-note {
+            font-size: 16px;
+            margin-bottom: 40px;
+            opacity: 0.8;
+        }
+        
+        .pricing-box ul {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+        }
+        
+        .pricing-box li {
+            padding: 15px 0;
+            padding-left: 25px;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .pricing-box.new-way li {
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .pricing-box li:before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+        
+        .pricing-math {
+            margin-top: 60px;
+            font-size: 20px;
+        }
+        
+        .pricing-math p {
+            margin-bottom: 10px;
+        }
+        
+        .pricing-math .emphasis {
+            font-size: 24px;
+            font-weight: 900;
+            color: #00bfff;
+            margin-top: 20px;
+        }
+        
+        /* Movement CTA */
+        .movement {
+            background: #000;
+            color: #fff;
+            padding: 150px 5%;
+            text-align: center;
+        }
+        
+        .movement h2 {
+            font-size: 72px;
+            font-weight: 900;
+            margin-bottom: 40px;
+            letter-spacing: -2px;
+        }
+        
+        .movement p {
+            font-size: 24px;
+            margin-bottom: 60px;
+            opacity: 0.8;
+        }
+        
+        .movement-form {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-grid input,
+        .movement-form textarea {
+            padding: 20px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            color: #fff;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-grid input:focus,
+        .movement-form textarea:focus {
+            outline: none;
+            border-color: #00bfff;
+        }
+        
+        .movement-form textarea {
+            width: 100%;
+            min-height: 150px;
+            resize: vertical;
+            margin-bottom: 20px;
+        }
+        
+        .submit-cta {
+            width: 100%;
+            padding: 25px;
+            background: linear-gradient(135deg, #00bfff 0%, #0080ff 100%);
+            color: #000;
+            border: none;
+            font-weight: 900;
+            font-size: 16px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        
+        .submit-cta:hover {
+            transform: scale(1.02);
+        }
+        
+        /* Footer */
+        footer {
+            background: #000;
+            color: #fff;
+            padding: 80px 5% 40px;
+            border-top: 1px solid #333;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 60px;
+            max-width: 1200px;
+            margin: 0 auto 60px;
+        }
+        
+        .footer-column h4 {
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 900;
+            margin-bottom: 20px;
+            color: #00bfff;
+        }
+        
+        .footer-column a {
+            display: block;
+            color: #666;
+            text-decoration: none;
+            margin-bottom: 12px;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+        
+        .footer-column a:hover {
+            color: #fff;
+        }
+        
+        .footer-bottom {
+            text-align: center;
+            padding-top: 40px;
+            border-top: 1px solid #333;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        /* Mobile */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 40px;
+            }
+            
+            .why-broken h2 {
+                font-size: 36px;
+            }
+            
+            .form-grid,
+            .pricing-compare {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .arsenal-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">[YOUR_AGENCY]</div>
+        <ul class="nav-links">
+            <li><a href="#why">Why</a></li>
+            <li><a href="#arsenal">Arsenal</a></li>
+            <li><a href="#proof">Proof</a></li>
+            <li><a href="#join">Join</a></li>
+        </ul>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Marketing for the <span class="highlight">Future</span></h1>
+            <p class="manifesto">While traditional agencies guess, we know. While they sleep, we work.</p>
+            <p class="subtext">Join the brands redefining what's possible.</p>
+            <a href="#join" class="hero-cta">Start Now</a>
+        </div>
+    </section>
+
+    <!-- Stats Banner -->
+    <section class="stats-banner">
+        <div class="stats-grid">
+            <div class="stat">
+                <h3>24/7</h3>
+                <p>Campaigns Never Sleep</p>
+            </div>
+            <div class="stat">
+                <h3>8+</h3>
+                <p>Platforms Tested Simultaneously</p>
+            </div>
+            <div class="stat">
+                <h3>200+</h3>
+                <p>Competitors Monitored Hourly</p>
+            </div>
+            <div class="stat">
+                <h3>60 Sec</h3>
+                <p>Average Response Time</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Broken -->
+    <section class="why-broken" id="why">
+        <h2>Traditional Marketing is Broken</h2>
+        <div class="why-broken-grid">
+            <p>Agencies charge $10K/month whether you succeed or fail</p>
+            <p>They work 9-5 while your customers buy 24/7</p>
+            <p>They test one thing at a time while opportunities pass</p>
+            <p>They guess at strategy while data sits unused</p>
+        </div>
+        
+        <div class="alternative">
+            <h3>We Built the Alternative</h3>
+            <p>AI-powered. Always-on. Outcome-obsessed.</p>
+            <p>You pay 2.8% only when you make money.</p>
+            <p>The rest is free.</p>
+        </div>
+    </section>
+
+    <!-- Arsenal -->
+    <section class="arsenal" id="arsenal">
+        <h2>The Arsenal</h2>
+        <div class="arsenal-grid">
+            <div class="arsenal-card">
+                <h3>Multi-Platform Domination</h3>
+                <p class="tagline">Test 8+ channels simultaneously from day one</p>
+                <div class="how-it-works">
+                    <h4>How It Works</h4>
+                    <ul>
+                        <li>One campaign → 8 platform variations created automatically</li>
+                        <li>Real-time budget shifting to highest ROI channel</li>
+                        <li>Continuous optimization while you sleep</li>
+                        <li>Competitors test sequentially. You test in parallel.</li>
+                    </ul>
+                </div>
+                <div class="arsenal-metrics">
+                    <div class="arsenal-metric">
+                        <div class="metric-value">485%</div>
+                        <div class="metric-label">Average ROAS</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">8+</div>
+                        <div class="metric-label">Platforms</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">$47K</div>
+                        <div class="metric-label">From $10K Budget</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="arsenal-card">
+                <h3>Competitive Intelligence Engine</h3>
+                <p class="tagline">Know what's working before your competition does</p>
+                <div class="how-it-works">
+                    <h4>How It Works</h4>
+                    <ul>
+                        <li>200+ competitors monitored hourly</li>
+                        <li>Winning tactics spotted within 24 hours</li>
+                        <li>Counter-strategies generated automatically</li>
+                        <li>You move at first-mover speed</li>
+                    </ul>
+                </div>
+                <div class="arsenal-metrics">
+                    <div class="arsenal-metric">
+                        <div class="metric-value">3 Days</div>
+                        <div class="metric-label">Advantage to Launch</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">$50K</div>
+                        <div class="metric-label">Saved in Testing</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">200%</div>
+                        <div class="metric-label">ROAS Increase</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="arsenal-card">
+                <h3>Partnership Automation</h3>
+                <p class="tagline">50+ partnerships managed without lifting a finger</p>
+                <div class="how-it-works">
+                    <h4>How It Works</h4>
+                    <ul>
+                        <li>AI finds businesses with your exact audience</li>
+                        <li>Personalized proposals sent automatically</li>
+                        <li>Performance tracked across all partnerships</li>
+                        <li>Scale what works, kill what doesn't</li>
+                    </ul>
+                </div>
+                <div class="arsenal-metrics">
+                    <div class="arsenal-metric">
+                        <div class="metric-value">23</div>
+                        <div class="metric-label">Partnerships (90 days)</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">2-3x</div>
+                        <div class="metric-label">Audience Multiplication</div>
+                    </div>
+                    <div class="arsenal-metric">
+                        <div class="metric-value">$127K</div>
+                        <div class="metric-label">Year 1 Revenue</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Stack -->
+    <section class="tech-stack">
+        <h2>How This is Possible</h2>
+        <p class="intro">The tech stack traditional agencies don't have</p>
+        
+        <div class="tech-grid">
+            <div class="tech-card">
+                <h3>Real-Time Market Intelligence</h3>
+                <p>Scans 20+ platforms, millions of data points hourly. Spots patterns humans miss. Predicts what will work before it saturates.</p>
+            </div>
+            
+            <div class="tech-card">
+                <h3>Cross-Platform Orchestration</h3>
+                <p>Tests all channels simultaneously. Shifts budgets to winners automatically. Optimizes creative based on performance.</p>
+            </div>
+            
+            <div class="tech-card">
+                <h3>Autonomous Partnership Discovery</h3>
+                <p>Finds perfect-fit partners automatically. Sends personalized outreach at scale. Manages ongoing relationships.</p>
+            </div>
+            
+            <div class="tech-card">
+                <h3>24/7 Optimization Engine</h3>
+                <p>Never stops testing. Never stops learning. Never stops improving your results.</p>
+            </div>
+        </div>
+        
+        <div class="tech-footer">
+            <p>This isn't the future of marketing.</p>
+            <p>This is marketing right now. For those bold enough to use it.</p>
+            <p class="badge">Powered by AiGentsy</p>
+        </div>
+    </section>
+
+    <!-- Proof -->
+    <section class="proof" id="proof">
+        <h2>The Numbers Don't Lie</h2>
+        <p class="proof-subtitle">Real results from real clients</p>
+        <div class="proof-grid">
+            <div class="proof-stat">
+                <div class="proof-number">1,082%</div>
+                <div class="proof-label">Revenue Increase</div>
+                <p class="proof-context">SaaS client, 12 months, partnership + intelligence strategy</p>
+            </div>
+            <div class="proof-stat">
+                <div class="proof-number">924%</div>
+                <div class="proof-label">Lifetime ROAS</div>
+                <p class="proof-context">E-commerce client, multi-platform optimization</p>
+            </div>
+            <div class="proof-stat">
+                <div class="proof-number">485%</div>
+                <div class="proof-label">Average ROAS</div>
+                <p class="proof-context">Across all clients, all industries</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section class="pricing-section">
+        <h2>The Old Way is Dead</h2>
+        <div class="pricing-compare">
+            <div class="pricing-box">
+                <h3>Traditional</h3>
+                <div class="price">$120K</div>
+                <p class="price-note">per year minimum</p>
+                <ul>
+                    <li>Pay win or lose</li>
+                    <li>9-5 availability</li>
+                    <li>Manual everything</li>
+                    <li>Slow to adapt</li>
+                </ul>
+            </div>
+            
+            <div class="pricing-box new-way">
+                <h3>The New Way</h3>
+                <div class="price">2.8%</div>
+                <p class="price-note">when you win</p>
+                <ul>
+                    <li>$0 if you don't earn</li>
+                    <li>24/7 AI optimization</li>
+                    <li>Automated intelligence</li>
+                    <li>Instant adaptation</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="pricing-math">
+            <p>You earn $100K → You pay $2,800</p>
+            <p>Traditional agency → You pay $120K</p>
+            <p class="emphasis">The math is simple. The choice is obvious.</p>
+        </div>
+    </section>
+
+    <!-- Movement CTA -->
+    <section class="movement" id="join">
+        <h2>Ready to Lead?</h2>
+        <p>The future belongs to the bold. Let's build it together.</p>
+        
+        <form class="movement-form" id="contactForm">
+            <div class="form-grid">
+                <input type="text" name="name" placeholder="Name" required>
+                <input type="email" name="email" placeholder="Email" required>
+            </div>
+            <input type="text" name="company" placeholder="Company" style="width:100%; margin-bottom:20px;">
+            <textarea name="message" placeholder="What revolution are you planning?" required></textarea>
+            <button type="submit" class="submit-cta">Join the Revolution</button>
+        </form>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-grid">
+            <div class="footer-column">
+                <h4>Company</h4>
+                <a href="#why">Why</a>
+                <a href="#careers">Careers</a>
+                <a href="#press">Press</a>
+            </div>
+            <div class="footer-column">
+                <h4>Arsenal</h4>
+                <a href="#arsenal">Multi-Platform</a>
+                <a href="#arsenal">Intelligence</a>
+                <a href="#arsenal">Partnerships</a>
+            </div>
+            <div class="footer-column">
+                <h4>Resources</h4>
+                <a href="#proof">Results</a>
+                <a href="#manifesto">Manifesto</a>
+                <a href="#guides">Guides</a>
+            </div>
+            <div class="footer-column">
+                <h4>Legal</h4>
+                <a href="#privacy">Privacy</a>
+                <a href="#terms">Terms</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            © 2025 [YOUR_AGENCY]. Powered by AiGentsy.
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('contactForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                const response = await fetch('/api/leads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    alert('Welcome to the revolution. We\'ll be in touch within 24 hours.');
+                    e.target.reset();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
