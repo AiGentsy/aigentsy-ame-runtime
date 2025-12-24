@@ -24,6 +24,7 @@ from business_ingestion import ingest_business_data
 from alpha_discovery_engine import AlphaDiscoveryEngine
 from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
+from mega_discovery_endpoint import router as mega_router
 from autonomous_routes import router as autonomous_router
 from opportunity_filters import (
     filter_opportunities,
@@ -694,6 +695,7 @@ create_dashboard_endpoints(app)
 app.include_router(actionization_router)
 app.include_router(execution_router)
 app.include_router(autonomous_router)
+app.include_router(mega_router, prefix="/api", tags=["Mega Discovery"])
 
 async def auto_bid_background():
     """Runs in background forever"""
