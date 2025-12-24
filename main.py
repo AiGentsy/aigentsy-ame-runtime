@@ -25,6 +25,7 @@ from ultimate_discovery_engine import discover_all_opportunities
 from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
+from wade_integrated_workflow import integrated_workflow
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
