@@ -11287,6 +11287,12 @@ async def get_active_workflows():
 
 @app.post("/wade/check-approval/{workflow_id}")
 async def check_approval(workflow_id: str):
+    '''
+    Manually check if client approved
+    (Background job would do this automatically)
+    '''
+    result = await integrated_workflow.check_client_approval(workflow_id)
+    return result
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
