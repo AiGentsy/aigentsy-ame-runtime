@@ -25,6 +25,7 @@ from ultimate_discovery_engine import discover_all_opportunities
 from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
+from discovery_to_queue_connector import auto_discover_and_queue
 from wade_integrated_workflow import integrated_workflow
 from opportunity_filters import (
     filter_opportunities,
@@ -6220,6 +6221,16 @@ async def escrow_refund(body: Dict = Body(...)):
         )
         
         return result
+
+
+@app.post("/wade/discover-and-queue")
+async def discover_and_queue(request: dict):
+    """Run discovery and automatically queue Wade opportunities"""
+    username = request.get("username", "wade")
+    platforms = request.get("platforms")
+    
+    results = await auto_discover_and_queue(username, platforms)
+    return results
 
 # ============ PERFORMANCE BONDS + SLA BONUS ============
 
