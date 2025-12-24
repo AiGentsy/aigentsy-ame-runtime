@@ -118,3 +118,12 @@ async def test_process_and_queue():
     """Test function"""
     result = await process_and_queue({"username": "wade", "platforms": ["github"]})
     return result
+
+# Add this at the end of the file for backward compatibility
+async def auto_discover_and_queue(username: str = "wade", platforms: List[str] = None) -> Dict[str, Any]:
+    """Backward compatible wrapper"""
+    request = {
+        "username": username,
+        "platforms": platforms
+    }
+    return await process_and_queue(request)
