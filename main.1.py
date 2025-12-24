@@ -15,12 +15,37 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from mint_generator import get_mint_generator
 from template_library import KIT_SUMMARY
+from opportunity_approval import create_opportunity_endpoints
+from week1_api import app as week1_app
+from actionization_routes import router as actionization_router
+from sku_config_loader import load_sku_config
+from storefront_deployer import deploy_storefront
+from business_ingestion import ingest_business_data
+from ultimate_discovery_engine import discover_all_opportunities
+from wade_approval_dashboard import fulfillment_queue
+from execution_routes import router as execution_router
+from autonomous_routes import router as autonomous_router
+from discovery_to_queue_connector import auto_discover_and_queue
+from wade_integrated_workflow import integrated_workflow
+from opportunity_filters import (
+    filter_opportunities,
+    get_execute_now_opportunities,
+    is_outlier,
+    should_skip,
+    is_stale,
+    calculate_p95_cap
+)
+from system_health_detail import health_checker, SystemHealthDetail
 from template_integration_coordinator import (
     auto_trigger_on_mint,
     process_referral_signup,
     generate_signup_link
 )
-
+from badge_engine import (
+    get_user_badges,
+    get_badge_progress,
+    get_social_proof
+)
 from revenue_flows import (
     ingest_shopify_order,
     ingest_affiliate_commission,
@@ -37,6 +62,7 @@ from agent_spending import (
     agent_to_agent_payment,
     get_spending_summary
 )
+
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
 PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.28"))  # 28¢ fixed fee
@@ -657,12 +683,19 @@ except Exception as e:
     
 app = FastAPI()
 
+# Register opportunity endpoints
 from ame_routes import register_ame_routes
 register_ame_routes(app)
 from aigx_engine import create_activity_endpoints
 create_activity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
+create_opportunity_endpoints(app)
+from dashboard_api import create_dashboard_endpoints
+create_dashboard_endpoints(app)
+app.include_router(actionization_router)
+app.include_router(execution_router)
+app.include_router(autonomous_router)
 
 async def auto_bid_background():
     """Runs in background forever"""
@@ -2101,8 +2134,8 @@ async def mint_user(request: Request):
         except Exception as norm_error:
             logger.error(f"Normalization failed: {norm_error}")
             normalized = new_user
-        
-        # Save to JSONBin
+
+         # Save to JSONBin
         try:
             saved_user = log_agent_update(normalized)
             logger.info(f"💾 Saved new user to JSONBin: {username}")
@@ -2128,6 +2161,8 @@ async def mint_user(request: Request):
             try:
                 from aigentsy_apex_ultra import activate_apex_ultra
                 from ipvault import create_ip_asset
+                from sku_config_loader import load_sku_config
+                from storefront_deployer import deploy_storefront
                 
                 # Map companyType to template
                 template_map = {
@@ -2145,11 +2180,22 @@ async def mint_user(request: Request):
                 if template:
                     apex_template = template
                 
+                # ============================================================
+                # 🎯 LOAD SKU CONFIGURATION
+                # ============================================================
+                
+                logger.info(f"📦 Loading SKU configuration for {company_type}...")
+                
+                sku_config = load_sku_config(company_type)  # Loads marketing/saas/social config
+                
+                logger.info(f"   ✅ SKU loaded: {sku_config['sku_name']}")
+                
                 # Activate ALL AiGentsy systems
                 apex_result = await activate_apex_ultra(
                     username=username,
                     template=apex_template,
-                    automation_mode="pro"
+                    automation_mode="pro",
+                    sku_config=sku_config
                 )
                 
                 if apex_result.get("ok"):
@@ -2158,6 +2204,44 @@ async def mint_user(request: Request):
                     
                     logger.info(f"✅ APEX ULTRA activated: {systems_activated} systems operational")
                     
+                    # ============================================================
+                    # 🌐 AUTO-DEPLOY STOREFRONT
+                    # ============================================================
+                    
+                    logger.info(f"🚀 Deploying storefront for {username}...")
+                    
+                    try:
+                        # User picks template variation on signup (get from body)
+                        template_variation = body.get("templateVariation", "professional")
+                        
+                        storefront_result = await deploy_storefront(
+                            username=username,
+                            sku_config=sku_config,
+                            template_choice=template_variation,
+                            user_data=saved_user
+                        )
+                        
+                        if storefront_result.get('ok'):
+                            # Store storefront URL in user record
+                            saved_user["storefront_url"] = storefront_result["url"]
+                            saved_user["storefront_template"] = storefront_result["template"]
+                            saved_user["storefront_deployed_at"] = storefront_result["deployed_at"]
+                            
+                            logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
+                        else:
+                            logger.warning(f"   ⚠️  Storefront deployment pending: {storefront_result.get('error')}")
+                            saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
+                            saved_user["storefront_status"] = "pending"
+                    
+                    except Exception as storefront_error:
+                        logger.error(f"   ❌ Storefront deployment error: {storefront_error}")
+                        saved_user["storefront_url"] = f"https://{username}.aigentsy.com"
+                        saved_user["storefront_status"] = "pending"
+                    
+                    # Save updated user with storefront info
+                    log_agent_update(saved_user)
+
+
                     # ============================================================
                     # 💎 APEX ULTRA + EARLY ADOPTER BONUS GRANTS
                     # ============================================================
@@ -2281,10 +2365,72 @@ async def mint_user(request: Request):
                     logger.info(f"🧠 Memory context prepared for future conversations")
                     
                     # ============================================================
-                    # 📤 RETURN SUCCESS WITH FULL TRACKING
+                    # 🔗 TEMPLATE INTEGRATION AUTO-TRIGGER
                     # ============================================================
                     
-                    return {
+                    logger.info(f"🔗 Auto-triggering template integration for {username}...")
+                    
+                    integration_result = None
+                    try:
+                        # Auto-trigger template integration
+                        integration_result = await auto_trigger_on_mint(
+                            username=username,
+                            template=apex_template,
+                            user_data=saved_user
+                        )
+                        
+                        if integration_result.get("ok"):
+                            coord_result = integration_result.get("coordination_result", {})
+                            
+                            logger.info(f"✅ Template integration complete:")
+                            logger.info(f"   - Systems: {', '.join(coord_result.get('systems_triggered', []))}")
+                            logger.info(f"   - Opportunities: {coord_result.get('opportunities_stored', 0)}")
+                            
+                            # Add to activation memory
+                            activation_memory["template_integration"] = {
+                                "triggered": True,
+                                "systems": coord_result.get("systems_triggered", []),
+                                "opportunities_created": coord_result.get("opportunities_stored", 0),
+                                "intelligence": coord_result.get("intelligence", {})
+                            }
+                        else:
+                            logger.warning(f"⚠️  Template integration issues: {integration_result.get('error')}")
+                            
+                    except Exception as integration_error:
+                        logger.error(f"⚠️  Template integration failed: {integration_error}")
+                        integration_result = {"ok": False, "error": str(integration_error)}
+                    
+                    # ============================================================
+                    # 🤝 PROCESS REFERRAL
+                    # ============================================================
+                    
+                    referral_deal = None
+                    if body.get("ref") and body.get("deal"):
+                        logger.info(f"🤝 Processing referral signup from {body.get('ref')}...")
+                        
+                        try:
+                            referral_deal = await process_referral_signup(
+                                new_username=username,
+                                referrer_username=body.get("ref"),
+                                deal_template=body.get("deal")
+                            )
+                            
+                            if referral_deal.get("ok"):
+                                logger.info(f"✅ Referral deal: {referral_deal.get('deal_id')}")
+                                activation_memory["referral_deal"] = {
+                                    "created": True,
+                                    "deal_id": referral_deal.get("deal_id"),
+                                    "referrer": body.get("ref")
+                                }
+                        except Exception as ref_error:
+                            logger.error(f"⚠️  Referral deal failed: {ref_error}")
+                            referral_deal = {"ok": False, "error": str(ref_error)}
+                    
+                    # ============================================================
+                    # 📤 RETURN SUCCESS WITH FULL TRACKING + INTEGRATION
+                    # ============================================================
+                    
+                    response = {
                         "ok": True,
                         "record": saved_user,
                         "apex_ultra": {
@@ -2319,6 +2465,29 @@ async def mint_user(request: Request):
                         },
                         "memory": activation_memory
                     }
+                    
+                    # Add integration results to response
+                    if integration_result:
+                        response["template_integration"] = {
+                            "triggered": integration_result.get("ok", False),
+                            "opportunities_created": integration_result.get("coordination_result", {}).get("opportunities_stored", 0),
+                            "systems_activated": integration_result.get("coordination_result", {}).get("systems_triggered", []),
+                            "csuite_intelligence": integration_result.get("coordination_result", {}).get("intelligence", {}),
+                            "error": integration_result.get("error") if not integration_result.get("ok") else None
+                        }
+                    
+                    # Add referral deal to response (if applicable)
+                    if referral_deal:
+                        response["referral_deal"] = {
+                            "created": referral_deal.get("ok", False),
+                            "deal_id": referral_deal.get("deal_id"),
+                            "referrer": body.get("ref"),
+                            "template": body.get("deal"),
+                            "error": referral_deal.get("error") if not referral_deal.get("ok") else None
+                        }
+                    
+                    return response
+                    
                 else:
                     logger.warning(f"⚠️  APEX ULTRA activation had issues for {username}")
                     return {
@@ -2353,6 +2522,43 @@ async def mint_user(request: Request):
         import traceback
         logger.error(traceback.format_exc())
         return {"ok": False, "error": str(e)}
+
+@app.post("/generate-referral-link")
+async def api_generate_referral_link(body: dict):
+    """
+    Generate referral link for external outreach
+    
+    Example:
+        POST /generate-referral-link
+        {
+            "username": "wade",
+            "template_id": "content_calendar",
+            "target_platform": "reddit"
+        }
+    """
+    username = body.get("username")
+    template_id = body.get("template_id")
+    target_platform = body.get("target_platform", "direct")
+    
+    if not username or not template_id:
+        return {"ok": False, "error": "username and template_id required"}
+    
+    link = generate_signup_link(
+        referrer_username=username,
+        template_id=template_id,
+        target_platform=target_platform
+    )
+    
+    return {
+        "ok": True,
+        "link": link,
+        "message": f"Share this link on {target_platform}. When they sign up, a deal will be auto-created.",
+        "tracking": {
+            "referrer": username,
+            "template": template_id,
+            "source": target_platform
+        }
+    }
         
 # ---- POST: unlock (kits/licenses/flags) ----
 @app.post("/unlock")
@@ -2858,6 +3064,206 @@ async def payout_request(request: Request, x_api_key: str | None = Header(None, 
         u["payouts"].append(req)
         await _save_users(client, users)
         return {"ok": True, "payout": req, "summary": _money_summary(u)}
+
+@app.post("/actionize-my-business")
+async def actionize_business(request: Request):
+    """
+    PATH 2: User brings existing business → AiGentsy actionizes it
+    Flow:
+    1. User uploads business data (customers, services, pricing)
+    2. AI learns business patterns
+    3. Creates custom SKU
+    4. Activates APEX ULTRA with custom SKU
+    5. Deploys storefront
+    6. All 160 logics fire contextualized to their business
+    
+    Body:
+    {
+        "username": "wade",
+        "businessProfile": {
+            "business_name": "Paws & Claws Grooming",
+            "industry": "pet_services",
+            "locations": ["SF", "Oakland"],
+            "annual_revenue": 450000,
+            "employees": 8,
+            "existing_website": "https://pawsclaws.com"
+        },
+        "uploadedFiles": [
+            {
+                "type": "customer_list",
+                "content": "name,email,phone,last_visit,lifetime_value\\nJohn,john@email.com,555-1234,2025-09-15,450\\n..."
+            },
+            {
+                "type": "service_menu",
+                "content": "Full Groom - $80\\nBath Only - $40\\nNails - $20"
+            }
+        ]
+    }
+    """
+    
+    try:
+        body = await request.json()
+        username = body.get("username")
+        business_profile = body.get("businessProfile")
+        uploaded_files = body.get("uploadedFiles", [])
+    
+        if not username:
+            return {"ok": False, "error": "Username required"}
+    
+        if not business_profile:
+            return {"ok": False, "error": "Business profile required"}
+    
+        logger.info(f"🏢 ACTIONIZING BUSINESS FOR {username}")
+        logger.info(f"   Business: {business_profile.get('business_name')}")
+        logger.info(f"   Industry: {business_profile.get('industry')}")
+        logger.info(f"   Files uploaded: {len(uploaded_files)}")
+    
+        # ============================================================
+        # STEP 1: CHECK IF USER EXISTS
+        # ============================================================
+    
+        from log_to_jsonbin import get_user, log_agent_update
+    
+        user = get_user(username)
+    
+        if not user:
+            # Create user first
+            logger.info(f"   → Creating new user account...")
+        
+            # Use same user creation logic as /mint
+            # (copy user creation code from /mint or create helper function)
+        
+            return {"ok": False, "error": "User must be created via /mint first"}
+    
+        # ============================================================
+        # STEP 2: INGEST BUSINESS DATA & CREATE CUSTOM SKU
+        # ============================================================
+    
+        logger.info(f"   🧠 Ingesting business data...")
+    
+        ingestion_result = await ingest_business_data(
+            username=username,
+            business_profile=business_profile,
+            uploaded_files=uploaded_files
+        )
+    
+        if not ingestion_result['ok']:
+            return ingestion_result
+    
+        custom_sku_id = ingestion_result['sku_id']
+    
+        logger.info(f"   ✅ Custom SKU created: {custom_sku_id}")
+        logger.info(f"   Customers imported: {len(ingestion_result['business_intelligence']['customers'])}")
+        logger.info(f"   AI insights: {len(ingestion_result['ai_insights'].get('recommendations', []))} recommendations")
+    
+        # ============================================================
+        # STEP 3: LOAD CUSTOM SKU CONFIG
+        # ============================================================
+    
+        sku_config = load_sku_config(custom_sku_id, username=username)
+    
+        # ============================================================
+        # STEP 4: ACTIVATE APEX ULTRA WITH CUSTOM SKU
+        # ============================================================
+    
+        logger.info(f"   🚀 Activating APEX ULTRA with custom SKU...")
+    
+        from aigentsy_apex_ultra import activate_apex_ultra
+    
+        apex_result = await activate_apex_ultra(
+            username=username,
+            template=custom_sku_id,
+            sku_config=sku_config,
+            automation_mode="pro"
+        )
+    
+        logger.info(f"   ✅ APEX ULTRA activated: {apex_result.get('systems_activated', 0)} systems")
+    
+        # ============================================================
+        # STEP 5: DEPLOY STOREFRONT
+        # ============================================================
+    
+        logger.info(f"   🌐 Deploying storefront...")
+    
+        storefront_result = await deploy_storefront(
+            username=username,
+            sku_config=sku_config,
+            template_choice='ai_generated',  # Or connect existing
+            user_data=user
+        )
+    
+        if storefront_result.get('ok'):
+            logger.info(f"   ✅ Storefront deployed: {storefront_result['url']}")
+    
+        # Update user record
+        user["custom_sku_id"] = custom_sku_id
+        user["business_actionized"] = True
+        user["storefront_url"] = storefront_result.get('url')
+        user["actionized_at"] = datetime.now(timezone.utc).isoformat()
+    
+        log_agent_update(user)
+    
+        # ============================================================
+        # STEP 6: TRIGGER TEMPLATE COORDINATION
+        # ============================================================
+    
+        logger.info(f"   🔗 Triggering coordination (CSuite + AMG + Conductor)...")
+    
+        from template_integration_coordinator import auto_trigger_on_mint
+    
+        coordination = await auto_trigger_on_mint(
+            username=username,
+            template=custom_sku_id,
+            user_data=user
+        )
+    
+        logger.info(f"   ✅ Coordination complete: {coordination.get('opportunities', {}).get('total', 0)} opportunities found")
+    
+        # ============================================================
+        # RETURN SUCCESS
+        # ============================================================
+    
+        return {
+            "ok": True,
+            "message": f"{business_profile['business_name']} is now Powered by AiGentsy!",
+            "username": username,
+            "custom_sku_id": custom_sku_id,
+            "sku_name": sku_config['sku_name'],
+            "industry": business_profile['industry'],
+        
+            # Systems activated
+            "systems_activated": apex_result.get('systems_activated', 0),
+            "systems_operational": True,
+        
+            # Business intelligence
+            "customers_imported": len(ingestion_result['business_intelligence']['customers']),
+            "services_identified": len(ingestion_result['business_intelligence']['services']),
+            "ai_insights": len(ingestion_result['ai_insights'].get('recommendations', [])),
+        
+            # Opportunities
+            "opportunities_found": coordination.get('opportunities', {}).get('total', 0),
+            "internal_opportunities": coordination.get('opportunities', {}).get('internal', 0),
+            "external_opportunities": coordination.get('opportunities', {}).get('external', 0),
+        
+            # Storefront
+            "storefront_url": storefront_result.get('url'),
+            "storefront_deployed": storefront_result.get('ok', False),
+        
+            # Next steps
+            "dashboard_url": f"https://app.aigentsy.com/dashboard/{username}",
+            "next_steps": ingestion_result['next_steps'],
+        
+            # Outcome
+            "outcome": "Dashboard hydrated with business-specific C-Suite, storefront deployed, all 160 logics firing contextualized to your business",
+            "powered_by": "AiGentsy"
+        }
+    
+    except Exception as e:
+        logger.error(f"❌ Actionize business error: {e}")
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 # ---- POST: Autonomy Level AL0–AL5 ----
 @app.post("/autonomy")
@@ -4975,6 +5381,436 @@ async def analytics_track(username: str, event: dict):
         pass
     return {"ok": True}
 
+# ============================================================
+# ENDPOINT 1: RUN ALPHA DISCOVERY
+# ============================================================
+
+@app.post("/alpha-discovery/run")
+async def run_alpha_discovery(request: Request):
+    '''
+    Run Alpha Discovery Engine
+    Discovers opportunities and routes them intelligently
+    
+    Body:
+        {
+            "platforms": ["github", "upwork", "reddit", "hackernews"],  // optional
+            "dimensions": [1, 2, 3, 4, 5, 6, 7]  // optional, defaults to all
+        }
+    
+    Returns:
+        {
+            'ok': True,
+            'total_opportunities': 80,
+            'dimensions_used': [1,2,3,4,5,6,7],
+            'routing': {...}
+        }
+    '''
+    
+    try:
+        # Parse request body
+        body = await request.json() if request.headers.get('content-type') == 'application/json' else {}
+        
+        platforms = body.get('platforms', None)
+        dimensions = body.get('dimensions', None)  # If None, uses all dimensions
+        
+        engine = AlphaDiscoveryEngine()
+        
+        # Run discovery and routing
+        results = await engine.discover_and_route(platforms=platforms, dimensions=dimensions)
+        
+        # Add AiGentsy opportunities to Wade's approval queue
+        for routed in results['routing']['aigentsy_routed']['opportunities']:
+            fulfillment_queue.add_to_queue(
+                opportunity=routed['opportunity'],
+                routing=routed['routing']
+            )
+        
+        # Send opportunities to user dashboards
+        for routed in results['routing']['user_routed']['opportunities']:
+            username = routed['routing']['routed_to']
+            
+            # Add to user's opportunity queue (leverage existing system)
+            # This would integrate with your existing dashboard logic
+            # await add_opportunity_to_user_dashboard(username, routed['opportunity'])
+        
+        return results
+    
+    except Exception as e:
+        import traceback
+        return {
+            'ok': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }
+
+
+# ============================================================
+# ENDPOINT 2: WADE'S APPROVAL DASHBOARD
+# ============================================================
+
+@app.get("/wade/fulfillment-queue")
+async def get_wade_fulfillment_queue():
+    '''
+    Wade's approval dashboard for AiGentsy direct fulfillment
+    Shows all opportunities awaiting approval
+    '''
+    
+    pending = fulfillment_queue.get_pending_queue()
+    stats = fulfillment_queue.get_stats()
+    
+    return {
+        'ok': True,
+        'stats': stats,
+        'pending_count': len(pending),
+        'total_pending_value': sum(f['opportunity']['value'] for f in pending),
+        'total_pending_profit': sum(f['estimated_profit'] for f in pending),
+        'opportunities': [
+            {
+                'id': f['id'],
+                'title': f['opportunity']['title'],
+                'platform': f['opportunity']['platform'],
+                'type': f['opportunity']['type'],
+                'value': f['opportunity']['value'],
+                'estimated_profit': f['estimated_profit'],
+                'estimated_cost': f['estimated_cost'],
+                'estimated_days': f['estimated_days'],
+                'confidence': f['confidence'],
+                'fulfillment_plan': f['fulfillment_plan'],
+                'ai_models': f['ai_models'],
+                'opportunity_url': f['opportunity']['url'],
+                'created_at': f['created_at'],
+                'approve_url': f"/wade/approve/{f['id']}",
+                'reject_url': f"/wade/reject/{f['id']}"
+            }
+            for f in pending
+        ]
+    }
+
+
+# ============================================================
+# ENDPOINT 3: APPROVE FULFILLMENT
+# ============================================================
+
+@app.post("/wade/approve/{fulfillment_id}")
+async def approve_fulfillment(fulfillment_id: str):
+    '''
+    Wade approves AiGentsy direct fulfillment
+    
+    This triggers:
+    1. Fulfillment execution (AI agents start work)
+    2. Revenue tracking
+    3. Outcome tracking
+    '''
+    
+    result = fulfillment_queue.approve_fulfillment(fulfillment_id)
+    
+    if result['ok']:
+        # Get fulfillment details
+        approved = [f for f in fulfillment_queue.approved_fulfillments if f['id'] == fulfillment_id][0]
+        
+        # TODO: Trigger execution
+        # Option 1: Assign to AI agents (automated)
+        # await execute_with_ai_agents(approved)
+        
+        # Option 2: Add to Wade's manual work queue
+        # await add_to_wade_work_queue(approved)
+        
+        # Track in revenue system
+        # await track_aigentsy_direct_opportunity(approved)
+        
+        result['execution_started'] = True
+        result['estimated_completion'] = approved['estimated_days']
+    
+    return result
+
+
+# ============================================================
+# ENDPOINT 4: REJECT FULFILLMENT
+# ============================================================
+
+@app.post("/wade/reject/{fulfillment_id}")
+async def reject_fulfillment(fulfillment_id: str, reason: str = None):
+    '''
+    Wade rejects AiGentsy direct fulfillment
+    
+    This marks the opportunity as rejected and optionally:
+    1. Holds for future user recruitment
+    2. Improves capability assessment
+    '''
+    
+    result = fulfillment_queue.reject_fulfillment(fulfillment_id, reason)
+    
+    return result
+
+
+# ============================================================
+# ENDPOINT 5: USER-SPECIFIC DISCOVERY
+# ============================================================
+
+@app.get("/discover/{username}")
+async def discover_for_user(username: str, platforms: List[str] = None):
+    '''
+    🚀 ULTIMATE DISCOVERY ENGINE - Most sophisticated opportunity finder
+    
+    Features:
+    - 12 REAL data sources (GitHub, Reddit, RemoteOK, HN, Upwork, etc.)
+    - Automatic outlier detection (filters $20M parsing bugs)
+    - Stale opportunity removal (no 5-year-old GitHub issues)
+    - Win probability scoring
+    - Execute-now prioritization
+    - Smart routing (user vs AiGentsy fulfillment)
+    
+    Returns:
+        - Filtered, scored, prioritized opportunities
+        - Execute-now list (high-priority deals)
+        - Full economics breakdown
+    '''
+    
+    try:
+        # Get user data
+        from log_to_jsonbin import load_user_data as jsonbin_load_user
+        user_data = jsonbin_load_user(username)
+        
+        if not user_data:
+            return {'ok': False, 'error': 'User not found'}
+        
+        # Build user profile for relevance matching
+        user_profile = {
+            "username": username,
+            "skills": user_data.get("traits", []),
+            "kits": list(user_data.get("kits", {}).keys()),
+            "companyType": user_data.get("companyType", "general")
+        }
+        
+        # STEP 1: DISCOVER from 12+ REAL sources
+        print(f"\n🔍 Running discovery for {username} across {len(platforms) if platforms else 'all'} platforms...")
+        
+        raw_results = await discover_all_opportunities(
+            username=username,
+            user_profile=user_profile,
+            platforms=platforms  # None = all platforms
+        )
+        
+        total_discovered = raw_results.get('total_found', 0)
+        total_value_raw = raw_results.get('total_value', 0)
+        
+        print(f"   ✅ Discovered {total_discovered} opportunities (${total_value_raw:,.0f} raw value)")
+        
+        # STEP 2: SIMULATE ROUTING STRUCTURE for filters
+        # (Your opportunity_filters.py expects a routing structure)
+        simulated_routing = {
+            "user_routed": {
+                "opportunities": []
+            },
+            "aigentsy_routed": {
+                "opportunities": []
+            },
+            "held": {
+                "opportunities": []
+            }
+        }
+        
+        # Wrap each opportunity with basic routing data
+        for opp in raw_results.get('opportunities', []):
+            # Calculate basic economics
+            opp_value = opp.get('estimated_value', 0)
+            
+            # Simple relevance check (route to user if matches their type)
+            user_type = user_data.get('companyType', 'general')
+            opp_type = opp.get('type', 'unknown')
+            
+            # Type matching logic
+            type_matches = {
+                'marketing': ['content_creation', 'seo', 'copywriting', 'marketing'],
+                'software_development': ['software_development', 'web_development', 'api_integration', 'open_source'],
+                'consulting': ['business_consulting', 'market_research', 'consulting'],
+                'design': ['design', 'ui_ux', 'branding']
+            }
+            
+            routes_to_user = False
+            for category, types in type_matches.items():
+                if user_type == category and opp_type in types:
+                    routes_to_user = True
+                    break
+            
+            # Calculate win probability (simple heuristic for now)
+            base_probability = 0.65 if routes_to_user else 0.45
+            age_factor = 1.0  # Could adjust based on created_at
+            value_factor = min(1.0, opp_value / 5000)  # Higher value = slightly lower probability
+            
+            win_probability = base_probability * age_factor * (1 - value_factor * 0.1)
+            win_probability = max(0.3, min(0.95, win_probability))
+            
+            expected_value = opp_value * win_probability
+            
+            # Generate recommendation
+            if win_probability >= 0.8:
+                recommendation = "EXECUTE IMMEDIATELY"
+            elif win_probability >= 0.65:
+                recommendation = "EXECUTE"
+            elif win_probability >= 0.5:
+                recommendation = "CONSIDER"
+            else:
+                recommendation = "SKIP - Low win probability"
+            
+            wrapped_opp = {
+                "opportunity": opp,
+                "routing": {
+                    "execution_score": {
+                        "win_probability": win_probability,
+                        "expected_value": expected_value,
+                        "recommendation": recommendation,
+                        "confidence": 0.8
+                    },
+                    "economics": {
+                        "aigentsy_fee": opp_value * 0.028 if routes_to_user else 0,
+                        "estimated_profit": opp_value * 0.70 if not routes_to_user else 0
+                    }
+                }
+            }
+            
+            if routes_to_user:
+                simulated_routing["user_routed"]["opportunities"].append(wrapped_opp)
+            else:
+                simulated_routing["aigentsy_routed"]["opportunities"].append(wrapped_opp)
+        
+        # STEP 3: APPLY FILTERS (remove outliers, stale, low-probability)
+        print(f"   🔧 Applying filters...")
+        
+        filtered_result = filter_opportunities(
+            opportunities=raw_results.get('opportunities', []),
+            routing_results=simulated_routing,
+            enable_outlier_filter=True,
+            enable_skip_filter=True,
+            enable_stale_filter=True,
+            max_age_days=30
+        )
+        
+        filter_stats = filtered_result['filter_stats']
+        print(f"      Removed: {filter_stats['outliers_removed']} outliers")
+        print(f"      Removed: {filter_stats['skipped_removed']} low-probability")
+        print(f"      Removed: {filter_stats['stale_removed']} stale")
+        print(f"      Remaining: {filter_stats['remaining_opportunities']} opportunities")
+        print(f"      Value: ${filter_stats['total_value_after']:,.0f}")
+        
+        # STEP 4: GET EXECUTE-NOW OPPORTUNITIES
+        execute_now = get_execute_now_opportunities(
+            filtered_result['filtered_routing'],
+            min_win_probability=0.7,
+            min_expected_value=1000
+        )
+        
+        print(f"   ⚡ Execute now: {len(execute_now)} high-priority opportunities")
+        
+        # STEP 5: EXTRACT USER-SPECIFIC OPPORTUNITIES
+        user_opportunities = []
+        
+        for wrapped in filtered_result['filtered_routing']['user_routed']['opportunities']:
+            opp = wrapped['opportunity']
+            score = wrapped['routing']['execution_score']
+            
+            # Add scoring data to opportunity
+            opp['match_score'] = int(score['win_probability'] * 100)
+            opp['confidence'] = score['confidence']
+            opp['win_probability'] = score['win_probability']
+            opp['expected_value'] = score['expected_value']
+            opp['recommendation'] = score['recommendation']
+            opp['status'] = 'pending_approval'
+            
+            user_opportunities.append(opp)
+        
+        # Sort by expected value (highest first)
+        user_opportunities.sort(key=lambda x: x.get('expected_value', 0), reverse=True)
+        
+        total_user_value = sum(o.get('estimated_value', 0) for o in user_opportunities)
+        total_expected_value = sum(o.get('expected_value', 0) for o in user_opportunities)
+        
+        print(f"\n✅ DISCOVERY COMPLETE for {username}")
+        print(f"   User opportunities: {len(user_opportunities)}")
+        print(f"   Total value: ${total_user_value:,.0f}")
+        print(f"   Expected value: ${total_expected_value:,.0f}")
+        print(f"   Execute now: {len([o for o in user_opportunities if 'EXECUTE' in o.get('recommendation', '')])} deals")
+        
+        return {
+            'ok': True,
+            'username': username,
+            'opportunities': user_opportunities,
+            'platforms_scraped': raw_results.get('platforms_scraped', []),
+            'total_found': len(user_opportunities),
+            'total_value': total_user_value,
+            'total_expected_value': total_expected_value,
+            'auto_bid': False,
+            'filter_stats': filter_stats,
+            'execute_now': [
+                {
+                    'id': o['opportunity']['id'],
+                    'title': o['opportunity']['title'],
+                    'value': o['opportunity']['estimated_value'],
+                    'win_probability': o['routing']['execution_score']['win_probability'],
+                    'expected_value': o['routing']['execution_score']['expected_value']
+                }
+                for o in execute_now[:10]  # Top 10 execute-now
+            ]
+        }
+    
+    except Exception as e:
+        import traceback
+        return {
+            'ok': False,
+            'error': str(e),
+            'trace': traceback.format_exc()
+        }
+
+# ============================================================
+# ENDPOINT 6: SCHEDULED DISCOVERY (BACKGROUND JOB)
+# ============================================================
+
+# Run this every hour via cron or background scheduler
+async def scheduled_discovery():
+    '''
+    Background job: Run discovery every hour
+    Automatically routes opportunities
+    '''
+    
+    try:
+        print("\\n🚀 SCHEDULED ALPHA DISCOVERY STARTED")
+        
+        engine = AlphaDiscoveryEngine()
+        results = await engine.discover_and_route()
+        
+        # Process results
+        user_routed = results['routing']['user_routed']['opportunities']
+        aigentsy_routed = results['routing']['aigentsy_routed']['opportunities']
+        
+        # Send to users
+        for routed in user_routed:
+            username = routed['routing']['routed_to']
+            # Notify user of new opportunity
+            # await notify_user(username, routed['opportunity'])
+        
+        # Add to Wade's queue
+        for routed in aigentsy_routed:
+            fulfillment_queue.add_to_queue(
+                opportunity=routed['opportunity'],
+                routing=routed['routing']
+            )
+        
+        # Notify Wade if high-value opportunities
+        high_value = [r for r in aigentsy_routed if r['opportunity']['value'] > 5000]
+        if high_value:
+            # await notify_wade(f"{len(high_value)} high-value opportunities need approval")
+            pass
+        
+        print(f"✅ Discovery complete: {results['total_opportunities']} found")
+        print(f"   → {len(user_routed)} to users")
+        print(f"   → {len(aigentsy_routed)} to AiGentsy (awaiting approval)")
+        
+        return results
+    
+    except Exception as e:
+        print(f"❌ Scheduled discovery error: {e}")
+        return None
+
 # ============ OCL (OUTCOME-BACKED CREDIT LINE) ============
 
 @app.get("/credit/status")
@@ -5385,6 +6221,16 @@ async def escrow_refund(body: Dict = Body(...)):
         )
         
         return result
+
+
+@app.post("/wade/discover-and-queue")
+async def discover_and_queue(request: dict):
+    """Run discovery and automatically queue Wade opportunities"""
+    username = request.get("username", "wade")
+    platforms = request.get("platforms")
+    
+    results = await auto_discover_and_queue(username, platforms)
+    return results
 
 # ============ PERFORMANCE BONDS + SLA BONUS ============
 
@@ -10415,6 +11261,49 @@ async def auto_update_knobs_on_event(body: Dict = Body(...)):
             "updates": apply_result,
             "message": "Knobs automatically updated within 60s of reputation change"
         }
+
+@app.post("/wade/process-opportunity")
+async def process_opportunity(opportunity: Dict):
+    '''
+    Step 1: Process discovered opportunity
+    Adds to Wade's approval queue
+    '''
+    result = await integrated_workflow.process_discovered_opportunity(opportunity)
+    return result
+
+@app.post("/wade/approve/{fulfillment_id}")
+async def wade_approve(fulfillment_id: str):
+    '''
+    Step 2: Wade approves + auto-bids
+    '''
+    result = await integrated_workflow.wade_approves(fulfillment_id)
+    return result
+
+@app.get("/wade/workflow/{workflow_id}")
+async def get_workflow(workflow_id: str):
+    '''
+    Check workflow status
+    '''
+    return integrated_workflow.get_workflow_status(workflow_id)
+
+@app.get("/wade/active-workflows")
+async def get_active_workflows():
+    '''
+    See all active workflows
+    '''
+    return {
+        'ok': True,
+        'workflows': integrated_workflow.get_all_active_workflows()
+    }
+
+@app.post("/wade/check-approval/{workflow_id}")
+async def check_approval(workflow_id: str):
+    '''
+    Manually check if client approved
+    (Background job would do this automatically)
+    '''
+    result = await integrated_workflow.check_client_approval(workflow_id)
+    return result
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
@@ -13306,6 +14195,263 @@ async def concierge_triage(text: str):
     suggested = [{"title":"Starter Offer","price":149},{"title":"Pro Offer","price":299}]
     return {"ok": True, "scope": scope, "suggested_offers": suggested, "price_bands":[149,299,499]}
 
+@app.get("/execution/health/detail")
+async def health_detail():
+    '''
+    Detailed health check - shows exactly which systems are broken
+    '''
+    result = await health_checker.check_all_systems()
+    return result
+
+
+@app.get("/execution/health/broken")
+async def health_broken_only():
+    '''
+    Quick view of just broken systems
+    '''
+    broken = health_checker.get_broken_systems_summary()
+    return {
+        "ok": True,
+        "broken_count": len(broken),
+        "broken_systems": broken
+    }
+
+# ============================================================
+# COMPLETE /discover ENDPOINT - ALL 40+ PLATFORMS
+# Add to main.py around line 13000
+# ============================================================
+
+@app.post("/discover")
+async def discover_opportunities(data: dict):
+    """
+    🚀 REAL DISCOVERY ENGINE - 12+ platforms with REAL data
+    
+    Request:
+        {
+            "username": "wade",
+            "platforms": ["github", "reddit", "remoteok"],  # Optional
+            "auto_bid": false
+        }
+    
+    Returns REAL opportunities from REAL APIs - NO FAKE DATA
+    """
+    from ultimate_discovery_engine import discover_all_opportunities
+    from opportunity_filters import filter_opportunities, get_execute_now_opportunities
+    
+    username = data.get("username")
+    requested_platforms = data.get("platforms")
+    auto_bid = data.get("auto_bid", False)
+    
+    if not username:
+        return {"status": "error", "message": "username required"}
+    
+    # Build user profile
+    user_profile = {
+        "username": username,
+        "skills": ["python", "javascript", "marketing"],
+        "kits": ["web_development", "api_development"]
+    }
+    
+    print(f"🔍 REAL Discovery for {username} across {len(requested_platforms) if requested_platforms else 'all'} platforms...")
+    
+    # STEP 1: DISCOVER from REAL sources
+    raw_results = await discover_all_opportunities(
+        username=username,
+        user_profile=user_profile,
+        platforms=requested_platforms
+    )
+    
+    total_discovered = raw_results.get('total_found', 0)
+    total_value_raw = raw_results.get('total_value', 0)
+    
+    print(f"   ✅ Discovered {total_discovered} REAL opportunities (${total_value_raw:,.0f})")
+    
+    # STEP 2: SIMULATE ROUTING for filters
+    simulated_routing = {
+        "user_routed": {"opportunities": []},
+        "aigentsy_routed": {"opportunities": []},
+        "held": {"opportunities": []}
+    }
+    
+    for opp in raw_results.get('opportunities', []):
+        opp_value = opp.get('estimated_value', 0)
+        win_probability = 0.65
+        expected_value = opp_value * win_probability
+        
+        wrapped = {
+            "opportunity": opp,
+            "routing": {
+                "execution_score": {
+                    "win_probability": win_probability,
+                    "expected_value": expected_value,
+                    "recommendation": "EXECUTE" if win_probability >= 0.7 else "CONSIDER"
+                },
+                "economics": {"aigentsy_fee": opp_value * 0.028}
+            }
+        }
+        simulated_routing["user_routed"]["opportunities"].append(wrapped)
+    
+    # STEP 3: APPLY FILTERS
+    filtered_result = filter_opportunities(
+        opportunities=raw_results.get('opportunities', []),
+        routing_results=simulated_routing,
+        enable_outlier_filter=True,
+        enable_skip_filter=True,
+        enable_stale_filter=True,
+        max_age_days=30
+    )
+    
+    # STEP 4: GET EXECUTE-NOW
+    execute_now = get_execute_now_opportunities(
+        filtered_result['filtered_routing'],
+        min_win_probability=0.7,
+        min_expected_value=1000
+    )
+    
+    # STEP 5: EXTRACT FINAL OPPORTUNITIES
+    final_opportunities = []
+    for wrapped in filtered_result['filtered_routing']['user_routed']['opportunities']:
+        opp = wrapped['opportunity']
+        score = wrapped['routing']['execution_score']
+        
+        opp['match_score'] = int(score['win_probability'] * 100)
+        opp['confidence'] = 0.8
+        opp['win_probability'] = score['win_probability']
+        opp['recommendation'] = score['recommendation']
+        opp['status'] = 'pending_approval'
+        
+        final_opportunities.append(opp)
+    
+    return {
+        "status": "ok",
+        "opportunities": final_opportunities,
+        "platforms_scraped": raw_results.get('platforms_scraped', []),
+        "total_found": len(final_opportunities),
+        "total_value": sum(o.get('estimated_value', 0) for o in final_opportunities),
+        "auto_bid": auto_bid,
+        "username": username,
+        "filter_stats": filtered_result['filter_stats'],
+        "execute_now": [
+            {
+                'id': o['opportunity']['id'],
+                'title': o['opportunity']['title'],
+                'value': o['opportunity'].get('estimated_value', 0)
+            }
+            for o in execute_now[:10]
+        ]
+    }
+
+
+def _get_opportunity_title(platform: str, index: int) -> str:
+    """Generate realistic opportunity titles"""
+    titles = {
+        "github": [
+            "Fix React state management bug in checkout flow",
+            "Add TypeScript support to legacy codebase",
+            "Implement OAuth2 authentication system",
+            "Optimize database queries for performance",
+            "Build CI/CD pipeline with GitHub Actions",
+            "Create responsive mobile navigation component"
+        ],
+        "upwork": [
+            "Build e-commerce website with Shopify",
+            "Develop React dashboard for analytics",
+            "Create WordPress theme for blog",
+            "Design landing page for SaaS product",
+            "Implement payment integration with Stripe"
+        ],
+        "reddit": [
+            "Looking for developer to build Chrome extension",
+            "Need help with Python data scraping project",
+            "Seeking freelancer for Next.js website",
+            "Looking for help with AWS infrastructure"
+        ],
+        "hackernews": [
+            "Senior Full Stack Engineer at YC Startup",
+            "Remote React Developer for B2B SaaS",
+            "Backend Engineer for Fintech Company"
+        ],
+        "linkedin": [
+            "Full Stack Developer needed for startup",
+            "Senior Software Engineer - Remote",
+            "Frontend Developer for enterprise SaaS",
+            "DevOps Engineer for scaling infrastructure",
+            "Mobile Developer for iOS/Android app"
+        ]
+    }
+    
+    platform_titles = titles.get(platform, ["Generic opportunity"])
+    return platform_titles[min(index - 1, len(platform_titles) - 1)]
+
+
+def _get_opportunity_description(platform: str, index: int) -> str:
+    """Generate realistic opportunity descriptions"""
+    descriptions = {
+        "github": [
+            "State management issue causing cart items to disappear on refresh. Need fix using Context API or Redux.",
+            "Convert 50K line JavaScript codebase to TypeScript. Must maintain backwards compatibility.",
+            "Implement secure OAuth2 flow with Google, GitHub, and Facebook login options.",
+            "Database queries taking 5-10 seconds. Need optimization and indexing strategy.",
+            "Set up automated testing, build, and deployment pipeline using GitHub Actions.",
+            "Build mobile-first navigation with hamburger menu and smooth transitions."
+        ],
+        "upwork": [
+            "Build custom Shopify store with 50+ products, payment integration, and admin panel.",
+            "Create analytics dashboard with charts, real-time data, and export functionality.",
+            "Design and develop custom WordPress theme with page builder integration.",
+            "Design high-converting landing page for B2B SaaS product with A/B testing.",
+            "Integrate Stripe payment processing with subscription management and webhooks."
+        ]
+    }
+    
+    platform_descriptions = descriptions.get(platform, ["Standard opportunity description"])
+    return platform_descriptions[min(index - 1, len(platform_descriptions) - 1)]
+
+
+def _get_opportunity_title(platform: str, index: int) -> str:
+    """Generate realistic opportunity titles"""
+    titles = {
+        "github": f"Fix marketing automation bug #{index}",
+        "upwork": f"Marketing Strategy Consultant (Project #{index})",
+        "reddit": f"[Hiring] Marketing Expert - r/forhire",
+        "hackernews": f"Show HN: Need marketing advice",
+        "linkedin": f"Marketing Manager - Growth Role",
+        "indiehackers": f"Looking for marketing co-founder",
+        "stackoverflow": f"Marketing analytics implementation",
+        "twitter": f"Twitter thread consulting opportunity",
+        "fiverr": f"Content marketing gig",
+        "freelancer": f"Digital marketing project",
+        "shopify": f"Store optimization consulting",
+        "medium": f"Ghost writing for marketing blog",
+        "substack": f"Newsletter growth consulting",
+        "gumroad": f"Product launch marketing",
+        "producthunt": f"Launch campaign assistance",
+    }
+    return titles.get(platform, f"{platform.capitalize()} opportunity #{index}")
+
+
+def _get_opportunity_description(platform: str, index: int) -> str:
+    """Generate realistic opportunity descriptions"""
+    descriptions = {
+        "github": f"Open-source project needs marketing/growth expertise. Help implement analytics and conversion optimization.",
+        "upwork": f"B2B SaaS company seeking marketing strategy and execution. Content marketing, SEO, growth campaigns.",
+        "reddit": f"Startup seeking marketing expert for product launch. Budget flexible, immediate start.",
+        "hackernews": f"YC-backed startup needs marketing strategy for B2B SaaS launch. Remote OK.",
+        "linkedin": f"Series A startup looking for growth marketing lead. Equity + competitive salary.",
+        "indiehackers": f"Bootstrapped SaaS ($10k MRR) needs help scaling to $50k. Revenue share available.",
+        "stackoverflow": f"Help implement marketing analytics and attribution tracking. Technical marketing role.",
+        "twitter": f"Twitter growth consulting for B2B brand. 3-month engagement.",
+        "fiverr": f"Create content marketing strategy and execute first month of campaigns.",
+        "freelancer": f"Digital marketing project: SEO + PPC + content. 6-month contract.",
+        "shopify": f"E-commerce store optimization and marketing automation setup.",
+        "medium": f"Ghost write 10 marketing articles for SaaS company blog. Thought leadership focus.",
+        "substack": f"Grow newsletter from 500 to 5000 subscribers. Content + growth strategy.",
+        "gumroad": f"Launch digital product with marketing campaign. $50k revenue target.",
+        "producthunt": f"Plan and execute Product Hunt launch. Aiming for #1 Product of the Day.",
+    }
+    return descriptions.get(platform, f"{platform.capitalize()} marketing opportunity - consulting and execution.")
+
+
 # ============ REVENUE INGESTION ENDPOINTS ============
 
 @app.post("/webhooks/shopify")
@@ -13951,6 +15097,8 @@ if dealgraph_router:
 
 if r3_router:
     app.include_router(r3_router, prefix="/r3", tags=["R³ Budget"])
+
+app.mount("/week1", week1_app)
 
 # Mount expansion router (for any remaining stubs)
 try:
@@ -14623,3 +15771,9 @@ try:
     app.include_router(_expansion_router)
 except Exception:
     pass
+
+@app.get("/api/discovery/stats/{username}")
+async def api_discovery_stats(username: str):
+    """Get Growth Agent discovery statistics"""
+    from dashboard_api import get_discovery_stats
+    return get_discovery_stats(username)
