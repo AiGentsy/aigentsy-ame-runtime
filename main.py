@@ -21,7 +21,7 @@ from actionization_routes import router as actionization_router
 from sku_config_loader import load_sku_config
 from storefront_deployer import deploy_storefront
 from business_ingestion import ingest_business_data
-from alpha_discovery_engine import AlphaDiscoveryEngine
+from ultimate_discovery_engine import discover_all_opportunities
 from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
@@ -5548,45 +5548,216 @@ async def reject_fulfillment(fulfillment_id: str, reason: str = None):
 @app.get("/discover/{username}")
 async def discover_for_user(username: str, platforms: List[str] = None):
     '''
-    Run discovery specifically for one user
-    Only returns opportunities matching their business type
+    🚀 ULTIMATE DISCOVERY ENGINE - Most sophisticated opportunity finder
     
-    This replaces/enhances your existing simulated /discover endpoint
+    Features:
+    - 12 REAL data sources (GitHub, Reddit, RemoteOK, HN, Upwork, etc.)
+    - Automatic outlier detection (filters $20M parsing bugs)
+    - Stale opportunity removal (no 5-year-old GitHub issues)
+    - Win probability scoring
+    - Execute-now prioritization
+    - Smart routing (user vs AiGentsy fulfillment)
+    
+    Returns:
+        - Filtered, scored, prioritized opportunities
+        - Execute-now list (high-priority deals)
+        - Full economics breakdown
     '''
     
     try:
-        # Get user data - FIX: Use your existing JSONBin function
+        # Get user data
         from log_to_jsonbin import load_user_data as jsonbin_load_user
         user_data = jsonbin_load_user(username)
         
         if not user_data:
             return {'ok': False, 'error': 'User not found'}
         
-        # Run discovery
-        engine = AlphaDiscoveryEngine()
-        all_results = await engine.discover_and_route(platforms=platforms)
+        # Build user profile for relevance matching
+        user_profile = {
+            "username": username,
+            "skills": user_data.get("traits", []),
+            "kits": list(user_data.get("kits", {}).keys()),
+            "companyType": user_data.get("companyType", "general")
+        }
         
-        # Filter for this user
+        # STEP 1: DISCOVER from 12+ REAL sources
+        print(f"\n🔍 Running discovery for {username} across {len(platforms) if platforms else 'all'} platforms...")
+        
+        raw_results = await discover_all_opportunities(
+            username=username,
+            user_profile=user_profile,
+            platforms=platforms  # None = all platforms
+        )
+        
+        total_discovered = raw_results.get('total_found', 0)
+        total_value_raw = raw_results.get('total_value', 0)
+        
+        print(f"   ✅ Discovered {total_discovered} opportunities (${total_value_raw:,.0f} raw value)")
+        
+        # STEP 2: SIMULATE ROUTING STRUCTURE for filters
+        # (Your opportunity_filters.py expects a routing structure)
+        simulated_routing = {
+            "user_routed": {
+                "opportunities": []
+            },
+            "aigentsy_routed": {
+                "opportunities": []
+            },
+            "held": {
+                "opportunities": []
+            }
+        }
+        
+        # Wrap each opportunity with basic routing data
+        for opp in raw_results.get('opportunities', []):
+            # Calculate basic economics
+            opp_value = opp.get('estimated_value', 0)
+            
+            # Simple relevance check (route to user if matches their type)
+            user_type = user_data.get('companyType', 'general')
+            opp_type = opp.get('type', 'unknown')
+            
+            # Type matching logic
+            type_matches = {
+                'marketing': ['content_creation', 'seo', 'copywriting', 'marketing'],
+                'software_development': ['software_development', 'web_development', 'api_integration', 'open_source'],
+                'consulting': ['business_consulting', 'market_research', 'consulting'],
+                'design': ['design', 'ui_ux', 'branding']
+            }
+            
+            routes_to_user = False
+            for category, types in type_matches.items():
+                if user_type == category and opp_type in types:
+                    routes_to_user = True
+                    break
+            
+            # Calculate win probability (simple heuristic for now)
+            base_probability = 0.65 if routes_to_user else 0.45
+            age_factor = 1.0  # Could adjust based on created_at
+            value_factor = min(1.0, opp_value / 5000)  # Higher value = slightly lower probability
+            
+            win_probability = base_probability * age_factor * (1 - value_factor * 0.1)
+            win_probability = max(0.3, min(0.95, win_probability))
+            
+            expected_value = opp_value * win_probability
+            
+            # Generate recommendation
+            if win_probability >= 0.8:
+                recommendation = "EXECUTE IMMEDIATELY"
+            elif win_probability >= 0.65:
+                recommendation = "EXECUTE"
+            elif win_probability >= 0.5:
+                recommendation = "CONSIDER"
+            else:
+                recommendation = "SKIP - Low win probability"
+            
+            wrapped_opp = {
+                "opportunity": opp,
+                "routing": {
+                    "execution_score": {
+                        "win_probability": win_probability,
+                        "expected_value": expected_value,
+                        "recommendation": recommendation,
+                        "confidence": 0.8
+                    },
+                    "economics": {
+                        "aigentsy_fee": opp_value * 0.028 if routes_to_user else 0,
+                        "estimated_profit": opp_value * 0.70 if not routes_to_user else 0
+                    }
+                }
+            }
+            
+            if routes_to_user:
+                simulated_routing["user_routed"]["opportunities"].append(wrapped_opp)
+            else:
+                simulated_routing["aigentsy_routed"]["opportunities"].append(wrapped_opp)
+        
+        # STEP 3: APPLY FILTERS (remove outliers, stale, low-probability)
+        print(f"   🔧 Applying filters...")
+        
+        filtered_result = filter_opportunities(
+            opportunities=raw_results.get('opportunities', []),
+            routing_results=simulated_routing,
+            enable_outlier_filter=True,
+            enable_skip_filter=True,
+            enable_stale_filter=True,
+            max_age_days=30
+        )
+        
+        filter_stats = filtered_result['filter_stats']
+        print(f"      Removed: {filter_stats['outliers_removed']} outliers")
+        print(f"      Removed: {filter_stats['skipped_removed']} low-probability")
+        print(f"      Removed: {filter_stats['stale_removed']} stale")
+        print(f"      Remaining: {filter_stats['remaining_opportunities']} opportunities")
+        print(f"      Value: ${filter_stats['total_value_after']:,.0f}")
+        
+        # STEP 4: GET EXECUTE-NOW OPPORTUNITIES
+        execute_now = get_execute_now_opportunities(
+            filtered_result['filtered_routing'],
+            min_win_probability=0.7,
+            min_expected_value=1000
+        )
+        
+        print(f"   ⚡ Execute now: {len(execute_now)} high-priority opportunities")
+        
+        # STEP 5: EXTRACT USER-SPECIFIC OPPORTUNITIES
         user_opportunities = []
         
-        for routed in all_results['routing']['user_routed']['opportunities']:
-            if routed['routing']['routed_to'] == username:
-                user_opportunities.append(routed['opportunity'])
+        for wrapped in filtered_result['filtered_routing']['user_routed']['opportunities']:
+            opp = wrapped['opportunity']
+            score = wrapped['routing']['execution_score']
+            
+            # Add scoring data to opportunity
+            opp['match_score'] = int(score['win_probability'] * 100)
+            opp['confidence'] = score['confidence']
+            opp['win_probability'] = score['win_probability']
+            opp['expected_value'] = score['expected_value']
+            opp['recommendation'] = score['recommendation']
+            opp['status'] = 'pending_approval'
+            
+            user_opportunities.append(opp)
+        
+        # Sort by expected value (highest first)
+        user_opportunities.sort(key=lambda x: x.get('expected_value', 0), reverse=True)
+        
+        total_user_value = sum(o.get('estimated_value', 0) for o in user_opportunities)
+        total_expected_value = sum(o.get('expected_value', 0) for o in user_opportunities)
+        
+        print(f"\n✅ DISCOVERY COMPLETE for {username}")
+        print(f"   User opportunities: {len(user_opportunities)}")
+        print(f"   Total value: ${total_user_value:,.0f}")
+        print(f"   Expected value: ${total_expected_value:,.0f}")
+        print(f"   Execute now: {len([o for o in user_opportunities if 'EXECUTE' in o.get('recommendation', '')])} deals")
         
         return {
             'ok': True,
             'username': username,
             'opportunities': user_opportunities,
+            'platforms_scraped': raw_results.get('platforms_scraped', []),
             'total_found': len(user_opportunities),
-            'total_value': sum(o['value'] for o in user_opportunities)
+            'total_value': total_user_value,
+            'total_expected_value': total_expected_value,
+            'auto_bid': False,
+            'filter_stats': filter_stats,
+            'execute_now': [
+                {
+                    'id': o['opportunity']['id'],
+                    'title': o['opportunity']['title'],
+                    'value': o['opportunity']['estimated_value'],
+                    'win_probability': o['routing']['execution_score']['win_probability'],
+                    'expected_value': o['routing']['execution_score']['expected_value']
+                }
+                for o in execute_now[:10]  # Top 10 execute-now
+            ]
         }
     
     except Exception as e:
+        import traceback
         return {
             'ok': False,
-            'error': str(e)
+            'error': str(e),
+            'trace': traceback.format_exc()
         }
-
 
 # ============================================================
 # ENDPOINT 6: SCHEDULED DISCOVERY (BACKGROUND JOB)
