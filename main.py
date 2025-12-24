@@ -11250,6 +11250,43 @@ async def auto_update_knobs_on_event(body: Dict = Body(...)):
             "updates": apply_result,
             "message": "Knobs automatically updated within 60s of reputation change"
         }
+
+@app.post("/wade/process-opportunity")
+async def process_opportunity(opportunity: Dict):
+    '''
+    Step 1: Process discovered opportunity
+    Adds to Wade's approval queue
+    '''
+    result = await integrated_workflow.process_discovered_opportunity(opportunity)
+    return result
+
+@app.post("/wade/approve/{fulfillment_id}")
+async def wade_approve(fulfillment_id: str):
+    '''
+    Step 2: Wade approves + auto-bids
+    '''
+    result = await integrated_workflow.wade_approves(fulfillment_id)
+    return result
+
+@app.get("/wade/workflow/{workflow_id}")
+async def get_workflow(workflow_id: str):
+    '''
+    Check workflow status
+    '''
+    return integrated_workflow.get_workflow_status(workflow_id)
+
+@app.get("/wade/active-workflows")
+async def get_active_workflows():
+    '''
+    See all active workflows
+    '''
+    return {
+        'ok': True,
+        'workflows': integrated_workflow.get_all_active_workflows()
+    }
+
+@app.post("/wade/check-approval/{workflow_id}")
+async def check_approval(workflow_id: str):
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
