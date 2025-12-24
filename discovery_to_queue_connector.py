@@ -35,17 +35,15 @@ async def process_discovery_results(discovery_results: Dict[str, Any]) -> Dict[s
             'results': discovery_results
         }
     
-    # Get opportunities (could be in 'opportunities' or 'routing.wade')
-    all_opportunities = discovery_results.get('opportunities', [])
+    # Get Wade opportunities from routing.wade.opportunities
+    # Discovery engine already filtered and routed them
+    routing = discovery_results.get('routing', {})
+    wade_data = routing.get('wade', {})
+    wade_opportunities = wade_data.get('opportunities', [])
     
-    # Filter for Wade opportunities
-    wade_opportunities = [
-        opp for opp in all_opportunities
-        if opp.get('fulfillability', {}).get('routing') == 'wade'
-        and opp.get('fulfillability', {}).get('can_wade_fulfill', False)
-    ]
+    total_found = discovery_results.get('total_found', 0)
     
-    print(f"📊 Processing {len(wade_opportunities)} Wade opportunities out of {len(all_opportunities)} total")
+    print(f"📊 Processing {len(wade_opportunities)} Wade opportunities out of {total_found} total discovered")
     
     processed = []
     errors = []
@@ -77,10 +75,11 @@ async def process_discovery_results(discovery_results: Dict[str, Any]) -> Dict[s
     
     return {
         'ok': True,
-        'total_discovered': len(all_opportunities),
+        'total_discovered': discovery_results.get('total_found', 0),
         'wade_opportunities': len(wade_opportunities),
         'processed': len(processed),
         'errors': len(errors),
+        'fulfillment_ids': [p['fulfillment_id'] for p in processed if p.get('fulfillment_id')],
         'opportunities': processed,
         'error_details': errors,
         'completed_at': datetime.now(timezone.utc).isoformat()
