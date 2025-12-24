@@ -329,19 +329,25 @@ class IntegratedFulfillmentWorkflow:
     
     async def _execute_code_generation(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute code generation using Claude
+        Execute code generation using Claude via OpenRouter
         
-        REAL IMPLEMENTATION - Uses Claude API to generate code
+        100% REAL - Uses your OPENROUTER_API_KEY
         """
         import os
-        import anthropic
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {
+                'success': False,
+                'error': 'OPENROUTER_API_KEY not set in environment variables'
+            }
         
         # Get requirements from opportunity
         title = opportunity.get('title', '')
         description = opportunity.get('description', '')
-        url = opportunity.get('url', '')
         
-        # Build Claude prompt
+        # Build prompt
         prompt = f"""You are a professional software engineer hired to complete this task:
 
 **Task:** {title}
@@ -365,43 +371,68 @@ Please provide:
 Deliver a professional solution that solves the problem completely."""
 
         try:
-            # Call Claude API
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=8000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            solution = message.content[0].text
-            
-            return {
-                'success': True,
-                'type': 'code_generation',
-                'solution': solution,
-                'model_used': 'claude-sonnet-4',
-                'tokens_used': message.usage.input_tokens + message.usage.output_tokens,
-                'files_generated': self._extract_code_files(solution),
-                'completed_at': datetime.now(timezone.utc).isoformat()
-            }
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 8000
+                    },
+                    timeout=120.0
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        'success': False,
+                        'error': f'OpenRouter API error: {response.status_code} - {response.text}'
+                    }
+                
+                data = response.json()
+                solution = data['choices'][0]['message']['content']
+                
+                return {
+                    'success': True,
+                    'type': 'code_generation',
+                    'solution': solution,
+                    'model_used': 'claude-sonnet-4',
+                    'tokens_used': data.get('usage', {}).get('total_tokens', 0),
+                    'files_generated': self._extract_code_files(solution),
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
         
+        except httpx.TimeoutException:
+            return {
+                'success': False,
+                'error': 'OpenRouter API timeout after 120 seconds'
+            }
         except Exception as e:
             return {
                 'success': False,
-                'error': f'Claude API error: {str(e)}'
+                'error': f'Execution error: {str(e)}'
             }
     
     async def _execute_content_generation(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute content generation using Claude
+        Execute content generation using Claude via OpenRouter
         
-        REAL IMPLEMENTATION - Uses Claude API for content writing
+        100% REAL - Uses your OPENROUTER_API_KEY
         """
         import os
-        import anthropic
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {
+                'success': False,
+                'error': 'OPENROUTER_API_KEY not set in environment variables'
+            }
         
         title = opportunity.get('title', '')
         description = opportunity.get('description', '')
@@ -423,39 +454,67 @@ Deliver a professional solution that solves the problem completely."""
 Please create the content following best practices for the requested type."""
 
         try:
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=8000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            content = message.content[0].text
-            
-            return {
-                'success': True,
-                'type': 'content_generation',
-                'content': content,
-                'model_used': 'claude-sonnet-4',
-                'word_count': len(content.split()),
-                'completed_at': datetime.now(timezone.utc).isoformat()
-            }
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 8000
+                    },
+                    timeout=120.0
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        'success': False,
+                        'error': f'OpenRouter API error: {response.status_code} - {response.text}'
+                    }
+                
+                data = response.json()
+                content = data['choices'][0]['message']['content']
+                
+                return {
+                    'success': True,
+                    'type': 'content_generation',
+                    'content': content,
+                    'model_used': 'claude-sonnet-4',
+                    'word_count': len(content.split()),
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
         
+        except httpx.TimeoutException:
+            return {
+                'success': False,
+                'error': 'OpenRouter API timeout after 120 seconds'
+            }
         except Exception as e:
             return {
                 'success': False,
-                'error': f'Claude API error: {str(e)}'
+                'error': f'Content generation error: {str(e)}'
             }
     
     async def _execute_claude_generic(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generic Claude execution for any task
+        Generic Claude execution for any task via OpenRouter
+        
+        100% REAL - Uses your OPENROUTER_API_KEY
         """
         import os
-        import anthropic
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {
+                'success': False,
+                'error': 'OPENROUTER_API_KEY not set in environment variables'
+            }
         
         title = opportunity.get('title', '')
         description = opportunity.get('description', '')
@@ -470,146 +529,99 @@ Please create the content following best practices for the requested type."""
 Please provide a complete, professional solution."""
 
         try:
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=8000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            return {
-                'success': True,
-                'type': 'generic_task',
-                'solution': message.content[0].text,
-                'model_used': 'claude-sonnet-4',
-                'completed_at': datetime.now(timezone.utc).isoformat()
-            }
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 8000
+                    },
+                    timeout=120.0
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        'success': False,
+                        'error': f'OpenRouter API error: {response.status_code} - {response.text}'
+                    }
+                
+                data = response.json()
+                
+                return {
+                    'success': True,
+                    'type': 'generic_task',
+                    'solution': data['choices'][0]['message']['content'],
+                    'model_used': 'claude-sonnet-4',
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
         
+        except httpx.TimeoutException:
+            return {
+                'success': False,
+                'error': 'OpenRouter API timeout after 120 seconds'
+            }
         except Exception as e:
             return {
                 'success': False,
-                'error': f'Claude API error: {str(e)}'
+                'error': f'Generic execution error: {str(e)}'
             }
     
     async def _execute_business_deployment(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute business deployment using template_actionizer
         
-        Uses AiGentsy's 160+ templates to deploy websites/stores/landing pages
+        TODO: Integrate with your actual template_actionizer system
+        This needs your 160+ templates deployment logic
+        
+        For now, returns error to prevent placeholder code from running
         """
         
-        title = opportunity.get('title', '')
-        description = opportunity.get('description', '')
-        
-        # Analyze requirements to pick template
-        requirements_lower = f"{title} {description}".lower()
-        
-        # Template selection logic
-        if any(word in requirements_lower for word in ['store', 'shop', 'ecommerce', 'product']):
-            template = 'ecommerce_store'
-            template_name = 'E-Commerce Store'
-        elif any(word in requirements_lower for word in ['landing', 'page', 'marketing']):
-            template = 'landing_page'
-            template_name = 'Marketing Landing Page'
-        elif any(word in requirements_lower for word in ['saas', 'app', 'dashboard']):
-            template = 'saas_platform'
-            template_name = 'SaaS Platform'
-        elif any(word in requirements_lower for word in ['portfolio', 'personal']):
-            template = 'portfolio_site'
-            template_name = 'Portfolio Website'
-        else:
-            template = 'business_website'
-            template_name = 'Business Website'
-        
-        # Simulate deployment (in real system, this would call template_actionizer API)
-        deployed_url = f"https://{template}-{datetime.now(timezone.utc).timestamp()}.aigentsy.app"
-        
         return {
-            'success': True,
-            'type': 'business_deployment',
-            'template_used': template_name,
-            'deployed_url': deployed_url,
-            'features': [
-                'Mobile responsive',
-                'SEO optimized',
-                'Fast loading',
-                'Professional design',
-                'Custom domain ready'
-            ],
-            'completed_at': datetime.now(timezone.utc).isoformat(),
-            'deployment_time_seconds': 45
+            'success': False,
+            'error': 'template_actionizer integration not yet implemented',
+            'message': 'This requires integration with your actual 160+ templates system',
+            'opportunity': opportunity['title']
         }
     
     async def _execute_ai_agent(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute AI agent deployment using OpenAI
+        Execute AI agent deployment using OpenAI via OpenRouter
         
-        Creates custom AI agents/chatbots
+        TODO: Integrate with your actual openai_agent_deployer system
+        This needs your agent deployment infrastructure
+        
+        For now, returns error to prevent placeholder code from running
         """
         
-        title = opportunity.get('title', '')
-        description = opportunity.get('description', '')
-        
-        # Simulate agent deployment
-        agent_id = f"agent_{datetime.now(timezone.utc).timestamp()}"
-        agent_url = f"https://agents.aigentsy.com/{agent_id}"
-        
         return {
-            'success': True,
-            'type': 'ai_agent',
-            'agent_id': agent_id,
-            'agent_url': agent_url,
-            'capabilities': [
-                'Natural language understanding',
-                'Custom knowledge base',
-                'API integrations',
-                '24/7 availability'
-            ],
-            'model_used': 'gpt-4',
-            'completed_at': datetime.now(timezone.utc).isoformat()
+            'success': False,
+            'error': 'openai_agent_deployer integration not yet implemented',
+            'message': 'This requires integration with your actual agent deployment system',
+            'opportunity': opportunity['title']
         }
     
     async def _execute_platform_monetization(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute platform monetization using metabridge_runtime
         
-        Sets up monetization across TikTok, Instagram, YouTube, etc.
+        TODO: Integrate with your actual metabridge_runtime system
+        This needs your platform monetization infrastructure
+        
+        For now, returns error to prevent placeholder code from running
         """
         
-        # Determine which platforms from opportunity
-        description_lower = opportunity.get('description', '').lower()
-        
-        platforms = []
-        if 'tiktok' in description_lower:
-            platforms.append('tiktok')
-        if 'instagram' in description_lower:
-            platforms.append('instagram')
-        if 'youtube' in description_lower:
-            platforms.append('youtube')
-        if not platforms:
-            platforms = ['tiktok', 'instagram']  # Default
-        
-        # Simulate monetization setup
-        links = {
-            platform: f"https://monetize.aigentsy.com/{platform}/{datetime.now(timezone.utc).timestamp()}"
-            for platform in platforms
-        }
-        
         return {
-            'success': True,
-            'type': 'platform_monetization',
-            'platforms': platforms,
-            'monetization_links': links,
-            'features': [
-                'Automated revenue tracking',
-                'Commission optimization',
-                'Multi-platform analytics',
-                'Payment processing'
-            ],
-            'completed_at': datetime.now(timezone.utc).isoformat()
+            'success': False,
+            'error': 'metabridge_runtime integration not yet implemented',
+            'message': 'This requires integration with your actual monetization system',
+            'opportunity': opportunity['title']
         }
     
     def _extract_code_files(self, solution: str) -> List[Dict[str, str]]:
@@ -956,4 +968,3 @@ Let me know if you need anything else!
 
 # Global instance
 integrated_workflow = IntegratedFulfillmentWorkflow()
-
