@@ -37,12 +37,19 @@ class IntegratedFulfillmentWorkflow:
     """
     Master workflow orchestrator
     Manages the complete lifecycle from discovery → payment
+    
+    Configuration:
+    - USE_EXISTING_SYSTEMS: True = Use template_actionizer, openai_agent_deployer, metabridge_runtime
+    - USE_EXISTING_SYSTEMS: False = Generate all code via Claude (OpenRouter)
     """
     
-    def __init__(self):
+    def __init__(self, use_existing_systems: bool = True):
         # Import existing systems
         from wade_approval_dashboard import fulfillment_queue
         self.approval_queue = fulfillment_queue
+        
+        # Configuration flag
+        self.use_existing_systems = use_existing_systems
         
         # State tracking
         self.workflows = {}  # opportunity_id → workflow_state
@@ -247,7 +254,9 @@ class IntegratedFulfillmentWorkflow:
         """
         Step 4: Execute the actual work
         
-        Routes to appropriate fulfillment system based on capability
+        SMART HYBRID ROUTING:
+        - Analyzes opportunity to determine if deployment or code generation is needed
+        - Routes to existing systems OR Claude generation automatically
         """
         
         workflow['stage'] = WorkflowStage.IN_PROGRESS
@@ -264,8 +273,22 @@ class IntegratedFulfillmentWorkflow:
         capability = fulfillability.get('capability')
         system = fulfillability.get('fulfillment_system')
         
-        # Route to appropriate execution handler
+        # 🔥 SMART ROUTING: Determine which mode to use
+        use_existing = self._should_use_existing_systems(opportunity)
+        
+        workflow['history'].append({
+            'stage': 'ROUTING_DECISION',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'action': f"Routing mode: {'EXISTING_SYSTEMS' if use_existing else 'CLAUDE_GENERATED'}",
+            'reason': workflow.get('routing_reason', 'Auto-detected from opportunity')
+        })
+        
+        # Temporarily override mode for this execution
+        original_mode = self.use_existing_systems
+        self.use_existing_systems = use_existing
+        
         try:
+            # Route to appropriate execution handler
             if system == 'claude':
                 if capability == 'code_generation':
                     result = await self._execute_code_generation(opportunity)
@@ -289,6 +312,9 @@ class IntegratedFulfillmentWorkflow:
                     'error': f'Unknown fulfillment system: {system}'
                 }
             
+            # Restore original mode
+            self.use_existing_systems = original_mode
+            
             if result.get('success'):
                 workflow['stage'] = WorkflowStage.COMPLETED
                 workflow['completed_at'] = datetime.now(timezone.utc).isoformat()
@@ -297,6 +323,7 @@ class IntegratedFulfillmentWorkflow:
                     'stage': WorkflowStage.COMPLETED,
                     'timestamp': datetime.now(timezone.utc).isoformat(),
                     'action': 'Execution completed',
+                    'mode': result.get('mode', 'unknown'),
                     'data': result
                 })
                 
@@ -306,16 +333,22 @@ class IntegratedFulfillmentWorkflow:
                 return {
                     'ok': True,
                     'execution_completed': True,
+                    'execution_mode': result.get('mode'),
                     'delivery_result': delivery_result
                 }
             
             else:
+                # Restore original mode
+                self.use_existing_systems = original_mode
                 return {
                     'ok': False,
                     'error': result.get('error', 'Execution failed')
                 }
         
         except Exception as e:
+            # Restore original mode
+            self.use_existing_systems = original_mode
+            
             workflow['history'].append({
                 'stage': 'ERROR',
                 'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -326,6 +359,83 @@ class IntegratedFulfillmentWorkflow:
                 'ok': False,
                 'error': str(e)
             }
+    
+    def _should_use_existing_systems(self, opportunity: Dict[str, Any]) -> bool:
+        """
+        SMART ROUTING LOGIC: Determine if we should use existing systems or Claude generation
+        
+        Use EXISTING SYSTEMS when:
+        - Opportunity explicitly requests deployment ("deploy", "host", "live site")
+        - Opportunity mentions infrastructure ("database", "production", "scalable")
+        - Opportunity is from a platform that expects live deliverables
+        - Budget is high enough to justify deployment costs
+        
+        Use CLAUDE GENERATION when:
+        - Opportunity asks for code/files ("code", "script", "download")
+        - Opportunity is educational/learning focused
+        - Budget is low (< $100)
+        - Quick turnaround needed
+        """
+        
+        title = opportunity.get('title', '').lower()
+        description = opportunity.get('description', '').lower()
+        platform = opportunity.get('source', '').lower()
+        budget = opportunity.get('estimated_value', 0)
+        
+        combined = f"{title} {description}"
+        
+        # 🔥 DEPLOYMENT TRIGGERS (Use existing systems)
+        deployment_keywords = [
+            'deploy', 'host', 'live', 'production', 'launch',
+            'database', 'backend', 'api', 'scalable', 'infrastructure',
+            'vercel', 'heroku', 'aws', 'cloud', 'server',
+            'domain', 'ssl', 'https', 'cdn', 'hosting'
+        ]
+        
+        # 🔥 CODE GENERATION TRIGGERS (Use Claude)
+        code_keywords = [
+            'code', 'script', 'download', 'file', 'source',
+            'github repo', 'git', 'example', 'tutorial', 'learning',
+            'understand', 'how to', 'teach me', 'explain'
+        ]
+        
+        # Count matches
+        deployment_score = sum(1 for keyword in deployment_keywords if keyword in combined)
+        code_score = sum(1 for keyword in code_keywords if keyword in combined)
+        
+        # Platform-based routing
+        if platform in ['upwork', 'freelancer']:
+            # These platforms typically want deployed solutions
+            deployment_score += 2
+        elif platform in ['github', 'stackoverflow']:
+            # These platforms typically want code
+            code_score += 2
+        
+        # Budget-based routing
+        if budget >= 500:
+            # High budget → likely wants full deployment
+            deployment_score += 2
+        elif budget < 100:
+            # Low budget → likely wants just code
+            code_score += 1
+        
+        # Make decision
+        if deployment_score > code_score:
+            opportunity['routing_reason'] = f'Deployment signals: {deployment_score} vs Code signals: {code_score}'
+            return True  # Use existing systems
+        elif code_score > deployment_score:
+            opportunity['routing_reason'] = f'Code signals: {code_score} vs Deployment signals: {deployment_score}'
+            return False  # Use Claude generation
+        else:
+            # Tie-breaker: Default based on capability type
+            capability = opportunity.get('fulfillability', {}).get('capability', '')
+            
+            if capability == 'business_deployment':
+                opportunity['routing_reason'] = 'Business deployment capability → deployment mode'
+                return True  # Business deployment defaults to existing systems
+            else:
+                opportunity['routing_reason'] = 'Tie-breaker → code generation mode'
+                return False  # Everything else defaults to Claude generation
     
     async def _execute_code_generation(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -575,10 +685,19 @@ Please provide a complete, professional solution."""
     
     async def _execute_business_deployment(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute business deployment using YOUR template_actionizer
+        Execute business deployment
         
-        100% REAL - Uses your existing 160+ templates system
+        Mode 1 (use_existing_systems=True): Use YOUR template_actionizer
+        Mode 2 (use_existing_systems=False): Generate code via Claude
         """
+        
+        if self.use_existing_systems:
+            return await self._execute_business_deployment_existing(opportunity)
+        else:
+            return await self._execute_business_deployment_claude(opportunity)
+    
+    async def _execute_business_deployment_existing(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Use YOUR existing template_actionizer system"""
         
         from template_actionizer import actionize_template, TEMPLATE_CONFIGS
         from log_to_jsonbin import get_user
@@ -596,11 +715,9 @@ Please provide a complete, professional solution."""
         elif any(word in requirements_lower for word in ['social', 'instagram', 'tiktok', 'content']):
             template_type = 'social'
         else:
-            # Default to marketing
             template_type = 'marketing'
         
         try:
-            # Get user data
             username = opportunity.get('username', 'wade')
             user_data = get_user(username)
             
@@ -630,6 +747,7 @@ Please provide a complete, professional solution."""
             return {
                 'success': True,
                 'type': 'business_deployment',
+                'mode': 'existing_systems',
                 'template_type': template_type,
                 'website_url': result['urls']['website'],
                 'admin_url': result['urls']['admin_panel'],
@@ -664,20 +782,140 @@ Deployment Time: {result.get('deployment_time')}
                 'error': f'Template actionizer error: {str(e)}'
             }
     
+    async def _execute_business_deployment_claude(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate complete website code via Claude/OpenRouter"""
+        
+        import os
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {
+                'success': False,
+                'error': 'OPENROUTER_API_KEY not set in environment variables'
+            }
+        
+        title = opportunity.get('title', '')
+        description = opportunity.get('description', '')
+        
+        # Analyze requirements
+        requirements_lower = f"{title} {description}".lower()
+        
+        if any(word in requirements_lower for word in ['store', 'shop', 'ecommerce', 'product']):
+            website_type = 'E-Commerce Store'
+        elif any(word in requirements_lower for word in ['landing', 'page', 'marketing']):
+            website_type = 'Marketing Landing Page'
+        elif any(word in requirements_lower for word in ['saas', 'app', 'dashboard']):
+            website_type = 'SaaS Platform'
+        elif any(word in requirements_lower for word in ['portfolio', 'personal']):
+            website_type = 'Portfolio Website'
+        else:
+            website_type = 'Business Website'
+        
+        prompt = f"""You are a professional web developer hired to build a complete, production-ready {website_type}.
+
+**Project:** {title}
+
+**Requirements:**
+{description}
+
+**DELIVERABLES - Create a COMPLETE, SINGLE-FILE website:**
+
+1. Create ONE index.html file that includes:
+   - All HTML structure
+   - All CSS styles in <style> tags
+   - All JavaScript in <script> tags
+   - MUST be fully functional as a standalone file
+
+2. Requirements:
+   - Modern, professional design
+   - Mobile responsive (use CSS media queries)
+   - Clean, semantic HTML5
+   - No external dependencies (no CDN links)
+   - Production-ready code
+   - Include comments
+
+**IMPORTANT:** 
+- Output ONLY the complete HTML file
+- NO explanations before or after
+- Start with <!DOCTYPE html>
+- End with </html>"""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 16000
+                    },
+                    timeout=180.0
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        'success': False,
+                        'error': f'OpenRouter API error: {response.status_code}'
+                    }
+                
+                data = response.json()
+                html_code = data['choices'][0]['message']['content'].strip()
+                
+                # Clean markdown
+                if html_code.startswith('```html'):
+                    html_code = html_code[7:]
+                if html_code.startswith('```'):
+                    html_code = html_code[3:]
+                if html_code.endswith('```'):
+                    html_code = html_code[:-3]
+                html_code = html_code.strip()
+                
+                return {
+                    'success': True,
+                    'type': 'business_deployment',
+                    'mode': 'claude_generated',
+                    'website_type': website_type,
+                    'files_generated': [{
+                        'filename': 'index.html',
+                        'language': 'html',
+                        'content': html_code
+                    }],
+                    'deployment_instructions': 'Upload index.html to Netlify, Vercel, or GitHub Pages',
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
+        
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Claude generation error: {str(e)}'
+            }
+    
     async def _execute_ai_agent(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute AI agent deployment using YOUR openai_agent_deployer
+        Execute AI agent deployment
         
-        100% REAL - Uses your existing agent deployment system
+        Mode 1 (use_existing_systems=True): Use YOUR openai_agent_deployer
+        Mode 2 (use_existing_systems=False): Generate code via Claude
         """
+        
+        if self.use_existing_systems:
+            return await self._execute_ai_agent_existing(opportunity)
+        else:
+            return await self._execute_ai_agent_claude(opportunity)
+    
+    async def _execute_ai_agent_existing(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Use YOUR existing openai_agent_deployer system"""
         
         from openai_agent_deployer import deploy_ai_agents, AGENT_CONFIGS
         from log_to_jsonbin import get_user
         
         title = opportunity.get('title', '')
         description = opportunity.get('description', '')
-        
-        # Determine template type for agent configuration
         requirements_lower = f"{title} {description}".lower()
         
         if any(word in requirements_lower for word in ['saas', 'api', 'developer']):
@@ -688,30 +926,16 @@ Deployment Time: {result.get('deployment_time')}
             template_type = 'marketing'
         
         try:
-            # Get user data
             username = opportunity.get('username', 'wade')
             user_data = get_user(username)
             
             if not user_data:
-                return {
-                    'success': False,
-                    'error': f'User not found: {username}'
-                }
+                return {'success': False, 'error': f'User not found: {username}'}
             
-            # Create mock website URL and database credentials for agent deployment
             website_url = f"https://{username}.aigentsy.com"
-            database_credentials = {
-                'host': 'mock_db_host',
-                'database': f'{username}_db'
-            }
+            database_credentials = {'host': 'mock_db_host', 'database': f'{username}_db'}
+            config = {'template_type': template_type, 'ai_agents': True}
             
-            # Get template config
-            config = {
-                'template_type': template_type,
-                'ai_agents': True
-            }
-            
-            # Call YOUR openai_agent_deployer
             result = await deploy_ai_agents(
                 username=username,
                 template_type=template_type,
@@ -722,12 +946,8 @@ Deployment Time: {result.get('deployment_time')}
             )
             
             if not result.get('ok'):
-                return {
-                    'success': False,
-                    'error': result.get('error', 'Agent deployment failed')
-                }
+                return {'success': False, 'error': result.get('error', 'Agent deployment failed')}
             
-            # Format agent details for delivery
             agents_summary = "\n".join([
                 f"- {agent['name']} (ID: {agent['assistant_id']}): {agent['role']}"
                 for agent in result.get('agents', [])
@@ -736,6 +956,7 @@ Deployment Time: {result.get('deployment_time')}
             return {
                 'success': True,
                 'type': 'ai_agent',
+                'mode': 'existing_systems',
                 'agents': result.get('agents', []),
                 'agents_count': result.get('agents_count', 0),
                 'webhook_url': result.get('webhook_url'),
@@ -743,32 +964,106 @@ Deployment Time: {result.get('deployment_time')}
                 'files_generated': [{
                     'filename': 'agents_summary.txt',
                     'language': 'text',
-                    'content': f"""AI Agents Deployed Successfully!
+                    'content': f"""AI Agents Deployed!
 
 Template: {template_type}
-Agents Deployed: {result.get('agents_count', 0)}
+Agents: {result.get('agents_count', 0)}
 
 {agents_summary}
 
-Webhook URL: {result.get('webhook_url')}
-Mock Deployment: {'Yes (set OPENAI_API_KEY for real deployment)' if result.get('mock') else 'No'}
+Webhook: {result.get('webhook_url')}
+Mock: {'Yes' if result.get('mock') else 'No'}
 """
                 }],
                 'completed_at': result.get('deployed_at', datetime.now(timezone.utc).isoformat())
             }
         
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'AI agent deployer error: {str(e)}'
-            }
+            return {'success': False, 'error': f'AI agent deployer error: {str(e)}'}
+    
+    async def _execute_ai_agent_claude(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate complete AI agent code via Claude/OpenRouter"""
+        
+        import os
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {'success': False, 'error': 'OPENROUTER_API_KEY not set'}
+        
+        title = opportunity.get('title', '')
+        description = opportunity.get('description', '')
+        
+        prompt = f"""Build a complete AI chatbot/agent in Python.
+
+**Project:** {title}
+**Requirements:** {description}
+
+Create agent.py with:
+- OpenAI/Anthropic API integration
+- Conversation management
+- Error handling
+- Production-ready code
+
+Output ONLY Python code, no explanations."""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 8000
+                    },
+                    timeout=120.0
+                )
+                
+                if response.status_code != 200:
+                    return {'success': False, 'error': f'OpenRouter error: {response.status_code}'}
+                
+                agent_code = response.json()['choices'][0]['message']['content'].strip()
+                
+                if '```python' in agent_code:
+                    agent_code = agent_code.split('```python')[1].split('```')[0].strip()
+                elif '```' in agent_code:
+                    agent_code = agent_code.split('```')[1].split('```')[0].strip()
+                
+                return {
+                    'success': True,
+                    'type': 'ai_agent',
+                    'mode': 'claude_generated',
+                    'files_generated': [{
+                        'filename': 'agent.py',
+                        'language': 'python',
+                        'content': agent_code
+                    }],
+                    'deployment_instructions': 'pip install openai anthropic && python agent.py',
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
+        
+        except Exception as e:
+            return {'success': False, 'error': f'Claude generation error: {str(e)}'}
     
     async def _execute_platform_monetization(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute platform monetization using YOUR metabridge_runtime
+        Execute platform monetization
         
-        100% REAL - Uses your existing MetaBridge system
+        Mode 1 (use_existing_systems=True): Use YOUR metabridge_runtime
+        Mode 2 (use_existing_systems=False): Generate code via Claude
         """
+        
+        if self.use_existing_systems:
+            return await self._execute_platform_monetization_existing(opportunity)
+        else:
+            return await self._execute_platform_monetization_claude(opportunity)
+    
+    async def _execute_platform_monetization_existing(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Use YOUR existing metabridge_runtime system"""
         
         from metabridge_runtime import MetaBridgeRuntime
         from log_to_jsonbin import get_user
@@ -778,56 +1073,37 @@ Mock Deployment: {'Yes (set OPENAI_API_KEY for real deployment)' if result.get('
         username = opportunity.get('username', 'wade')
         
         try:
-            # Get user data
             user_data = get_user(username)
-            
             if not user_data:
-                return {
-                    'success': False,
-                    'error': f'User not found: {username}'
-                }
+                return {'success': False, 'error': f'User not found: {username}'}
             
-            # Initialize MetaBridge runtime
             runtime = MetaBridgeRuntime()
-            
-            # Build query for matching
             query = f"{title} - {description}"
-            
-            # Generate mesh session ID
             mesh_session_id = f"mesh_{username}_{int(datetime.now(timezone.utc).timestamp())}"
             
-            # Run full MetaBridge cycle
             result = runtime.full_cycle(
                 query=query,
                 originator=username,
                 mesh_session_id=mesh_session_id
             )
             
-            # Extract matches
             matches = result.get('matches', []) if isinstance(result, dict) and 'matches' in result else []
-            
-            # Get proposal and delivery info
             proposal = result.get('proposal', 'Monetization proposal generated')
             delivery = result.get('delivery', {})
             dealgraph = result.get('dealgraph')
             
-            # Determine platforms from description
             description_lower = f"{title} {description}".lower()
             platforms = []
-            if 'tiktok' in description_lower:
-                platforms.append('TikTok')
-            if 'instagram' in description_lower:
-                platforms.append('Instagram')
-            if 'youtube' in description_lower:
-                platforms.append('YouTube')
-            if 'amazon' in description_lower:
-                platforms.append('Amazon')
-            if not platforms:
-                platforms = ['TikTok', 'Instagram', 'YouTube']
+            if 'tiktok' in description_lower: platforms.append('TikTok')
+            if 'instagram' in description_lower: platforms.append('Instagram')
+            if 'youtube' in description_lower: platforms.append('YouTube')
+            if 'amazon' in description_lower: platforms.append('Amazon')
+            if not platforms: platforms = ['TikTok', 'Instagram', 'YouTube']
             
             return {
                 'success': True,
                 'type': 'platform_monetization',
+                'mode': 'existing_systems',
                 'platforms': platforms,
                 'matches_count': len(matches),
                 'matches': matches,
@@ -838,17 +1114,15 @@ Mock Deployment: {'Yes (set OPENAI_API_KEY for real deployment)' if result.get('
                 'files_generated': [{
                     'filename': 'monetization_summary.txt',
                     'language': 'text',
-                    'content': f"""Platform Monetization Setup Complete!
+                    'content': f"""Platform Monetization Complete!
 
 Platforms: {', '.join(platforms)}
-Matches Found: {len(matches)}
+Matches: {len(matches)}
 Mesh Session: {mesh_session_id}
 DealGraph: {dealgraph.get('id') if dealgraph else 'N/A'}
 
 Proposal:
 {proposal}
-
-Delivery Status: {delivery.get('ok', 'Pending')}
 
 Matched Partners:
 {chr(10).join([f"- {m.get('username', 'Unknown')}: {m.get('meta_role', 'Partner')}" for m in matches[:5]])}
@@ -858,10 +1132,85 @@ Matched Partners:
             }
         
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'MetaBridge runtime error: {str(e)}'
-            }
+            return {'success': False, 'error': f'MetaBridge error: {str(e)}'}
+    
+    async def _execute_platform_monetization_claude(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate complete monetization code via Claude/OpenRouter"""
+        
+        import os
+        import httpx
+        
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            return {'success': False, 'error': 'OPENROUTER_API_KEY not set'}
+        
+        title = opportunity.get('title', '')
+        description = opportunity.get('description', '')
+        
+        # Detect platforms
+        description_lower = f"{title} {description}".lower()
+        platforms = []
+        if 'tiktok' in description_lower: platforms.append('TikTok')
+        if 'instagram' in description_lower: platforms.append('Instagram')
+        if 'youtube' in description_lower: platforms.append('YouTube')
+        if not platforms: platforms = ['TikTok', 'Instagram']
+        
+        prompt = f"""Build a complete platform monetization system in Python.
+
+**Project:** {title}
+**Platforms:** {', '.join(platforms)}
+**Requirements:** {description}
+
+Create monetization.py with:
+- Link tracking
+- Revenue analytics
+- Multi-platform support
+- Production-ready code
+
+Output ONLY Python code, no explanations."""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 8000
+                    },
+                    timeout=120.0
+                )
+                
+                if response.status_code != 200:
+                    return {'success': False, 'error': f'OpenRouter error: {response.status_code}'}
+                
+                code = response.json()['choices'][0]['message']['content'].strip()
+                
+                if '```python' in code:
+                    code = code.split('```python')[1].split('```')[0].strip()
+                elif '```' in code:
+                    code = code.split('```')[1].split('```')[0].strip()
+                
+                return {
+                    'success': True,
+                    'type': 'platform_monetization',
+                    'mode': 'claude_generated',
+                    'platforms': platforms,
+                    'files_generated': [{
+                        'filename': 'monetization.py',
+                        'language': 'python',
+                        'content': code
+                    }],
+                    'deployment_instructions': f'Deploy to handle {", ".join(platforms)} monetization',
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
+        
+        except Exception as e:
+            return {'success': False, 'error': f'Claude generation error: {str(e)}'}
     
     def _extract_code_files(self, solution: str) -> List[Dict[str, str]]:
         """
@@ -1214,6 +1563,11 @@ Let me know if you need anything else!"""
         return active
 
 
-# Global instance
-integrated_workflow = IntegratedFulfillmentWorkflow()
+# Global instances
+# HYBRID MODE (DEFAULT): Auto-detects whether to use existing systems or Claude generation
+integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)  # Default to existing, but will auto-switch
+
+# Manual override options if needed:
+integrated_workflow_existing = IntegratedFulfillmentWorkflow(use_existing_systems=True)   # Force existing systems
+integrated_workflow_claude = IntegratedFulfillmentWorkflow(use_existing_systems=False)    # Force Claude generation
 
