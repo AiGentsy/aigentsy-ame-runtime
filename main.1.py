@@ -11262,6 +11262,10 @@ async def auto_update_knobs_on_event(body: Dict = Body(...)):
             "message": "Knobs automatically updated within 60s of reputation change"
         }
 
+@app.post("/wade/discover-and-queue")
+async def discover_and_queue(request: dict):
+    return await process_and_queue(request)
+
 @app.post("/wade/process-opportunity")
 async def process_opportunity(opportunity: Dict):
     '''
