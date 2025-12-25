@@ -26,24 +26,36 @@ class AiGentsyFulfillmentQueue:
         
         Args:
             opportunity: The discovered opportunity
-            routing: Routing decision from AlphaDiscoveryRouter
+            routing: Fulfillability data from discovery engine
         
         Returns:
             Fulfillment record
         """
         
+        # Handle both old (nested economics) and new (flat) structures
+        if 'economics' in routing:
+            # Old structure
+            estimated_profit = routing['economics']['estimated_profit']
+            estimated_cost = routing['economics']['estimated_cost']
+            estimated_days = routing['economics'].get('estimated_days', 7)
+        else:
+            # New flat structure from discovery engine
+            estimated_profit = routing.get('estimated_profit', 0)
+            estimated_cost = routing.get('estimated_cost', 0)
+            estimated_days = routing.get('delivery_days', 7)
+        
         fulfillment = {
-            'id': f"aigentsy_fulfill_{datetime.utcnow().timestamp()}",
+            'id': f"fulfillment_{datetime.utcnow().timestamp()}",
             'opportunity': opportunity,
             'routing': routing,
-            'status': 'pending_wade_approval',
+            'status': 'pending_approval',
             'created_at': datetime.utcnow().isoformat(),
-            'estimated_profit': routing['economics']['estimated_profit'],
-            'estimated_cost': routing['economics']['estimated_cost'],
-            'estimated_days': routing['economics'].get('estimated_days', 7),
+            'estimated_profit': estimated_profit,
+            'estimated_cost': estimated_cost,
+            'estimated_days': estimated_days,
             'fulfillment_plan': self._generate_fulfillment_plan(opportunity, routing),
-            'ai_models': routing['capability'].get('ai_models', ['claude']),
-            'confidence': routing['confidence']
+            'ai_models': routing.get('ai_models', [routing.get('fulfillment_system', 'claude')]),
+            'confidence': routing.get('confidence', 0.8)
         }
         
         self.pending_fulfillments.append(fulfillment)
@@ -55,10 +67,19 @@ class AiGentsyFulfillmentQueue:
         Generate recommended approach for fulfillment
         """
         
-        capability = routing.get('capability', {})
+        # Handle both nested and flat structures
+        if 'capability' in routing and isinstance(routing['capability'], dict):
+            ai_models = routing['capability'].get('ai_models', ['claude'])
+            tools_needed = routing['capability'].get('tools', [])
+        else:
+            ai_models = [routing.get('fulfillment_system', 'claude')]
+            tools_needed = []
+        
+        estimated_days = routing.get('delivery_days', routing.get('economics', {}).get('estimated_days', 7))
+        confidence = routing.get('confidence', 0.8)
         
         return {
-            'approach': f"Use {', '.join(capability.get('ai_models', ['claude']))} to fulfill {opportunity['type']}",
+            'approach': f"Use {', '.join(ai_models)} to fulfill {opportunity.get('type', 'opportunity')}",
             'steps': [
                 'Analyze requirements with Claude',
                 'Generate deliverables with AI',
@@ -66,9 +87,9 @@ class AiGentsyFulfillmentQueue:
                 'Deliver to client',
                 'Collect payment'
             ],
-            'tools_needed': capability.get('tools', []),
-            'estimated_hours': routing['economics'].get('estimated_days', 7) * 4,  # 4 hours per day estimate
-            'risk_level': 'low' if routing['confidence'] > 0.85 else 'medium'
+            'tools_needed': tools_needed,
+            'estimated_hours': estimated_days * 4,  # 4 hours per day estimate
+            'risk_level': 'low' if confidence > 0.85 else 'medium'
         }
     
     def get_pending_queue(self) -> List[Dict]:
