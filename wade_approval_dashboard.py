@@ -160,10 +160,10 @@ class AiGentsyFulfillmentQueue:
     def get_stats(self) -> Dict:
         """Get queue statistics"""
         
-        pending_value = sum(f['opportunity']['value'] for f in self.pending_fulfillments)
+        pending_value = sum(f['opportunity'].get('estimated_value', f['opportunity'].get('value', 0)) for f in self.pending_fulfillments)
         pending_profit = sum(f['estimated_profit'] for f in self.pending_fulfillments)
         
-        approved_value = sum(f['opportunity']['value'] for f in self.approved_fulfillments)
+        approved_value = sum(f['opportunity'].get('estimated_value', f['opportunity'].get('value', 0)) for f in self.approved_fulfillments)
         approved_profit = sum(f['estimated_profit'] for f in self.approved_fulfillments)
         
         return {
