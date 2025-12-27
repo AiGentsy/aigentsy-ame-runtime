@@ -28,7 +28,7 @@ async def process_discovery_results(discovery_results: Dict[str, Any]) -> Dict[s
     
     from wade_integrated_workflow import integrated_workflow
     
-    if not discovery_results.get('status') == 'ok':
+    if not discovery_results.get('ok'):
         return {
             'ok': False,
             'error': 'Discovery results not ok',
@@ -101,7 +101,7 @@ async def auto_discover_and_queue(username: str = "wade", platforms: List[str] =
     # Step 1: Discover
     discovery_results = await discover_all_opportunities(username, platforms or {})
     
-    if not discovery_results.get('status') == 'ok':
+    if not discovery_results.get('ok'):
         return {
             'ok': False,
             'error': 'Discovery failed',
