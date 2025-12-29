@@ -2,7 +2,7 @@
 AME/AMG ENDPOINTS
 Monetization endpoints for third-party traffic
 
-Add these to main.py
+USAGE: Import these functions into main.py and create endpoints there
 """
 
 from fastapi import Request, Response
@@ -22,8 +22,8 @@ from third_party_monetization import (
 # LANDING PAGE - Track & Monetize
 # ============================================================
 
-@app.get("/track-visit")
-async def track_visit(
+async def track_visit_handler(request: Request, utm_source: str = None, utm_campaign: str = None, utm_medium: str = None, creator: str = None, ref: str = None) -> Dict:
+async def track_visit_handler(
     request: Request,
     utm_source: str = None,
     utm_campaign: str = None,
@@ -35,10 +35,10 @@ async def track_visit(
     Track visitor from social media
     Returns monetization strategy
     
-    Usage in frontend:
-    fetch('/track-visit?' + window.location.search)
-        .then(r => r.json())
-        .then(data => applyMonetizationTactics(data))
+    Usage in main.py:
+    @app.get("/track-visit")
+    async def track_visit(request: Request, utm_source: str = None, ...):
+        return await track_visit_handler(request, utm_source, ...)
     """
     
     # Parse traffic source
@@ -113,8 +113,7 @@ async def track_visit(
 # CONVERSION TRACKING
 # ============================================================
 
-@app.post("/track-conversion")
-async def track_conversion_endpoint(request: Request):
+async def track_conversion_handler(request: Request):
     """
     Track when visitor converts to customer
     
@@ -167,8 +166,7 @@ async def track_conversion_endpoint(request: Request):
 # AMG OPTIMIZATION
 # ============================================================
 
-@app.get("/amg/optimize")
-async def amg_optimize():
+async def amg_optimize_handler():
     """
     AMG analyzes conversion data and returns optimizations
     
@@ -220,8 +218,7 @@ async def amg_optimize():
 # CREATOR CODES
 # ============================================================
 
-@app.post("/creator/register")
-async def register_creator(body: Dict):
+async def register_creator_handler(body: Dict):
     """
     Register a creator code for affiliate tracking
     
@@ -251,8 +248,7 @@ async def register_creator(body: Dict):
     }
 
 
-@app.get("/creator/{creator_code}/stats")
-async def get_creator_stats(creator_code: str):
+async def get_creator_stats_handler(creator_code: str):
     """
     Get creator performance stats
     """
@@ -280,8 +276,7 @@ async def get_creator_stats(creator_code: str):
 # SOCIAL MEDIA WIDGETS
 # ============================================================
 
-@app.get("/widget/instagram-bio-link")
-async def instagram_bio_link_widget():
+async def instagram_bio_link_widget_handler():
     """
     Generate Instagram bio link landing page
     Shows multiple links/products in mobile-optimized layout
