@@ -11330,6 +11330,8 @@ async def check_approval(workflow_id: str):
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
 
+# REPLACE THE create-workflow ENDPOINT WITH THIS VERSION
+
 @app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
 async def create_workflow_from_fulfillment(fulfillment_id: str):
     """
@@ -11338,16 +11340,36 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
     Use this after approving an opportunity to initialize the workflow
     """
     try:
-        # Get the fulfillment from queue
-        pending = fulfillment_queue.get_pending_queue()
-        all_fulfillments = pending
+        # Access the storage directly instead of using queue methods
+        import httpx
+        
+        JSONBIN_URL = os.getenv("JSONBIN_URL")
+        JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+        
+        if not JSONBIN_URL or not JSONBIN_SECRET:
+            return {
+                "ok": False,
+                "error": "JSONBIN not configured"
+            }
+        
+        # Get all fulfillments from storage
+        headers = {"X-Master-Key": JSONBIN_SECRET}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(JSONBIN_URL, headers=headers)
+            data = response.json()
+        
+        all_fulfillments = data.get("record", {}).get("fulfillments", [])
+        
+        # Find the fulfillment
         matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
         
         if not matching:
             return {
                 "ok": False,
                 "error": f"Fulfillment {fulfillment_id} not found",
-                "fulfillment_id": fulfillment_id
+                "fulfillment_id": fulfillment_id,
+                "total_fulfillments": len(all_fulfillments),
+                "hint": "Check if the fulfillment_id is correct"
             }
         
         fulfillment = matching[0]
@@ -11359,7 +11381,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
                 "ok": True,
                 "message": "Workflow already exists",
                 "workflow_id": workflow_id,
-                "workflow": integrated_workflow.workflows[workflow_id]
+                "stage": integrated_workflow.workflows[workflow_id].get('stage')
             }
         
         # Create workflow
@@ -11374,37 +11396,40 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             'history': [
                 {
                     'stage': 'discovered',
-                    'timestamp': fulfillment.get('created_at'),
+                    'timestamp': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat()),
                     'action': 'Opportunity discovered'
                 },
                 {
                     'stage': 'wade_approved',
-                    'timestamp': fulfillment.get('approved_at'),
+                    'timestamp': fulfillment.get('approved_at', datetime.now(timezone.utc).isoformat()),
                     'action': 'Wade approved opportunity'
                 },
                 {
                     'stage': 'bid_submitted',
-                    'timestamp': fulfillment.get('approved_at'),
-                    'action': 'Proposal submitted'
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'action': 'Proposal submitted to GitHub'
                 }
             ],
-            'created_at': fulfillment.get('created_at')
+            'created_at': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat())
         }
         
         return {
             "ok": True,
             "message": "Workflow created successfully",
             "workflow_id": workflow_id,
-            "workflow": integrated_workflow.workflows[workflow_id]
+            "fulfillment_id": fulfillment_id,
+            "stage": "bid_submitted",
+            "next_step": f"POST /wade/workflow/{workflow_id}/client-approved"
         }
         
     except Exception as e:
+        import traceback
         return {
             "ok": False,
             "error": str(e),
+            "traceback": traceback.format_exc(),
             "fulfillment_id": fulfillment_id
         }
-
 
 # ============================================================
 # WADE WORKFLOW EXECUTION ENDPOINTS
