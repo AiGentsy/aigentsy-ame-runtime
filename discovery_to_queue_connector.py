@@ -98,8 +98,20 @@ async def auto_discover_and_queue(username: str = "wade", platforms: List[str] =
     print(f"🔍 Starting auto-discovery for {username}...")
     print(f"   Platforms: {platforms or 'ALL (27 platforms)'}")
     
+    # Build user profile (can be enhanced with actual user data)
+    user_profile = {
+        "username": username,
+        "skills": [],
+        "kits": [],
+        "companyType": "general"
+    }
+    
     # Step 1: Discover
-    discovery_results = await discover_all_opportunities(username, platforms or {})
+    discovery_results = await discover_all_opportunities(
+        username=username,
+        user_profile=user_profile,
+        platforms=platforms
+    )
     
     if not discovery_results.get('ok'):
         return {
