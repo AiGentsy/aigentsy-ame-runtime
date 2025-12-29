@@ -11328,6 +11328,206 @@ async def check_approval(workflow_id: str):
     '''
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
+
+# ============================================================
+# WADE WORKFLOW EXECUTION ENDPOINTS
+# Add these to main.py (around line 11300, after /wade/approve)
+# ============================================================
+
+@app.post("/wade/workflow/{workflow_id}/client-approved")
+async def mark_client_approved(workflow_id: str):
+    """
+    Mark opportunity as accepted by client
+    
+    Triggered when:
+    - Client responds to email proposal
+    - GitHub issue assigned to us
+    - Upwork job awarded
+    """
+    try:
+        result = await integrated_workflow.client_approves(workflow_id)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/execute")
+async def execute_workflow(workflow_id: str):
+    """
+    Execute the approved work
+    
+    Routes to appropriate executor:
+    - Code generation (Claude)
+    - Content generation (Claude)
+    - Business deployment (template_actionizer)
+    - AI agent deployment (openai_agent_deployer)
+    - Platform monetization (metabridge_runtime)
+    """
+    try:
+        result = await integrated_workflow.execute_work(workflow_id)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/deliver")
+async def deliver_workflow(workflow_id: str):
+    """
+    Deliver completed work to client
+    
+    Platform-specific delivery:
+    - GitHub: Comment with solution + optional PR
+    - Upwork: Submit through platform
+    - Reddit: DM + reply to post
+    - Email: Send deliverables via email
+    """
+    try:
+        result = await integrated_workflow.deliver_work(workflow_id)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/payment-received")
+async def track_payment(workflow_id: str, body: Dict = Body(...)):
+    """
+    Track payment received
+    
+    Updates:
+    - Workflow status → PAID
+    - AIGx balance
+    - Revenue tracking
+    - Outcome oracle
+    """
+    try:
+        amount = body.get("amount", 0)
+        payment_proof = body.get("proof", "")
+        
+        result = await integrated_workflow.track_payment(workflow_id, amount, payment_proof)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.get("/wade/workflow/{workflow_id}")
+async def get_workflow_status(workflow_id: str):
+    """
+    Get workflow status and history
+    
+    Returns:
+    - Current stage
+    - Opportunity details
+    - Execution results
+    - Delivery status
+    - Payment info
+    - Complete history
+    """
+    try:
+        workflow = integrated_workflow.get_workflow(workflow_id)
+        
+        if not workflow:
+            return {
+                "ok": False,
+                "error": "Workflow not found",
+                "workflow_id": workflow_id
+            }
+        
+        return {
+            "ok": True,
+            "workflow": workflow
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.get("/wade/active-workflows")
+async def get_active_workflows():
+    """
+    Get all active workflows
+    
+    Returns workflows in:
+    - PENDING_CLIENT_APPROVAL
+    - CLIENT_APPROVED
+    - IN_PROGRESS
+    - COMPLETED
+    - DELIVERED
+    
+    Excludes:
+    - PAID (finished)
+    - REJECTED (dead)
+    """
+    try:
+        workflows = integrated_workflow.get_active_workflows()
+        
+        return {
+            "ok": True,
+            "count": len(workflows),
+            "workflows": workflows
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflows": []
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/auto-execute")
+async def auto_execute_workflow(workflow_id: str):
+    """
+    FULL AUTO MODE: Execute + Deliver in one call
+    
+    Does:
+    1. Execute work (generate code/content/deploy)
+    2. Deliver to platform automatically
+    3. Track delivery
+    
+    Use this for hands-off execution after client approves
+    """
+    try:
+        # Execute
+        exec_result = await integrated_workflow.execute_work(workflow_id)
+        
+        if not exec_result.get('success'):
+            return exec_result
+        
+        # Deliver
+        delivery_result = await integrated_workflow.deliver_work(workflow_id)
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "execution": exec_result,
+            "delivery": delivery_result,
+            "message": "Work executed and delivered automatically"
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
