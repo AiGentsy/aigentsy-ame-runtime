@@ -11379,7 +11379,17 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             }
         
         fulfillment = matching[0]
-        workflow_id = fulfillment.get('workflow_id') or fulfillment.get('opportunity_id')
+        workflow_id = (
+        fulfillment.get('workflow_id') or 
+        fulfillment.get('opportunity_id') or 
+        fulfillment.get('opportunity', {}).get('id') or
+        fulfillment.get('opportunity', {}).get('opportunity_id')
+    )
+
+        # If still None, generate from fulfillment_id
+        if not workflow_id:
+        # Extract from fulfillment_id pattern
+        workflow_id = f"workflow_{fulfillment_id.replace('fulfillment_', '')}"
         
         if workflow_id in integrated_workflow.workflows:
             return {
