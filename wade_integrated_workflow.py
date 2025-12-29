@@ -1532,6 +1532,159 @@ Let me know if you need anything else!"""
         }
         
         return actions.get(stage, "Unknown")
+
+    async def client_approves(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Wrapper method: Mark that client has approved/accepted the proposal
+        
+        Called by: POST /wade/workflow/{id}/client-approved
+        """
+        if workflow_id not in self.workflows:
+            return {
+                'success': False,
+                'error': f'Workflow {workflow_id} not found'
+            }
+        
+        workflow = self.workflows[workflow_id]
+        
+        # Update stage
+        workflow['stage'] = WorkflowStage.CLIENT_APPROVED
+        workflow['history'].append({
+            'stage': WorkflowStage.CLIENT_APPROVED,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'action': 'Client approved proposal'
+        })
+        
+        return {
+            'success': True,
+            'workflow_id': workflow_id,
+            'stage': workflow['stage'],
+            'message': 'Client approval recorded. Ready for execution.'
+        }
+    
+    async def execute_work(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Wrapper method: Execute the work
+        
+        Called by: POST /wade/workflow/{id}/execute
+        """
+        if workflow_id not in self.workflows:
+            return {
+                'success': False,
+                'error': f'Workflow {workflow_id} not found'
+            }
+        
+        workflow = self.workflows[workflow_id]
+        
+        # Execute using existing method
+        result = await self._execute_fulfillment(workflow)
+        
+        # Update workflow
+        workflow['execution_result'] = result
+        workflow['stage'] = WorkflowStage.COMPLETED
+        workflow['history'].append({
+            'stage': WorkflowStage.COMPLETED,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'action': 'Work executed successfully',
+            'result': result
+        })
+        
+        return result
+    
+    async def deliver_work(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Wrapper method: Deliver completed work
+        
+        Called by: POST /wade/workflow/{id}/deliver
+        """
+        if workflow_id not in self.workflows:
+            return {
+                'success': False,
+                'error': f'Workflow {workflow_id} not found'
+            }
+        
+        workflow = self.workflows[workflow_id]
+        
+        # Deliver using existing method
+        result = await self._deliver_work(workflow)
+        
+        # Update workflow
+        workflow['delivery_result'] = result
+        workflow['stage'] = WorkflowStage.DELIVERED
+        workflow['history'].append({
+            'stage': WorkflowStage.DELIVERED,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'action': 'Work delivered to client',
+            'result': result
+        })
+        
+        return result
+    
+    async def track_payment(self, workflow_id: str, amount: float, proof: str = "") -> Dict[str, Any]:
+        """
+        Wrapper method: Track payment received
+        
+        Called by: POST /wade/workflow/{id}/payment-received
+        """
+        if workflow_id not in self.workflows:
+            return {
+                'success': False,
+                'error': f'Workflow {workflow_id} not found'
+            }
+        
+        workflow = self.workflows[workflow_id]
+        
+        # Update workflow
+        workflow['payment'] = {
+            'amount': amount,
+            'proof': proof,
+            'received_at': datetime.now(timezone.utc).isoformat()
+        }
+        workflow['stage'] = WorkflowStage.PAID
+        workflow['history'].append({
+            'stage': WorkflowStage.PAID,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'action': f'Payment received: ${amount}',
+            'amount': amount
+        })
+        
+        return {
+            'success': True,
+            'workflow_id': workflow_id,
+            'amount': amount,
+            'stage': workflow['stage'],
+            'message': f'Payment of ${amount} tracked successfully'
+        }
+    
+    def get_workflow(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Get workflow by ID
+        
+        Called by: GET /wade/workflow/{id}
+        """
+        return self.workflows.get(workflow_id)
+    
+    def get_active_workflows(self) -> List[Dict[str, Any]]:
+        """
+        Get all active workflows (not paid or rejected)
+        
+        Called by: GET /wade/active-workflows
+        """
+        active_stages = [
+            WorkflowStage.PENDING_WADE_APPROVAL,
+            WorkflowStage.WADE_APPROVED,
+            WorkflowStage.BID_SUBMITTED,
+            WorkflowStage.PENDING_CLIENT_APPROVAL,
+            WorkflowStage.CLIENT_APPROVED,
+            WorkflowStage.IN_PROGRESS,
+            WorkflowStage.COMPLETED,
+            WorkflowStage.DELIVERED
+        ]
+        
+        return [
+            workflow for workflow in self.workflows.values()
+            if workflow.get('stage') in active_stages
+        ]
     
     def get_all_active_workflows(self) -> List[Dict[str, Any]]:
         """Get all workflows that aren't complete"""
