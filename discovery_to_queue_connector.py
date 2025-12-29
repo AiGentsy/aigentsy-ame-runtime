@@ -35,15 +35,17 @@ async def process_discovery_results(discovery_results: Dict[str, Any]) -> Dict[s
             'results': discovery_results
         }
     
-    # Get Wade opportunities from routing.wade.opportunities
-    # Discovery engine already filtered and routed them
-    routing = discovery_results.get('routing', {})
-    wade_data = routing.get('wade', {})
-    wade_opportunities = wade_data.get('opportunities', [])
+    # Get opportunities from discovery results
+    # discover_all_opportunities returns: {ok, opportunities, by_platform, total_found}
+    all_opportunities = discovery_results.get('opportunities', [])
+    
+    # Filter for Wade-fulfillable opportunities
+    # For now, take all opportunities (can add filtering logic later)
+    wade_opportunities = all_opportunities
     
     total_found = discovery_results.get('total_found', 0)
     
-    print(f"📊 Processing {len(wade_opportunities)} Wade opportunities out of {total_found} total discovered")
+    print(f"📊 Processing {len(wade_opportunities)} opportunities out of {total_found} total discovered")
     
     processed = []
     errors = []
