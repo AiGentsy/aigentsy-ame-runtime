@@ -11340,9 +11340,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
     try:
         # Get the fulfillment from queue
         pending = fulfillment_queue.get_pending_queue()
-        approved = fulfillment_queue.get_approved()
-        
-        all_fulfillments = pending + approved
+        all_fulfillments = pending
         matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
         
         if not matching:
