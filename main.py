@@ -5504,9 +5504,10 @@ async def approve_fulfillment(fulfillment_id: str):
     Wade approves AiGentsy direct fulfillment
     
     This triggers:
-    1. Fulfillment execution (AI agents start work)
-    2. Revenue tracking
-    3. Outcome tracking
+    1. Auto-bidding/application (if not already submitted)
+    2. Fulfillment execution (AI agents start work)
+    3. Revenue tracking
+    4. Outcome tracking
     '''
     
     result = fulfillment_queue.approve_fulfillment(fulfillment_id)
@@ -5515,7 +5516,29 @@ async def approve_fulfillment(fulfillment_id: str):
         # Get fulfillment details
         approved = [f for f in fulfillment_queue.approved_fulfillments if f['id'] == fulfillment_id][0]
         
-        # TODO: Trigger execution
+        # STEP 1: Auto-bid on the opportunity
+        try:
+            from auto_bidding_orchestrator import auto_bid_on_opportunity
+            
+            opportunity = approved['opportunity']
+            bid_result = await auto_bid_on_opportunity(opportunity)
+            
+            result['bid_submitted'] = bid_result.get('submitted', False)
+            result['bid_method'] = bid_result.get('channel')
+            
+            if bid_result.get('dashboard_display'):
+                # Manual action required
+                result['manual_instructions'] = bid_result['dashboard_display']['instructions']
+                result['proposal_to_copy'] = bid_result['dashboard_display']['proposal_text']
+            
+            if bid_result.get('submission_result'):
+                result['submission_details'] = bid_result['submission_result']
+        
+        except Exception as e:
+            result['bid_error'] = str(e)
+            result['bid_submitted'] = False
+        
+        # STEP 2: TODO - Trigger execution after client approves
         # Option 1: Assign to AI agents (automated)
         # await execute_with_ai_agents(approved)
         
@@ -5525,7 +5548,7 @@ async def approve_fulfillment(fulfillment_id: str):
         # Track in revenue system
         # await track_aigentsy_direct_opportunity(approved)
         
-        result['execution_started'] = True
+        result['execution_started'] = False  # Starts after client accepts bid
         result['estimated_completion'] = approved['estimated_days']
     
     return result
@@ -11277,14 +11300,6 @@ async def process_opportunity(opportunity: Dict):
     Adds to Wade's approval queue
     '''
     result = await integrated_workflow.process_discovered_opportunity(opportunity)
-    return result
-
-@app.post("/wade/approve/{fulfillment_id}")
-async def wade_approve(fulfillment_id: str):
-    '''
-    Step 2: Wade approves + auto-bids
-    '''
-    result = await integrated_workflow.wade_approves(fulfillment_id)
     return result
 
 @app.get("/wade/workflow/{workflow_id}")
