@@ -11330,6 +11330,84 @@ async def check_approval(workflow_id: str):
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
 
+@app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
+async def create_workflow_from_fulfillment(fulfillment_id: str):
+    """
+    Create a workflow from an approved fulfillment
+    
+    Use this after approving an opportunity to initialize the workflow
+    """
+    try:
+        # Get the fulfillment from queue
+        pending = fulfillment_queue.get_pending_queue()
+        approved = fulfillment_queue.get_approved()
+        
+        all_fulfillments = pending + approved
+        matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
+        
+        if not matching:
+            return {
+                "ok": False,
+                "error": f"Fulfillment {fulfillment_id} not found",
+                "fulfillment_id": fulfillment_id
+            }
+        
+        fulfillment = matching[0]
+        workflow_id = fulfillment.get('workflow_id') or fulfillment.get('opportunity_id')
+        
+        # Check if workflow already exists
+        if workflow_id in integrated_workflow.workflows:
+            return {
+                "ok": True,
+                "message": "Workflow already exists",
+                "workflow_id": workflow_id,
+                "workflow": integrated_workflow.workflows[workflow_id]
+            }
+        
+        # Create workflow
+        opportunity = fulfillment.get('opportunity', {})
+        integrated_workflow.workflows[workflow_id] = {
+            'workflow_id': workflow_id,
+            'opportunity_id': fulfillment.get('opportunity_id'),
+            'fulfillment_id': fulfillment_id,
+            'stage': 'bid_submitted',
+            'opportunity': opportunity,
+            'fulfillment': fulfillment,
+            'history': [
+                {
+                    'stage': 'discovered',
+                    'timestamp': fulfillment.get('created_at'),
+                    'action': 'Opportunity discovered'
+                },
+                {
+                    'stage': 'wade_approved',
+                    'timestamp': fulfillment.get('approved_at'),
+                    'action': 'Wade approved opportunity'
+                },
+                {
+                    'stage': 'bid_submitted',
+                    'timestamp': fulfillment.get('approved_at'),
+                    'action': 'Proposal submitted'
+                }
+            ],
+            'created_at': fulfillment.get('created_at')
+        }
+        
+        return {
+            "ok": True,
+            "message": "Workflow created successfully",
+            "workflow_id": workflow_id,
+            "workflow": integrated_workflow.workflows[workflow_id]
+        }
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "fulfillment_id": fulfillment_id
+        }
+
+
 # ============================================================
 # WADE WORKFLOW EXECUTION ENDPOINTS
 # Add these to main.py (around line 11300, after /wade/approve)
