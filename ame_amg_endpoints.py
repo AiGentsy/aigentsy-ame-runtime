@@ -22,7 +22,6 @@ from third_party_monetization import (
 # LANDING PAGE - Track & Monetize
 # ============================================================
 
-async def track_visit_handler(request: Request, utm_source: str = None, utm_campaign: str = None, utm_medium: str = None, creator: str = None, ref: str = None) -> Dict:
 async def track_visit_handler(
     request: Request,
     utm_source: str = None,
