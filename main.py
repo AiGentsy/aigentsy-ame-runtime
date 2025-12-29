@@ -27,6 +27,8 @@ from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
 from discovery_to_queue_connector import auto_discover_and_queue
 from wade_integrated_workflow import integrated_workflow
+from ame_amg_endpoints import *  # Around line 30
+from auto_bidding_orchestrator import auto_bid_on_opportunity
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
