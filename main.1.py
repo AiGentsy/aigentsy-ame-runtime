@@ -5454,37 +5454,44 @@ async def get_wade_fulfillment_queue():
     Wade's approval dashboard for AiGentsy direct fulfillment
     Shows all opportunities awaiting approval
     '''
-    
-    pending = fulfillment_queue.get_pending_queue()
-    stats = fulfillment_queue.get_stats()
-    
-    return {
-        'ok': True,
-        'stats': stats,
-        'pending_count': len(pending),
-        'total_pending_value': sum(f['opportunity']['value'] for f in pending),
-        'total_pending_profit': sum(f['estimated_profit'] for f in pending),
-        'opportunities': [
-            {
-                'id': f['id'],
-                'title': f['opportunity']['title'],
-                'platform': f['opportunity']['platform'],
-                'type': f['opportunity']['type'],
-                'value': f['opportunity']['value'],
-                'estimated_profit': f['estimated_profit'],
-                'estimated_cost': f['estimated_cost'],
-                'estimated_days': f['estimated_days'],
-                'confidence': f['confidence'],
-                'fulfillment_plan': f['fulfillment_plan'],
-                'ai_models': f['ai_models'],
-                'opportunity_url': f['opportunity']['url'],
-                'created_at': f['created_at'],
-                'approve_url': f"/wade/approve/{f['id']}",
-                'reject_url': f"/wade/reject/{f['id']}"
-            }
-            for f in pending
-        ]
-    }
+    try:
+        pending = fulfillment_queue.get_pending_queue()
+        stats = fulfillment_queue.get_stats()
+        
+        return {
+            'ok': True,
+            'stats': stats,
+            'pending_count': len(pending),
+            'total_pending_value': sum(f.get('opportunity', {}).get('value', 0) for f in pending),
+            'total_pending_profit': sum(f.get('estimated_profit', 0) for f in pending),
+            'opportunities': [
+                {
+                    'id': f.get('id'),
+                    'title': f.get('opportunity', {}).get('title', 'Unknown'),
+                    'platform': f.get('opportunity', {}).get('platform', 'Unknown'),
+                    'type': f.get('opportunity', {}).get('type', 'Unknown'),
+                    'value': f.get('opportunity', {}).get('value', 0),
+                    'estimated_profit': f.get('estimated_profit', 0),
+                    'estimated_cost': f.get('estimated_cost', 0),
+                    'estimated_days': f.get('estimated_days', 0),
+                    'confidence': f.get('confidence', 0),
+                    'fulfillment_plan': f.get('fulfillment_plan', {}),
+                    'ai_models': f.get('ai_models', []),
+                    'opportunity_url': f.get('opportunity', {}).get('url', ''),
+                    'created_at': f.get('created_at', ''),
+                    'approve_url': f"/wade/approve/{f.get('id')}",
+                    'reject_url': f"/wade/reject/{f.get('id')}"
+                }
+                for f in pending
+            ]
+        }
+    except Exception as e:
+        return {
+            'ok': False,
+            'error': str(e),
+            'pending_count': 0,
+            'opportunities': []
+        }
 
 
 # ============================================================
