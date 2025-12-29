@@ -26,7 +26,7 @@ from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
 from discovery_to_queue_connector import auto_discover_and_queue
-from wade_integrated_workflow import integrated_workflow
+from wade_integrated_workflow import IntegratedFulfillmentWorkflow 
 from auto_bidding_orchestrator import auto_bid_on_opportunity
 from opportunity_filters import (
     filter_opportunities,
@@ -684,6 +684,7 @@ except Exception as e:
     
 app = FastAPI()
 
+integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
 # Register opportunity endpoints
 from ame_routes import register_ame_routes
 register_ame_routes(app)
