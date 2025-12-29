@@ -5462,25 +5462,23 @@ async def get_wade_fulfillment_queue():
         'ok': True,
         'stats': stats,
         'pending_count': len(pending),
-        'total_pending_value': sum(f['opportunity'].get('estimated_value', f['opportunity'].get('value', 0)) for f in pending),
+        'total_pending_value': sum(f['opportunity']['value'] for f in pending),
         'total_pending_profit': sum(f['estimated_profit'] for f in pending),
         'opportunities': [
             {
-                'fulfillment_id': f['id'],
+                'id': f['id'],
                 'title': f['opportunity']['title'],
-                'platform': f['opportunity'].get('source', f['opportunity'].get('platform', 'unknown')),
-                'type': f['opportunity'].get('type', 'unknown'),
-                'estimated_value': f['opportunity'].get('estimated_value', f['opportunity'].get('value', 0)),
+                'platform': f['opportunity']['platform'],
+                'type': f['opportunity']['type'],
+                'value': f['opportunity']['value'],
                 'estimated_profit': f['estimated_profit'],
                 'estimated_cost': f['estimated_cost'],
                 'estimated_days': f['estimated_days'],
                 'confidence': f['confidence'],
                 'fulfillment_plan': f['fulfillment_plan'],
                 'ai_models': f['ai_models'],
-                'opportunity_url': f['opportunity'].get('url', ''),
-                'status': f.get('status', 'pending_approval'),
+                'opportunity_url': f['opportunity']['url'],
                 'created_at': f['created_at'],
-                'routing': f['routing'],
                 'approve_url': f"/wade/approve/{f['id']}",
                 'reject_url': f"/wade/reject/{f['id']}"
             }
@@ -6226,10 +6224,11 @@ async def escrow_refund(body: Dict = Body(...)):
 
 
 @app.post("/wade/discover-and-queue")
-async def discover_and_queue(request: dict):
+async def discover_and_queue(request: Request):
     """Run discovery and automatically queue Wade opportunities"""
-    username = request.get("username", "wade")
-    platforms = request.get("platforms")
+    body = await request.json()
+    username = body.get("username", "wade")
+    platforms = body.get("platforms")
     
     results = await auto_discover_and_queue(username, platforms)
     return results
