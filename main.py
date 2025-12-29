@@ -11408,6 +11408,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             'stage': 'bid_submitted',
             'opportunity': opportunity,
             'fulfillment': fulfillment,
+            'fulfillability': fulfillment.get('fulfillability', {}),
             'history': [
                 {
                     'stage': 'bid_submitted',
