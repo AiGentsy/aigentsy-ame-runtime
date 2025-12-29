@@ -52,6 +52,18 @@ async def process_discovery_results(discovery_results: Dict[str, Any]) -> Dict[s
     
     for opp in wade_opportunities:
         try:
+            # Add fulfillability data for wade_integrated_workflow
+            # Assume Wade can fulfill all discovered opportunities
+            opp['fulfillability'] = {
+                'can_wade_fulfill': True,
+                'estimated_profit': opp.get('estimated_value', 0) * 0.7,  # 70% profit margin
+                'estimated_cost': opp.get('estimated_value', 0) * 0.3,   # 30% cost
+                'delivery_days': 7,
+                'confidence': opp.get('match_score', 75) / 100,
+                'fulfillment_system': 'claude',
+                'ai_models': ['claude']
+            }
+            
             # Add to Wade's approval queue via integrated workflow
             result = await integrated_workflow.process_discovered_opportunity(opp)
             
