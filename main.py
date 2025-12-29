@@ -11330,52 +11330,57 @@ async def check_approval(workflow_id: str):
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
 
-# REPLACE THE create-workflow ENDPOINT WITH THIS VERSION
+# REPLACE BOTH ENDPOINTS WITH THESE WORKING VERSIONS
 
 @app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
 async def create_workflow_from_fulfillment(fulfillment_id: str):
-    """
-    Create a workflow from an approved fulfillment
-    
-    Use this after approving an opportunity to initialize the workflow
-    """
+    """Create a workflow from an approved fulfillment"""
     try:
-        # Access the storage directly instead of using queue methods
-        import httpx
+        # Try to get from pending queue first (simpler)
+        try:
+            pending = fulfillment_queue.get_pending_queue()
+            matching = [f for f in pending if f.get('id') == fulfillment_id]
+        except:
+            matching = []
         
-        JSONBIN_URL = os.getenv("JSONBIN_URL")
-        JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
-        
-        if not JSONBIN_URL or not JSONBIN_SECRET:
-            return {
-                "ok": False,
-                "error": "JSONBIN not configured"
-            }
-        
-        # Get all fulfillments from storage
-        headers = {"X-Master-Key": JSONBIN_SECRET}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(JSONBIN_URL, headers=headers)
-            data = response.json()
-        
-        all_fulfillments = data.get("record", {}).get("fulfillments", [])
-        
-        # Find the fulfillment
-        matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
+        # If not found, try JSONBin storage directly
+        if not matching:
+            import httpx
+            JSONBIN_URL = os.getenv("JSONBIN_URL")
+            JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+            
+            if JSONBIN_URL and JSONBIN_SECRET:
+                headers = {"X-Master-Key": JSONBIN_SECRET}
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(JSONBIN_URL, headers=headers)
+                    data = response.json()
+                
+                # Handle different JSONBin response formats
+                if isinstance(data, list):
+                    all_fulfillments = data
+                elif isinstance(data, dict) and "record" in data:
+                    record = data["record"]
+                    if isinstance(record, list):
+                        all_fulfillments = record
+                    elif isinstance(record, dict):
+                        all_fulfillments = record.get("fulfillments", [])
+                    else:
+                        all_fulfillments = []
+                else:
+                    all_fulfillments = []
+                
+                matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
         
         if not matching:
             return {
                 "ok": False,
                 "error": f"Fulfillment {fulfillment_id} not found",
-                "fulfillment_id": fulfillment_id,
-                "total_fulfillments": len(all_fulfillments),
-                "hint": "Check if the fulfillment_id is correct"
+                "fulfillment_id": fulfillment_id
             }
         
         fulfillment = matching[0]
         workflow_id = fulfillment.get('workflow_id') or fulfillment.get('opportunity_id')
         
-        # Check if workflow already exists
         if workflow_id in integrated_workflow.workflows:
             return {
                 "ok": True,
@@ -11395,22 +11400,12 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             'fulfillment': fulfillment,
             'history': [
                 {
-                    'stage': 'discovered',
-                    'timestamp': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat()),
-                    'action': 'Opportunity discovered'
-                },
-                {
-                    'stage': 'wade_approved',
-                    'timestamp': fulfillment.get('approved_at', datetime.now(timezone.utc).isoformat()),
-                    'action': 'Wade approved opportunity'
-                },
-                {
                     'stage': 'bid_submitted',
                     'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'action': 'Proposal submitted to GitHub'
+                    'action': 'Proposal submitted'
                 }
             ],
-            'created_at': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat())
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
         
         return {
@@ -11418,8 +11413,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             "message": "Workflow created successfully",
             "workflow_id": workflow_id,
             "fulfillment_id": fulfillment_id,
-            "stage": "bid_submitted",
-            "next_step": f"POST /wade/workflow/{workflow_id}/client-approved"
+            "stage": "bid_submitted"
         }
         
     except Exception as e:
@@ -11431,28 +11425,75 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             "fulfillment_id": fulfillment_id
         }
 
-# ============================================================
-# WADE WORKFLOW EXECUTION ENDPOINTS
-# Add these to main.py (around line 11300, after /wade/approve)
-# ============================================================
 
 @app.post("/wade/workflow/{workflow_id}/client-approved")
 async def mark_client_approved(workflow_id: str):
-    """
-    Mark opportunity as accepted by client
-    
-    Triggered when:
-    - Client responds to email proposal
-    - GitHub issue assigned to us
-    - Upwork job awarded
-    """
+    """Mark opportunity as accepted by client"""
     try:
-        result = await integrated_workflow.client_approves(workflow_id)
-        return result
+        # If workflow doesn't exist, try to create it from queue
+        if workflow_id not in integrated_workflow.workflows:
+            # Try to find matching fulfillment
+            try:
+                pending = fulfillment_queue.get_pending_queue()
+                matching = [f for f in pending if f.get('workflow_id') == workflow_id or f.get('opportunity_id') == workflow_id]
+            except:
+                matching = []
+            
+            if not matching:
+                return {
+                    "ok": False,
+                    "error": f"Workflow {workflow_id} not found. Try creating it first with /wade/fulfillment/FULFILLMENT_ID/create-workflow",
+                    "workflow_id": workflow_id
+                }
+            
+            # Create workflow from fulfillment
+            fulfillment = matching[0]
+            opportunity = fulfillment.get('opportunity', {})
+            integrated_workflow.workflows[workflow_id] = {
+                'workflow_id': workflow_id,
+                'opportunity_id': fulfillment.get('opportunity_id'),
+                'fulfillment_id': fulfillment.get('id'),
+                'stage': 'client_approved',
+                'opportunity': opportunity,
+                'fulfillment': fulfillment,
+                'history': [
+                    {
+                        'stage': 'bid_submitted',
+                        'timestamp': fulfillment.get('approved_at', datetime.now(timezone.utc).isoformat()),
+                        'action': 'Proposal submitted'
+                    },
+                    {
+                        'stage': 'client_approved',
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'action': 'Client approved proposal'
+                    }
+                ],
+                'created_at': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat())
+            }
+        else:
+            # Update existing workflow
+            workflow = integrated_workflow.workflows[workflow_id]
+            workflow['stage'] = 'client_approved'
+            workflow['history'].append({
+                'stage': 'client_approved',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'action': 'Client approved proposal'
+            })
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "stage": "client_approved",
+            "message": "Client approval recorded. Ready for execution.",
+            "next_step": f"POST /wade/workflow/{workflow_id}/execute or /wade/workflow/{workflow_id}/auto-execute"
+        }
+        
     except Exception as e:
+        import traceback
         return {
             "ok": False,
             "error": str(e),
+            "traceback": traceback.format_exc(),
             "workflow_id": workflow_id
         }
 
