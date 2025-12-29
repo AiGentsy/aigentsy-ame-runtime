@@ -17,6 +17,18 @@ from langgraph.graph import StateGraph
 
 from events import emit
 from log_to_jsonbin_aam_patched import log_event
+# ADD AFTER EXISTING IMPORTS:
+from ultimate_discovery_engine import (
+    discover_all_opportunities,
+    scrape_github,
+    scrape_linkedin,
+    scrape_upwork,
+    scrape_reddit,
+    scrape_hackernews,
+    scrape_indiehackers,
+    auto_bid_on_opportunity,
+    start_realtime_monitoring
+)
 
 def emit_both(kind: str, data: dict):
     try:
@@ -395,20 +407,40 @@ async def invoke(state: AgentState) -> dict:
             "traits": list(agent_traits.keys()),
             "offers": service_offer_registry,
         }
-
     try:
-        # username hint: "... | username"
         username = "growth_default"
         if "|" in user_input:
             maybe = user_input.split("|")[-1].strip()
             if maybe:
                 username = maybe
-
         record = get_jsonbin_record(username)
         traits = record.get("traits", list(agent_traits.keys()))
         kits = list(record.get("kits", {"universal": {"unlocked": True}}).keys())
         region = record.get("region", "Global")
         service_needs = suggest_service_needs(traits, kits)
+        
+        # ========== INTELLIGENCE ORCHESTRATION ==========
+        from csuite_orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        monetization_triggers = [
+            'what should i monetize', 'how do i make money', 'what can i sell',
+            'find clients', 'revenue opportunit', 'make money', 'first sale',
+            'what to sell'
+        ]
+        needs_intelligence = any(t in user_input.lower() for t in monetization_triggers)
+        
+        intelligence = None
+        opportunities = None
+        opp_summary_text = ""
+        
+        if needs_intelligence:
+            intelligence = await orchestrator.analyze_business_state(username)
+            if intelligence.get("ok"):
+                opportunities = await orchestrator.generate_opportunities(username, intelligence)
+                opp_summary_text = await orchestrator.format_opportunities_for_chat(opportunities, intelligence)
+        # ========== END ORCHESTRATION ==========
+        
 
         # Locked switch for external MetaMatch
         if os.getenv("MATCH_UNLOCKED", "false").lower() != "true":
@@ -475,6 +507,35 @@ async def invoke(state: AgentState) -> dict:
         csuite_member = route_to_csuite_member(user_input)
         role_name = csuite_member["role"]
         role_personality = csuite_member["personality"]
+
+        # ========== AUTO-DISCOVERY TRIGGERS ==========
+        discovery_triggers = [
+            'find clients', 'get customers', 'need opportunities',
+            'find work', 'get gigs', 'need projects', 'find jobs'
+        ]
+        
+        should_discover = any(trigger in user_input.lower() for trigger in discovery_triggers)
+        
+        if should_discover and os.getenv("AUTO_DISCOVERY_ENABLED", "false").lower() == "true":
+            # Trigger discovery in background
+            asyncio.create_task(
+                discover_all_opportunities(
+                    username=username,
+                    user_profile={
+                        "username": username,
+                        "skills": traits,
+                        "kits": kits,
+                        "companyType": record.get("companyType", "general")
+                    },
+                    platforms=["github", "upwork", "reddit", "hackernews"]
+                )
+            )
+            
+            # Add hint to response
+            csuite_context += """
+\n\n🔍 **LIVE DISCOVERY ACTIVATED**: I'm scanning GitHub, Upwork, Reddit, and Hacker News for opportunities right now. You'll see them in your dashboard within 60 seconds.
+"""
+        # ========== END AUTO-DISCOVERY ==========
         
         # ---- Determine user's business template (KITS = SOURCE OF TRUTH) ----
         user_template = "general"
@@ -659,6 +720,7 @@ FIRST QUESTIONS TO ASK {custom_business_type.upper()} USERS:
         
         # ---- Build C-Suite context (BUSINESS TYPE FIRST) ----
         csuite_context = f"""
+You are the C-Suite of AiGentsy, an autonomous business platform.
         
 ═══════════════════════════════════════════════════════════════
 🎯 PRIMARY MISSION - READ THIS FIRST
@@ -863,6 +925,20 @@ HOW TO TALK ABOUT THESE (SOUND NATURAL)
 **When user asks: "How do I automate my marketing?"**
 → "I'll activate R³ Autopilot for you. It's like having a marketing manager who never sleeps - automatically retargeting leads, adjusting budgets based on what's working, nurturing prospects until they convert. Pair it with AMG and your entire sales engine runs itself. Want to flip the switch?"
 
+═══════════════════════════════════════════════════════════════
+"""
+        # ⭐ ADD THE INTELLIGENCE BLOCK HERE (AFTER THE CLOSING """) ⭐
+        # Inject opportunities if generated
+        if opp_summary_text:
+            csuite_context += f"""
+
+═══════════════════════════════════════════════════════════════
+🎯 REVENUE OPPORTUNITIES (PRIORITIZED)
+═══════════════════════════════════════════════════════════════
+
+{opp_summary_text}
+
+INSTRUCTION: Present these naturally. Explain WHY they rank this way and ASK which to activate first.
 ═══════════════════════════════════════════════════════════════
 """
         
@@ -1109,48 +1185,110 @@ async def cold_lead_pitch(request: Request):
 @app.post("/scan_external_content")
 async def scan_external_content(request: Request):
     """
-    Fetch a URL, extract visible text lightly, infer offer, match, and persist proposals.
+    🆕 ENHANCED: Can now scrape specific URL OR run platform discovery
+    
+    Input Option 1 (URL scraping):
+    {
+        "username": "user123",
+        "url": "https://example.com/job-posting"
+    }
+    
+    Input Option 2 (Platform discovery):
+    {
+        "username": "user123",
+        "platform": "github",  # or "upwork", "reddit", etc.
+        "query": "react developer"  # Optional
+    }
     """
     try:
         payload = await request.json()
         username = payload.get("username", "growth_default")
         target_url = payload.get("url")
-        if not target_url:
-            return {"status": "error", "message": "No URL provided."}
-
-        page = HTTP.get(target_url, timeout=10)
-        raw_text = page.text
-        clean_text = " ".join(raw_text.split("<")).replace(">", " ")[:2000]
-
-        inferred_offer = clean_text[:120]
-        if llm is not None and HAS_KEY:
-            extract_msg = HumanMessage(content=f"From this page text, give a 1-line offering/need:\n\n{clean_text}")
-            resp = await llm.ainvoke([extract_msg])
-            inferred_offer = (resp.content or inferred_offer).strip()
-
-        matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
-        proposals = proposal_generator(inferred_offer, matches, username)
-        for p in proposals:
-            _post_json("/submit_proposal", p)
-
-        if deliver_proposal:
-            try:
-                deliver_proposal(query=inferred_offer, matches=matches, originator=username)
-            except Exception as e:
-                print("⚠️ deliver_proposal failed:", str(e))
-        else:
-            proposal_dispatch_log(username, proposals, match_target=matches[0].get("username") if matches else None)
-
-        return {
-            "status": "ok",
-            "url": target_url,
-            "detected_offer": inferred_offer,
-            "match_count": len(matches),
-            "matches": matches,
-            "proposals": proposals
+        platform = payload.get("platform")
+        
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
         }
+        
+        # OPTION 1: Scrape specific URL (existing functionality)
+        if target_url:
+            page = HTTP.get(target_url, timeout=10)
+            raw_text = page.text
+            clean_text = " ".join(raw_text.split("<")).replace(">", " ")[:2000]
+            
+            inferred_offer = clean_text[:120]
+            if llm is not None and HAS_KEY:
+                extract_msg = HumanMessage(
+                    content=f"From this page text, give a 1-line offering/need:\n\n{clean_text}"
+                )
+                resp = await llm.ainvoke([extract_msg])
+                inferred_offer = (resp.content or inferred_offer).strip()
+            
+            matches = metabridge_dual_match_realworld_fulfillment(inferred_offer)
+            proposals = proposal_generator(inferred_offer, matches, username)
+            
+            for p in proposals:
+                _post_json("/submit_proposal", p)
+            
+            return {
+                "status": "ok",
+                "url": target_url,
+                "detected_offer": inferred_offer,
+                "match_count": len(matches),
+                "matches": matches,
+                "proposals": proposals
+            }
+        
+        # OPTION 2: Scrape specific platform (NEW)
+        elif platform:
+            opportunities = []
+            
+            if platform == "github":
+                opportunities = await scrape_github(user_profile)
+            elif platform == "linkedin":
+                opportunities = await scrape_linkedin(user_profile)
+            elif platform == "upwork":
+                opportunities = await scrape_upwork(user_profile)
+            elif platform == "reddit":
+                opportunities = await scrape_reddit(user_profile)
+            elif platform == "hackernews":
+                opportunities = await scrape_hackernews(user_profile)
+            elif platform == "indiehackers":
+                opportunities = await scrape_indiehackers(user_profile)
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Platform '{platform}' not supported"
+                }
+            
+            # Store opportunities
+            user_record.setdefault("opportunities", []).extend(opportunities)
+            _post_json(f"/update_user/{username}", {"opportunities": user_record["opportunities"]})
+            
+            return {
+                "status": "ok",
+                "platform": platform,
+                "opportunities_found": len(opportunities),
+                "opportunities": opportunities
+            }
+        
+        else:
+            return {
+                "status": "error",
+                "message": "Must provide either 'url' or 'platform'"
+            }
+    
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()[:500]
+        }
 
 @app.post("/metabridge")
 async def metabridge(request: Request):
@@ -1189,6 +1327,121 @@ async def metabridge(request: Request):
         "proposals": proposals,
     }
 
+@app.post("/discover")
+async def discover_opportunities_endpoint(request: Request):
+    """
+    🆕 ULTIMATE DISCOVERY - Scrape all platforms for opportunities
+    
+    Input: {
+        "username": "user123",
+        "platforms": ["github", "upwork", "reddit"],  # Optional
+        "auto_bid": false  # Optional: auto-bid on 95+ matches
+    }
+    
+    Output: {
+        "ok": true,
+        "opportunities": [...],
+        "by_platform": {...},
+        "total_found": 47
+    }
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        platforms = payload.get("platforms")  # None = all platforms
+        auto_bid = payload.get("auto_bid", False)
+        
+        # Get user profile
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
+        }
+        
+        # Run discovery
+        result = await discover_all_opportunities(
+            username=username,
+            user_profile=user_profile,
+            platforms=platforms
+        )
+        
+        # Optional: Auto-bid on ultra-high matches
+        if auto_bid:
+            auto_bids = []
+            for opp in result["opportunities"]:
+                if opp.get("match_score", 0) >= 95:
+                    bid_result = await auto_bid_on_opportunity(opp, user_profile)
+                    if bid_result.get("ok"):
+                        auto_bids.append(bid_result)
+            
+            result["auto_bids"] = auto_bids
+        
+        # Store opportunities in user record
+        user_record.setdefault("opportunities", []).extend(result["opportunities"])
+        
+        # Save via backend
+        _post_json(f"/update_user/{username}", {"opportunities": user_record["opportunities"]})
+        
+        return {
+            "status": "ok",
+            **result
+        }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()[:500]
+        }
+
+
+@app.post("/discover/start-monitoring")
+async def start_monitoring_endpoint(request: Request):
+    """
+    🔴 START REAL-TIME MONITORING
+    
+    Continuously monitors platforms for new opportunities
+    Auto-bids on 95+ matches
+    
+    Input: {
+        "username": "user123",
+        "platforms": ["github", "upwork", "reddit"]
+    }
+    """
+    try:
+        payload = await request.json()
+        username = payload.get("username", "growth_default")
+        platforms = payload.get("platforms", ["github", "upwork", "reddit"])
+        
+        # Get user profile
+        user_record = get_jsonbin_record(username)
+        user_profile = {
+            "username": username,
+            "skills": user_record.get("traits", []),
+            "kits": list(user_record.get("kits", {}).keys()),
+            "companyType": user_record.get("companyType", "general")
+        }
+        
+        # Start monitoring in background
+        asyncio.create_task(
+            start_realtime_monitoring(username, user_profile, platforms)
+        )
+        
+        return {
+            "status": "ok",
+            "message": f"Real-time monitoring started for {username}",
+            "platforms": platforms
+        }
+    
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 # ----------------- Graph compile -----------------
 @lru_cache
 def get_agent_graph():
@@ -1197,6 +1450,65 @@ def get_agent_graph():
     graph.set_entry_point("agent")
     graph.set_finish_point("agent")
     return graph.compile()
+
+@app.post("/agent")
+async def agent_endpoint(request: Request):
+    """
+    Main agent endpoint - accepts user input and returns Growth agent response.
+    Prioritizes businessType from frontend over JSONBin kits.
+    """
+    try:
+        data = await request.json()
+        user_input = data.get("input", "")
+        memory = data.get("memory", [])
+        username = data.get("username", "user")
+        business_type = data.get("businessType", None)  # ✅ From frontend
+        context = data.get("context", {})
+        
+        if not user_input:
+            return {"output": "No input provided."}
+        
+        # Get user record from JSONBin
+        record = get_jsonbin_record(username)
+        
+        # ✨ CRITICAL FIX: Prioritize frontend businessType
+        if business_type:
+            kit_mapping = {
+                "social": "social media kit",
+                "saas": "saas kit",
+                "marketing": "marketing kit",
+                "legal": "legal services kit",
+                "general": "universal kit"
+            }
+            
+            kit_name = kit_mapping.get(business_type, "universal kit")
+            record["kits"] = {kit_name: {"unlocked": True}}
+            
+            if business_type != "general":
+                existing_traits = record.get("traits", [])
+                if business_type not in [t.lower() for t in existing_traits]:
+                    record["traits"] = existing_traits + [business_type]
+        
+        # Run the agent graph
+        graph = get_agent_graph()
+        result = await graph.ainvoke({
+            "input": user_input,
+            "memory": memory,
+            "traits": record.get("traits", []),
+            "kits": list(record.get("kits", {}).keys()),
+            "username": username
+        })
+        
+        return {
+            "output": result.get("output", "No response generated."),
+            "memory": result.get("memory", memory)
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ /agent error: {str(e)}")
+        print(traceback.format_exc())
+        return {"output": f"Sorry, I encountered an error: {str(e)}"}
 
 # ---- Simple trigger callable from main.py ----
 def trigger_metamatch(user_record: dict) -> dict:
