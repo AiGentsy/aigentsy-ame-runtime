@@ -11337,103 +11337,103 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
     """Create a workflow from an approved fulfillment"""
     try:
         fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
-    if not fulfillment:
-        return {"ok": False, "error": f"Fulfillment {fulfillment_id} not found"}
-    
-    opportunity = fulfillment['opportunity']
-    
-    # Get or generate fulfillability
-    fulfillability = fulfillment.get('fulfillability', {})
-    
-    # SMART DETECTION: Check what type of work this is
-    if not fulfillability or not fulfillability.get('fulfillment_system'):
-        title = opportunity.get('title', '').lower()
-        description = opportunity.get('description', '').lower()
-        platform = opportunity.get('platform', '').lower()
+        if not fulfillment:
+            return {"ok": False, "error": f"Fulfillment {fulfillment_id} not found"}
         
-        # ===== GRAPHICS DETECTION (NEW!) =====
-        graphics_keywords = ['logo', 'design', 'banner', 'graphic', 'illustration', 
-                           'icon', 'mockup', 'visual', 'branding', 'poster', 'flyer']
+        opportunity = fulfillment['opportunity']
         
-        is_graphics = any(keyword in title or keyword in description for keyword in graphics_keywords)
+        # Get or generate fulfillability
+        fulfillability = fulfillment.get('fulfillability', {})
         
-        # If it looks like graphics, use graphics engine for detailed analysis
-        if is_graphics:
-            try:
-                from graphics_engine import GraphicsRouter
-                
-                router = GraphicsRouter()
-                graphics_check = router.detector.is_graphics_task(opportunity)
-                
-                if graphics_check['is_graphics']:
-                    task_classification = router.classifier.classify_task(opportunity)
-                    
-                    fulfillability = {
-                        'can_wade_fulfill': True,
-                        'fulfillment_system': 'graphics',  # Routes to graphics execution
-                        'capability': 'graphics_generation',
-                        'wade_capabilities': ['graphics_generation', 'ai_image_creation', 'design'],
-                        'confidence': graphics_check['confidence'],
-                        'estimated_hours': 0.5,
-                        'reasoning': graphics_check['reasoning'],
-                        'graphics_type': task_classification['type']
-                    }
-            except Exception as e:
-                print(f"Graphics detection failed: {e}")
-                # Fall through to code detection
-        
-        # CODE/CONTENT DETECTION (EXISTING)
+        # SMART DETECTION: Check what type of work this is
         if not fulfillability or not fulfillability.get('fulfillment_system'):
-            if 'github' in platform:
-                fulfillment_system = 'code_generation'
-            elif any(word in title + description for word in ['write', 'blog', 'content']):
-                fulfillment_system = 'content_generation'
-            elif any(word in title + description for word in ['deploy', 'setup', 'configure']):
-                fulfillment_system = 'business_deployment'
-            elif any(word in title + description for word in ['agent', 'bot', 'chatbot']):
-                fulfillment_system = 'ai_agent'
-            else:
-                fulfillment_system = 'generic_claude'
+            title = opportunity.get('title', '').lower()
+            description = opportunity.get('description', '').lower()
+            platform = opportunity.get('platform', '').lower()
             
-            fulfillability = {
-                'can_wade_fulfill': True,
-                'fulfillment_system': 'claude',
-                'capability': fulfillment_system,
-                'wade_capabilities': ['code_generation', 'problem_solving', 'content_creation'],
-                'confidence': 0.8,
-                'estimated_hours': 2,
-                'reasoning': f'Auto-generated based on {platform} platform'
-            }
-    
-    # Create workflow with detected system
-    workflow_id = opportunity['id']
-    
-    workflow = {
-        'workflow_id': workflow_id,
-        'opportunity_id': opportunity['id'],
-        'fulfillment_id': fulfillment_id,
-        'stage': 'bid_submitted',
-        'opportunity': opportunity,
-        'fulfillability': fulfillability,
-        'history': [
-            {
-                'stage': 'workflow_created',
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'action': f'Workflow created with system: {fulfillability["fulfillment_system"]}'
-            }
-        ],
-        'created_at': datetime.now(timezone.utc).isoformat()
-    }
-    
-    integrated_workflow.workflows[workflow_id] = workflow
-    
-    return {
-        "ok": True,
-        "workflow_id": workflow_id,
-        "fulfillment_system": fulfillability['fulfillment_system'],
-        "capability": fulfillability.get('capability'),
-        "message": f"Workflow created - will execute via {fulfillability['fulfillment_system']}"
-    }
+            # ===== GRAPHICS DETECTION (NEW!) =====
+            graphics_keywords = ['logo', 'design', 'banner', 'graphic', 'illustration', 
+                               'icon', 'mockup', 'visual', 'branding', 'poster', 'flyer']
+            
+            is_graphics = any(keyword in title or keyword in description for keyword in graphics_keywords)
+            
+            # If it looks like graphics, use graphics engine for detailed analysis
+            if is_graphics:
+                try:
+                    from graphics_engine import GraphicsRouter
+                    
+                    router = GraphicsRouter()
+                    graphics_check = router.detector.is_graphics_task(opportunity)
+                    
+                    if graphics_check['is_graphics']:
+                        task_classification = router.classifier.classify_task(opportunity)
+                        
+                        fulfillability = {
+                            'can_wade_fulfill': True,
+                            'fulfillment_system': 'graphics',  # Routes to graphics execution
+                            'capability': 'graphics_generation',
+                            'wade_capabilities': ['graphics_generation', 'ai_image_creation', 'design'],
+                            'confidence': graphics_check['confidence'],
+                            'estimated_hours': 0.5,
+                            'reasoning': graphics_check['reasoning'],
+                            'graphics_type': task_classification['type']
+                        }
+                except Exception as e:
+                    print(f"Graphics detection failed: {e}")
+                    # Fall through to code detection
+            
+            # CODE/CONTENT DETECTION (EXISTING)
+            if not fulfillability or not fulfillability.get('fulfillment_system'):
+                if 'github' in platform:
+                    fulfillment_system = 'code_generation'
+                elif any(word in title + description for word in ['write', 'blog', 'content']):
+                    fulfillment_system = 'content_generation'
+                elif any(word in title + description for word in ['deploy', 'setup', 'configure']):
+                    fulfillment_system = 'business_deployment'
+                elif any(word in title + description for word in ['agent', 'bot', 'chatbot']):
+                    fulfillment_system = 'ai_agent'
+                else:
+                    fulfillment_system = 'generic_claude'
+                
+                fulfillability = {
+                    'can_wade_fulfill': True,
+                    'fulfillment_system': 'claude',
+                    'capability': fulfillment_system,
+                    'wade_capabilities': ['code_generation', 'problem_solving', 'content_creation'],
+                    'confidence': 0.8,
+                    'estimated_hours': 2,
+                    'reasoning': f'Auto-generated based on {platform} platform'
+                }
+        
+        # Create workflow with detected system
+        workflow_id = opportunity['id']
+        
+        workflow = {
+            'workflow_id': workflow_id,
+            'opportunity_id': opportunity['id'],
+            'fulfillment_id': fulfillment_id,
+            'stage': 'bid_submitted',
+            'opportunity': opportunity,
+            'fulfillability': fulfillability,
+            'history': [
+                {
+                    'stage': 'workflow_created',
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'action': f'Workflow created with system: {fulfillability["fulfillment_system"]}'
+                }
+            ],
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        integrated_workflow.workflows[workflow_id] = workflow
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "fulfillment_system": fulfillability['fulfillment_system'],
+            "capability": fulfillability.get('capability'),
+            "message": f"Workflow created - will execute via {fulfillability['fulfillment_system']}"
+        }
     
     except Exception as e:
         import traceback
