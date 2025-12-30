@@ -719,16 +719,17 @@ Please provide a complete, professional solution."""
             result = await self.graphics_engine.process_graphics_opportunity(opportunity)
             
             if result['success']:
+                generation = result['generation']
                 return {
                     'success': True,
                     'mode': 'graphics_ai',
-                    'ai_worker': result['generation']['ai_worker'],
-                    'images_generated': result['generation']['count'],
-                    'images': result['generation']['images'],
-                    'prompt_used': result['generation']['prompt'],
-                    'cost': result['generation']['cost'],
+                    'ai_worker': generation.get('ai_worker'),
+                    'images_generated': generation.get('count'),
+                    'images': generation.get('images'),
+                    'prompt_used': generation.get('prompt'),
+                    'cost': generation.get('cost'),
                     'routing_analysis': result['routing']['analysis'],
-                    'deliverable_files': [img['filename'] for img in result['generation']['images']],
+                    'deliverable_files': [img['filename'] for img in generation.get('images', [])],
                     'completed_at': datetime.now(timezone.utc).isoformat()
                 }
             else:
