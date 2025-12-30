@@ -11334,142 +11334,169 @@ async def check_approval(workflow_id: str):
 
 @app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
 async def create_workflow_from_fulfillment(fulfillment_id: str):
-    """Create a workflow from an approved fulfillment"""
-    try:
-        # Try to get from pending queue first (simpler)
-        try:
-            pending = fulfillment_queue.get_pending_queue()
-            matching = [f for f in pending if f.get('id') == fulfillment_id]
-        except:
-            matching = []
+"""Create a workflow from an approved fulfillment"""
+try:
+fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
+    if not fulfillment:
+        return {"ok": False, "error": f"Fulfillment {fulfillment_id} not found"}
+    
+    opportunity = fulfillment['opportunity']
+    
+    # Get or generate fulfillability
+    fulfillability = fulfillment.get('fulfillability', {})
+    
+    # SMART DETECTION: Check what type of work this is
+    if not fulfillability or not fulfillability.get('fulfillment_system'):
+        title = opportunity.get('title', '').lower()
+        description = opportunity.get('description', '').lower()
+        platform = opportunity.get('platform', '').lower()
         
-        # If not found, try JSONBin storage directly
-        if not matching:
-            import httpx
-            JSONBIN_URL = os.getenv("JSONBIN_URL")
-            JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
-            
-            if JSONBIN_URL and JSONBIN_SECRET:
-                headers = {"X-Master-Key": JSONBIN_SECRET}
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(JSONBIN_URL, headers=headers)
-                    data = response.json()
+        # ===== GRAPHICS DETECTION (NEW!) =====
+        graphics_keywords = ['logo', 'design', 'banner', 'graphic', 'illustration', 
+                           'icon', 'mockup', 'visual', 'branding', 'poster', 'flyer']
+        
+        is_graphics = any(keyword in title or keyword in description for keyword in graphics_keywords)
+        
+        # If it looks like graphics, use graphics engine for detailed analysis
+        if is_graphics:
+            try:
+                from graphics_engine import GraphicsRouter
                 
-                # Handle different JSONBin response formats
-                if isinstance(data, list):
-                    all_fulfillments = data
-                elif isinstance(data, dict) and "record" in data:
-                    record = data["record"]
-                    if isinstance(record, list):
-                        all_fulfillments = record
-                    elif isinstance(record, dict):
-                        all_fulfillments = record.get("fulfillments", [])
-                    else:
-                        all_fulfillments = []
-                else:
-                    all_fulfillments = []
+                router = GraphicsRouter()
+                graphics_check = router.detector.is_graphics_task(opportunity)
                 
-                matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
+                if graphics_check['is_graphics']:
+                    task_classification = router.classifier.classify_task(opportunity)
+                    
+                    fulfillability = {
+                        'can_wade_fulfill': True,
+                        'fulfillment_system': 'graphics',  # Routes to graphics execution
+                        'capability': 'graphics_generation',
+                        'wade_capabilities': ['graphics_generation', 'ai_image_creation', 'design'],
+                        'confidence': graphics_check['confidence'],
+                        'estimated_hours': 0.5,
+                        'reasoning': graphics_check['reasoning'],
+                        'graphics_type': task_classification['type']
+                    }
+            except Exception as e:
+                print(f"Graphics detection failed: {e}")
+                # Fall through to code detection
         
-        if not matching:
-            return {
-                "ok": False,
-                "error": f"Fulfillment {fulfillment_id} not found",
-                "fulfillment_id": fulfillment_id
-            }
-        
-        fulfillment = matching[0]
-        workflow_id = (
-            fulfillment.get('workflow_id') or 
-            fulfillment.get('opportunity_id') or 
-            fulfillment.get('opportunity', {}).get('id') or
-            fulfillment.get('opportunity', {}).get('opportunity_id')
-        )
-        
-        # If still None, generate from fulfillment_id
-        if not workflow_id:
-            workflow_id = f"workflow_{fulfillment_id.replace('fulfillment_', '')}"
-        
-        if workflow_id in integrated_workflow.workflows:
-            return {
-                "ok": True,
-                "message": "Workflow already exists",
-                "workflow_id": workflow_id,
-                "stage": integrated_workflow.workflows[workflow_id].get('stage')
-            }
-        
-        # Create workflow
-        opportunity = fulfillment.get('opportunity', {})
-        
-        # Get or generate fulfillability
-        fulfillability = fulfillment.get('fulfillability', {})
-        
-        # If fulfillability is missing or incomplete, generate it
+        # CODE/CONTENT DETECTION (EXISTING)
         if not fulfillability or not fulfillability.get('fulfillment_system'):
-            # Analyze opportunity to determine fulfillment system
-            title = opportunity.get('title', '').lower()
-            description = opportunity.get('description', '').lower()
-            platform = opportunity.get('platform', '').lower()
-            
-            # Determine fulfillment system based on content
             if 'github' in platform:
                 fulfillment_system = 'code_generation'
-            elif any(word in title + description for word in ['write', 'blog', 'content', 'article', 'post', 'copy']):
+            elif any(word in title + description for word in ['write', 'blog', 'content']):
                 fulfillment_system = 'content_generation'
-            elif any(word in title + description for word in ['deploy', 'setup', 'configure', 'install', 'launch']):
+            elif any(word in title + description for word in ['deploy', 'setup', 'configure']):
                 fulfillment_system = 'business_deployment'
-            elif any(word in title + description for word in ['agent', 'bot', 'chatbot', 'ai', 'assistant']):
+            elif any(word in title + description for word in ['agent', 'bot', 'chatbot']):
                 fulfillment_system = 'ai_agent'
-            elif any(word in title + description for word in ['social', 'instagram', 'tiktok', 'twitter', 'facebook']):
-                fulfillment_system = 'platform_monetization'
             else:
                 fulfillment_system = 'generic_claude'
             
-        fulfillability = {
-            'can_wade_fulfill': True,
-            'fulfillment_system': 'claude',  # ✅ The AI system
-            'capability': fulfillment_system,  # ✅ The task type (code_generation, content_generation, etc)
-            'wade_capabilities': ['code_generation', 'problem_solving', 'technical_analysis', 'content_creation'],
-            'confidence': 0.8,
-            'estimated_hours': 2,
-            'reasoning': f'Auto-generated based on {platform} platform and opportunity content'
-        }
+            fulfillability = {
+                'can_wade_fulfill': True,
+                'fulfillment_system': 'claude',
+                'capability': fulfillment_system,
+                'wade_capabilities': ['code_generation', 'problem_solving', 'content_creation'],
+                'confidence': 0.8,
+                'estimated_hours': 2,
+                'reasoning': f'Auto-generated based on {platform} platform'
+            }
+    
+    # Create workflow with detected system
+    workflow_id = opportunity['id']
+    
+    workflow = {
+        'workflow_id': workflow_id,
+        'opportunity_id': opportunity['id'],
+        'fulfillment_id': fulfillment_id,
+        'stage': 'bid_submitted',
+        'opportunity': opportunity,
+        'fulfillability': fulfillability,
+        'history': [
+            {
+                'stage': 'workflow_created',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'action': f'Workflow created with system: {fulfillability["fulfillment_system"]}'
+            }
+        ],
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    integrated_workflow.workflows[workflow_id] = workflow
+    
+    return {
+        "ok": True,
+        "workflow_id": workflow_id,
+        "fulfillment_system": fulfillability['fulfillment_system'],
+        "capability": fulfillability.get('capability'),
+        "message": f"Workflow created - will execute via {fulfillability['fulfillment_system']}"
+    }
+    
+except Exception as e:
+    import traceback
+    return {
+        "ok": False,
+        "error": str(e),
+        "traceback": traceback.format_exc()
+    }
+
+@app.get("/wade/graphics/status")
+async def check_graphics_status():
+"""Check if graphics engine is configured and ready"""
+import os
+
+status = {
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "graphics_module_available": False,
+    "stability_api_key_configured": False,
+    "stability_api_valid": False,
+    "ready": False
+}
+
+# Check if graphics_engine.py exists
+try:
+    from graphics_engine import GraphicsEngine, GraphicsRouter
+    status["graphics_module_available"] = True
+except ImportError as e:
+    status["import_error"] = str(e)
+    return status
+
+# Check API key
+api_key = os.getenv('STABILITY_API_KEY')
+if api_key:
+    status["stability_api_key_configured"] = True
+    status["api_key_prefix"] = api_key[:7] + "..."
+    
+    # Test API connection
+    try:
+        import httpx
         
-        integrated_workflow.workflows[workflow_id] = {
-            'workflow_id': workflow_id,
-            'opportunity_id': fulfillment.get('opportunity_id'),
-            'fulfillment_id': fulfillment_id,
-            'stage': 'bid_submitted',
-            'opportunity': opportunity,
-            'fulfillment': fulfillment,
-            'fulfillability': fulfillability,
-            'history': [
-                {
-                    'stage': 'bid_submitted',
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'action': 'Proposal submitted'
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.stability.ai/v1/user/account",
+                headers={"Authorization": f"Bearer {api_key}"}
+            )
+            
+            if response.status_code == 200:
+                status["stability_api_valid"] = True
+                data = response.json()
+                status["account"] = {
+                    "email": data.get('email'),
+                    "credits_remaining": data.get('credits', 0)
                 }
-            ],
-            'created_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        return {
-            "ok": True,
-            "message": "Workflow created successfully",
-            "workflow_id": workflow_id,
-            "fulfillment_id": fulfillment_id,
-            "stage": "bid_submitted",
-            "fulfillability": fulfillability
-        }
-        
+                status["ready"] = True
+            else:
+                status["api_error"] = f"Status {response.status_code}: {response.text}"
+    
     except Exception as e:
-        import traceback
-        return {
-            "ok": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "fulfillment_id": fulfillment_id
-        }
+        status["api_test_error"] = str(e)
+else:
+    status["message"] = "STABILITY_API_KEY not set in environment variables"
+
+return status
 
 
 @app.post("/wade/workflow/{workflow_id}/client-approved")
