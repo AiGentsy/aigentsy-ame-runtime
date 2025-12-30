@@ -11504,6 +11504,61 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             "fulfillment_id": fulfillment_id
         }
 
+# ADD THIS TO main.py - Direct Stability API Test
+
+@app.post("/wade/graphics/test-direct")
+async def test_stability_direct():
+    """Test Stability API directly without workflow"""
+    
+    import os
+    import httpx
+    import base64
+    from datetime import datetime
+    
+    api_key = os.getenv('STABILITY_API_KEY')
+    
+    if not api_key:
+        return {"ok": False, "error": "No API key"}
+    
+    payload = {
+        "text_prompts": [
+            {"text": "minimalist logo design, blue and white, modern, professional", "weight": 1},
+            {"text": "blurry, low quality, watermark", "weight": -1}
+        ],
+        "cfg_scale": 7,
+        "height": 1024,
+        "width": 1024,
+        "samples": 1,  # Just 1 for testing
+        "steps": 30,
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                json=payload
+            )
+            
+            return {
+                "ok": True,
+                "status_code": response.status_code,
+                "response_text": response.text[:500] if response.status_code != 200 else "Success",
+                "response_json": response.json() if response.status_code == 200 else None
+            }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get("/wade/graphics/status")
 async def check_graphics_status():
     """Check if graphics engine is configured and ready"""
