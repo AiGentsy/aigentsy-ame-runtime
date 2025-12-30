@@ -11504,6 +11504,42 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             "fulfillment_id": fulfillment_id
         }
 
+
+# ADD THIS TO main.py - Direct Graphics Engine Test
+
+@app.post("/wade/graphics/test-engine")
+async def test_graphics_engine():
+    """Test graphics engine directly"""
+    
+    # Import graphics engine
+    try:
+        from graphics_engine import GraphicsEngine
+        engine = GraphicsEngine()
+        
+        # Create test opportunity
+        test_opportunity = {
+            'title': 'Create a minimalist logo design',
+            'description': 'I need a blue and white logo design, modern and professional style',
+            'budget': '$50',
+            'platform': 'test'
+        }
+        
+        # Process
+        result = await engine.process_graphics_opportunity(test_opportunity)
+        
+        return {
+            "ok": True,
+            "result": result
+        }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # ADD THIS TO main.py - Direct Stability API Test
 
 @app.post("/wade/graphics/test-direct")
