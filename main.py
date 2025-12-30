@@ -11425,14 +11425,15 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             else:
                 fulfillment_system = 'generic_claude'
             
-            fulfillability = {
-                'can_wade_fulfill': True,
-                'fulfillment_system': fulfillment_system,
-                'wade_capabilities': ['code_generation', 'problem_solving', 'technical_analysis'],
-                'confidence': 0.8,
-                'estimated_hours': 2,
-                'reasoning': f'Auto-generated based on {platform} platform and opportunity content'
-            }
+        fulfillability = {
+            'can_wade_fulfill': True,
+            'fulfillment_system': 'claude',  # ✅ The AI system
+            'capability': fulfillment_system,  # ✅ The task type (code_generation, content_generation, etc)
+            'wade_capabilities': ['code_generation', 'problem_solving', 'technical_analysis', 'content_creation'],
+            'confidence': 0.8,
+            'estimated_hours': 2,
+            'reasoning': f'Auto-generated based on {platform} platform and opportunity content'
+        }
         
         integrated_workflow.workflows[workflow_id] = {
             'workflow_id': workflow_id,
