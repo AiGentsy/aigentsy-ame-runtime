@@ -11377,7 +11377,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
                 "error": f"Fulfillment {fulfillment_id} not found",
                 "fulfillment_id": fulfillment_id
             }
-
+        
         fulfillment = matching[0]
         workflow_id = (
             fulfillment.get('workflow_id') or 
@@ -11385,10 +11385,9 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             fulfillment.get('opportunity', {}).get('id') or
             fulfillment.get('opportunity', {}).get('opportunity_id')
         )
-
+        
         # If still None, generate from fulfillment_id
         if not workflow_id:
-            # Extract from fulfillment_id pattern
             workflow_id = f"workflow_{fulfillment_id.replace('fulfillment_', '')}"
         
         if workflow_id in integrated_workflow.workflows:
@@ -11401,6 +11400,40 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
         
         # Create workflow
         opportunity = fulfillment.get('opportunity', {})
+        
+        # Get or generate fulfillability
+        fulfillability = fulfillment.get('fulfillability', {})
+        
+        # If fulfillability is missing or incomplete, generate it
+        if not fulfillability or not fulfillability.get('fulfillment_system'):
+            # Analyze opportunity to determine fulfillment system
+            title = opportunity.get('title', '').lower()
+            description = opportunity.get('description', '').lower()
+            platform = opportunity.get('platform', '').lower()
+            
+            # Determine fulfillment system based on content
+            if 'github' in platform:
+                fulfillment_system = 'code_generation'
+            elif any(word in title + description for word in ['write', 'blog', 'content', 'article', 'post', 'copy']):
+                fulfillment_system = 'content_generation'
+            elif any(word in title + description for word in ['deploy', 'setup', 'configure', 'install', 'launch']):
+                fulfillment_system = 'business_deployment'
+            elif any(word in title + description for word in ['agent', 'bot', 'chatbot', 'ai', 'assistant']):
+                fulfillment_system = 'ai_agent'
+            elif any(word in title + description for word in ['social', 'instagram', 'tiktok', 'twitter', 'facebook']):
+                fulfillment_system = 'platform_monetization'
+            else:
+                fulfillment_system = 'generic_claude'
+            
+            fulfillability = {
+                'can_wade_fulfill': True,
+                'fulfillment_system': fulfillment_system,
+                'wade_capabilities': ['code_generation', 'problem_solving', 'technical_analysis'],
+                'confidence': 0.8,
+                'estimated_hours': 2,
+                'reasoning': f'Auto-generated based on {platform} platform and opportunity content'
+            }
+        
         integrated_workflow.workflows[workflow_id] = {
             'workflow_id': workflow_id,
             'opportunity_id': fulfillment.get('opportunity_id'),
@@ -11408,7 +11441,7 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             'stage': 'bid_submitted',
             'opportunity': opportunity,
             'fulfillment': fulfillment,
-            'fulfillability': fulfillment.get('fulfillability', {}),
+            'fulfillability': fulfillability,
             'history': [
                 {
                     'stage': 'bid_submitted',
@@ -11424,7 +11457,8 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
             "message": "Workflow created successfully",
             "workflow_id": workflow_id,
             "fulfillment_id": fulfillment_id,
-            "stage": "bid_submitted"
+            "stage": "bid_submitted",
+            "fulfillability": fulfillability
         }
         
     except Exception as e:
