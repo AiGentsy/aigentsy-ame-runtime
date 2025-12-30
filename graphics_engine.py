@@ -484,69 +484,78 @@ class StableDiffusionExecutor:
             "steps": parameters.get('steps', 30),
         }
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/{engine_id}/text-to-image",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                json=payload
-            )
-            
-            if response.status_code != 200:
-                return {
-                    'success': False,
-                    'error': f"API Error: {response.status_code} - {response.text}"
-                }
-            
-            data = response.json()
-            
-            # Save images
-            images = []
-            artifacts = data.get('artifacts', [])
-            
-            if not artifacts:
-                return {
-                    'success': False,
-                    'error': f"No images generated. API response: {data}"
-                }
-            
-            for i, artifact in enumerate(artifacts):
-                try:
-                    image_data = artifact.get('base64')
-                    if not image_data:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/{engine_id}/text-to-image",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    json=payload
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        'success': False,
+                        'error': f"API Error: {response.status_code} - {response.text}"
+                    }
+                
+                data = response.json()
+                
+                # Save images
+                images = []
+                artifacts = data.get('artifacts', [])
+                
+                if not artifacts:
+                    return {
+                        'success': False,
+                        'error': f"No images generated. API response: {data}"
+                    }
+                
+                for i, artifact in enumerate(artifacts):
+                    try:
+                        image_data = artifact.get('base64')
+                        if not image_data:
+                            continue
+                        
+                        filename = f"/tmp/generated_{datetime.now().timestamp()}_{i}.png"
+                        
+                        with open(filename, 'wb') as f:
+                            f.write(base64.b64decode(image_data))
+                        
+                        images.append({
+                            'filename': filename,
+                            'base64': image_data,
+                            'seed': artifact.get('seed')
+                        })
+                    except Exception as e:
+                        print(f"Error processing artifact {i}: {e}")
                         continue
-                    
-                    filename = f"/tmp/generated_{datetime.now().timestamp()}_{i}.png"
-                    
-                    with open(filename, 'wb') as f:
-                        f.write(base64.b64decode(image_data))
-                    
-                    images.append({
-                        'filename': filename,
-                        'base64': image_data,
-                        'seed': artifact.get('seed')
-                    })
-                except Exception as e:
-                    print(f"Error processing artifact {i}: {e}")
-                    continue
-            
-            if not images:
+                
+                if not images:
+                    return {
+                        'success': False,
+                        'error': f"Failed to process images. Artifacts: {artifacts}"
+                    }
+                
                 return {
-                    'success': False,
-                    'error': f"Failed to process images. Artifacts: {artifacts}"
+                    'success': True,
+                    'ai_worker': 'stable_diffusion',
+                    'images': images,
+                    'count': len(images),
+                    'prompt': prompt,
+                    'parameters': parameters,
+                    'cost': 0.004 * len(images)
                 }
-            
+        
+        except Exception as e:
+            import traceback
             return {
-                'success': True,
-                'ai_worker': 'stable_diffusion',
-                'images': images,
-                'count': len(images),
-                'prompt': prompt,
-                'parameters': parameters,
-                'cost': 0.004 * len(images)
+                'success': False,
+                'error': f'Stability API error: {str(e)}',
+                'traceback': traceback.format_exc()
             }
 
 
