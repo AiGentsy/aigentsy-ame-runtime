@@ -11334,9 +11334,9 @@ async def check_approval(workflow_id: str):
 
 @app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
 async def create_workflow_from_fulfillment(fulfillment_id: str):
-"""Create a workflow from an approved fulfillment"""
-try:
-fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
+    """Create a workflow from an approved fulfillment"""
+    try:
+        fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
     if not fulfillment:
         return {"ok": False, "error": f"Fulfillment {fulfillment_id} not found"}
     
@@ -11435,18 +11435,18 @@ fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
         "message": f"Workflow created - will execute via {fulfillability['fulfillment_system']}"
     }
     
-except Exception as e:
-    import traceback
-    return {
-        "ok": False,
-        "error": str(e),
-        "traceback": traceback.format_exc()
-    }
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 @app.get("/wade/graphics/status")
 async def check_graphics_status():
-"""Check if graphics engine is configured and ready"""
-import os
+    """Check if graphics engine is configured and ready"""
+    import os
 
 status = {
     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -11493,30 +11493,30 @@ if api_key:
     
     except Exception as e:
         status["api_test_error"] = str(e)
-else:
-    status["message"] = "STABILITY_API_KEY not set in environment variables"
-
-return status
+    else:
+        status["message"] = "STABILITY_API_KEY not set in environment variables"
+    
+    return status
 
 @app.post("/wade/graphics/test")
 async def test_graphics_generation():
-"""
-Test graphics generation with sample data
-Creates a temporary test workflow and executes it
-"""
-test_opportunity = {
-    'id': f'test_graphics_{int(datetime.now().timestamp())}',
-    'opportunity_id': f'test_graphics_{int(datetime.now().timestamp())}',
-    'platform': 'test',
-    'title': 'Need minimalist logo design',
-    'description': 'Looking for a clean, modern logo in blue and white colors. Should be simple and professional.',
-    'url': 'https://test.com/sample',
-    'value': 200,
-    'discovered_at': datetime.now(timezone.utc).isoformat()
-}
-
-try:
-    from graphics_engine import GraphicsRouter
+    """
+    Test graphics generation with sample data
+    Creates a temporary test workflow and executes it
+    """
+    test_opportunity = {
+        'id': f'test_graphics_{int(datetime.now().timestamp())}',
+        'opportunity_id': f'test_graphics_{int(datetime.now().timestamp())}',
+        'platform': 'test',
+        'title': 'Need minimalist logo design',
+        'description': 'Looking for a clean, modern logo in blue and white colors. Should be simple and professional.',
+        'url': 'https://test.com/sample',
+        'value': 200,
+        'discovered_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    try:
+        from graphics_engine import GraphicsRouter
     
     # Analyze with graphics router
     router = GraphicsRouter()
@@ -11568,13 +11568,13 @@ try:
         "note": "Real AI execution with test data"
     }
 
-except Exception as e:
-    import traceback
-    return {
-        "ok": False,
-        "error": str(e),
-        "traceback": traceback.format_exc()
-    }
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 
 @app.post("/wade/workflow/{workflow_id}/client-approved")
