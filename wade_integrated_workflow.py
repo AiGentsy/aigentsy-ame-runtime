@@ -48,6 +48,17 @@ class IntegratedFulfillmentWorkflow:
         from wade_approval_dashboard import fulfillment_queue
         self.approval_queue = fulfillment_queue
         
+        # Import graphics engine
+        try:
+            from graphics_engine import GraphicsEngine, GraphicsRouter
+            self.graphics_engine = GraphicsEngine()
+            self.graphics_router = GraphicsRouter()
+            print("[INIT] Graphics Engine loaded successfully")
+        except Exception as e:
+            print(f"[INIT] Graphics Engine not available: {e}")
+            self.graphics_engine = None
+            self.graphics_router = None
+        
         # Configuration flag
         self.use_existing_systems = use_existing_systems
         
@@ -296,6 +307,10 @@ class IntegratedFulfillmentWorkflow:
                     result = await self._execute_content_generation(opportunity)
                 else:
                     result = await self._execute_claude_generic(opportunity)
+            
+            elif system == 'graphics':
+                # Graphics generation via AI (Stable Diffusion, DALL-E, etc)
+                result = await self._execute_graphics_generation(workflow)
             
             elif system == 'template_actionizer':
                 result = await self._execute_business_deployment(opportunity)
@@ -681,6 +696,52 @@ Please provide a complete, professional solution."""
             return {
                 'success': False,
                 'error': f'Generic execution error: {str(e)}'
+            }
+    
+    async def _execute_graphics_generation(self, workflow: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute graphics generation using AI
+        Routes to Stable Diffusion or DALL-E based on requirements
+        
+        100% REAL - Uses your STABILITY_API_KEY
+        """
+        
+        if not self.graphics_engine:
+            return {
+                'success': False,
+                'error': 'Graphics engine not initialized - check graphics_engine.py import'
+            }
+        
+        opportunity = workflow['opportunity']
+        
+        try:
+            # Process with graphics engine
+            result = await self.graphics_engine.process_graphics_opportunity(opportunity)
+            
+            if result['success']:
+                return {
+                    'success': True,
+                    'mode': 'graphics_ai',
+                    'ai_worker': result['generation']['ai_worker'],
+                    'images_generated': result['generation']['count'],
+                    'images': result['generation']['images'],
+                    'prompt_used': result['generation']['prompt'],
+                    'cost': result['generation']['cost'],
+                    'routing_analysis': result['routing']['analysis'],
+                    'deliverable_files': [img['filename'] for img in result['generation']['images']],
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Graphics generation failed'),
+                    'analysis': result.get('analysis')
+                }
+        
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Graphics execution error: {str(e)}'
             }
     
     async def _execute_business_deployment(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
@@ -1723,4 +1784,3 @@ integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)  
 # Manual override options if needed:
 integrated_workflow_existing = IntegratedFulfillmentWorkflow(use_existing_systems=True)   # Force existing systems
 integrated_workflow_claude = IntegratedFulfillmentWorkflow(use_existing_systems=False)    # Force Claude generation
-
