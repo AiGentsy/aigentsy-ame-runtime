@@ -83,6 +83,21 @@ class IntelligentRouter:
                 max_concurrent=5
             ),
             
+            'video_engine': WorkerCapability(
+                worker_id='video_engine',
+                name='AI Video Engine (Multi-Worker)',
+                capabilities=[
+                    'explainer_videos', 'advertisement_videos', 'social_media_videos',
+                    'testimonial_videos', 'training_videos', 'product_demos',
+                    'animated_content', 'ai_presenter_videos', 'video_editing'
+                ],
+                cost_per_task=15.00,  # $5-50 depending on length/quality
+                quality_score=0.88,
+                speed_score=0.75,    # Video takes longer than graphics
+                platforms=['fiverr', 'upwork', 'youtube', 'vimeo'],
+                max_concurrent=3     # Limit concurrent video generation
+            ),
+            
             'chatgpt_agent': WorkerCapability(
                 worker_id='chatgpt_agent',
                 name='ChatGPT Agent Deployer',
@@ -127,6 +142,7 @@ class IntelligentRouter:
         work_indicators = {
             'code': ['code', 'api', 'bug', 'debug', 'script', 'function', 'programming', 'software', 'app'],
             'graphics': ['logo', 'design', 'graphic', 'banner', 'flyer', 'illustration', 'visual', 'brand'],
+            'video': ['video', 'explainer', 'animation', 'commercial', 'ad', 'promo', 'tutorial', 'demo'],
             'content': ['blog', 'article', 'content', 'writing', 'copy', 'documentation'],
             'chatbot': ['chatbot', 'bot', 'assistant', 'customer service', 'automation'],
             'website': ['website', 'site', 'landing', 'store', 'ecommerce', 'shopify']
@@ -253,6 +269,7 @@ class IntelligentRouter:
         worker_mapping = {
             'code': ['claude'],
             'graphics': ['graphics_engine'],
+            'video': ['video_engine'],
             'content': ['claude'],
             'chatbot': ['chatgpt_agent'],
             'website': ['template_actionizer', 'claude'],
@@ -276,6 +293,8 @@ class IntelligentRouter:
                 score += 0.9
             elif work_type == 'graphics' and 'graphics_engine' == worker_id:
                 score += 0.9
+            elif work_type == 'video' and 'video_engine' == worker_id:
+                score += 0.95
             elif work_type == 'chatbot' and 'chatgpt_agent' == worker_id:
                 score += 0.9
             elif work_type == 'website' and 'template_actionizer' == worker_id:
@@ -520,6 +539,8 @@ class IntegratedOrchestrator:
         try:
             if worker == 'graphics_engine':
                 result = await self._execute_graphics_task(opportunity)
+            elif worker == 'video_engine':
+                result = await self._execute_video_task(opportunity)
             elif worker == 'claude':
                 result = await self._execute_claude_task(opportunity)
             elif worker == 'chatgpt_agent':
@@ -554,6 +575,28 @@ class IntegratedOrchestrator:
         
         result = await self.graphics_engine.process_graphics_opportunity(opportunity)
         return result
+    
+    async def _execute_video_task(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute video task using video engine"""
+        
+        try:
+            from video_engine import VideoEngine
+            
+            video_engine = VideoEngine()
+            result = await video_engine.process_video_opportunity(opportunity)
+            return result
+            
+        except ImportError:
+            return {
+                'success': False,
+                'error': 'Video engine not available',
+                'fallback': 'Install video engine dependencies'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Video execution error: {str(e)}'
+            }
     
     async def _execute_claude_task(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """Execute code/content task using Claude"""
