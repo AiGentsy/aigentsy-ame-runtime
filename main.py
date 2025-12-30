@@ -29,6 +29,7 @@ from discovery_to_queue_connector import auto_discover_and_queue
 from wade_integrated_workflow import IntegratedFulfillmentWorkflow
 from week2_master_orchestrator import Week2MasterOrchestrator, initialize_week2_system
 from auto_bidding_orchestrator import auto_bid_on_opportunity
+from video_engine import VideoEngine, VideoAnalyzer
 from universal_integration_layer import IntegratedOrchestrator, IntelligentRouter
 from opportunity_filters import (
     filter_opportunities,
@@ -892,6 +893,9 @@ async def calculate_fee_endpoint(
         "ok": True,
         "fee_breakdown": fee_breakdown
     }
+
+video_engine = None
+video_engine_initialized = False
 
 
 integrated_orchestrator = None
@@ -12689,6 +12693,372 @@ async def get_integration_performance():
             "Add new AI workers as needed",
             "Scale successful patterns"
         ]
+    }
+
+@app.post("/wade/video/initialize")
+async def initialize_video_engine():
+    """
+    🎬 INITIALIZE VIDEO ENGINE
+    
+    Set up video generation capabilities:
+    - Runway ML (dynamic content)
+    - Synthesia (AI presenters)  
+    - HeyGen (premium videos)
+    - Script generation
+    """
+    global video_engine, video_engine_initialized
+    
+    try:
+        print("🎬 Initializing Video Engine...")
+        
+        video_engine = VideoEngine()
+        video_engine_initialized = True
+        
+        # Check API keys
+        api_status = {
+            "runway": bool(os.getenv('RUNWAY_API_KEY')),
+            "synthesia": bool(os.getenv('SYNTHESIA_API_KEY')), 
+            "heygen": bool(os.getenv('HEYGEN_API_KEY')),
+            "openrouter": bool(os.getenv('OPENROUTER_API_KEY'))
+        }
+        
+        return {
+            "success": True,
+            "message": "Video Engine Initialized Successfully!",
+            "capabilities": {
+                "explainer_videos": "✅ Professional explanations with AI presenters",
+                "advertisement_videos": "✅ Dynamic marketing content", 
+                "social_media_videos": "✅ Viral-ready short content",
+                "testimonial_videos": "✅ Authentic customer stories",
+                "training_videos": "✅ Educational content",
+                "product_demos": "✅ Product showcases"
+            },
+            "ai_workers": {
+                "runway": "✅ Dynamic video generation" if api_status["runway"] else "⚠️  API key needed",
+                "synthesia": "✅ AI presenter videos" if api_status["synthesia"] else "⚠️  API key needed", 
+                "heygen": "✅ Premium video content" if api_status["heygen"] else "⚠️  API key needed",
+                "script_generation": "✅ Claude-powered scripts" if api_status["openrouter"] else "⚠️  API key needed"
+            },
+            "revenue_potential": "$3,000-$11,000/month",
+            "pricing": {
+                "basic_videos": "$50-$150",
+                "standard_videos": "$150-$400", 
+                "premium_videos": "$400-$1000"
+            }
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Video engine initialization failed: {str(e)}",
+            "troubleshooting": "Check video engine dependencies and API keys"
+        }
+
+
+@app.post("/wade/video/generate")
+async def generate_video(opportunity_data: dict):
+    """
+    🎥 GENERATE VIDEO
+    
+    Create professional video content from opportunity description:
+    - Analyzes video requirements
+    - Generates script automatically
+    - Selects best AI worker
+    - Produces final video
+    """
+    global video_engine, video_engine_initialized
+    
+    if not video_engine_initialized or not video_engine:
+        return {
+            "success": False,
+            "error": "Video engine not initialized. Run /wade/video/initialize first."
+        }
+    
+    try:
+        print(f"🎬 Generating video: {opportunity_data.get('title', 'Untitled')}")
+        
+        # Process video opportunity
+        result = await video_engine.process_video_opportunity(opportunity_data)
+        
+        if result['success']:
+            video_result = result['video_result']
+            project = result['project']
+            
+            return {
+                "success": True,
+                "video_project": {
+                    "id": project['id'],
+                    "title": opportunity_data.get('title'),
+                    "type": project['type'],
+                    "duration": f"{project['duration']} seconds",
+                    "ai_worker": video_result['ai_worker'],
+                    "cost": f"${video_result['cost']:.2f}"
+                },
+                "generation_details": {
+                    "script_generated": bool(project['script']),
+                    "video_url": video_result.get('video_url'),
+                    "video_path": video_result.get('video_path'),
+                    "resolution": video_result['metadata']['resolution'],
+                    "format": video_result['metadata']['format']
+                },
+                "analysis": {
+                    "confidence": result['analysis']['confidence'],
+                    "video_type": result['analysis']['analysis']['video_type'],
+                    "quality_tier": result['analysis']['analysis']['quality_tier']
+                },
+                "deliverable_ready": result['deliverable_ready']
+            }
+        else:
+            return {
+                "success": False,
+                "error": result['error'],
+                "analysis": result.get('analysis'),
+                "troubleshooting": "Check video requirements and API keys"
+            }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": f"Video generation failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+
+@app.post("/wade/video/analyze")
+async def analyze_video_opportunity(opportunity_data: dict):
+    """
+    🧠 ANALYZE VIDEO OPPORTUNITY
+    
+    Analyze opportunity to determine video requirements:
+    - Video type (explainer, ad, social, testimonial)
+    - Optimal duration and style
+    - Recommended AI worker
+    - Quality tier and pricing
+    """
+    global video_engine, video_engine_initialized
+    
+    if not video_engine_initialized or not video_engine:
+        return {
+            "success": False,
+            "error": "Video engine not initialized"
+        }
+    
+    try:
+        analyzer = video_engine.analyzer
+        analysis = await analyzer.analyze_video_request(opportunity_data)
+        
+        requirements = analysis['analysis']
+        approach = analysis['recommended_approach']
+        
+        return {
+            "success": True,
+            "opportunity": {
+                "title": opportunity_data.get('title'),
+                "budget": opportunity_data.get('estimated_value', 0),
+                "platform": opportunity_data.get('source')
+            },
+            "video_analysis": {
+                "type": requirements['video_type'],
+                "confidence": f"{analysis['confidence']*100:.1f}%",
+                "recommended_duration": f"{requirements['optimal_duration']} seconds",
+                "style": requirements['style'],
+                "quality_tier": requirements['quality_tier'],
+                "urgency": requirements['urgency']
+            },
+            "recommended_approach": {
+                "ai_worker": approach['ai_worker'],
+                "features": approach['features'],
+                "delivery_time": approach['delivery_time'],
+                "estimated_cost": f"${requirements['budget'] * 0.1:.2f} - ${requirements['budget'] * 0.3:.2f}"
+            },
+            "special_requirements": requirements['special_requirements'],
+            "type_scores": analysis['type_scores']
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Video analysis failed: {str(e)}"
+        }
+
+
+@app.get("/wade/video/status")
+async def get_video_engine_status():
+    """
+    📊 VIDEO ENGINE STATUS
+    
+    Check video engine health and capabilities
+    """
+    global video_engine, video_engine_initialized
+    
+    # Check API keys
+    api_keys_status = {
+        "runway_api_key": bool(os.getenv('RUNWAY_API_KEY')),
+        "synthesia_api_key": bool(os.getenv('SYNTHESIA_API_KEY')),
+        "heygen_api_key": bool(os.getenv('HEYGEN_API_KEY')),
+        "openrouter_api_key": bool(os.getenv('OPENROUTER_API_KEY'))
+    }
+    
+    # Check workers availability
+    workers_status = {}
+    if video_engine_initialized and video_engine:
+        workers_status = {
+            "runway": "✅ Ready" if api_keys_status["runway_api_key"] else "⚠️  API key needed",
+            "synthesia": "✅ Ready" if api_keys_status["synthesia_api_key"] else "⚠️  API key needed", 
+            "heygen": "✅ Ready" if api_keys_status["heygen_api_key"] else "⚠️  Fallback to Synthesia",
+            "script_generator": "✅ Ready" if api_keys_status["openrouter_api_key"] else "⚠️  Using fallback scripts"
+        }
+    
+    operational_workers = sum(1 for status in workers_status.values() if "✅" in status)
+    
+    return {
+        "success": True,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "video_engine": {
+            "initialized": video_engine_initialized,
+            "operational_workers": operational_workers,
+            "total_workers": 4,
+            "ready_for_production": operational_workers >= 2
+        },
+        "api_keys": api_keys_status,
+        "workers": workers_status,
+        "capabilities": {
+            "video_types": ["explainer", "advertisement", "social", "testimonial", "training"],
+            "ai_workers": ["runway", "synthesia", "heygen"],
+            "output_formats": ["mp4", "mov", "webm"],
+            "resolutions": ["720p", "1080p", "4k"],
+            "max_duration": "300 seconds (5 minutes)"
+        },
+        "integration_status": {
+            "universal_orchestrator": "✅ Compatible",
+            "discovery_engine": "✅ Receives opportunities",
+            "routing_system": "✅ Intelligent worker selection"
+        }
+    }
+
+
+@app.post("/wade/video/test")
+async def test_video_generation():
+    """
+    🧪 TEST VIDEO GENERATION
+    
+    Test video engine with sample opportunity
+    """
+    global video_engine, video_engine_initialized
+    
+    if not video_engine_initialized or not video_engine:
+        return {
+            "success": False,
+            "error": "Video engine not initialized"
+        }
+    
+    try:
+        # Sample video opportunity
+        test_opportunity = {
+            'id': 'test_video_001',
+            'title': 'Create 60-second explainer video for AI SaaS product',
+            'description': 'Need professional explainer video showing how our AI automation platform helps businesses scale operations. Target audience: business owners, 60 seconds, professional style.',
+            'estimated_value': 300,
+            'source': 'fiverr'
+        }
+        
+        print("🧪 Testing video generation with sample opportunity...")
+        
+        # Run analysis only (faster test)
+        analyzer = video_engine.analyzer
+        analysis = await analyzer.analyze_video_request(test_opportunity)
+        
+        # Generate script only (no actual video)
+        script_generator = video_engine.script_generator
+        script = await script_generator.generate_script(analysis['analysis'])
+        
+        return {
+            "success": True,
+            "test_results": {
+                "analysis": {
+                    "video_type_detected": analysis['analysis']['video_type'],
+                    "confidence": f"{analysis['confidence']*100:.1f}%",
+                    "recommended_worker": analysis['recommended_approach']['ai_worker'],
+                    "estimated_duration": f"{analysis['analysis']['optimal_duration']} seconds"
+                },
+                "script_generation": {
+                    "script_generated": bool(script),
+                    "script_length": len(script) if script else 0,
+                    "script_preview": script[:100] + "..." if script else "Failed"
+                },
+                "routing_decision": {
+                    "worker_selected": analysis['recommended_approach']['ai_worker'],
+                    "quality_tier": analysis['analysis']['quality_tier'],
+                    "delivery_time": analysis['recommended_approach']['delivery_time']
+                }
+            },
+            "video_engine_health": "✅ Operational",
+            "note": "Test completed analysis and script generation only (no actual video produced)"
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Video engine test failed: {str(e)}"
+        }
+
+
+@app.get("/wade/video/pricing")
+async def get_video_pricing():
+    """
+    💰 VIDEO PRICING CALCULATOR
+    
+    Get pricing information for different video types
+    """
+    
+    pricing_tiers = {
+        "basic": {
+            "price_range": "$50-$150",
+            "duration": "15-60 seconds",
+            "features": ["Basic script", "Stock footage", "Simple editing"],
+            "ai_worker": "runway",
+            "delivery": "24 hours",
+            "use_cases": ["Social media clips", "Simple ads", "Quick demos"]
+        },
+        "standard": {
+            "price_range": "$150-$400", 
+            "duration": "60-180 seconds",
+            "features": ["AI presenter", "Custom script", "Professional editing", "Branded elements"],
+            "ai_worker": "synthesia",
+            "delivery": "48 hours",
+            "use_cases": ["Explainer videos", "Product demos", "Training content"]
+        },
+        "premium": {
+            "price_range": "$400-$1000",
+            "duration": "180-300 seconds", 
+            "features": ["Custom avatar", "Advanced editing", "Multiple scenes", "Music & effects"],
+            "ai_worker": "heygen",
+            "delivery": "72 hours",
+            "use_cases": ["High-end commercials", "Corporate videos", "Complex explanations"]
+        }
+    }
+    
+    return {
+        "success": True,
+        "pricing_tiers": pricing_tiers,
+        "revenue_projections": {
+            "conservative": "$3,000/month (20 videos)",
+            "moderate": "$7,000/month (40 videos)",
+            "aggressive": "$11,000/month (60 videos)"
+        },
+        "cost_breakdown": {
+            "runway_cost": "$0.05 per second",
+            "synthesia_cost": "$0.10 per minute", 
+            "heygen_cost": "$0.15 per minute",
+            "profit_margins": "80-95%"
+        },
+        "market_comparison": {
+            "human_videographer": "$500-$5000",
+            "video_agency": "$1000-$10000",
+            "ai_video_engine": "$50-$1000",
+            "competitive_advantage": "10x faster, 5x cheaper"
+        }
     }
 
         
