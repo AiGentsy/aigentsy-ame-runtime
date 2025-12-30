@@ -489,7 +489,7 @@ Deliver a professional solution that solves the problem completely."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [
                             {"role": "user", "content": prompt}
                         ],
@@ -572,7 +572,7 @@ Please create the content following best practices for the requested type."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [
                             {"role": "user", "content": prompt}
                         ],
@@ -647,7 +647,7 @@ Please provide a complete, professional solution."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [
                             {"role": "user", "content": prompt}
                         ],
@@ -850,7 +850,7 @@ Deployment Time: {result.get('deployment_time')}
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 16000
                     },
@@ -1016,7 +1016,7 @@ Output ONLY Python code, no explanations."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 8000
                     },
@@ -1178,7 +1178,7 @@ Output ONLY Python code, no explanations."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-sonnet-4-20250514",
+                        "model": "anthropic/claude-sonnet-4",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 8000
                     },
