@@ -11447,52 +11447,52 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
 async def check_graphics_status():
     """Check if graphics engine is configured and ready"""
     import os
-
-status = {
-    "timestamp": datetime.now(timezone.utc).isoformat(),
-    "graphics_module_available": False,
-    "stability_api_key_configured": False,
-    "stability_api_valid": False,
-    "ready": False
-}
-
-# Check if graphics_engine.py exists
-try:
-    from graphics_engine import GraphicsEngine, GraphicsRouter
-    status["graphics_module_available"] = True
-except ImportError as e:
-    status["import_error"] = str(e)
-    return status
-
-# Check API key
-api_key = os.getenv('STABILITY_API_KEY')
-if api_key:
-    status["stability_api_key_configured"] = True
-    status["api_key_prefix"] = api_key[:7] + "..."
     
-    # Test API connection
+    status = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "graphics_module_available": False,
+        "stability_api_key_configured": False,
+        "stability_api_valid": False,
+        "ready": False
+    }
+    
+    # Check if graphics_engine.py exists
     try:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://api.stability.ai/v1/user/account",
-                headers={"Authorization": f"Bearer {api_key}"}
-            )
-            
-            if response.status_code == 200:
-                status["stability_api_valid"] = True
-                data = response.json()
-                status["account"] = {
-                    "email": data.get('email'),
-                    "credits_remaining": data.get('credits', 0)
-                }
-                status["ready"] = True
-            else:
-                status["api_error"] = f"Status {response.status_code}: {response.text}"
+        from graphics_engine import GraphicsEngine, GraphicsRouter
+        status["graphics_module_available"] = True
+    except ImportError as e:
+        status["import_error"] = str(e)
+        return status
     
-    except Exception as e:
-        status["api_test_error"] = str(e)
+    # Check API key
+    api_key = os.getenv('STABILITY_API_KEY')
+    if api_key:
+        status["stability_api_key_configured"] = True
+        status["api_key_prefix"] = api_key[:7] + "..."
+        
+        # Test API connection
+        try:
+            import httpx
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://api.stability.ai/v1/user/account",
+                    headers={"Authorization": f"Bearer {api_key}"}
+                )
+                
+                if response.status_code == 200:
+                    status["stability_api_valid"] = True
+                    data = response.json()
+                    status["account"] = {
+                        "email": data.get('email'),
+                        "credits_remaining": data.get('credits', 0)
+                    }
+                    status["ready"] = True
+                else:
+                    status["api_error"] = f"Status {response.status_code}: {response.text}"
+        
+        except Exception as e:
+            status["api_test_error"] = str(e)
     else:
         status["message"] = "STABILITY_API_KEY not set in environment variables"
     
