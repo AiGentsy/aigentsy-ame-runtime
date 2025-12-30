@@ -11330,17 +11330,77 @@ async def check_approval(workflow_id: str):
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
 
-# REPLACE BOTH ENDPOINTS WITH THESE WORKING VERSIONS
+# REPLACE the create-workflow endpoint in main.py with this:
 
 @app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
 async def create_workflow_from_fulfillment(fulfillment_id: str):
     """Create a workflow from an approved fulfillment"""
     try:
-        fulfillment = fulfillment_queue.get_fulfillment(fulfillment_id)
-        if not fulfillment:
-            return {"ok": False, "error": f"Fulfillment {fulfillment_id} not found"}
+        # Try to get from pending queue first (simpler)
+        try:
+            pending = fulfillment_queue.get_pending_queue()
+            matching = [f for f in pending if f.get('id') == fulfillment_id]
+        except:
+            matching = []
         
-        opportunity = fulfillment['opportunity']
+        # If not found, try JSONBin storage directly
+        if not matching:
+            import httpx
+            JSONBIN_URL = os.getenv("JSONBIN_URL")
+            JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+            
+            if JSONBIN_URL and JSONBIN_SECRET:
+                headers = {"X-Master-Key": JSONBIN_SECRET}
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(JSONBIN_URL, headers=headers)
+                    data = response.json()
+                
+                # Handle different JSONBin response formats
+                if isinstance(data, list):
+                    all_fulfillments = data
+                elif isinstance(data, dict) and "record" in data:
+                    record = data["record"]
+                    if isinstance(record, list):
+                        all_fulfillments = record
+                    elif isinstance(record, dict):
+                        all_fulfillments = record.get("fulfillments", [])
+                    else:
+                        all_fulfillments = []
+                else:
+                    all_fulfillments = []
+                
+                matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
+        
+        if not matching:
+            return {
+                "ok": False,
+                "error": f"Fulfillment {fulfillment_id} not found",
+                "fulfillment_id": fulfillment_id
+            }
+        
+        fulfillment = matching[0]
+        
+        # Get workflow_id
+        workflow_id = (
+            fulfillment.get('workflow_id') or 
+            fulfillment.get('opportunity_id') or 
+            fulfillment.get('opportunity', {}).get('id') or
+            fulfillment.get('opportunity', {}).get('opportunity_id')
+        )
+        
+        if not workflow_id:
+            workflow_id = f"workflow_{fulfillment_id.replace('fulfillment_', '')}"
+        
+        if workflow_id in integrated_workflow.workflows:
+            return {
+                "ok": True,
+                "message": "Workflow already exists",
+                "workflow_id": workflow_id,
+                "stage": integrated_workflow.workflows[workflow_id].get('stage')
+            }
+        
+        # Get opportunity
+        opportunity = fulfillment.get('opportunity', {})
         
         # Get or generate fulfillability
         fulfillability = fulfillment.get('fulfillability', {})
@@ -11406,41 +11466,42 @@ async def create_workflow_from_fulfillment(fulfillment_id: str):
                 }
         
         # Create workflow with detected system
-        workflow_id = opportunity['id']
-        
-        workflow = {
+        integrated_workflow.workflows[workflow_id] = {
             'workflow_id': workflow_id,
-            'opportunity_id': opportunity['id'],
+            'opportunity_id': fulfillment.get('opportunity_id'),
             'fulfillment_id': fulfillment_id,
             'stage': 'bid_submitted',
             'opportunity': opportunity,
+            'fulfillment': fulfillment,
             'fulfillability': fulfillability,
             'history': [
                 {
-                    'stage': 'workflow_created',
+                    'stage': 'bid_submitted',
                     'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'action': f'Workflow created with system: {fulfillability["fulfillment_system"]}'
+                    'action': 'Proposal submitted'
                 }
             ],
             'created_at': datetime.now(timezone.utc).isoformat()
         }
         
-        integrated_workflow.workflows[workflow_id] = workflow
-        
         return {
             "ok": True,
+            "message": "Workflow created successfully",
             "workflow_id": workflow_id,
+            "fulfillment_id": fulfillment_id,
+            "stage": "bid_submitted",
+            "fulfillability": fulfillability,
             "fulfillment_system": fulfillability['fulfillment_system'],
-            "capability": fulfillability.get('capability'),
-            "message": f"Workflow created - will execute via {fulfillability['fulfillment_system']}"
+            "capability": fulfillability.get('capability')
         }
-    
+        
     except Exception as e:
         import traceback
         return {
             "ok": False,
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
+            "fulfillment_id": fulfillment_id
         }
 
 @app.get("/wade/graphics/status")
