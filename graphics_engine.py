@@ -505,18 +505,39 @@ class StableDiffusionExecutor:
             
             # Save images
             images = []
-            for i, artifact in enumerate(data.get('artifacts', [])):
-                image_data = artifact['base64']
-                filename = f"/tmp/generated_{datetime.now().timestamp()}_{i}.png"
-                
-                with open(filename, 'wb') as f:
-                    f.write(base64.b64decode(image_data))
-                
-                images.append({
-                    'filename': filename,
-                    'base64': image_data,
-                    'seed': artifact.get('seed')
-                })
+            artifacts = data.get('artifacts', [])
+            
+            if not artifacts:
+                return {
+                    'success': False,
+                    'error': f"No images generated. API response: {data}"
+                }
+            
+            for i, artifact in enumerate(artifacts):
+                try:
+                    image_data = artifact.get('base64')
+                    if not image_data:
+                        continue
+                    
+                    filename = f"/tmp/generated_{datetime.now().timestamp()}_{i}.png"
+                    
+                    with open(filename, 'wb') as f:
+                        f.write(base64.b64decode(image_data))
+                    
+                    images.append({
+                        'filename': filename,
+                        'base64': image_data,
+                        'seed': artifact.get('seed')
+                    })
+                except Exception as e:
+                    print(f"Error processing artifact {i}: {e}")
+                    continue
+            
+            if not images:
+                return {
+                    'success': False,
+                    'error': f"Failed to process images. Artifacts: {artifacts}"
+                }
             
             return {
                 'success': True,
