@@ -20,7 +20,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 # Import existing systems
-from ultimate_discovery_engine__2_ import discover_all_opportunities, get_wade_fulfillment_queue
+from ultimate_discovery_engine import discover_all_opportunities, get_wade_fulfillment_queue
 from week2_master_orchestrator import Week2MasterOrchestrator
 from graphics_engine import GraphicsEngine
 
