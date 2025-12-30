@@ -12421,7 +12421,7 @@ async def get_integration_status():
     
     # Check Universal Discovery
     try:
-        from ultimate_discovery_engine__2_ import PLATFORM_CONFIGS
+        from ultimate_discovery_engine import PLATFORM_CONFIGS
         enabled_platforms = [p for p, cfg in PLATFORM_CONFIGS.items() if cfg.get("enabled")]
         components_status["universal_discovery"] = {
             "status": "✅ Available",
