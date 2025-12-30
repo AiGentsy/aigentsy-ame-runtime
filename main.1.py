@@ -26,7 +26,8 @@ from wade_approval_dashboard import fulfillment_queue
 from execution_routes import router as execution_router
 from autonomous_routes import router as autonomous_router
 from discovery_to_queue_connector import auto_discover_and_queue
-from wade_integrated_workflow import integrated_workflow
+from wade_integrated_workflow import IntegratedFulfillmentWorkflow 
+from auto_bidding_orchestrator import auto_bid_on_opportunity
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
@@ -683,6 +684,7 @@ except Exception as e:
     
 app = FastAPI()
 
+integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
 # Register opportunity endpoints
 from ame_routes import register_ame_routes
 register_ame_routes(app)
@@ -5504,9 +5506,10 @@ async def approve_fulfillment(fulfillment_id: str):
     Wade approves AiGentsy direct fulfillment
     
     This triggers:
-    1. Fulfillment execution (AI agents start work)
-    2. Revenue tracking
-    3. Outcome tracking
+    1. Auto-bidding/application (if not already submitted)
+    2. Fulfillment execution (AI agents start work)
+    3. Revenue tracking
+    4. Outcome tracking
     '''
     
     result = fulfillment_queue.approve_fulfillment(fulfillment_id)
@@ -5515,7 +5518,29 @@ async def approve_fulfillment(fulfillment_id: str):
         # Get fulfillment details
         approved = [f for f in fulfillment_queue.approved_fulfillments if f['id'] == fulfillment_id][0]
         
-        # TODO: Trigger execution
+        # STEP 1: Auto-bid on the opportunity
+        try:
+            from auto_bidding_orchestrator import auto_bid_on_opportunity
+            
+            opportunity = approved['opportunity']
+            bid_result = await auto_bid_on_opportunity(opportunity)
+            
+            result['bid_submitted'] = bid_result.get('submitted', False)
+            result['bid_method'] = bid_result.get('channel')
+            
+            if bid_result.get('dashboard_display'):
+                # Manual action required
+                result['manual_instructions'] = bid_result['dashboard_display']['instructions']
+                result['proposal_to_copy'] = bid_result['dashboard_display']['proposal_text']
+            
+            if bid_result.get('submission_result'):
+                result['submission_details'] = bid_result['submission_result']
+        
+        except Exception as e:
+            result['bid_error'] = str(e)
+            result['bid_submitted'] = False
+        
+        # STEP 2: TODO - Trigger execution after client approves
         # Option 1: Assign to AI agents (automated)
         # await execute_with_ai_agents(approved)
         
@@ -5525,7 +5550,7 @@ async def approve_fulfillment(fulfillment_id: str):
         # Track in revenue system
         # await track_aigentsy_direct_opportunity(approved)
         
-        result['execution_started'] = True
+        result['execution_started'] = False  # Starts after client accepts bid
         result['estimated_completion'] = approved['estimated_days']
     
     return result
@@ -11279,14 +11304,6 @@ async def process_opportunity(opportunity: Dict):
     result = await integrated_workflow.process_discovered_opportunity(opportunity)
     return result
 
-@app.post("/wade/approve/{fulfillment_id}")
-async def wade_approve(fulfillment_id: str):
-    '''
-    Step 2: Wade approves + auto-bids
-    '''
-    result = await integrated_workflow.wade_approves(fulfillment_id)
-    return result
-
 @app.get("/wade/workflow/{workflow_id}")
 async def get_workflow(workflow_id: str):
     '''
@@ -11312,6 +11329,394 @@ async def check_approval(workflow_id: str):
     '''
     result = await integrated_workflow.check_client_approval(workflow_id)
     return result
+
+# REPLACE BOTH ENDPOINTS WITH THESE WORKING VERSIONS
+
+@app.post("/wade/fulfillment/{fulfillment_id}/create-workflow")
+async def create_workflow_from_fulfillment(fulfillment_id: str):
+    """Create a workflow from an approved fulfillment"""
+    try:
+        # Try to get from pending queue first (simpler)
+        try:
+            pending = fulfillment_queue.get_pending_queue()
+            matching = [f for f in pending if f.get('id') == fulfillment_id]
+        except:
+            matching = []
+        
+        # If not found, try JSONBin storage directly
+        if not matching:
+            import httpx
+            JSONBIN_URL = os.getenv("JSONBIN_URL")
+            JSONBIN_SECRET = os.getenv("JSONBIN_SECRET")
+            
+            if JSONBIN_URL and JSONBIN_SECRET:
+                headers = {"X-Master-Key": JSONBIN_SECRET}
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(JSONBIN_URL, headers=headers)
+                    data = response.json()
+                
+                # Handle different JSONBin response formats
+                if isinstance(data, list):
+                    all_fulfillments = data
+                elif isinstance(data, dict) and "record" in data:
+                    record = data["record"]
+                    if isinstance(record, list):
+                        all_fulfillments = record
+                    elif isinstance(record, dict):
+                        all_fulfillments = record.get("fulfillments", [])
+                    else:
+                        all_fulfillments = []
+                else:
+                    all_fulfillments = []
+                
+                matching = [f for f in all_fulfillments if f.get('id') == fulfillment_id]
+        
+        if not matching:
+            return {
+                "ok": False,
+                "error": f"Fulfillment {fulfillment_id} not found",
+                "fulfillment_id": fulfillment_id
+            }
+        
+        fulfillment = matching[0]
+        workflow_id = (
+            fulfillment.get('workflow_id') or 
+            fulfillment.get('opportunity_id') or 
+            fulfillment.get('opportunity', {}).get('id') or
+            fulfillment.get('opportunity', {}).get('opportunity_id')
+        )
+        
+        # If still None, generate from fulfillment_id
+        if not workflow_id:
+            workflow_id = f"workflow_{fulfillment_id.replace('fulfillment_', '')}"
+        
+        if workflow_id in integrated_workflow.workflows:
+            return {
+                "ok": True,
+                "message": "Workflow already exists",
+                "workflow_id": workflow_id,
+                "stage": integrated_workflow.workflows[workflow_id].get('stage')
+            }
+        
+        # Create workflow
+        opportunity = fulfillment.get('opportunity', {})
+        
+        # Get or generate fulfillability
+        fulfillability = fulfillment.get('fulfillability', {})
+        
+        # If fulfillability is missing or incomplete, generate it
+        if not fulfillability or not fulfillability.get('fulfillment_system'):
+            # Analyze opportunity to determine fulfillment system
+            title = opportunity.get('title', '').lower()
+            description = opportunity.get('description', '').lower()
+            platform = opportunity.get('platform', '').lower()
+            
+            # Determine fulfillment system based on content
+            if 'github' in platform:
+                fulfillment_system = 'code_generation'
+            elif any(word in title + description for word in ['write', 'blog', 'content', 'article', 'post', 'copy']):
+                fulfillment_system = 'content_generation'
+            elif any(word in title + description for word in ['deploy', 'setup', 'configure', 'install', 'launch']):
+                fulfillment_system = 'business_deployment'
+            elif any(word in title + description for word in ['agent', 'bot', 'chatbot', 'ai', 'assistant']):
+                fulfillment_system = 'ai_agent'
+            elif any(word in title + description for word in ['social', 'instagram', 'tiktok', 'twitter', 'facebook']):
+                fulfillment_system = 'platform_monetization'
+            else:
+                fulfillment_system = 'generic_claude'
+            
+        fulfillability = {
+            'can_wade_fulfill': True,
+            'fulfillment_system': 'claude',  # ✅ The AI system
+            'capability': fulfillment_system,  # ✅ The task type (code_generation, content_generation, etc)
+            'wade_capabilities': ['code_generation', 'problem_solving', 'technical_analysis', 'content_creation'],
+            'confidence': 0.8,
+            'estimated_hours': 2,
+            'reasoning': f'Auto-generated based on {platform} platform and opportunity content'
+        }
+        
+        integrated_workflow.workflows[workflow_id] = {
+            'workflow_id': workflow_id,
+            'opportunity_id': fulfillment.get('opportunity_id'),
+            'fulfillment_id': fulfillment_id,
+            'stage': 'bid_submitted',
+            'opportunity': opportunity,
+            'fulfillment': fulfillment,
+            'fulfillability': fulfillability,
+            'history': [
+                {
+                    'stage': 'bid_submitted',
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'action': 'Proposal submitted'
+                }
+            ],
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        return {
+            "ok": True,
+            "message": "Workflow created successfully",
+            "workflow_id": workflow_id,
+            "fulfillment_id": fulfillment_id,
+            "stage": "bid_submitted",
+            "fulfillability": fulfillability
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "fulfillment_id": fulfillment_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/client-approved")
+async def mark_client_approved(workflow_id: str):
+    """Mark opportunity as accepted by client"""
+    try:
+        # If workflow doesn't exist, try to create it from queue
+        if workflow_id not in integrated_workflow.workflows:
+            # Try to find matching fulfillment
+            try:
+                pending = fulfillment_queue.get_pending_queue()
+                matching = [f for f in pending if f.get('workflow_id') == workflow_id or f.get('opportunity_id') == workflow_id]
+            except:
+                matching = []
+            
+            if not matching:
+                return {
+                    "ok": False,
+                    "error": f"Workflow {workflow_id} not found. Try creating it first with /wade/fulfillment/FULFILLMENT_ID/create-workflow",
+                    "workflow_id": workflow_id
+                }
+            
+            # Create workflow from fulfillment
+            fulfillment = matching[0]
+            opportunity = fulfillment.get('opportunity', {})
+            integrated_workflow.workflows[workflow_id] = {
+                'workflow_id': workflow_id,
+                'opportunity_id': fulfillment.get('opportunity_id'),
+                'fulfillment_id': fulfillment.get('id'),
+                'stage': 'client_approved',
+                'opportunity': opportunity,
+                'fulfillment': fulfillment,
+                'history': [
+                    {
+                        'stage': 'bid_submitted',
+                        'timestamp': fulfillment.get('approved_at', datetime.now(timezone.utc).isoformat()),
+                        'action': 'Proposal submitted'
+                    },
+                    {
+                        'stage': 'client_approved',
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'action': 'Client approved proposal'
+                    }
+                ],
+                'created_at': fulfillment.get('created_at', datetime.now(timezone.utc).isoformat())
+            }
+        else:
+            # Update existing workflow
+            workflow = integrated_workflow.workflows[workflow_id]
+            workflow['stage'] = 'client_approved'
+            workflow['history'].append({
+                'stage': 'client_approved',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'action': 'Client approved proposal'
+            })
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "stage": "client_approved",
+            "message": "Client approval recorded. Ready for execution.",
+            "next_step": f"POST /wade/workflow/{workflow_id}/execute or /wade/workflow/{workflow_id}/auto-execute"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/execute")
+async def execute_workflow(workflow_id: str):
+    """
+    Execute the approved work
+    
+    Routes to appropriate executor:
+    - Code generation (Claude)
+    - Content generation (Claude)
+    - Business deployment (template_actionizer)
+    - AI agent deployment (openai_agent_deployer)
+    - Platform monetization (metabridge_runtime)
+    """
+    try:
+        result = await integrated_workflow.execute_work(workflow_id)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/deliver")
+async def deliver_workflow(workflow_id: str):
+    """
+    Deliver completed work to client
+    
+    Platform-specific delivery:
+    - GitHub: Comment with solution + optional PR
+    - Upwork: Submit through platform
+    - Reddit: DM + reply to post
+    - Email: Send deliverables via email
+    """
+    try:
+        result = await integrated_workflow.deliver_work(workflow_id)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/payment-received")
+async def track_payment(workflow_id: str, body: Dict = Body(...)):
+    """
+    Track payment received
+    
+    Updates:
+    - Workflow status → PAID
+    - AIGx balance
+    - Revenue tracking
+    - Outcome oracle
+    """
+    try:
+        amount = body.get("amount", 0)
+        payment_proof = body.get("proof", "")
+        
+        result = await integrated_workflow.track_payment(workflow_id, amount, payment_proof)
+        return result
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.get("/wade/workflow/{workflow_id}")
+async def get_workflow_status(workflow_id: str):
+    """
+    Get workflow status and history
+    
+    Returns:
+    - Current stage
+    - Opportunity details
+    - Execution results
+    - Delivery status
+    - Payment info
+    - Complete history
+    """
+    try:
+        workflow = integrated_workflow.get_workflow(workflow_id)
+        
+        if not workflow:
+            return {
+                "ok": False,
+                "error": "Workflow not found",
+                "workflow_id": workflow_id
+            }
+        
+        return {
+            "ok": True,
+            "workflow": workflow
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
+
+@app.get("/wade/active-workflows")
+async def get_active_workflows():
+    """
+    Get all active workflows
+    
+    Returns workflows in:
+    - PENDING_CLIENT_APPROVAL
+    - CLIENT_APPROVED
+    - IN_PROGRESS
+    - COMPLETED
+    - DELIVERED
+    
+    Excludes:
+    - PAID (finished)
+    - REJECTED (dead)
+    """
+    try:
+        workflows = integrated_workflow.get_active_workflows()
+        
+        return {
+            "ok": True,
+            "count": len(workflows),
+            "workflows": workflows
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflows": []
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/auto-execute")
+async def auto_execute_workflow(workflow_id: str):
+    """
+    FULL AUTO MODE: Execute + Deliver in one call
+    
+    Does:
+    1. Execute work (generate code/content/deploy)
+    2. Deliver to platform automatically
+    3. Track delivery
+    
+    Use this for hands-off execution after client approves
+    """
+    try:
+        # Execute
+        exec_result = await integrated_workflow.execute_work(workflow_id)
+        
+        if not exec_result.get('success'):
+            return exec_result
+        
+        # Deliver
+        delivery_result = await integrated_workflow.deliver_work(workflow_id)
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "execution": exec_result,
+            "delivery": delivery_result,
+            "message": "Work executed and delivered automatically"
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "workflow_id": workflow_id
+        }
+
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
