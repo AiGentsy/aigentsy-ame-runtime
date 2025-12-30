@@ -423,7 +423,7 @@ class GraphicsRouter:
         requirements = analysis['requirements']
         
         quantity = requirements.get('quantity', 3)
-        dimensions = requirements.get('dimensions', {'width': 1024, 'height': 1024})
+        dimensions = requirements.get('dimensions') or {'width': 1024, 'height': 1024}  # Default if None
         
         plan = {
             'worker': worker,
