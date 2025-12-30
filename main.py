@@ -11517,57 +11517,57 @@ async def test_graphics_generation():
     
     try:
         from graphics_engine import GraphicsRouter
-    
-    # Analyze with graphics router
-    router = GraphicsRouter()
-    routing = router.route_task(test_opportunity)
-    
-    if not routing['analysis']['is_graphics']['is_graphics']:
+        
+        # Analyze with graphics router
+        router = GraphicsRouter()
+        routing = router.route_task(test_opportunity)
+        
+        if not routing['analysis']['is_graphics']['is_graphics']:
+            return {
+                "ok": False,
+                "error": "Test opportunity not detected as graphics work",
+                "analysis": routing['analysis']
+            }
+        
+        # Create test workflow
+        workflow_id = test_opportunity['id']
+        
+        fulfillability = {
+            'can_wade_fulfill': True,
+            'fulfillment_system': 'graphics',
+            'capability': 'graphics_generation',
+            'wade_capabilities': ['graphics_generation'],
+            'confidence': routing['analysis']['is_graphics']['confidence'],
+            'estimated_hours': 0.5,
+            'reasoning': routing['reasoning']
+        }
+        
+        workflow = {
+            'workflow_id': workflow_id,
+            'opportunity_id': test_opportunity['id'],
+            'stage': 'client_approved',  # Skip approvals for test
+            'opportunity': test_opportunity,
+            'fulfillability': fulfillability,
+            'history': [],
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Add to workflow system
+        integrated_workflow.workflows[workflow_id] = workflow
+        
+        # Execute!
+        result = await integrated_workflow.execute_work(workflow_id)
+        
         return {
-            "ok": False,
-            "error": "Test opportunity not detected as graphics work",
-            "analysis": routing['analysis']
+            "ok": True,
+            "test_mode": True,
+            "workflow_id": workflow_id,
+            "routing_analysis": routing['analysis'],
+            "selected_ai_worker": routing['selected_worker'],
+            "execution_result": result,
+            "note": "Real AI execution with test data"
         }
     
-    # Create test workflow
-    workflow_id = test_opportunity['id']
-    
-    fulfillability = {
-        'can_wade_fulfill': True,
-        'fulfillment_system': 'graphics',
-        'capability': 'graphics_generation',
-        'wade_capabilities': ['graphics_generation'],
-        'confidence': routing['analysis']['is_graphics']['confidence'],
-        'estimated_hours': 0.5,
-        'reasoning': routing['reasoning']
-    }
-    
-    workflow = {
-        'workflow_id': workflow_id,
-        'opportunity_id': test_opportunity['id'],
-        'stage': 'client_approved',  # Skip approvals for test
-        'opportunity': test_opportunity,
-        'fulfillability': fulfillability,
-        'history': [],
-        'created_at': datetime.now(timezone.utc).isoformat()
-    }
-    
-    # Add to workflow system
-    integrated_workflow.workflows[workflow_id] = workflow
-    
-    # Execute!
-    result = await integrated_workflow.execute_work(workflow_id)
-    
-    return {
-        "ok": True,
-        "test_mode": True,
-        "workflow_id": workflow_id,
-        "routing_analysis": routing['analysis'],
-        "selected_ai_worker": routing['selected_worker'],
-        "execution_result": result,
-        "note": "Real AI execution with test data"
-    }
-
     except Exception as e:
         import traceback
         return {
