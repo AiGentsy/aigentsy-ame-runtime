@@ -11498,6 +11498,84 @@ else:
 
 return status
 
+@app.post("/wade/graphics/test")
+async def test_graphics_generation():
+"""
+Test graphics generation with sample data
+Creates a temporary test workflow and executes it
+"""
+test_opportunity = {
+    'id': f'test_graphics_{int(datetime.now().timestamp())}',
+    'opportunity_id': f'test_graphics_{int(datetime.now().timestamp())}',
+    'platform': 'test',
+    'title': 'Need minimalist logo design',
+    'description': 'Looking for a clean, modern logo in blue and white colors. Should be simple and professional.',
+    'url': 'https://test.com/sample',
+    'value': 200,
+    'discovered_at': datetime.now(timezone.utc).isoformat()
+}
+
+try:
+    from graphics_engine import GraphicsRouter
+    
+    # Analyze with graphics router
+    router = GraphicsRouter()
+    routing = router.route_task(test_opportunity)
+    
+    if not routing['analysis']['is_graphics']['is_graphics']:
+        return {
+            "ok": False,
+            "error": "Test opportunity not detected as graphics work",
+            "analysis": routing['analysis']
+        }
+    
+    # Create test workflow
+    workflow_id = test_opportunity['id']
+    
+    fulfillability = {
+        'can_wade_fulfill': True,
+        'fulfillment_system': 'graphics',
+        'capability': 'graphics_generation',
+        'wade_capabilities': ['graphics_generation'],
+        'confidence': routing['analysis']['is_graphics']['confidence'],
+        'estimated_hours': 0.5,
+        'reasoning': routing['reasoning']
+    }
+    
+    workflow = {
+        'workflow_id': workflow_id,
+        'opportunity_id': test_opportunity['id'],
+        'stage': 'client_approved',  # Skip approvals for test
+        'opportunity': test_opportunity,
+        'fulfillability': fulfillability,
+        'history': [],
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Add to workflow system
+    integrated_workflow.workflows[workflow_id] = workflow
+    
+    # Execute!
+    result = await integrated_workflow.execute_work(workflow_id)
+    
+    return {
+        "ok": True,
+        "test_mode": True,
+        "workflow_id": workflow_id,
+        "routing_analysis": routing['analysis'],
+        "selected_ai_worker": routing['selected_worker'],
+        "execution_result": result,
+        "note": "Real AI execution with test data"
+    }
+
+except Exception as e:
+    import traceback
+    return {
+        "ok": False,
+        "error": str(e),
+        "traceback": traceback.format_exc()
+    }
+
 
 @app.post("/wade/workflow/{workflow_id}/client-approved")
 async def mark_client_approved(workflow_id: str):
