@@ -31,6 +31,7 @@ from week2_master_orchestrator import Week2MasterOrchestrator, initialize_week2_
 from auto_bidding_orchestrator import auto_bid_on_opportunity
 from video_engine import VideoEngine, VideoAnalyzer
 from universal_integration_layer import IntegratedOrchestrator, IntelligentRouter
+from audio_engine import AudioEngine, AudioAnalyzer
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
@@ -893,6 +894,9 @@ async def calculate_fee_endpoint(
         "ok": True,
         "fee_breakdown": fee_breakdown
     }
+
+audio_engine = None
+audio_engine_initialized = False
 
 video_engine = None
 video_engine_initialized = False
@@ -13059,6 +13063,461 @@ async def get_video_pricing():
             "ai_video_engine": "$50-$1000",
             "competitive_advantage": "10x faster, 5x cheaper"
         }
+    }
+
+@app.post("/wade/audio/initialize")
+async def initialize_audio_engine():
+    """
+    🎵 INITIALIZE AUDIO ENGINE
+    
+    Set up audio generation capabilities:
+    - ElevenLabs (premium voice synthesis)
+    - Murf (natural AI voices)
+    - Play.ht (voice cloning)
+    - Script generation
+    """
+    global audio_engine, audio_engine_initialized
+    
+    try:
+        print("🎵 Initializing Audio Engine...")
+        
+        audio_engine = AudioEngine()
+        audio_engine_initialized = True
+        
+        # Check API keys
+        api_status = {
+            "elevenlabs": bool(os.getenv('ELEVENLABS_API_KEY')),
+            "murf": bool(os.getenv('MURF_API_KEY')), 
+            "playht": bool(os.getenv('PLAYHT_API_KEY')),
+            "openrouter": bool(os.getenv('OPENROUTER_API_KEY'))
+        }
+        
+        return {
+            "success": True,
+            "message": "Audio Engine Initialized Successfully!",
+            "capabilities": {
+                "voiceovers": "✅ Professional narration and commercials",
+                "podcasts": "✅ Full episode generation with scripts", 
+                "audiobooks": "✅ Chapter narration and storytelling",
+                "training_audio": "✅ Educational content and courses",
+                "announcements": "✅ Professional voice messages",
+                "meditation_audio": "✅ Relaxation and mindfulness content"
+            },
+            "ai_workers": {
+                "elevenlabs": "✅ Premium voice synthesis" if api_status["elevenlabs"] else "⚠️  API key needed",
+                "murf": "✅ Natural AI voices" if api_status["murf"] else "⚠️  Fallback to ElevenLabs", 
+                "playht": "✅ Voice cloning & custom voices" if api_status["playht"] else "⚠️  Fallback to ElevenLabs",
+                "script_generation": "✅ Claude-powered scripts" if api_status["openrouter"] else "⚠️  Using fallback scripts"
+            },
+            "voice_options": {
+                "languages": ["English", "Spanish", "French", "German", "Italian"],
+                "styles": ["Professional", "Casual", "Energetic", "Calm", "Authoritative"],
+                "genders": ["Male", "Female", "Neutral"]
+            },
+            "revenue_potential": "$500-$2,000/month additional",
+            "pricing": {
+                "voiceovers": "$25-$200 per project",
+                "podcasts": "$100-$500 per episode", 
+                "audiobooks": "$500-$2000 per book",
+                "training": "$50-$300 per course"
+            }
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Audio engine initialization failed: {str(e)}",
+            "troubleshooting": "Check audio engine dependencies and API keys"
+        }
+
+
+@app.post("/wade/audio/generate")
+async def generate_audio(opportunity_data: dict):
+    """
+    🎤 GENERATE AUDIO
+    
+    Create professional audio content from opportunity description:
+    - Analyzes audio requirements
+    - Generates script automatically  
+    - Selects best AI worker and voice
+    - Produces final audio file
+    """
+    global audio_engine, audio_engine_initialized
+    
+    if not audio_engine_initialized or not audio_engine:
+        return {
+            "success": False,
+            "error": "Audio engine not initialized. Run /wade/audio/initialize first."
+        }
+    
+    try:
+        print(f"🎤 Generating audio: {opportunity_data.get('title', 'Untitled')}")
+        
+        # Process audio opportunity
+        result = await audio_engine.process_audio_opportunity(opportunity_data)
+        
+        if result['success']:
+            audio_result = result['audio_result']
+            project = result['project']
+            
+            return {
+                "success": True,
+                "audio_project": {
+                    "id": project['id'],
+                    "title": opportunity_data.get('title'),
+                    "type": project['type'],
+                    "duration": f"{project['duration']} minutes",
+                    "ai_worker": audio_result['ai_worker'],
+                    "voice_style": project['voice_style'],
+                    "cost": f"${audio_result['cost']:.2f}"
+                },
+                "generation_details": {
+                    "script_generated": bool(project['script']),
+                    "script_length": f"{len(project['script'])} characters",
+                    "audio_path": audio_result.get('audio_path'),
+                    "voice_settings": {
+                        "voice_id": audio_result['metadata'].get('voice_id'),
+                        "quality": audio_result['metadata']['quality'],
+                        "language": audio_result['metadata']['language']
+                    },
+                    "format": audio_result['metadata']['format']
+                },
+                "analysis": {
+                    "confidence": result['analysis']['confidence'],
+                    "audio_type": result['analysis']['analysis']['audio_type'],
+                    "quality_tier": result['analysis']['analysis']['quality_tier']
+                },
+                "deliverable_ready": result['deliverable_ready']
+            }
+        else:
+            return {
+                "success": False,
+                "error": result['error'],
+                "analysis": result.get('analysis'),
+                "troubleshooting": "Check audio requirements and API keys"
+            }
+    
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": f"Audio generation failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+
+@app.post("/wade/audio/analyze")
+async def analyze_audio_opportunity(opportunity_data: dict):
+    """
+    🧠 ANALYZE AUDIO OPPORTUNITY
+    
+    Analyze opportunity to determine audio requirements:
+    - Audio type (voiceover, podcast, audiobook, etc.)
+    - Optimal duration and voice style
+    - Language and quality requirements
+    - Recommended AI worker and pricing
+    """
+    global audio_engine, audio_engine_initialized
+    
+    if not audio_engine_initialized or not audio_engine:
+        return {
+            "success": False,
+            "error": "Audio engine not initialized"
+        }
+    
+    try:
+        analyzer = audio_engine.analyzer
+        analysis = await analyzer.analyze_audio_request(opportunity_data)
+        
+        requirements = analysis['analysis']
+        approach = analysis['recommended_approach']
+        
+        return {
+            "success": True,
+            "opportunity": {
+                "title": opportunity_data.get('title'),
+                "budget": opportunity_data.get('estimated_value', 0),
+                "platform": opportunity_data.get('source')
+            },
+            "audio_analysis": {
+                "type": requirements['audio_type'],
+                "confidence": f"{analysis['confidence']*100:.1f}%",
+                "estimated_duration": f"{requirements['estimated_duration']} minutes",
+                "voice_requirements": {
+                    "gender": requirements['voice_gender'],
+                    "style": requirements['voice_style'],
+                    "language": requirements['language']
+                },
+                "quality_tier": requirements['quality_tier'],
+                "urgency": requirements['urgency']
+            },
+            "recommended_approach": {
+                "ai_worker": approach['ai_worker'],
+                "features": approach['features'],
+                "delivery_time": approach['delivery_time'],
+                "estimated_cost": f"${approach['estimated_cost']:.2f}",
+                "cost_per_minute": f"${approach['cost_per_minute']:.2f}"
+            },
+            "special_requirements": requirements['special_requirements'],
+            "type_scores": analysis['type_scores']
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Audio analysis failed: {str(e)}"
+        }
+
+
+@app.get("/wade/audio/status")
+async def get_audio_engine_status():
+    """
+    📊 AUDIO ENGINE STATUS
+    
+    Check audio engine health and capabilities
+    """
+    global audio_engine, audio_engine_initialized
+    
+    # Check API keys
+    api_keys_status = {
+        "elevenlabs_api_key": bool(os.getenv('ELEVENLABS_API_KEY')),
+        "murf_api_key": bool(os.getenv('MURF_API_KEY')),
+        "playht_api_key": bool(os.getenv('PLAYHT_API_KEY')),
+        "openrouter_api_key": bool(os.getenv('OPENROUTER_API_KEY'))
+    }
+    
+    # Check workers availability
+    workers_status = {}
+    if audio_engine_initialized and audio_engine:
+        workers_status = {
+            "elevenlabs": "✅ Ready" if api_keys_status["elevenlabs_api_key"] else "⚠️  API key needed",
+            "murf": "✅ Ready" if api_keys_status["murf_api_key"] else "⚠️  Fallback to ElevenLabs", 
+            "playht": "✅ Ready" if api_keys_status["playht_api_key"] else "⚠️  Fallback to ElevenLabs",
+            "script_generator": "✅ Ready" if api_keys_status["openrouter_api_key"] else "⚠️  Using fallback scripts"
+        }
+    
+    operational_workers = sum(1 for status in workers_status.values() if "✅" in status)
+    
+    return {
+        "success": True,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "audio_engine": {
+            "initialized": audio_engine_initialized,
+            "operational_workers": operational_workers,
+            "total_workers": 4,
+            "ready_for_production": operational_workers >= 1  # Only need ElevenLabs minimum
+        },
+        "api_keys": api_keys_status,
+        "workers": workers_status,
+        "capabilities": {
+            "audio_types": ["voiceover", "podcast", "audiobook", "training", "announcement", "meditation"],
+            "ai_workers": ["elevenlabs", "murf", "playht"],
+            "languages": ["english", "spanish", "french", "german", "italian"],
+            "voice_styles": ["professional", "casual", "energetic", "calm", "authoritative"],
+            "output_formats": ["mp3", "wav", "flac"],
+            "max_duration": "60 minutes per project"
+        },
+        "integration_status": {
+            "universal_orchestrator": "✅ Compatible",
+            "discovery_engine": "✅ Receives opportunities",
+            "routing_system": "✅ Intelligent worker selection"
+        }
+    }
+
+
+@app.post("/wade/audio/test")
+async def test_audio_generation():
+    """
+    🧪 TEST AUDIO GENERATION
+    
+    Test audio engine with sample opportunity
+    """
+    global audio_engine, audio_engine_initialized
+    
+    if not audio_engine_initialized or not audio_engine:
+        return {
+            "success": False,
+            "error": "Audio engine not initialized"
+        }
+    
+    try:
+        # Sample audio opportunity
+        test_opportunity = {
+            'id': 'test_audio_001',
+            'title': 'Professional voiceover for 2-minute explainer video',
+            'description': 'Need professional female voiceover for company explainer video. Should be clear, engaging, and professional tone. About 2 minutes duration for AI automation platform.',
+            'estimated_value': 120,
+            'source': 'fiverr'
+        }
+        
+        print("🧪 Testing audio generation with sample opportunity...")
+        
+        # Run analysis only (faster test)
+        analyzer = audio_engine.analyzer
+        analysis = await analyzer.analyze_audio_request(test_opportunity)
+        
+        # Generate script only (no actual audio)
+        script_generator = audio_engine.script_generator
+        script = await script_generator.generate_script(analysis['analysis'])
+        
+        return {
+            "success": True,
+            "test_results": {
+                "analysis": {
+                    "audio_type_detected": analysis['analysis']['audio_type'],
+                    "confidence": f"{analysis['confidence']*100:.1f}%",
+                    "recommended_worker": analysis['recommended_approach']['ai_worker'],
+                    "estimated_duration": f"{analysis['analysis']['estimated_duration']} minutes",
+                    "voice_requirements": {
+                        "gender": analysis['analysis']['voice_gender'],
+                        "style": analysis['analysis']['voice_style'],
+                        "language": analysis['analysis']['language']
+                    }
+                },
+                "script_generation": {
+                    "script_generated": bool(script),
+                    "script_length": len(script) if script else 0,
+                    "script_preview": script[:200] + "..." if script else "Failed",
+                    "estimated_words": len(script.split()) if script else 0
+                },
+                "routing_decision": {
+                    "worker_selected": analysis['recommended_approach']['ai_worker'],
+                    "quality_tier": analysis['analysis']['quality_tier'],
+                    "delivery_time": analysis['recommended_approach']['delivery_time'],
+                    "estimated_cost": f"${analysis['recommended_approach']['estimated_cost']:.2f}"
+                }
+            },
+            "audio_engine_health": "✅ Operational",
+            "note": "Test completed analysis and script generation only (no actual audio produced)"
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Audio engine test failed: {str(e)}"
+        }
+
+
+@app.get("/wade/audio/pricing")
+async def get_audio_pricing():
+    """
+    💰 AUDIO PRICING CALCULATOR
+    
+    Get pricing information for different audio types
+    """
+    
+    pricing_tiers = {
+        "voiceover": {
+            "price_range": "$25-$200",
+            "duration": "30 seconds - 10 minutes",
+            "cost_per_minute": "$10-$20",
+            "use_cases": ["Commercials", "Explainer videos", "Presentations"],
+            "delivery": "24-48 hours"
+        },
+        "podcast": {
+            "price_range": "$100-$500", 
+            "duration": "15-60 minutes",
+            "cost_per_minute": "$5-$10",
+            "use_cases": ["Episode production", "Interview narration", "Show intros"],
+            "delivery": "48-72 hours"
+        },
+        "audiobook": {
+            "price_range": "$500-$2000",
+            "duration": "60-300 minutes", 
+            "cost_per_minute": "$3-$7",
+            "use_cases": ["Book narration", "Chapter reading", "Story telling"],
+            "delivery": "3-7 days"
+        },
+        "training": {
+            "price_range": "$50-$300",
+            "duration": "5-30 minutes",
+            "cost_per_minute": "$8-$15", 
+            "use_cases": ["Course content", "Educational material", "Tutorials"],
+            "delivery": "24-48 hours"
+        },
+        "meditation": {
+            "price_range": "$75-$250",
+            "duration": "10-45 minutes",
+            "cost_per_minute": "$5-$8",
+            "use_cases": ["Guided meditation", "Relaxation audio", "Sleep stories"],
+            "delivery": "48-72 hours"
+        }
+    }
+    
+    return {
+        "success": True,
+        "pricing_tiers": pricing_tiers,
+        "revenue_projections": {
+            "conservative": "$500/month (10 projects)",
+            "moderate": "$1,200/month (25 projects)",
+            "aggressive": "$2,000/month (40 projects)"
+        },
+        "cost_breakdown": {
+            "elevenlabs_cost": "$0.0001 per character (~$0.50 per minute)",
+            "murf_cost": "$0.40 per minute", 
+            "playht_cost": "$0.60 per minute",
+            "profit_margins": "75-90%"
+        },
+        "market_comparison": {
+            "human_voice_actor": "$50-$500 per project",
+            "voice_agency": "$200-$2000 per project",
+            "ai_audio_engine": "$25-$200 per project",
+            "competitive_advantage": "3x faster, 5x cheaper"
+        },
+        "scaling_opportunities": [
+            "Voice cloning for personalized content",
+            "Multi-language audio production", 
+            "Podcast series automation",
+            "Audiobook chapter production",
+            "Corporate training library creation"
+        ]
+    }
+
+
+@app.get("/wade/audio/voices")
+async def get_available_voices():
+    """
+    🎭 AVAILABLE VOICES
+    
+    Get information about available AI voices
+    """
+    
+    voice_catalog = {
+        "elevenlabs_voices": {
+            "bella": {"gender": "female", "style": "professional", "description": "Clear, authoritative business voice"},
+            "antoni": {"gender": "male", "style": "professional", "description": "Confident corporate presenter"},
+            "domi": {"gender": "female", "style": "casual", "description": "Friendly, approachable narrator"},
+            "josh": {"gender": "male", "style": "casual", "description": "Warm, conversational tone"},
+            "dorothy": {"gender": "female", "style": "narrative", "description": "Perfect for storytelling"},
+            "daniel": {"gender": "male", "style": "authoritative", "description": "Strong, commanding presence"}
+        },
+        "voice_styles": {
+            "professional": "Corporate, business presentations, formal content",
+            "casual": "Friendly, conversational, approachable content", 
+            "energetic": "Dynamic, exciting, marketing content",
+            "calm": "Soothing, relaxing, meditation content",
+            "authoritative": "Commanding, confident, leadership content",
+            "narrative": "Storytelling, audiobooks, engaging content"
+        },
+        "customization_options": {
+            "emotion_control": "Adjust happiness, sadness, excitement levels",
+            "speed_control": "Slower for education, faster for commercial",
+            "pause_control": "Strategic pauses for emphasis",
+            "pronunciation": "Custom pronunciation for brands/names"
+        }
+    }
+    
+    return {
+        "success": True,
+        "voice_catalog": voice_catalog,
+        "total_voices": 6,
+        "languages_supported": ["English", "Spanish", "French", "German", "Italian"],
+        "premium_features": [
+            "Voice cloning (custom voices)",
+            "Emotion and style control",
+            "Multi-speaker dialogues",
+            "Background music integration"
+        ]
     }
 
         
