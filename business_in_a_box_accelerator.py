@@ -387,11 +387,14 @@ class BusinessDeploymentEngine:
             # Step 8: Business Registration and Monitoring
             print("\n📋 Step 8/8: Registering business and setting up monitoring...")
             
+            niche_name = selected_niche["niche"]
+            business_id_hash = hashlib.md5(f"{username}_{niche_name}".encode()).hexdigest()[:12]
+            
             business_config = BusinessConfig(
-                business_id=f"biz_{hashlib.md5(f'{username}_{selected_niche["niche"]}'.encode()).hexdigest()[:12]}",
+                business_id=f"biz_{business_id_hash}",
                 owner_username=username,
                 business_type=business_type,
-                niche=selected_niche["niche"],
+                niche=niche_name,
                 market_opportunity=opportunity_analysis,
                 revenue_potential=opportunity_analysis['revenue_projection'],
                 competitive_analysis=selected_niche,
