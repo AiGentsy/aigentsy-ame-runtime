@@ -77,6 +77,12 @@ from platform_recruitment_engine import (
     process_recruitment_signup,
     RecruitmentTrigger
 )
+from social_autoposting_engine import (
+    get_social_engine,
+    SocialPlatform,
+    PLATFORM_CONFIGS,
+    ApprovalMode
+)
 
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
@@ -16012,6 +16018,235 @@ async def deploy_quick(body: Dict = Body(...)):
         ],
         "estimated_first_earnings": "24-48 hours"
     }
+
+@app.get("/social/platforms")
+async def social_platforms():
+    """List available social platforms and their configurations"""
+    platforms = []
+    for platform, config in PLATFORM_CONFIGS.items():
+        platforms.append({
+            "platform": platform.value,
+            "rate_limit": config.rate_limit,
+            "optimal_times": config.optimal_times,
+            "content_types": config.content_types,
+            "max_caption_length": config.max_caption_length,
+            "requires_audit": config.requires_audit
+        })
+    return {"ok": True, "platforms": platforms}
+
+
+@app.get("/social/oauth/{platform}")
+async def social_oauth_url(platform: str, username: str):
+    """Get OAuth URL to connect a social platform"""
+    engine = get_social_engine()
+    redirect_uri = f"{os.getenv('SELF_URL', 'https://aigentsy.com')}/social/callback/{platform}"
+    
+    try:
+        url = engine.get_oauth_url(platform, username, redirect_uri)
+        return {"ok": True, "oauth_url": url, "platform": platform}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/social/callback/{platform}")
+async def social_oauth_callback(platform: str, code: str, state: str):
+    """Handle OAuth callback from social platform"""
+    engine = get_social_engine()
+    user_id = state.split(":")[0] if ":" in state else "unknown"
+    redirect_uri = f"{os.getenv('SELF_URL', 'https://aigentsy.com')}/social/callback/{platform}"
+    
+    try:
+        result = await engine.handle_oauth_callback(platform, code, user_id, redirect_uri)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/social/connected/{username}")
+async def social_connected(username: str):
+    """Get list of connected social platforms for user"""
+    engine = get_social_engine()
+    platforms = engine.get_connected_platforms(username)
+    return {"ok": True, "username": username, "connected_platforms": platforms}
+
+
+@app.post("/social/preferences")
+async def social_preferences(body: Dict = Body(...)):
+    """
+    Set user's posting preferences and approval mode
+    
+    Body: {
+        username: str,
+        approval_mode: "manual" | "review_first" | "auto_with_notify" | "full_auto",
+        platforms: ["tiktok", "instagram", ...],
+        max_posts_per_day: int,
+        content_guidelines?: str
+    }
+    
+    Approval Modes:
+    - manual: User approves every post before it goes live
+    - review_first: AI generates, user reviews queue, batch approves
+    - auto_with_notify: Auto-posts but notifies user
+    - full_auto: Complete autopilot (requires explicit opt-in)
+    """
+    engine = get_social_engine()
+    
+    result = engine.set_user_preferences(
+        user_id=body.get("username"),
+        approval_mode=body.get("approval_mode", "manual"),
+        platforms=body.get("platforms", []),
+        max_posts_per_day=body.get("max_posts_per_day", 3),
+        content_guidelines=body.get("content_guidelines", "")
+    )
+    
+    return {"ok": True, **result}
+
+
+@app.post("/social/generate")
+async def social_generate(body: Dict = Body(...)):
+    """
+    Generate content for approval (respects user's approval mode)
+    
+    Body: {
+        username: str,
+        platform: "tiktok" | "instagram" | "youtube" | "twitter" | "linkedin",
+        content_type: "video" | "image" | "text",
+        topic: str,
+        style?: "engaging" | "educational" | "promotional"
+    }
+    
+    If approval_mode is "manual" or "review_first", returns content for approval.
+    If approval_mode is "auto_with_notify" or "full_auto", posts immediately.
+    """
+    engine = get_social_engine()
+    
+    result = await engine.create_and_post(
+        user_id=body.get("username"),
+        platform=body.get("platform"),
+        content_type=body.get("content_type", "text"),
+        topic=body.get("topic"),
+        style=body.get("style", "engaging"),
+        schedule=False
+    )
+    
+    return {"ok": True, **result}
+
+
+@app.get("/social/pending/{username}")
+async def social_pending(username: str):
+    """Get all posts pending user approval"""
+    engine = get_social_engine()
+    pending = engine.get_pending_approvals(username)
+    return {
+        "ok": True,
+        "username": username,
+        "pending_count": len(pending),
+        "pending": pending
+    }
+
+
+@app.post("/social/approve/{approval_id}")
+async def social_approve(approval_id: str, body: Dict = Body(default={})):
+    """
+    Approve a pending post and publish it
+    
+    Body (optional): {
+        edited_caption?: str  (if user wants to modify before posting)
+    }
+    """
+    engine = get_social_engine()
+    edited_caption = body.get("edited_caption") if body else None
+    
+    result = await engine.approve_and_post(approval_id, edited_caption)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/social/reject/{approval_id}")
+async def social_reject(approval_id: str, body: Dict = Body(default={})):
+    """
+    Reject a pending post
+    
+    Body (optional): {
+        feedback?: str  (why it was rejected, helps AI learn)
+    }
+    """
+    engine = get_social_engine()
+    feedback = body.get("feedback") if body else None
+    
+    result = engine.reject_post(approval_id, feedback)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/social/bulk-approve")
+async def social_bulk_approve(body: Dict = Body(...)):
+    """
+    Approve and post multiple items at once
+    
+    Body: {
+        approval_ids: ["approval_xxx", "approval_yyy", ...]
+    }
+    """
+    engine = get_social_engine()
+    approval_ids = body.get("approval_ids", [])
+    
+    result = await engine.bulk_approve_and_post(approval_ids)
+    return {"ok": True, **result}
+
+
+@app.post("/social/post")
+async def social_post(body: Dict = Body(...)):
+    """
+    Create and post content (bypasses approval for immediate posting)
+    
+    Use /social/generate for normal flow that respects approval mode.
+    Use this endpoint only when user explicitly wants immediate posting.
+    
+    Body: {
+        username: str,
+        platform: "tiktok" | "instagram" | "youtube" | "twitter" | "linkedin",
+        content_type: "video" | "image" | "text",
+        topic: str,
+        style?: "engaging" | "educational" | "promotional",
+        schedule?: bool,
+        scheduled_time?: str (ISO format)
+    }
+    """
+    engine = get_social_engine()
+    
+    scheduled_time = None
+    if body.get("scheduled_time"):
+        from datetime import datetime
+        scheduled_time = datetime.fromisoformat(body["scheduled_time"])
+    
+    result = await engine.create_and_post(
+        user_id=body.get("username"),
+        platform=body.get("platform"),
+        content_type=body.get("content_type", "text"),
+        topic=body.get("topic"),
+        style=body.get("style", "engaging"),
+        schedule=body.get("schedule", False),
+        scheduled_time=scheduled_time,
+        bypass_approval=True  # Explicit immediate posting
+    )
+    
+    return {"ok": True, **result}
+
+
+@app.post("/social/process-queue")
+async def social_process_queue():
+    """Process all pending scheduled posts"""
+    engine = get_social_engine()
+    results = await engine.process_scheduled_posts()
+    return {"ok": True, "processed": len(results), "results": results}
+
+
+@app.get("/social/strategy/{username}")
+async def social_strategy(username: str, platforms: str = "tiktok,instagram"):
+    """Get AI-recommended posting strategy"""
+    engine = get_social_engine()
+    platform_list = platforms.split(",")
+    strategy = await engine.get_optimal_posting_strategy(username, platform_list)
+    return {"ok": True, **strategy}
 
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
