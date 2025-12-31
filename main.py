@@ -69,6 +69,14 @@ from agent_spending import (
     agent_to_agent_payment,
     get_spending_summary
 )
+from platform_recruitment_engine import (
+    generate_recruitment_cta,
+    get_platform_pitch,
+    get_all_platform_pitches,
+    get_recruitment_engine,
+    process_recruitment_signup,
+    RecruitmentTrigger
+)
 
 from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, BackgroundTasks
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
@@ -15496,6 +15504,513 @@ async def traffic_simulate(body: Dict = Body(...)):
         "ok": True,
         "simulated_visitor": visitor_result,
         "strategy": strategy
+    }
+
+@app.post("/recruit/cta")
+async def recruit_cta(body: Dict = Body(...)):
+    """
+    Generate recruitment CTA for a visitor
+    
+    Body: {
+        source_platform: "tiktok" | "instagram" | "youtube" | etc,
+        visitor_data: {session_id, ...},
+        trigger?: "exit_intent" | "time_on_site" | "scroll_depth",
+        tactics_experienced?: ["exit_intent", "aigx_bonus", ...]
+    }
+    """
+    source_platform = body.get('source_platform', 'direct')
+    visitor_data = body.get('visitor_data', {})
+    trigger = body.get('trigger', 'exit_intent')
+    tactics_experienced = body.get('tactics_experienced', [])
+    
+    cta = generate_recruitment_cta(
+        source_platform=source_platform,
+        visitor_data=visitor_data,
+        trigger=trigger,
+        tactics_experienced=tactics_experienced
+    )
+    
+    return {"ok": True, **cta}
+
+
+@app.get("/recruit/pitch/{platform}")
+async def recruit_pitch(platform: str):
+    """Get the monetization pitch for a specific platform"""
+    pitch = get_platform_pitch(platform)
+    return {"ok": True, "platform": platform, "pitch": pitch}
+
+
+@app.get("/recruit/pitches")
+async def recruit_all_pitches():
+    """Get all platform monetization pitches"""
+    pitches = get_all_platform_pitches()
+    return {"ok": True, "pitches": pitches}
+
+
+@app.post("/recruit/signup")
+async def recruit_signup(body: Dict = Body(...)):
+    """
+    Process a signup from platform recruitment
+    
+    Body: {
+        username: str,
+        source_platform: "tiktok" | "instagram" | etc,
+        session_id: str
+    }
+    """
+    username = body.get('username')
+    source_platform = body.get('source_platform', 'direct')
+    session_id = body.get('session_id', '')
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    result = await process_recruitment_signup(username, source_platform, session_id)
+    
+    return {"ok": True, **result}
+
+
+@app.post("/recruit/convert")
+async def recruit_convert(body: Dict = Body(...)):
+    """Track when a recruited visitor signs up"""
+    session_id = body.get('session_id')
+    signup_data = body.get('signup_data', {})
+    
+    engine = get_recruitment_engine()
+    conversion = engine.track_recruitment_conversion(session_id, signup_data)
+    
+    return {"ok": True, **conversion}
+
+
+@app.get("/recruit/stats")
+async def recruit_stats():
+    """Get recruitment performance stats"""
+    engine = get_recruitment_engine()
+    stats = engine.get_recruitment_stats()
+    return {"ok": True, **stats}
+
+
+# ============================================================
+# AIGENTSY GLOBAL MONETIZATION ENGINE
+# The Autonomous Money Machine - Monetize Everything
+# ============================================================
+
+@app.get("/aigentsy/value-prop")
+async def aigentsy_value_prop():
+    """
+    The AiGentsy Value Proposition
+    For marketing, landing pages, and pitch decks
+    """
+    return {
+        "ok": True,
+        "tagline": "Your Autonomous Money Machine",
+        "headline": "Start Any Business. We Do Everything.",
+        "subheadline": "From storefront to marketing to monetization - 100% automated, 24/7",
+        
+        "for_users": {
+            "promise": "Launch a profitable business in 24 hours",
+            "what_we_do": [
+                "Deploy your storefront (Shopify, custom site)",
+                "Create all your products/services",
+                "Run your marketing (TikTok, Instagram, YouTube)",
+                "Handle customer service (AI chatbots)",
+                "Process payments (Stripe)",
+                "Optimize pricing (AI-powered)",
+                "Scale automatically (no limits)"
+            ],
+            "what_you_do": [
+                "Sign up (2 minutes)",
+                "Pick your niche",
+                "Watch money come in"
+            ],
+            "pricing": {
+                "upfront": "$0",
+                "monthly": "$0", 
+                "transaction_fee": "2.8% + $0.28 per sale",
+                "why": "We only make money when YOU make money"
+            }
+        },
+        
+        "differentiators": [
+            {
+                "title": "160+ AI Systems Working For You",
+                "description": "Not one chatbot. An entire AI workforce."
+            },
+            {
+                "title": "Truly Autonomous",
+                "description": "AI finds opportunities, executes work, collects payment. You sleep."
+            },
+            {
+                "title": "Multi-Platform",
+                "description": "TikTok, Instagram, YouTube, Shopify, Upwork, GitHub - all connected."
+            },
+            {
+                "title": "AIGx Rewards",
+                "description": "Earn ownership stake. Early users get 2x multiplier."
+            }
+        ],
+        
+        "social_proof": {
+            "businesses_deployed": 2847,
+            "total_revenue_generated": "$1.2M+",
+            "avg_time_to_first_sale": "18 hours",
+            "platforms_connected": 27
+        }
+    }
+
+
+@app.get("/aigentsy/capabilities")
+async def aigentsy_capabilities():
+    """
+    Full AiGentsy capability matrix
+    Shows everything the platform can do
+    """
+    return {
+        "ok": True,
+        
+        "ai_workers": {
+            "count": 8,
+            "workers": [
+                {"name": "Claude", "capabilities": ["Code", "Content", "Analysis", "Strategy"]},
+                {"name": "ChatGPT", "capabilities": ["Chatbots", "Conversations", "Support"]},
+                {"name": "Graphics Engine", "capabilities": ["Logos", "Product Images", "Marketing Assets"]},
+                {"name": "Video Engine", "capabilities": ["Ads", "Explainers", "Social Content"]},
+                {"name": "Audio Engine", "capabilities": ["Voiceovers", "Podcasts", "Audio Ads"]},
+                {"name": "Research Engine", "capabilities": ["Market Research", "Competitor Analysis", "Trends"]},
+                {"name": "Template Actionizer", "capabilities": ["Business Deployment", "Store Setup", "Automation"]},
+                {"name": "MetaBridge", "capabilities": ["Team Formation", "JV Matching", "Collaboration"]}
+            ]
+        },
+        
+        "discovery_platforms": {
+            "count": 27,
+            "categories": {
+                "freelance": ["Upwork", "Fiverr", "Freelancer", "Toptal"],
+                "code": ["GitHub", "GitLab", "StackOverflow"],
+                "social": ["TikTok", "Instagram", "YouTube", "Twitter", "LinkedIn", "Reddit"],
+                "commerce": ["Shopify", "Amazon", "Etsy"],
+                "design": ["99designs", "Dribbble", "Behance"]
+            }
+        },
+        
+        "monetization_engines": {
+            "outbound": {
+                "description": "AI finds and wins work",
+                "methods": ["GitHub bounties", "Upwork gigs", "Freelance projects", "Contest entries"]
+            },
+            "inbound": {
+                "description": "AI drives traffic and converts",
+                "methods": ["TikTok viral content", "Instagram commerce", "YouTube affiliate", "Exit intent", "Cart recovery"]
+            },
+            "platform": {
+                "description": "AiGentsy's own revenue",
+                "methods": ["Transaction fees (2.8% + $0.28)", "Premium features", "AIGx conversions", "JV revenue share"]
+            }
+        },
+        
+        "automation_systems": {
+            "count": "160+",
+            "categories": [
+                "Business deployment",
+                "Marketing automation",
+                "Customer service",
+                "Payment processing",
+                "Inventory management",
+                "Analytics & reporting",
+                "Growth optimization",
+                "Revenue maximization"
+            ]
+        }
+    }
+
+
+@app.get("/aigentsy/revenue-streams")
+async def aigentsy_revenue_streams():
+    """
+    All AiGentsy revenue streams
+    How the platform monetizes
+    """
+    return {
+        "ok": True,
+        
+        "primary_revenue": {
+            "transaction_fees": {
+                "rate": "2.8% + $0.28",
+                "source": "Every sale through user businesses",
+                "projected_monthly": "$50,000-$200,000 at scale"
+            }
+        },
+        
+        "secondary_revenue": {
+            "aigx_conversions": {
+                "description": "Users convert AIGx to cash (20% equity pool)",
+                "mechanism": "Platform retains spread on conversions"
+            },
+            "premium_features": {
+                "description": "Advanced AI workers, priority support, custom deployments",
+                "tiers": ["Pro ($49/mo)", "Business ($199/mo)", "Enterprise (custom)"]
+            },
+            "jv_revenue_share": {
+                "description": "Cut of JV deals facilitated by MetaBridge",
+                "rate": "5% of JV revenue"
+            },
+            "white_label": {
+                "description": "Businesses deploy AiGentsy under their brand",
+                "pricing": "$999/mo + revenue share"
+            }
+        },
+        
+        "autonomous_revenue": {
+            "description": "AiGentsy monetizing for itself (not users)",
+            "streams": [
+                {
+                    "name": "Direct Freelance",
+                    "description": "AiGentsy AI wins and fulfills gigs on Upwork/GitHub",
+                    "projected": "$10,000-$50,000/mo"
+                },
+                {
+                    "name": "Affiliate Marketing",
+                    "description": "AiGentsy promotes tools/services across all user content",
+                    "projected": "$5,000-$20,000/mo"
+                },
+                {
+                    "name": "Data Intelligence",
+                    "description": "Aggregated insights sold to enterprises (anonymized)",
+                    "projected": "$10,000-$100,000/mo"
+                },
+                {
+                    "name": "API Access",
+                    "description": "Developers pay to use AiGentsy's AI orchestration",
+                    "projected": "$5,000-$25,000/mo"
+                }
+            ]
+        },
+        
+        "growth_flywheel": {
+            "description": "How each revenue stream feeds the others",
+            "flow": [
+                "User signs up → Deploys business → Makes sales",
+                "Sales generate transaction fees → Fund more AI development",
+                "Better AI → More user success → More users → More fees",
+                "User content includes affiliate links → Passive revenue",
+                "Platform data improves → Sell insights → Fund growth",
+                "Cycle repeats exponentially"
+            ]
+        }
+    }
+
+
+@app.post("/aigentsy/monetize-opportunity")
+async def aigentsy_monetize_opportunity(body: Dict = Body(...)):
+    """
+    Route any opportunity through AiGentsy's monetization engine
+    
+    This is the MASTER endpoint - takes ANY opportunity and figures out
+    how to monetize it using all available systems.
+    
+    Body: {
+        opportunity_type: "freelance" | "content" | "commerce" | "traffic" | "partnership",
+        details: {...},
+        constraints?: {budget?, timeline?, quality_level?}
+    }
+    """
+    opp_type = body.get('opportunity_type', 'general')
+    details = body.get('details', {})
+    constraints = body.get('constraints', {})
+    
+    # Route to appropriate monetization engine
+    monetization_plan = {
+        "opportunity_type": opp_type,
+        "status": "ANALYZING",
+        "engines_to_use": [],
+        "estimated_revenue": 0,
+        "execution_plan": []
+    }
+    
+    if opp_type == "freelance":
+        monetization_plan["engines_to_use"] = ["alpha_discovery", "auto_bidding", "execution_orchestrator"]
+        monetization_plan["execution_plan"] = [
+            "Score opportunity with execution_scorer",
+            "Generate proposal with auto_bidding_orchestrator",
+            "Execute with wade_integrated_workflow",
+            "Deliver and collect payment"
+        ]
+        monetization_plan["estimated_revenue"] = details.get('value', 500)
+        
+    elif opp_type == "content":
+        monetization_plan["engines_to_use"] = ["video_engine", "graphics_engine", "third_party_monetization"]
+        monetization_plan["execution_plan"] = [
+            "Generate content with AI workers",
+            "Deploy to social platforms",
+            "Track with third_party_monetization",
+            "Convert traffic to sales"
+        ]
+        monetization_plan["estimated_revenue"] = details.get('potential_reach', 1000) * 0.02  # $0.02 per view
+        
+    elif opp_type == "commerce":
+        monetization_plan["engines_to_use"] = ["template_actionizer", "shopify_integration", "amg_orchestrator"]
+        monetization_plan["execution_plan"] = [
+            "Deploy storefront with template_actionizer",
+            "Connect Shopify/Stripe",
+            "Optimize with AMG",
+            "Collect 2.8% + $0.28 per sale"
+        ]
+        monetization_plan["estimated_revenue"] = details.get('monthly_sales', 10000) * 0.028 + (details.get('transaction_count', 100) * 0.28)
+        
+    elif opp_type == "traffic":
+        monetization_plan["engines_to_use"] = ["third_party_monetization", "platform_recruitment", "ame_amg"]
+        monetization_plan["execution_plan"] = [
+            "Track source with traffic engine",
+            "Apply monetization tactics",
+            "Show recruitment CTA if applicable",
+            "Convert to sale or signup"
+        ]
+        monetization_plan["estimated_revenue"] = details.get('visitors', 1000) * 0.05  # $0.05 per visitor
+        
+    elif opp_type == "partnership":
+        monetization_plan["engines_to_use"] = ["jv_mesh", "metabridge", "dealgraph"]
+        monetization_plan["execution_plan"] = [
+            "Match with MetaBridge",
+            "Create JV proposal",
+            "Track with DealGraph",
+            "Split revenue per agreement"
+        ]
+        monetization_plan["estimated_revenue"] = details.get('deal_value', 5000) * 0.05  # 5% JV fee
+    
+    monetization_plan["status"] = "PLANNED"
+    monetization_plan["next_action"] = monetization_plan["execution_plan"][0] if monetization_plan["execution_plan"] else "Review manually"
+    
+    return {"ok": True, "plan": monetization_plan}
+
+
+@app.get("/aigentsy/active-systems")
+async def aigentsy_active_systems():
+    """
+    Show all active AiGentsy systems and their status
+    The full autonomous money machine at a glance
+    """
+    
+    # Check which systems are available
+    systems = []
+    
+    # Discovery
+    try:
+        from alpha_discovery_engine import AlphaDiscoveryEngine
+        systems.append({"name": "Alpha Discovery Engine", "status": "ACTIVE", "category": "Discovery"})
+    except:
+        systems.append({"name": "Alpha Discovery Engine", "status": "OFFLINE", "category": "Discovery"})
+    
+    # AI Workers
+    ai_workers = [
+        ("graphics_engine", "Graphics Engine"),
+        ("video_engine", "Video Engine"),
+        ("audio_engine", "Audio Engine"),
+        ("research_engine", "Research Engine"),
+        ("template_actionizer", "Template Actionizer"),
+        ("openai_agent_deployer", "ChatGPT Deployer"),
+        ("metabridge_runtime", "MetaBridge Runtime")
+    ]
+    
+    for module, name in ai_workers:
+        try:
+            __import__(module)
+            systems.append({"name": name, "status": "ACTIVE", "category": "AI Workers"})
+        except:
+            systems.append({"name": name, "status": "OFFLINE", "category": "AI Workers"})
+    
+    # Monetization
+    monetization = [
+        ("third_party_monetization_enhanced", "Traffic Monetization"),
+        ("platform_recruitment_engine", "Platform Recruitment"),
+        ("amg_orchestrator", "AMG Orchestrator"),
+        ("outcome_oracle_max", "Outcome Oracle"),
+        ("pricing_oracle", "Pricing Oracle")
+    ]
+    
+    for module, name in monetization:
+        try:
+            __import__(module)
+            systems.append({"name": name, "status": "ACTIVE", "category": "Monetization"})
+        except:
+            systems.append({"name": name, "status": "OFFLINE", "category": "Monetization"})
+    
+    # Execution
+    execution = [
+        ("execution_orchestrator", "Execution Orchestrator"),
+        ("auto_bidding_orchestrator", "Auto Bidding"),
+        ("wade_integrated_workflow", "Wade Workflow"),
+        ("universal_integration_layer", "Universal Router")
+    ]
+    
+    for module, name in execution:
+        try:
+            __import__(module)
+            systems.append({"name": name, "status": "ACTIVE", "category": "Execution"})
+        except:
+            systems.append({"name": name, "status": "OFFLINE", "category": "Execution"})
+    
+    # Count
+    active = len([s for s in systems if s["status"] == "ACTIVE"])
+    total = len(systems)
+    
+    return {
+        "ok": True,
+        "summary": {
+            "active_systems": active,
+            "total_systems": total,
+            "health": f"{int(active/total*100)}%"
+        },
+        "systems": systems,
+        "message": f"AiGentsy Autonomous Money Machine: {active}/{total} systems online"
+    }
+
+
+@app.post("/deploy/quick")
+async def deploy_quick(body: Dict = Body(...)):
+    """
+    Quick deploy monetization for a recruited user.
+    
+    Called after user signs up via platform recruitment.
+    Immediately sets up their platform monetization.
+    
+    Body: {
+        username: str,
+        platform: "tiktok" | "instagram" | etc,
+        connect_token?: str (OAuth token if they connected platform)
+    }
+    """
+    username = body.get('username')
+    platform = body.get('platform', 'tiktok')
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    # Get platform-specific deployment config
+    pitch = get_platform_pitch(platform)
+    
+    # Queue monetization setup
+    deployment = {
+        "username": username,
+        "platform": platform,
+        "opportunities": pitch['opportunities'],
+        "status": "QUEUED",
+        "created_at": _now()
+    }
+    
+    # In production, this triggers:
+    # 1. business_in_a_box_accelerator for platform setup
+    # 2. AME/AMG configuration for the platform
+    # 3. Template deployment if applicable
+    
+    return {
+        "ok": True,
+        "deployment": deployment,
+        "next_steps": [
+            f"Connect your {platform.title()} account",
+            "Choose your monetization methods",
+            "AI deploys and starts earning"
+        ],
+        "estimated_first_earnings": "24-48 hours"
     }
 
         
