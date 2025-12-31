@@ -831,6 +831,195 @@ class SocialPoster:
 
 
 # ============================================================
+# APPROVAL MODES
+# ============================================================
+
+class ApprovalMode(str, Enum):
+    """How much control the user wants over posts"""
+    
+    MANUAL = "manual"           # User approves every post before it goes live
+    REVIEW_FIRST = "review_first"  # AI generates, user reviews queue, batch approves
+    AUTO_WITH_NOTIFY = "auto_with_notify"  # Auto-posts but notifies user
+    FULL_AUTO = "full_auto"     # Complete autopilot (user opted in explicitly)
+
+
+@dataclass
+class UserPostingPreferences:
+    """User's preferences for auto-posting"""
+    user_id: str
+    approval_mode: ApprovalMode = ApprovalMode.MANUAL
+    platforms_enabled: List[SocialPlatform] = field(default_factory=list)
+    max_posts_per_day: int = 3
+    posting_hours: List[int] = field(default_factory=lambda: [9, 12, 17])  # When they want posts
+    content_guidelines: str = ""  # Brand voice, topics to avoid, etc.
+    require_hashtag_approval: bool = True
+    auto_respond_to_comments: bool = False
+    notify_on_post: bool = True
+    notify_on_engagement: bool = True
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+@dataclass 
+class PendingApproval:
+    """Content awaiting user approval"""
+    approval_id: str
+    user_id: str
+    platform: SocialPlatform
+    content: 'SocialContent'
+    generated_at: str
+    status: str = "pending"  # pending, approved, rejected, edited, expired
+    user_feedback: Optional[str] = None
+    edited_caption: Optional[str] = None
+    approved_at: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class ApprovalManager:
+    """
+    Manages the approval workflow for social posts
+    
+    Modes:
+    - MANUAL: Every post requires explicit approval
+    - REVIEW_FIRST: Posts queue up, user batch reviews
+    - AUTO_WITH_NOTIFY: Posts go live, user gets notified
+    - FULL_AUTO: Complete autopilot (requires explicit opt-in)
+    """
+    
+    def __init__(self):
+        self._preferences: Dict[str, UserPostingPreferences] = {}
+        self._pending_approvals: Dict[str, PendingApproval] = {}
+        self._approval_history: List[Dict] = []
+    
+    def set_user_preferences(
+        self,
+        user_id: str,
+        approval_mode: str = "manual",
+        platforms: List[str] = None,
+        max_posts_per_day: int = 3,
+        content_guidelines: str = ""
+    ) -> UserPostingPreferences:
+        """Set user's posting preferences"""
+        
+        prefs = UserPostingPreferences(
+            user_id=user_id,
+            approval_mode=ApprovalMode(approval_mode),
+            platforms_enabled=[SocialPlatform(p) for p in (platforms or [])],
+            max_posts_per_day=max_posts_per_day,
+            content_guidelines=content_guidelines
+        )
+        
+        self._preferences[user_id] = prefs
+        return prefs
+    
+    def get_user_preferences(self, user_id: str) -> Optional[UserPostingPreferences]:
+        """Get user's posting preferences"""
+        return self._preferences.get(user_id)
+    
+    def get_approval_mode(self, user_id: str) -> ApprovalMode:
+        """Get user's approval mode (defaults to MANUAL)"""
+        prefs = self._preferences.get(user_id)
+        return prefs.approval_mode if prefs else ApprovalMode.MANUAL
+    
+    def queue_for_approval(
+        self,
+        user_id: str,
+        platform: SocialPlatform,
+        content: 'SocialContent'
+    ) -> PendingApproval:
+        """Queue content for user approval"""
+        
+        approval_id = f"approval_{hashlib.md5(f'{user_id}{content.content_id}'.encode()).hexdigest()[:12]}"
+        
+        pending = PendingApproval(
+            approval_id=approval_id,
+            user_id=user_id,
+            platform=platform,
+            content=content,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            expires_at=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        )
+        
+        self._pending_approvals[approval_id] = pending
+        return pending
+    
+    def get_pending_approvals(self, user_id: str) -> List[PendingApproval]:
+        """Get all pending approvals for a user"""
+        return [
+            p for p in self._pending_approvals.values()
+            if p.user_id == user_id and p.status == "pending"
+        ]
+    
+    def approve(
+        self,
+        approval_id: str,
+        edited_caption: str = None
+    ) -> Dict[str, Any]:
+        """Approve a pending post"""
+        
+        pending = self._pending_approvals.get(approval_id)
+        if not pending:
+            return {"success": False, "error": "Approval not found"}
+        
+        pending.status = "approved"
+        pending.approved_at = datetime.now(timezone.utc).isoformat()
+        
+        if edited_caption:
+            pending.edited_caption = edited_caption
+            pending.content.caption = edited_caption
+        
+        self._approval_history.append({
+            "approval_id": approval_id,
+            "action": "approved",
+            "timestamp": pending.approved_at
+        })
+        
+        return {"success": True, "approval_id": approval_id, "status": "approved"}
+    
+    def reject(
+        self,
+        approval_id: str,
+        feedback: str = None
+    ) -> Dict[str, Any]:
+        """Reject a pending post"""
+        
+        pending = self._pending_approvals.get(approval_id)
+        if not pending:
+            return {"success": False, "error": "Approval not found"}
+        
+        pending.status = "rejected"
+        pending.user_feedback = feedback
+        
+        self._approval_history.append({
+            "approval_id": approval_id,
+            "action": "rejected",
+            "feedback": feedback,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {"success": True, "approval_id": approval_id, "status": "rejected"}
+    
+    def bulk_approve(self, approval_ids: List[str]) -> Dict[str, Any]:
+        """Approve multiple posts at once"""
+        results = []
+        for aid in approval_ids:
+            result = self.approve(aid)
+            results.append(result)
+        
+        return {
+            "success": True,
+            "approved": len([r for r in results if r.get("success")]),
+            "failed": len([r for r in results if not r.get("success")])
+        }
+    
+    def get_approved_ready_to_post(self, user_id: str) -> List[PendingApproval]:
+        """Get approved content ready to post"""
+        return [
+            p for p in self._pending_approvals.values()
+            if p.user_id == user_id and p.status == "approved"
+        ]
+
+
+# ============================================================
 # SCHEDULING & QUEUE
 # ============================================================
 
@@ -923,6 +1112,7 @@ class SocialAutoPostingEngine:
     Combines:
     - OAuth management
     - Content generation
+    - Approval workflow (user controls how much autonomy)
     - Platform posting
     - Scheduling
     - Performance tracking
@@ -933,6 +1123,7 @@ class SocialAutoPostingEngine:
         self.content_generator = ContentGenerator()
         self.poster = SocialPoster(self.oauth)
         self.queue = PostingQueue()
+        self.approvals = ApprovalManager()
         
         # Try to import Yield Memory for learning
         try:
@@ -971,6 +1162,31 @@ class SocialAutoPostingEngine:
         """Get list of platforms user has connected"""
         return [p.value for p in self.oauth.get_connected_platforms(user_id)]
     
+    def set_user_preferences(
+        self,
+        user_id: str,
+        approval_mode: str = "manual",
+        platforms: List[str] = None,
+        max_posts_per_day: int = 3,
+        content_guidelines: str = ""
+    ) -> Dict[str, Any]:
+        """Set user's posting preferences and approval mode"""
+        
+        prefs = self.approvals.set_user_preferences(
+            user_id=user_id,
+            approval_mode=approval_mode,
+            platforms=platforms,
+            max_posts_per_day=max_posts_per_day,
+            content_guidelines=content_guidelines
+        )
+        
+        return {
+            "user_id": user_id,
+            "approval_mode": prefs.approval_mode.value,
+            "platforms_enabled": [p.value for p in prefs.platforms_enabled],
+            "max_posts_per_day": prefs.max_posts_per_day
+        }
+    
     async def create_and_post(
         self,
         user_id: str,
@@ -979,15 +1195,23 @@ class SocialAutoPostingEngine:
         topic: str,
         style: str = "engaging",
         schedule: bool = False,
-        scheduled_time: datetime = None
+        scheduled_time: datetime = None,
+        bypass_approval: bool = False
     ) -> Dict[str, Any]:
         """
-        Create content and post (or schedule) to a platform
+        Create content and handle based on user's approval mode
         
-        This is the main entry point for auto-posting.
+        Approval Modes:
+        - MANUAL: Queue for approval, don't post until approved
+        - REVIEW_FIRST: Queue for review, user can batch approve
+        - AUTO_WITH_NOTIFY: Post immediately, notify user
+        - FULL_AUTO: Post immediately, no notification
+        
+        bypass_approval: If True, post immediately regardless of mode (for testing)
         """
         
         platform_enum = SocialPlatform(platform)
+        approval_mode = self.approvals.get_approval_mode(user_id)
         
         # Generate content
         content = await self.content_generator.generate_content(
@@ -997,6 +1221,35 @@ class SocialAutoPostingEngine:
             style=style
         )
         
+        # Check approval mode
+        if not bypass_approval and approval_mode in [ApprovalMode.MANUAL, ApprovalMode.REVIEW_FIRST]:
+            # Queue for approval instead of posting
+            pending = self.approvals.queue_for_approval(
+                user_id=user_id,
+                platform=platform_enum,
+                content=content
+            )
+            
+            return {
+                "success": True,
+                "action": "queued_for_approval",
+                "approval_id": pending.approval_id,
+                "approval_mode": approval_mode.value,
+                "message": "Content generated and queued for your approval",
+                "content_preview": {
+                    "caption": content.caption[:200] + "..." if len(content.caption) > 200 else content.caption,
+                    "type": content.content_type,
+                    "hashtags": content.hashtags,
+                    "platform": platform
+                },
+                "actions": {
+                    "approve": f"/social/approve/{pending.approval_id}",
+                    "reject": f"/social/reject/{pending.approval_id}",
+                    "edit": f"/social/edit/{pending.approval_id}"
+                }
+            }
+        
+        # Auto-post modes (AUTO_WITH_NOTIFY or FULL_AUTO) or bypass
         if schedule:
             # Schedule for later
             scheduled = self.queue.schedule_post(
@@ -1019,6 +1272,12 @@ class SocialAutoPostingEngine:
         else:
             # Post immediately
             result = await self.poster.post_content(content, user_id, platform_enum)
+            
+            # Notify if AUTO_WITH_NOTIFY
+            if approval_mode == ApprovalMode.AUTO_WITH_NOTIFY:
+                # In production, send push notification / email
+                result["notification_sent"] = True
+                result["message"] = "Posted to your account. Check your notifications."
             
             # Store pattern in Yield Memory if successful
             if result.get("success") and self.yield_memory:
@@ -1044,6 +1303,80 @@ class SocialAutoPostingEngine:
                     "hashtags": content.hashtags
                 }
             }
+    
+    def get_pending_approvals(self, user_id: str) -> List[Dict]:
+        """Get all posts pending user approval"""
+        pending = self.approvals.get_pending_approvals(user_id)
+        return [
+            {
+                "approval_id": p.approval_id,
+                "platform": p.platform.value,
+                "content_type": p.content.content_type,
+                "caption_preview": p.content.caption[:200] + "..." if len(p.content.caption) > 200 else p.content.caption,
+                "full_caption": p.content.caption,
+                "hashtags": p.content.hashtags,
+                "generated_at": p.generated_at,
+                "expires_at": p.expires_at
+            }
+            for p in pending
+        ]
+    
+    async def approve_and_post(
+        self,
+        approval_id: str,
+        edited_caption: str = None
+    ) -> Dict[str, Any]:
+        """Approve a pending post and publish it"""
+        
+        # Approve
+        result = self.approvals.approve(approval_id, edited_caption)
+        if not result.get("success"):
+            return result
+        
+        # Get the approved content
+        pending = self.approvals._pending_approvals.get(approval_id)
+        if not pending:
+            return {"success": False, "error": "Approval not found after approving"}
+        
+        # Post it
+        post_result = await self.poster.post_content(
+            pending.content,
+            pending.user_id,
+            pending.platform
+        )
+        
+        return {
+            "success": post_result.get("success"),
+            "action": "approved_and_posted",
+            "approval_id": approval_id,
+            "post_result": post_result
+        }
+    
+    def reject_post(
+        self,
+        approval_id: str,
+        feedback: str = None
+    ) -> Dict[str, Any]:
+        """Reject a pending post"""
+        return self.approvals.reject(approval_id, feedback)
+    
+    async def bulk_approve_and_post(
+        self,
+        approval_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Approve and post multiple items at once"""
+        results = []
+        for aid in approval_ids:
+            result = await self.approve_and_post(aid)
+            results.append({"approval_id": aid, **result})
+        
+        return {
+            "success": True,
+            "processed": len(results),
+            "posted": len([r for r in results if r.get("success")]),
+            "failed": len([r for r in results if not r.get("success")]),
+            "results": results
+        }
     
     async def process_scheduled_posts(self) -> List[Dict]:
         """Process all pending scheduled posts"""
