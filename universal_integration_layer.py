@@ -98,6 +98,21 @@ class IntelligentRouter:
                 max_concurrent=3     # Limit concurrent video generation
             ),
             
+            'research_engine': WorkerCapability(
+                worker_id='research_engine',
+                name='AI Research Engine (MetaHive Enhanced)',
+                capabilities=[
+                    'market_research', 'competitive_analysis', 'data_analysis',
+                    'due_diligence', 'business_intelligence', 'financial_analysis',
+                    'industry_reports', 'strategic_consulting'
+                ],
+                cost_per_task=25.00,  # $10-100 depending on complexity/depth
+                quality_score=0.93,   # High quality with MetaHive enhancement
+                speed_score=0.70,     # Research takes time for thoroughness
+                platforms=['upwork', 'fiverr', 'clarity.fm', 'toptal'],
+                max_concurrent=2      # Complex research requires focus
+            ),
+            
             'audio_engine': WorkerCapability(
                 worker_id='audio_engine',
                 name='AI Audio Engine (Multi-Worker)',
@@ -159,6 +174,7 @@ class IntelligentRouter:
             'graphics': ['logo', 'design', 'graphic', 'banner', 'flyer', 'illustration', 'visual', 'brand'],
             'video': ['video', 'explainer', 'animation', 'commercial', 'ad', 'promo', 'tutorial', 'demo'],
             'audio': ['audio', 'voiceover', 'voice over', 'podcast', 'narration', 'audiobook', 'voice'],
+            'research': ['research', 'analysis', 'market', 'competitive', 'data analysis', 'insights', 'intelligence'],
             'content': ['blog', 'article', 'content', 'writing', 'copy', 'documentation'],
             'chatbot': ['chatbot', 'bot', 'assistant', 'customer service', 'automation'],
             'website': ['website', 'site', 'landing', 'store', 'ecommerce', 'shopify']
@@ -287,6 +303,7 @@ class IntelligentRouter:
             'graphics': ['graphics_engine'],
             'video': ['video_engine'],
             'audio': ['audio_engine'],
+            'research': ['research_engine'],
             'content': ['claude'],
             'chatbot': ['chatgpt_agent'],
             'website': ['template_actionizer', 'claude'],
@@ -314,6 +331,8 @@ class IntelligentRouter:
                 score += 0.95
             elif work_type == 'audio' and 'audio_engine' == worker_id:
                 score += 0.92
+            elif work_type == 'research' and 'research_engine' == worker_id:
+                score += 0.93
             elif work_type == 'chatbot' and 'chatgpt_agent' == worker_id:
                 score += 0.9
             elif work_type == 'website' and 'template_actionizer' == worker_id:
@@ -562,6 +581,8 @@ class IntegratedOrchestrator:
                 result = await self._execute_video_task(opportunity)
             elif worker == 'audio_engine':
                 result = await self._execute_audio_task(opportunity)
+            elif worker == 'research_engine':
+                result = await self._execute_research_task(opportunity)
             elif worker == 'claude':
                 result = await self._execute_claude_task(opportunity)
             elif worker == 'chatgpt_agent':
@@ -639,6 +660,28 @@ class IntegratedOrchestrator:
             return {
                 'success': False,
                 'error': f'Audio execution error: {str(e)}'
+            }
+    
+    async def _execute_research_task(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute research task using research engine with MetaHive integration"""
+        
+        try:
+            from research_engine import ResearchEngine
+            
+            research_engine = ResearchEngine()
+            result = await research_engine.process_research_opportunity(opportunity)
+            return result
+            
+        except ImportError:
+            return {
+                'success': False,
+                'error': 'Research engine not available',
+                'fallback': 'Install research engine dependencies'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Research execution error: {str(e)}'
             }
     
     async def _execute_claude_task(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
