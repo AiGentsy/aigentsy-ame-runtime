@@ -19,23 +19,25 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
-# Import existing systems
-from ultimate_discovery_engine import discover_all_opportunities, get_wade_fulfillment_queue
-from week2_master_orchestrator import Week2MasterOrchestrator
-from graphics_engine import GraphicsEngine
+# Import existing systems (with error handling for missing dependencies)
+try:
+    from ultimate_discovery_engine import discover_all_opportunities, get_wade_fulfillment_queue
+except ImportError:
+    print("⚠️ ultimate_discovery_engine not fully available - some functions may be limited")
+    discover_all_opportunities = None
+    get_wade_fulfillment_queue = None
 
+try:
+    from week2_master_orchestrator import Week2MasterOrchestrator
+except ImportError:
+    print("⚠️ week2_master_orchestrator not available - week2 features disabled")
+    Week2MasterOrchestrator = None
 
-@dataclass
-class WorkerCapability:
-    """Define what each AI worker can do"""
-    worker_id: str
-    name: str
-    capabilities: List[str]
-    cost_per_task: float
-    quality_score: float
-    speed_score: float
-    platforms: List[str]
-    max_concurrent: int
+try:
+    from graphics_engine import GraphicsEngine
+except ImportError:
+    print("⚠️ graphics_engine not available - graphics features disabled")
+    GraphicsEngine = None
 
 
 @dataclass
@@ -1321,7 +1323,7 @@ class IntegratedOrchestrator:
     """
     
     def __init__(self):
-        self.router = IntelligentRouter()
+        self.router = UniversalAIRouter()
         self.graphics_engine = None
         self.week2_orchestrator = None
         self.execution_queue = []
@@ -1616,6 +1618,10 @@ class IntegratedOrchestrator:
 
 # Export main classes
 __all__ = ['IntegratedOrchestrator', 'IntelligentRouter']
+
+
+# Compatibility alias for backward compatibility with existing imports
+IntelligentRouter = UniversalAIRouter
 
 
 # Test function for development
