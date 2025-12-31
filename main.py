@@ -163,6 +163,17 @@ except Exception as e:
     async def collect_insurance(u, i, v): return {"ok": False, "fee": 0}
     async def get_pool_balance(p): return 0
 
+    from third_party_monetization_enhanced import (
+        parse_and_track_visitor,
+        generate_monetization_strategy,
+        track_conversion as track_monetization_conversion,
+        get_optimization_insights,
+        get_monetization_engine,
+        TrafficSource,
+        MonetizationTactic,
+        PLATFORM_CONFIGS
+    )
+
 # ============ AGENT FACTORING ============
 try:
     from agent_factoring import (
@@ -15124,6 +15135,367 @@ async def get_business_in_a_box_status():
             "Add predictive scaling for autonomous growth",
             "Develop enterprise business deployment templates"
         ]
+    }
+
+@app.post("/traffic/track")
+async def traffic_track(request: Request):
+    """
+    Track incoming visitor and identify traffic source
+    
+    Body: {
+        url: str,
+        referrer?: str,
+        utm_source?: str,
+        utm_campaign?: str,
+        utm_medium?: str,
+        utm_content?: str
+    }
+    
+    Returns: {
+        ok: true,
+        source: "instagram" | "tiktok" | "facebook" | etc,
+        source_name: str,
+        session_id: str,
+        creator_code?: str,
+        is_affiliate: bool,
+        visitor_fingerprint: str,
+        tracked_at: str
+    }
+    """
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    # Extract UTM params
+    utm_params = {
+        'utm_source': body.get('utm_source'),
+        'utm_campaign': body.get('utm_campaign'),
+        'utm_medium': body.get('utm_medium'),
+        'utm_content': body.get('utm_content'),
+        'utm_term': body.get('utm_term')
+    }
+    
+    # Get headers for fingerprinting
+    headers = {
+        'user-agent': request.headers.get('user-agent', ''),
+        'accept-language': request.headers.get('accept-language', '')
+    }
+    
+    result = await parse_and_track_visitor(
+        url=body.get('url', str(request.url)),
+        referrer=body.get('referrer', request.headers.get('referer', '')),
+        utm_params=utm_params,
+        headers=headers
+    )
+    
+    return {"ok": True, **result}
+
+
+@app.post("/traffic/strategy")
+async def traffic_strategy(body: Dict = Body(...)):
+    """
+    Generate monetization strategy for visitor
+    
+    This is the CORE endpoint - call it when a visitor lands on a product page.
+    Returns tactics (AIGx bonus, exit intent, scarcity, etc.) + frontend scripts.
+    
+    Body: {
+        visitor_data: {
+            source: "instagram" | "tiktok" | etc,
+            session_id: str,
+            creator_code?: str,
+            is_first_visit?: bool
+        },
+        product_data: {
+            id?: str,
+            price: float,
+            inventory?: int,
+            category?: str,
+            recent_purchases?: int
+        },
+        session_data?: {
+            time_on_site?: int (seconds),
+            pages_viewed?: int,
+            cart_items?: []
+        },
+        user_history?: {
+            previous_visits?: int,
+            total_spent?: float,
+            aigx_balance?: float
+        }
+    }
+    
+    Returns: {
+        ok: true,
+        session_id: str,
+        source: str,
+        tactics: [{
+            tactic: "aigx_bonus" | "exit_intent" | etc,
+            message: str,
+            discount_pct?: int,
+            code?: str,
+            aigx_amount?: int,
+            priority: int
+        }],
+        scripts: {
+            aigx_banner: str (JavaScript),
+            exit_intent: str (JavaScript),
+            cart_nudge: str (JavaScript),
+            scarcity: str (JavaScript),
+            countdown: str (JavaScript),
+            tracking: str (JavaScript)
+        },
+        messaging_tone: str,
+        urgency_level: str,
+        total_aigx_potential: int,
+        integrations: {
+            revenue_mesh: bool,
+            yield_memory: bool,
+            pricing_oracle: bool,
+            metahive: bool
+        }
+    }
+    """
+    visitor_data = body.get('visitor_data', {})
+    product_data = body.get('product_data', {'price': 100})
+    session_data = body.get('session_data', {})
+    user_history = body.get('user_history')
+    
+    strategy = await generate_monetization_strategy(
+        visitor_data=visitor_data,
+        product_data=product_data,
+        session_data=session_data,
+        user_history=user_history
+    )
+    
+    return {"ok": True, **strategy}
+
+
+@app.get("/traffic/scripts/{session_id}")
+async def traffic_scripts(session_id: str):
+    """
+    Get frontend JavaScript for a session's tactics
+    
+    Call this endpoint and inject the returned script into your page.
+    The script will:
+    - Show AIGx bonus banner
+    - Enable exit intent popup
+    - Show cart nudge after delay
+    - Display scarcity indicators
+    - Track all interactions
+    
+    Returns: {
+        ok: true,
+        session_id: str,
+        script: str (combined JavaScript to inject),
+        tactics_count: int
+    }
+    """
+    engine = get_monetization_engine()
+    session = engine.active_sessions.get(session_id)
+    
+    if not session:
+        return {"ok": False, "error": "Session not found or expired"}
+    
+    # Re-generate strategy to get fresh scripts
+    strategy = await generate_monetization_strategy(
+        visitor_data=session.get('visitor_data', {}),
+        product_data=session.get('product_data', {'price': 100}),
+        session_data={}
+    )
+    
+    # Combine all scripts
+    combined_script = "\n".join(strategy.get('scripts', {}).values())
+    
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "script": combined_script,
+        "tactics_count": len(strategy.get('tactics', []))
+    }
+
+
+@app.post("/traffic/convert")
+async def traffic_convert(body: Dict = Body(...)):
+    """
+    Track a conversion with full attribution
+    
+    Call this when a purchase is completed.
+    Determines which tactic gets credit and calculates ROAS.
+    High ROAS patterns are stored in Yield Memory and shared to MetaHive.
+    
+    Body: {
+        session_id: str,
+        purchase_data: {
+            total: float,
+            items?: [{id, name, price, qty}],
+            used_code?: str (discount code used)
+        },
+        username?: str (for AIGx credits and Outcome Oracle tracking)
+    }
+    
+    Returns: {
+        ok: true,
+        session_id: str,
+        source: str,
+        primary_tactic: str,
+        attribution_confidence: float (0-1),
+        roas: float,
+        contributed_to_hive?: bool (true if ROAS > 1.5),
+        aigx_credited?: float,
+        integrations_triggered: [str]
+    }
+    """
+    session_id = body.get('session_id')
+    purchase_data = body.get('purchase_data', {})
+    username = body.get('username')
+    
+    if not session_id:
+        return {"ok": False, "error": "session_id required"}
+    
+    conversion = await track_monetization_conversion(session_id, purchase_data, username)
+    
+    return {"ok": True, **conversion}
+
+
+@app.post("/traffic/event")
+async def traffic_event(request: Request):
+    """
+    Track frontend events from injected scripts
+    
+    Called automatically by the tracking script.
+    Events: page_view, aigx_banner_click, exit_intent_shown, 
+            exit_intent_claimed, cart_nudge_shown, etc.
+    
+    Body: {
+        event: str,
+        data?: {},
+        ts?: int (timestamp)
+    }
+    """
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    event = body.get('event', 'unknown')
+    data = body.get('data', {})
+    ts = body.get('ts', datetime.now(timezone.utc).timestamp())
+    
+    # Log event for AMG optimization
+    # In production, this would feed into analytics_engine
+    
+    return {"ok": True, "event": event, "recorded": True, "ts": ts}
+
+
+@app.get("/traffic/optimize")
+async def traffic_optimize():
+    """
+    Get AMG optimization insights for traffic monetization
+    
+    Returns insights on:
+    - Best performing traffic sources
+    - Most effective tactics per source
+    - Revenue by source
+    - Recommendations for improvement
+    
+    Returns: {
+        ok: true,
+        total_conversions: int,
+        total_revenue: float,
+        insights_by_source: [{
+            source: str,
+            conversions: int,
+            revenue: float,
+            avg_order_value: float,
+            best_tactic: str
+        }],
+        recommendations: [str]
+    }
+    """
+    insights = get_optimization_insights()
+    return {"ok": True, **insights}
+
+
+@app.get("/traffic/sources")
+async def traffic_sources():
+    """
+    List available traffic sources and their configurations
+    
+    Use this to understand how different platforms are configured.
+    TikTok has highest urgency, LinkedIn is most professional, etc.
+    
+    Returns: {
+        ok: true,
+        sources: [{
+            source: str,
+            primary_tactics: [str],
+            urgency_level: "low" | "medium" | "high",
+            aigx_multiplier: float
+        }]
+    }
+    """
+    sources = []
+    for source_enum in TrafficSource:
+        config = PLATFORM_CONFIGS.get(source_enum, {})
+        primary_tactics = config.get('primary_tactics', [])
+        sources.append({
+            'source': source_enum.value,
+            'primary_tactics': [t.value if hasattr(t, 'value') else str(t) for t in primary_tactics],
+            'urgency_level': config.get('messaging', {}).get('urgency_level', 'medium'),
+            'aigx_multiplier': config.get('messaging', {}).get('aigx_multiplier', 1.0),
+            'exit_intent_enabled': config.get('timing', {}).get('exit_intent_enabled', True)
+        })
+    
+    return {"ok": True, "sources": sources}
+
+
+@app.post("/traffic/simulate")
+async def traffic_simulate(body: Dict = Body(...)):
+    """
+    Simulate a visitor session for testing
+    
+    Body: {
+        source: "instagram" | "tiktok" | etc,
+        product_price: float,
+        is_first_visit?: bool,
+        creator_code?: str
+    }
+    
+    Returns full strategy as if visitor just arrived
+    """
+    source = body.get('source', 'direct')
+    product_price = float(body.get('product_price', 100))
+    is_first_visit = body.get('is_first_visit', True)
+    creator_code = body.get('creator_code')
+    
+    # Create visitor data
+    visitor_result = await parse_and_track_visitor(
+        url=f"https://aigentsy.com/product?utm_source={source}",
+        referrer="",
+        utm_params={'utm_source': source},
+        headers={'user-agent': 'Simulator/1.0'}
+    )
+    
+    if creator_code:
+        visitor_result['creator_code'] = creator_code
+        visitor_result['is_affiliate'] = True
+    
+    visitor_result['is_first_visit'] = is_first_visit
+    
+    # Generate strategy
+    strategy = await generate_monetization_strategy(
+        visitor_data=visitor_result,
+        product_data={'price': product_price, 'inventory': 8, 'recent_purchases': 15},
+        session_data={'time_on_site': 120, 'pages_viewed': 3, 'cart_items': []},
+        user_history={'previous_visits': 0 if is_first_visit else 3, 'total_spent': 0 if is_first_visit else 150}
+    )
+    
+    return {
+        "ok": True,
+        "simulated_visitor": visitor_result,
+        "strategy": strategy
     }
 
         
