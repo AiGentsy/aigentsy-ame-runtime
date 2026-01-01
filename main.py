@@ -32,6 +32,9 @@ from auto_bidding_orchestrator import auto_bid_on_opportunity
 from video_engine import VideoEngine, VideoAnalyzer
 from universal_integration_layer import IntegratedOrchestrator, IntelligentRouter, RevenueIntelligenceMesh
 from audio_engine import AudioEngine, AudioAnalyzer
+from protocol_gateway import get_gateway
+from aigx_protocol import get_protocol, PROTOCOL_VERSION
+from agent_registry import get_registry, Capability, AgentType
 from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDeploymentEngine, BusinessPortfolioManager
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
 from opportunity_filters import (
@@ -16247,6 +16250,307 @@ async def social_strategy(username: str, platforms: str = "tiktok,instagram"):
     platform_list = platforms.split(",")
     strategy = await engine.get_optimal_posting_strategy(username, platform_list)
     return {"ok": True, **strategy}
+
+@app.post("/protocol/register")
+async def protocol_register(body: Dict = Body(...)):
+    """
+    Register a new AI agent in the AIGx Protocol
+    
+    Body: {
+        "agent_type": "claude" | "gpt" | "custom" | etc,
+        "name": "Agent Display Name",
+        "description": "What this agent does",
+        "capabilities": ["code_generation", "content_writing", ...],
+        "owner_id": "platform_or_user_id",
+        "api_endpoint": "https://...",  # optional
+        "initial_aigx": 0  # optional bonus
+    }
+    
+    Returns: {
+        "agent_id": "agent_xxx",
+        "api_key": "aigx_xxx",  # STORE SECURELY
+        "capabilities": [...],
+        "next_steps": [...]
+    }
+    """
+    gateway = get_gateway()
+    return gateway.register_agent(
+        agent_type=body.get("agent_type", "custom"),
+        name=body.get("name"),
+        description=body.get("description", ""),
+        capabilities=body.get("capabilities", []),
+        owner_id=body.get("owner_id"),
+        api_endpoint=body.get("api_endpoint"),
+        initial_aigx=body.get("initial_aigx", 0)
+    )
+
+
+# ==================== SETTLEMENT ====================
+
+@app.post("/protocol/settle")
+async def protocol_settle(body: Dict = Body(...)):
+    """
+    Settle an AI-to-AI payment
+    
+    Body: {
+        "api_key": "aigx_xxx",  # Payer's API key
+        "to_agent": "agent_xxx",  # Recipient agent ID
+        "amount_aigx": 100.0,
+        "work_hash": "sha256...",  # Hash of work delivered
+        "proof_of_work": {...},  # Optional evidence
+        "metadata": {...}  # Optional context
+    }
+    
+    Protocol takes 0.5% fee.
+    Recipient's reputation is updated on success.
+    """
+    gateway = get_gateway()
+    return gateway.settle(
+        api_key=body.get("api_key"),
+        to_agent=body.get("to_agent"),
+        amount_aigx=body.get("amount_aigx"),
+        work_hash=body.get("work_hash"),
+        proof_of_work=body.get("proof_of_work"),
+        metadata=body.get("metadata")
+    )
+
+
+# ==================== STAKING ====================
+
+@app.post("/protocol/stake")
+async def protocol_stake(body: Dict = Body(...)):
+    """
+    Stake AIGx in the protocol
+    
+    Benefits:
+    - Skin in the game (can be slashed for bad behavior)
+    - Verification eligibility (100+ AIGx)
+    - Yield from protocol fees
+    - Higher reputation weight
+    
+    Body: {
+        "api_key": "aigx_xxx",
+        "amount_aigx": 100.0
+    }
+    """
+    gateway = get_gateway()
+    return gateway.stake(body.get("api_key"), body.get("amount_aigx"))
+
+
+@app.post("/protocol/unstake")
+async def protocol_unstake(body: Dict = Body(...)):
+    """
+    Unstake AIGx from the protocol
+    
+    Note: Stakes are locked for 7 days after last activity.
+    
+    Body: {
+        "api_key": "aigx_xxx",
+        "amount_aigx": 50.0
+    }
+    """
+    gateway = get_gateway()
+    return gateway.unstake(body.get("api_key"), body.get("amount_aigx"))
+
+
+# ==================== BALANCE ====================
+
+@app.get("/protocol/balance")
+async def protocol_balance(api_key: str):
+    """
+    Get agent's AIGx balance
+    
+    Returns liquid balance, staked amount, and total.
+    """
+    gateway = get_gateway()
+    return gateway.get_balance(api_key)
+
+
+# ==================== AGENT LOOKUP (PUBLIC) ====================
+
+@app.get("/protocol/agent/{agent_id}")
+async def protocol_agent(agent_id: str):
+    """
+    Get public agent info
+    
+    Returns: agent type, capabilities, reputation score/tier, 
+    jobs completed, on-time rate, verification status.
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_agent(agent_id)
+
+
+@app.get("/protocol/agents/search")
+async def protocol_search(
+    capability: str = None,
+    agent_type: str = None,
+    min_reputation: int = 0,
+    verified_only: bool = False,
+    limit: int = 50
+):
+    """
+    Search for agents by criteria
+    
+    Examples:
+    - /protocol/agents/search?capability=code_generation
+    - /protocol/agents/search?agent_type=claude&verified_only=true
+    - /protocol/agents/search?min_reputation=70
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.search_agents(
+        capability=capability,
+        agent_type=agent_type,
+        min_reputation=min_reputation,
+        verified_only=verified_only,
+        limit=limit
+    )
+
+
+@app.get("/protocol/leaderboard")
+async def protocol_leaderboard(limit: int = 20):
+    """
+    Get agent leaderboard by reputation
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_leaderboard(limit)
+
+
+# ==================== TRANSACTIONS ====================
+
+@app.get("/protocol/tx/{tx_id}")
+async def protocol_tx(tx_id: str):
+    """
+    Get transaction details
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_transaction(tx_id)
+
+
+@app.get("/protocol/verify/{tx_id}")
+async def protocol_verify(tx_id: str):
+    """
+    Verify a transaction exists and is valid
+    
+    Returns: verified (bool), tx_hash, block_number, status
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.verify_transaction(tx_id)
+
+
+@app.get("/protocol/history")
+async def protocol_history(api_key: str, limit: int = 50):
+    """
+    Get agent's transaction history
+    
+    Requires authentication (own history only).
+    """
+    gateway = get_gateway()
+    return gateway.get_agent_history(api_key, limit)
+
+
+# ==================== PROTOCOL INFO (PUBLIC) ====================
+
+@app.get("/protocol/info")
+async def protocol_info():
+    """
+    Get protocol information
+    
+    Returns: version, fee rate, features, stats
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_protocol_info()
+
+
+@app.get("/protocol/capabilities")
+async def protocol_capabilities():
+    """
+    Get list of all agent capabilities
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_capabilities_list()
+
+
+@app.get("/protocol/agent-types")
+async def protocol_agent_types():
+    """
+    Get list of all agent types
+    
+    No authentication required.
+    """
+    gateway = get_gateway()
+    return gateway.get_agent_types_list()
+
+
+# ==================== INTERNAL: CONNECT PRODUCT TO PROTOCOL ====================
+
+@app.post("/protocol/internal/sync-aigx-to-protocol")
+async def sync_aigx_to_protocol(body: Dict = Body(...)):
+    """
+    INTERNAL: Sync product user's AIGx to protocol balance
+    
+    Called when product users earn AIGx through platform activity.
+    Creates protocol agent if needed.
+    
+    Body: {
+        "username": "wade",
+        "aigx_amount": 10.0,
+        "reason": "daily_activity"
+    }
+    """
+    gateway = get_gateway()
+    protocol = get_protocol()
+    registry = get_registry()
+    
+    username = body.get("username")
+    amount = body.get("aigx_amount", 0)
+    reason = body.get("reason", "sync")
+    
+    # Check if user has a protocol agent
+    # In production, look up mapping in database
+    agent_id = f"product_user_{username}"
+    
+    existing = registry.get_agent(agent_id)
+    if not existing:
+        # Auto-register product user as agent
+        result = gateway.register_agent(
+            agent_type="hybrid",
+            name=f"{username}'s AI Workers",
+            description=f"AI agent pool for AiGentsy user {username}",
+            capabilities=["code_generation", "content_writing", "data_analysis"],
+            owner_id=username,
+            initial_aigx=amount
+        )
+        return {
+            "ok": True,
+            "action": "created_and_credited",
+            "agent_id": result.get("agent_id"),
+            "balance": amount
+        }
+    
+    # Credit existing agent
+    protocol.credit_balance(agent_id, amount, reason)
+    
+    return {
+        "ok": True,
+        "action": "credited",
+        "agent_id": agent_id,
+        "amount": amount,
+        "new_balance": protocol.get_balance(agent_id)
+    }
 
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
