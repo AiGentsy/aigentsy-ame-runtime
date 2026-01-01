@@ -16552,6 +16552,446 @@ async def sync_aigx_to_protocol(body: Dict = Body(...)):
         "new_balance": protocol.get_balance(agent_id)
     }
 
+@app.post("/aigx/earn")
+async def aigx_earn(body: Dict = Body(...)):
+    """
+    User earns AIGx through platform activity
+    
+    Body: {
+        "user_id": "alice",
+        "earn_type": "job_completed" | "daily_active" | "referral_signup" | etc,
+        "reference_value": 500.0,  // Job value if applicable
+        "reference_id": "job_123"  // Optional reference
+    }
+    
+    AIGx is NEVER purchased - only earned through:
+    - Daily activity
+    - Completing jobs
+    - Referrals
+    - Verified outcomes
+    - IP licensing
+    """
+    protocol = get_protocol()
+    return protocol.earn_aigx(
+        user_id=body.get("user_id"),
+        earn_type=body.get("earn_type"),
+        reference_value=body.get("reference_value", 0),
+        reference_id=body.get("reference_id")
+    )
+
+
+@app.get("/aigx/balance/{user_id}")
+async def aigx_balance(user_id: str):
+    """
+    Get user's AIGx balance
+    
+    Returns balance and recent transaction history.
+    """
+    protocol = get_protocol()
+    return protocol.get_aigx_balance(user_id)
+
+
+@app.get("/aigx/history/{user_id}")
+async def aigx_history(user_id: str, limit: int = 50):
+    """
+    Get user's AIGx transaction history
+    """
+    protocol = get_protocol()
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "transactions": protocol.aigx.get_user_history(user_id, limit)
+    }
+
+
+@app.get("/aigx/stats")
+async def aigx_stats():
+    """
+    Get AIGx system statistics
+    
+    Returns:
+    - Total issued
+    - Total burned (fees)
+    - Circulating supply
+    - Total users
+    """
+    protocol = get_protocol()
+    return {"ok": True, "stats": protocol.aigx.get_stats()}
+
+
+# ============================================================
+# P2P FINANCIAL ENDPOINTS (AiGentsy = Facilitator)
+# ============================================================
+
+@app.post("/p2p/stake")
+async def p2p_stake(body: Dict = Body(...)):
+    """
+    User A stakes AIGx on User B
+    
+    Body: {
+        "staker_id": "alice",
+        "recipient_id": "bob",
+        "amount": 100.0,
+        "duration_days": 30
+    }
+    
+    RISK: Staker (alice)
+    FEE: 2.5% to AiGentsy
+    
+    Use case: Reputation boost, credit backing
+    """
+    protocol = get_protocol()
+    return protocol.stake_on_user(
+        staker_id=body.get("staker_id"),
+        recipient_id=body.get("recipient_id"),
+        amount=body.get("amount"),
+        duration_days=body.get("duration_days", 30)
+    )
+
+
+@app.post("/p2p/lend")
+async def p2p_lend(body: Dict = Body(...)):
+    """
+    User A lends AIGx to User B
+    
+    Body: {
+        "lender_id": "alice",
+        "borrower_id": "bob",
+        "amount": 100.0,
+        "interest_rate": 12.0,  // Annual %
+        "duration_days": 30
+    }
+    
+    RISK: Lender (alice)
+    FEE: 2.5% to AiGentsy
+    """
+    protocol = get_protocol()
+    return protocol.lend_to_user(
+        lender_id=body.get("lender_id"),
+        borrower_id=body.get("borrower_id"),
+        amount=body.get("amount"),
+        interest_rate=body.get("interest_rate"),
+        duration_days=body.get("duration_days", 30)
+    )
+
+
+@app.post("/p2p/factor")
+async def p2p_factor(body: Dict = Body(...)):
+    """
+    User A advances payment to User B against pending invoice
+    
+    Body: {
+        "investor_id": "alice",
+        "agent_id": "bob",
+        "invoice_value": 1000.0,
+        "invoice_id": "inv_123"  // Optional
+    }
+    
+    Advance rate: 80% of invoice value
+    RISK: Investor (alice)
+    FEE: 2% to AiGentsy
+    """
+    protocol = get_protocol()
+    return protocol.factor_invoice(
+        investor_id=body.get("investor_id"),
+        agent_id=body.get("agent_id"),
+        invoice_value=body.get("invoice_value"),
+        invoice_id=body.get("invoice_id")
+    )
+
+
+@app.post("/p2p/repay")
+async def p2p_repay(body: Dict = Body(...)):
+    """
+    Repay a P2P transaction (loan, stake, factoring)
+    
+    Body: {
+        "tx_id": "p2p_loan_xxx",
+        "amount": 50.0,
+        "payer_id": "bob"  // Optional, defaults to borrower
+    }
+    """
+    protocol = get_protocol()
+    return protocol.repay_p2p(
+        tx_id=body.get("tx_id"),
+        amount=body.get("amount"),
+        payer_id=body.get("payer_id")
+    )
+
+
+@app.get("/p2p/summary/{user_id}")
+async def p2p_summary(user_id: str):
+    """
+    Get user's P2P activity summary
+    
+    Shows:
+    - As lender: total lent, outstanding due to you
+    - As borrower: total borrowed, outstanding owed
+    """
+    protocol = get_protocol()
+    return protocol.p2p.get_user_p2p_summary(user_id)
+
+
+@app.get("/p2p/transaction/{tx_id}")
+async def p2p_transaction(tx_id: str):
+    """
+    Get P2P transaction details
+    """
+    protocol = get_protocol()
+    tx = protocol.p2p._transactions.get(tx_id)
+    if not tx:
+        return {"ok": False, "error": "transaction_not_found"}
+    return {"ok": True, "transaction": tx.to_dict()}
+
+
+@app.get("/p2p/stats")
+async def p2p_stats():
+    """
+    Get P2P facilitation statistics
+    
+    Shows platform's role as FACILITATOR:
+    - Total facilitated volume
+    - Fees collected (not risk taken)
+    - Transaction counts
+    """
+    protocol = get_protocol()
+    return {"ok": True, "stats": protocol.p2p.get_stats()}
+
+
+# ============================================================
+# TRANSACTION FEE ENDPOINTS
+# ============================================================
+
+@app.post("/revenue/transaction")
+async def record_transaction(body: Dict = Body(...)):
+    """
+    Record transaction fee from user job
+    
+    Body: {
+        "job_value_usd": 1000.0,
+        "job_id": "job_123",
+        "user_id": "alice"
+    }
+    
+    Fee: 2.8% + $0.28
+    Also credits user with AIGx (10% of job value)
+    """
+    protocol = get_protocol()
+    return protocol.record_transaction_fee(
+        job_value_usd=body.get("job_value_usd"),
+        job_id=body.get("job_id"),
+        user_id=body.get("user_id")
+    )
+
+
+# ============================================================
+# NATIVE AGENT ENDPOINTS (Platform Self-Revenue)
+# ============================================================
+
+@app.post("/native/register")
+async def native_register(body: Dict = Body(...)):
+    """
+    Register a platform-owned AI agent
+    
+    Body: {
+        "name": "Claude Worker Alpha",
+        "agent_type": "claude",
+        "capabilities": ["code_generation", "code_review"],
+        "platforms": ["github", "upwork", "fiverr"]
+    }
+    
+    Native agents earn revenue for THE PLATFORM, not users.
+    """
+    protocol = get_protocol()
+    return protocol.register_native_agent(
+        name=body.get("name"),
+        agent_type=body.get("agent_type"),
+        capabilities=body.get("capabilities", []),
+        platforms=body.get("platforms", [])
+    )
+
+
+@app.post("/native/job")
+async def native_job(body: Dict = Body(...)):
+    """
+    Record job completed by platform's native agent
+    
+    Body: {
+        "agent_id": "native_xxx",
+        "platform": "github",
+        "job_type": "code_review",
+        "revenue_usd": 150.0
+    }
+    
+    Revenue goes to PLATFORM TREASURY, not users.
+    """
+    protocol = get_protocol()
+    return protocol.native_agent_completed_job(
+        agent_id=body.get("agent_id"),
+        platform=body.get("platform"),
+        job_type=body.get("job_type"),
+        revenue_usd=body.get("revenue_usd")
+    )
+
+
+@app.get("/native/fleet")
+async def native_fleet():
+    """
+    Get native agent fleet statistics
+    
+    Shows platform's autonomous earning capacity.
+    """
+    protocol = get_protocol()
+    return {"ok": True, "fleet": protocol.native_fleet.get_fleet_stats()}
+
+
+# ============================================================
+# TREASURY ENDPOINTS (Platform Revenue)
+# ============================================================
+
+@app.get("/treasury/summary")
+async def treasury_summary():
+    """
+    Get platform treasury summary
+    
+    Shows all revenue by source:
+    - Transaction fees
+    - Protocol fees
+    - P2P facilitation fees
+    - Native agent earnings
+    """
+    protocol = get_protocol()
+    return {"ok": True, "treasury": protocol.treasury.get_summary()}
+
+
+@app.get("/treasury/recent")
+async def treasury_recent(limit: int = 50):
+    """
+    Get recent treasury entries
+    """
+    protocol = get_protocol()
+    return {"ok": True, "entries": protocol.treasury.get_recent(limit)}
+
+
+# ============================================================
+# PROTOCOL STATS
+# ============================================================
+
+@app.get("/protocol/stats")
+async def protocol_stats():
+    """
+    Get complete protocol statistics
+    
+    Comprehensive view of:
+    - AIGx system
+    - P2P layer
+    - Treasury
+    - Native fleet
+    - Fee structure
+    """
+    protocol = get_protocol()
+    return protocol.get_protocol_stats()
+
+
+@app.get("/protocol/fees")
+async def protocol_fees():
+    """
+    Get current fee structure
+    
+    AiGentsy's revenue model:
+    - Transaction: 2.8% + $0.28
+    - Protocol settlement: 0.5%
+    - P2P facilitation: 2-2.5%
+    """
+    from aigx_protocol_complete import FEES
+    return {"ok": True, "fees": FEES}
+
+
+# ============================================================
+# WEBHOOK: AUTO-EARN AIGX ON EVENTS
+# ============================================================
+
+@app.post("/webhook/job_completed")
+async def webhook_job_completed(body: Dict = Body(...)):
+    """
+    Webhook: Called when a job is completed
+    
+    Body: {
+        "user_id": "alice",
+        "job_id": "job_123",
+        "job_value_usd": 500.0
+    }
+    
+    This:
+    1. Records transaction fee to treasury
+    2. Credits user with AIGx
+    """
+    protocol = get_protocol()
+    return protocol.record_transaction_fee(
+        job_value_usd=body.get("job_value_usd"),
+        job_id=body.get("job_id"),
+        user_id=body.get("user_id")
+    )
+
+
+@app.post("/webhook/outcome_verified")
+async def webhook_outcome_verified(body: Dict = Body(...)):
+    """
+    Webhook: Called when PoO is verified
+    
+    Body: {
+        "user_id": "alice",
+        "outcome_id": "poo_123"
+    }
+    
+    Credits user with 5 AIGx
+    """
+    protocol = get_protocol()
+    return protocol.earn_aigx(
+        user_id=body.get("user_id"),
+        earn_type="outcome_verified",
+        reference_id=body.get("outcome_id")
+    )
+
+
+@app.post("/webhook/referral")
+async def webhook_referral(body: Dict = Body(...)):
+    """
+    Webhook: Called when referral signs up
+    
+    Body: {
+        "referrer_id": "alice",
+        "referred_id": "bob"
+    }
+    
+    Credits referrer with 10 AIGx
+    """
+    protocol = get_protocol()
+    return protocol.earn_aigx(
+        user_id=body.get("referrer_id"),
+        earn_type="referral_signup",
+        reference_id=body.get("referred_id")
+    )
+
+
+@app.post("/webhook/daily_active")
+async def webhook_daily_active(body: Dict = Body(...)):
+    """
+    Webhook: Called when user is active for the day
+    
+    Body: {
+        "user_id": "alice"
+    }
+    
+    Credits user with 1 AIGx
+    """
+    protocol = get_protocol()
+    return protocol.earn_aigx(
+        user_id=body.get("user_id"),
+        earn_type="daily_active"
+    )
+
+
         
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
