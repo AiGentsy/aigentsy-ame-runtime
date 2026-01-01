@@ -32,8 +32,7 @@ from auto_bidding_orchestrator import auto_bid_on_opportunity
 from video_engine import VideoEngine, VideoAnalyzer
 from universal_integration_layer import IntegratedOrchestrator, IntelligentRouter, RevenueIntelligenceMesh
 from audio_engine import AudioEngine, AudioAnalyzer
-from protocol_gateway import get_gateway
-from aigx_protocol import get_protocol, PROTOCOL_VERSION
+from aigx_protocol import get_protocol
 from agent_registry import get_registry, Capability, AgentType
 from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDeploymentEngine, BusinessPortfolioManager
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
