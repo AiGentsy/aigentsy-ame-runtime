@@ -166,6 +166,10 @@ try:
     SYSTEMS["franchise"] = True
 except: SYSTEMS["franchise"] = False
 
+# --- BESPOKE KIT GENERATOR (V2 - stored in repo for future use) ---
+# from bespoke_kit_generator import generate_bespoke_kit, get_kit_context_for_agent
+SYSTEMS["bespoke_kit"] = False  # Disabled for V1 - using smart routing to 3 kits instead
+
 # --- DASHBOARD LAYER ---
 try:
     from dashboard_api import get_dashboard_data, get_discovery_stats
@@ -549,37 +553,112 @@ class CompleteIntelligenceAggregator:
 # BUSINESS CONTEXT & ROUTING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def normalize_business_type(raw: str) -> str:
+def normalize_business_type(raw: str, custom_input: str = None) -> str:
     """
-    Normalize businessType/kit from various frontend formats.
-    Frontend might send: "saas_kit", "SaaS Kit", "saas", "SAAS", etc.
+    Normalize businessType/kit to one of 3 kits: saas, social, marketing.
+    Everything routes to one of these three. No "general" as a destination.
     """
     if not raw:
-        return "general"
+        raw = "general"
     
     raw_lower = raw.lower().replace("_kit", "").replace(" kit", "").replace("-kit", "").strip()
     
-    # Map variations to canonical names
+    # Direct mapping - everything goes to saas, social, or marketing
     mapping = {
-        "saas": "saas",
-        "software": "saas",
-        "tech": "saas",
-        "legal": "legal",
-        "law": "legal",
-        "attorney": "legal",
-        "marketing": "marketing",
-        "growth": "marketing",
-        "ads": "marketing",
-        "social": "social",
-        "content": "social",
-        "creator": "social",
-        "influencer": "social",
-        "general": "general",
-        "whitelabel": "general",
-        "whitelabel_general": "general",
+        # SaaS/Software (default for tech/tools/building)
+        "saas": "saas", "software": "saas", "tech": "saas", "app": "saas", "tool": "saas",
+        "api": "saas", "automation": "saas", "developer": "saas", "code": "saas",
+        
+        # Marketing (growth/leads/traffic)
+        "marketing": "marketing", "growth": "marketing", "ads": "marketing", "seo": "marketing",
+        "traffic": "marketing", "leads": "marketing", "funnel": "marketing", "agency": "marketing",
+        
+        # Social (content/creator/audience)
+        "social": "social", "content": "social", "creator": "social", "influencer": "social",
+        "media": "social", "video": "social", "tiktok": "social", "youtube": "social",
+        
+        # These all route to the closest fit
+        "legal": "saas",        # Legal docs = build templates/tools
+        "consulting": "marketing",  # Consulting = getting clients
+        "education": "social",      # Courses = content/audience
+        "ecommerce": "marketing",   # Ecommerce = traffic/conversion
+        "creative": "social",       # Creative = content/portfolio
+        "finance": "saas",          # Finance tools = build software
+        "health": "social",         # Health = content/community
+        
+        # Catch-alls route to saas (most versatile)
+        "general": "saas",
+        "custom": "saas",
+        "whitelabel": "saas",
     }
     
-    return mapping.get(raw_lower, "general")
+    # If direct match, use it (but check customInput first for custom/general)
+    if raw_lower in ["custom", "general", "whitelabel", ""] and custom_input and len(custom_input) > 10:
+        detected = detect_kit_from_description(custom_input)
+        print(f"🔍 Bespoke routing: '{custom_input[:40]}...' → {detected}")
+        return detected
+    
+    if raw_lower in mapping:
+        return mapping[raw_lower]
+    
+    # Unknown - try to detect from customInput
+    if custom_input and len(custom_input) > 10:
+        return detect_kit_from_description(custom_input)
+    
+    # Default fallback
+    return "saas"
+
+
+def detect_kit_from_description(description: str) -> str:
+    """
+    Analyze a business description and route to saas, social, or marketing.
+    No other options - everything lands in one of these three.
+    """
+    if not description:
+        return "saas"  # Default
+    
+    text = description.lower()
+    
+    # Keyword scoring for the 3 kits only
+    kit_keywords = {
+        "saas": [
+            "software", "app", "tool", "api", "saas", "platform", "automation", 
+            "dashboard", "integration", "plugin", "bot", "script", "code", 
+            "developer", "build", "create", "system", "database", "tech",
+            "ai", "machine learning", "algorithm", "program"
+        ],
+        "marketing": [
+            "marketing", "seo", "ads", "advertising", "growth", "traffic", 
+            "leads", "funnel", "email", "campaign", "ppc", "conversion", 
+            "landing page", "customers", "clients", "sales", "revenue",
+            "b2b", "agency", "consulting", "strategy", "business"
+        ],
+        "social": [
+            "social media", "content", "creator", "influencer", "youtube", 
+            "tiktok", "instagram", "reels", "video", "podcast", "followers",
+            "audience", "community", "brand", "personal brand", "course",
+            "teaching", "coaching", "creative", "design", "art", "music"
+        ],
+    }
+    
+    scores = {"saas": 0, "marketing": 0, "social": 0}
+    
+    for kit, keywords in kit_keywords.items():
+        for kw in keywords:
+            if kw in text:
+                scores[kit] += 1
+            # Boost for exact phrase matches
+            if f" {kw} " in f" {text} ":
+                scores[kit] += 1
+    
+    # Find winner
+    best_kit = max(scores, key=scores.get)
+    
+    # If no clear signal, default to saas (most versatile)
+    if scores[best_kit] == 0:
+        return "saas"
+    
+    return best_kit
 
 
 BUSINESS_CONTEXTS = {
@@ -597,21 +676,6 @@ BUSINESS_CONTEXTS = {
         ],
         "first_pitch": "What repetitive task do you hate doing? I'll build a tool to automate it.",
         "revenue_path": "Build once, sell many times. Your AiGentsy can find buyers while you sleep."
-    },
-    "legal": {
-        "type": "LEGAL SERVICES",
-        "kit_name": "Legal Kit",
-        "you_are": "a legal services provider who can draft and review documents",
-        "offerings": "NDAs ($200), contracts ($500), IP licensing ($500-2k), compliance audits ($1,500)",
-        "targets": "startups, small businesses, entrepreneurs, contractors",
-        "first_moves": [
-            "Start with NDAs - everyone needs them, fast turnaround",
-            "Price at $200 flat (market is $500+)",
-            "Target startup founders on social",
-            "First 5 clients = $1,000"
-        ],
-        "first_pitch": "Need an NDA? I'll have it ready in 24 hours, $200 flat.",
-        "revenue_path": "Legal docs are repeat business. One happy client = referrals forever."
     },
     "marketing": {
         "type": "MARKETING/GROWTH",
@@ -642,23 +706,13 @@ BUSINESS_CONTEXTS = {
         ],
         "first_pitch": "I'll create 10 posts with captions for your next 2 weeks - $200.",
         "revenue_path": "Content is recurring. Businesses always need more posts."
-    },
-    "general": {
-        "type": "GENERAL",
-        "kit_name": "General Kit",
-        "you_are": "someone with skills that can be monetized",
-        "offerings": "Consulting ($150/hr), strategy sessions, custom projects",
-        "targets": "anyone with a problem you can solve",
-        "first_moves": [
-            "Identify your #1 skill",
-            "Find someone with a problem that skill solves",
-            "Offer to solve it for a fair price",
-            "Deliver, get testimonial, repeat"
-        ],
-        "first_pitch": "What's eating up your time? Tell me and I'll see if I can help.",
-        "revenue_path": "Start with what you know. Your AiGentsy will help you find buyers."
     }
 }
+
+# NOTE: All other business types route to one of the 3 above via normalize_business_type()
+# - legal, finance, consulting → saas (build tools/templates)
+# - ecommerce, agency, b2b → marketing (get customers)  
+# - education, creative, health → social (content/audience)
 
 ROLE_CONFIGS = {
     "CFO": {
@@ -833,6 +887,7 @@ class AgentState(BaseModel):
     memory: List[str] = []
     business_type: Optional[str] = None
     username: Optional[str] = None
+    custom_input: Optional[str] = None  # User's custom business description
 
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4o-2024-11-20")
@@ -846,22 +901,48 @@ elif os.getenv("OPENAI_API_KEY"):
 
 
 async def invoke(state: AgentState) -> dict:
-    """Core invoke with COMPLETE intelligence integration."""
+    """Core invoke with COMPLETE intelligence integration and bespoke kit support."""
     user_input = state.input or ""
     if not user_input:
         return {"output": "No input provided.", "memory": state.memory}
     
     try:
         username = state.username or "user"
-        # CRITICAL: Normalize business type from various frontend formats
+        custom_input = state.custom_input or ""
+        
+        # CRITICAL: Normalize business type, using customInput for bespoke detection
         raw_business_type = state.business_type or "general"
-        business_type = normalize_business_type(raw_business_type)
+        business_type = normalize_business_type(raw_business_type, custom_input)
         
         print(f"🎯 v5.0 FINAL - User: {username}, Raw kit: {raw_business_type}, Normalized: {business_type}")
+        if custom_input:
+            print(f"📝 CustomInput: {custom_input[:50]}...")
+        
+        # Check if user provided a custom business description
+        has_custom_idea = custom_input and len(custom_input) > 10
+        
+        # If they described a custom business, inject it as context
+        custom_context = ""
+        if has_custom_idea:
+            custom_context = f"""
+═══════════════════════════════════════════════════════════════
+💡 USER'S BUSINESS IDEA (use this to personalize advice)
+═══════════════════════════════════════════════════════════════
+"{custom_input}"
+
+Tailor your advice to THIS specific idea. Don't give generic {business_type} advice.
+Reference their actual business concept when suggesting next steps.
+═══════════════════════════════════════════════════════════════
+"""
+            print(f"💡 Custom business idea detected, injecting context")
         
         # Gather ALL intelligence
         intel = await CompleteIntelligenceAggregator.gather_all(username, business_type)
         intel_text = CompleteIntelligenceAggregator.format_for_llm(intel, business_type, username)
+        
+        # Add custom context if available
+        if custom_context:
+            intel_text = custom_context + "\n" + intel_text
         
         print(f"📊 Connected: {intel['systems_connected']}/{intel['systems_total']} systems")
         
@@ -884,19 +965,19 @@ async def invoke(state: AgentState) -> dict:
             resp = await llm.ainvoke([SystemMessage(content=system_context), HumanMessage(content=user_input)])
             out = f"**{csuite['role']}:** {resp.content}"
         else:
-            biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["general"])
+            biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["saas"])
             out = f"**{csuite['role']}:** Hey! You've got the {biz['kit_name']} - {biz['you_are']}. {biz['first_pitch']}"
         
         # Feed back to learning systems (silent)
         if SYSTEMS["yield_memory"]:
-            try: store_pattern(pattern_type="chat", context={"business_type": business_type, "role": csuite["role"]}, outcome="pending", metadata={"username": username})
+            try: store_pattern(pattern_type="chat", context={"business_type": business_type, "role": csuite["role"], "has_custom_idea": has_custom_idea}, outcome="pending", metadata={"username": username})
             except: pass
         
         if SYSTEMS["metahive"]:
             try: contribute_to_hive(pattern_type="csuite", pattern_data={"business_type": business_type, "role": csuite["role"], "systems": intel["systems_connected"]})
             except: pass
         
-        return {"output": out, "memory": state.memory, "systems_connected": intel["systems_connected"], "business_type": business_type}
+        return {"output": out, "memory": state.memory, "systems_connected": intel["systems_connected"], "business_type": business_type, "has_custom_idea": has_custom_idea}
     
     except Exception as e:
         import traceback
@@ -921,7 +1002,7 @@ def get_agent_graph():
 
 @app.post("/agent")
 async def agent_endpoint(request: Request):
-    """Main endpoint - v5.0 FINAL with ALL systems."""
+    """Main endpoint - v5.0 FINAL with ALL systems and bespoke kit support."""
     try:
         data = await request.json()
         user_input = data.get("input", "")
@@ -929,8 +1010,10 @@ async def agent_endpoint(request: Request):
         username = data.get("username", "user")
         # Accept multiple field names from frontend
         raw_business_type = data.get("businessType") or data.get("kit") or data.get("companyType") or data.get("business_type") or "general"
+        # Get custom business description for bespoke kit generation
+        custom_input = data.get("customInput") or data.get("custom_input") or data.get("businessIdea") or ""
         
-        print(f"📥 Received: username={username}, raw_kit={raw_business_type}")
+        print(f"📥 Received: username={username}, raw_kit={raw_business_type}, customInput={custom_input[:30] if custom_input else 'none'}...")
         
         if not user_input:
             return {"output": "No input provided."}
@@ -939,14 +1022,16 @@ async def agent_endpoint(request: Request):
             "input": user_input,
             "memory": memory,
             "business_type": raw_business_type,  # Will be normalized in invoke()
-            "username": username
+            "username": username,
+            "custom_input": custom_input
         })
         
         return {
             "output": result.get("output"), 
             "memory": result.get("memory", memory), 
             "systems_connected": result.get("systems_connected", 0),
-            "business_type": result.get("business_type", "general")  # Return normalized type
+            "business_type": result.get("business_type", "saas"),
+            "has_custom_idea": result.get("has_custom_idea", False)
         }
     
     except Exception as e:
