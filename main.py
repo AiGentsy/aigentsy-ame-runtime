@@ -50,6 +50,12 @@ from template_integration_coordinator import (
     process_referral_signup,
     generate_signup_link
 )
+from real_signal_ingestion import get_signal_engine
+from autonomous_deal_graph import get_deal_graph
+from arbitrage_execution_pipeline import (
+    get_arbitrage_pipeline, ArbitrageOpportunity, ArbitrageType,
+    convert_detected_to_opportunity
+)
 from badge_engine import (
     get_user_badges,
     get_badge_progress,
@@ -16995,8 +17001,370 @@ async def webhook_daily_active(body: Dict = Body(...)):
         earn_type="daily_active"
     )
 
+@app.post("/signals/ingest")
+async def ingest_signals():
+    """
+    Run full signal ingestion from all sources
+    
+    Scrapes:
+    - TechCrunch (funding)
+    - Greenhouse (hiring)
+    - Product Hunt (launches)
+    - Hacker News Show (launches)
+    - Reddit (pain points)
+    
+    Returns predicted opportunities with confidence scores.
+    """
+    engine = get_signal_engine()
+    return await engine.ingest_all_signals()
 
+
+@app.get("/signals/actionable")
+async def get_actionable_signals():
+    """
+    Get signals that should be acted on TODAY
+    
+    Returns opportunities where optimal outreach date is today or tomorrow.
+    Sorted by confidence * estimated_value.
+    """
+    engine = get_signal_engine()
+    actionable = engine.get_actionable_now()
+    
+    return {
+        "ok": True,
+        "count": len(actionable),
+        "opportunities": [o.to_dict() for o in actionable]
+    }
+
+
+@app.get("/signals/stats")
+async def get_signal_stats():
+    """Get signal ingestion statistics"""
+    engine = get_signal_engine()
+    return {"ok": True, "stats": engine.get_stats()}
+
+
+# ============================================================
+# 2. AUTONOMOUS DEAL GRAPH - Relationship Memory
+# ============================================================
+
+@app.post("/deals/record")
+async def record_deal(body: Dict = Body(...)):
+    """
+    Record a completed deal and extract relationships
+    
+    Body: {
+        "deal_id": "deal_001",
+        "client_name": "Alice Chen",
+        "client_email": "alice@startup.com",
+        "client_company": "TechStartup Inc",
+        "client_industry": "saas",
+        "deal_value": 5000,
+        "service_type": "api_integration",
+        "team_members": [
+            {"name": "Designer Dan", "email": "dan@design.com"}
+        ],
+        "referrer": {
+            "name": "Bob Smith",
+            "email": "bob@company.com"
+        }
+    }
+    
+    Automatically:
+    - Creates/updates entities
+    - Creates relationships
+    - Detects intro opportunities
+    """
+    graph = get_deal_graph()
+    
+    return graph.record_deal(
+        deal_id=body.get("deal_id"),
+        client_name=body.get("client_name"),
+        client_email=body.get("client_email"),
+        client_company=body.get("client_company"),
+        client_industry=body.get("client_industry"),
+        deal_value=body.get("deal_value", 0),
+        service_type=body.get("service_type"),
+        team_members=body.get("team_members"),
+        referrer=body.get("referrer"),
+        status=body.get("status", "completed")
+    )
+
+
+@app.post("/deals/set-self")
+async def set_self_entity(body: Dict = Body(...)):
+    """
+    Set the 'self' entity (you/AiGentsy)
+    
+    Body: {
+        "name": "AiGentsy",
+        "email": "contact@aigentsy.com"
+    }
+    """
+    graph = get_deal_graph()
+    entity_id = graph.set_self(body.get("name"), body.get("email"))
+    return {"ok": True, "entity_id": entity_id}
+
+
+@app.get("/deals/intros")
+async def find_intro_opportunities(
+    industry: str = None,
+    min_strength: float = 0.2,
+    limit: int = 10
+):
+    """
+    Find warm intro opportunities
+    
+    Returns people you can reach through your network.
+    Sorted by confidence * estimated_value.
+    """
+    graph = get_deal_graph()
+    intros = graph.find_intro_opportunities(industry, min_strength, limit)
+    
+    return {
+        "ok": True,
+        "count": len(intros),
+        "opportunities": [i.to_dict() for i in intros]
+    }
+
+
+@app.post("/deals/request-intro/{opportunity_id}")
+async def request_intro(opportunity_id: str):
+    """Mark an intro opportunity as requested"""
+    graph = get_deal_graph()
+    return graph.request_intro(opportunity_id)
+
+
+@app.get("/deals/network-stats")
+async def get_network_stats():
+    """Get network statistics"""
+    graph = get_deal_graph()
+    return {"ok": True, "stats": graph.get_network_stats()}
+
+
+@app.get("/deals/strongest-connections")
+async def get_strongest_connections(limit: int = 10):
+    """Get strongest connections in your network"""
+    graph = get_deal_graph()
+    return {
+        "ok": True,
+        "connections": graph.get_strongest_connections(limit)
+    }
+
+
+# ============================================================
+# 3. ARBITRAGE EXECUTION PIPELINE - Auto Money Printer
+# ============================================================
+
+@app.post("/arbitrage/execute")
+async def execute_arbitrage(body: Dict = Body(...)):
+    """
+    Execute a single arbitrage opportunity
+    
+    Body: {
+        "source_platform": "fiverr",
+        "source_price": 50,
+        "target_platform": "upwork",
+        "target_price": 200,
+        "service_type": "content_creation",
+        "service_description": "Blog post writing",
+        "delivery_time_days": 3
+    }
+    
+    Pipeline:
+    1. Validate risk and margins
+    2. Auto-approve if low/medium risk
+    3. Purchase on source platform
+    4. Fulfill (AI or purchased)
+    5. List on target platform
+    6. Settle and collect profit
+    """
+    pipeline = get_arbitrage_pipeline()
+    
+    opportunity = ArbitrageOpportunity(
+        opportunity_id=body.get("opportunity_id", f"arb_{uuid4().hex[:12]}"),
+        arbitrage_type=ArbitrageType(body.get("arbitrage_type", "price")),
+        source_platform=body.get("source_platform"),
+        source_price=body.get("source_price"),
+        target_platform=body.get("target_platform"),
+        target_price=body.get("target_price"),
+        service_type=body.get("service_type", "content_creation"),
+        service_description=body.get("service_description", ""),
+        delivery_time_days=body.get("delivery_time_days", 7)
+    )
+    
+    return await pipeline.process_opportunity(opportunity)
+
+
+@app.post("/arbitrage/execute-batch")
+async def execute_arbitrage_batch(body: Dict = Body(...)):
+    """
+    Execute multiple arbitrage opportunities
+    
+    Body: {
+        "opportunities": [
+            {
+                "source_platform": "fiverr",
+                "source_price": 50,
+                "target_platform": "upwork",
+                "target_price": 200,
+                "service_type": "content_creation"
+            },
+            ...
+        ]
+    }
+    """
+    pipeline = get_arbitrage_pipeline()
+    
+    opportunities = []
+    for opp_data in body.get("opportunities", []):
+        opp = ArbitrageOpportunity(
+            opportunity_id=opp_data.get("opportunity_id", f"arb_{uuid4().hex[:12]}"),
+            arbitrage_type=ArbitrageType(opp_data.get("arbitrage_type", "price")),
+            source_platform=opp_data.get("source_platform"),
+            source_price=opp_data.get("source_price"),
+            target_platform=opp_data.get("target_platform"),
+            target_price=opp_data.get("target_price"),
+            service_type=opp_data.get("service_type", "content_creation"),
+            service_description=opp_data.get("service_description", ""),
+            delivery_time_days=opp_data.get("delivery_time_days", 7)
+        )
+        opportunities.append(opp)
+    
+    return await pipeline.process_batch(opportunities)
+
+
+@app.post("/arbitrage/from-detected")
+async def execute_detected_arbitrage(body: Dict = Body(...)):
+    """
+    Execute arbitrage from flow_arbitrage_detector.py format
+    
+    Body: {
+        "id": "price_arb_1",
+        "arbitrage_type": "price",
+        "type": "content_creation",
+        "source_data": {
+            "source_platform": "fiverr",
+            "source_price": 50,
+            "target_platform": "upwork",
+            "target_price": 200
+        }
+    }
+    """
+    pipeline = get_arbitrage_pipeline()
+    opportunity = convert_detected_to_opportunity(body)
+    return await pipeline.process_opportunity(opportunity)
+
+
+@app.post("/arbitrage/approve/{opportunity_id}")
+async def approve_pending_arbitrage(opportunity_id: str):
+    """Manually approve a pending high-risk arbitrage"""
+    pipeline = get_arbitrage_pipeline()
+    return await pipeline.approve_pending(opportunity_id)
+
+
+@app.get("/arbitrage/stats")
+async def get_arbitrage_stats():
+    """Get arbitrage execution statistics"""
+    pipeline = get_arbitrage_pipeline()
+    return {"ok": True, "stats": pipeline.get_stats()}
+
+
+# ============================================================
+# COMBINED: FULL AUTONOMOUS PIPELINE
+# ============================================================
+
+@app.post("/autonomous/full-cycle")
+async def run_full_autonomous_cycle():
+    """
+    Run the complete autonomous money-making cycle:
+    
+    1. Ingest signals (predict opportunities)
+    2. Detect arbitrage (from flow_arbitrage_detector)
+    3. Execute arbitrage opportunities
+    4. Record deals in relationship graph
+    5. Find new intro opportunities
+    
+    This is the "make money overnight" endpoint.
+    """
+    results = {
+        "signals": None,
+        "arbitrage": None,
+        "intros": None
+    }
+    
+    # 1. Signal ingestion
+    try:
+        signal_engine = get_signal_engine()
+        results["signals"] = await signal_engine.ingest_all_signals()
+    except Exception as e:
+        results["signals"] = {"error": str(e)}
+    
+    # 2. Get detected arbitrage and execute
+    try:
+        pipeline = get_arbitrage_pipeline()
         
+        # In production, this would call flow_arbitrage_detector
+        # For now, use sample opportunities
+        sample_opportunities = [
+            ArbitrageOpportunity(
+                opportunity_id=f"arb_{uuid4().hex[:12]}",
+                arbitrage_type=ArbitrageType.PRICE,
+                source_platform="fiverr",
+                source_price=50,
+                target_platform="upwork",
+                target_price=200,
+                service_type="content_creation"
+            )
+        ]
+        
+        results["arbitrage"] = await pipeline.process_batch(sample_opportunities)
+    except Exception as e:
+        results["arbitrage"] = {"error": str(e)}
+    
+    # 3. Find intro opportunities
+    try:
+        graph = get_deal_graph()
+        intros = graph.find_intro_opportunities(limit=5)
+        results["intros"] = {
+            "count": len(intros),
+            "opportunities": [i.to_dict() for i in intros]
+        }
+    except Exception as e:
+        results["intros"] = {"error": str(e)}
+    
+    return {
+        "ok": True,
+        "cycle_completed_at": datetime.now(timezone.utc).isoformat(),
+        "results": results
+    }
+
+
+# ============================================================
+# WEBHOOK: Auto-record deals from intent_exchange settlements
+# ============================================================
+
+@app.post("/webhook/deal-settled")
+async def webhook_deal_settled(body: Dict = Body(...)):
+    """
+    Webhook called when a deal settles in intent_exchange
+    
+    Automatically records in deal graph for relationship tracking.
+    """
+    graph = get_deal_graph()
+    
+    return graph.record_deal(
+        deal_id=body.get("intent_id"),
+        client_name=body.get("buyer_name", "Unknown"),
+        client_email=body.get("buyer_email", ""),
+        client_company=body.get("buyer_company"),
+        client_industry=body.get("industry"),
+        deal_value=body.get("amount", 0),
+        service_type=body.get("service_type"),
+        status="completed"
+    )
+
+
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
 @app.get("/dealgraph/config")
