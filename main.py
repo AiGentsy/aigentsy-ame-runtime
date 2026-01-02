@@ -36,6 +36,7 @@ from aigx_protocol import get_protocol
 from agent_registry import get_registry, Capability, AgentType
 from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDeploymentEngine, BusinessPortfolioManager
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
+from investor_ready_micro_upgrades import register_investor_routes
 from apex_upgrades_api import create_apex_upgrade_routes
 from opportunity_filters import (
     filter_opportunities,
@@ -729,6 +730,7 @@ except Exception as e:
     
 app = FastAPI()
 
+register_investor_routes(app)
 create_apex_upgrade_routes(app)
 integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
 # Register opportunity endpoints
