@@ -699,6 +699,17 @@ async def get_smart_bid_price(
     }
 
 
+def record_bid_result(
+    bid_id: str,
+    won: bool,
+    winning_price: Optional[float] = None
+) -> Dict[str, Any]:
+    """Record the result of a bid for learning."""
+    autopilot = get_pricing_autopilot()
+    outcome = BidOutcome.WON if won else BidOutcome.LOST
+    return autopilot.record_bid_outcome(bid_id, outcome, winning_price)
+
+
 # ============================================================
 # TESTING
 # ============================================================
