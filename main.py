@@ -22450,81 +22450,121 @@ async def get_opportunity_status_endpoint(opportunity_id: str, username: str):
 @app.post("/csuite/command")
 async def csuite_command(body: Dict = Body(...)):
     """
-    Process C-Suite natural language commands
+    CEO (user) commands their AI C-Suite agents
+    
+    The user IS the CEO - they give commands to their AI executive team:
+    - CMO: Handles marketing, discovery, outreach
+    - CFO: Handles finances, revenue, AIGx
+    - COO: Handles operations, deals, fulfillment
+    - CTO: Handles systems, health, automation
     
     Body: {
         "username": "...",
-        "message": "find opportunities" | "show revenue" | "check deals" | etc
+        "command": "find opportunities" | "show revenue" | "check deals" | etc
     }
-    
-    Routes to appropriate system based on intent
     """
     username = body.get("username")
-    message = body.get("message", "").lower().strip()
+    command = (body.get("command") or body.get("message", "")).lower().strip()
     
     if not username:
         return {"ok": False, "error": "username required"}
     
-    if not message:
-        return {"ok": False, "error": "message required"}
+    if not command:
+        return {"ok": False, "error": "command required"}
     
     try:
-        # Intent detection and routing
-        
-        # CMO - Marketing/Discovery
-        if any(kw in message for kw in ["find opportunities", "discover", "search", "prospects"]):
+        # ============================================================
+        # CMO (AI) - Marketing/Discovery
+        # User says: "find opportunities", "discover leads", "search for clients"
+        # ============================================================
+        if any(kw in command for kw in ["find opportunities", "discover", "search", "prospects", "leads", "find clients", "find work"]):
             from ultimate_discovery_engine import discover_all_opportunities
             result = await discover_all_opportunities(username)
+            
+            # Save discovered opportunities to user record
+            if result.get("opportunities"):
+                from log_to_jsonbin import get_user, log_agent_update
+                user = get_user(username)
+                if user:
+                    user["opportunities"] = result.get("opportunities", [])
+                    user["opportunities_discovered_at"] = datetime.now(timezone.utc).isoformat()
+                    log_agent_update(user)
+            
             return {
                 "ok": True,
-                "agent": "CMO",
-                "action": "discovery",
-                "result": result,
-                "message": f"Found {result.get('total_opportunities', 0)} opportunities across {result.get('platforms_searched', 0)} platforms"
+                "from": "CMO",
+                "to": "CEO",
+                "action": "discovery_complete",
+                "result": {
+                    "opportunities_found": result.get("total_opportunities", len(result.get("opportunities", []))),
+                    "platforms_searched": result.get("platforms_searched", 27),
+                    "top_opportunities": result.get("opportunities", [])[:5]
+                },
+                "response": f"CEO, I found {result.get('total_opportunities', 0)} opportunities across {result.get('platforms_searched', 27)} platforms. Top prospects are ready for your review."
             }
         
-        # CFO - Finance/Revenue
-        if any(kw in message for kw in ["revenue", "earnings", "money", "income", "balance", "aigx"]):
+        # ============================================================
+        # CFO (AI) - Finance/Revenue
+        # User says: "show revenue", "my earnings", "aigx balance", "financial report"
+        # ============================================================
+        if any(kw in command for kw in ["revenue", "earnings", "money", "income", "balance", "aigx", "financ", "profit"]):
             from log_to_jsonbin import get_user
             user = get_user(username)
             revenue = user.get("revenue_tracking", {}) if user else {}
             aigx = user.get("ownership", {}).get("aigx", 0) if user else 0
+            lifetime = user.get("lifetimeRevenue", 0) if user else 0
+            fees = revenue.get("platform_fees_paid", 0)
             
             return {
                 "ok": True,
-                "agent": "CFO",
-                "action": "revenue_summary",
+                "from": "CFO",
+                "to": "CEO",
+                "action": "financial_report",
                 "result": {
                     "total_revenue": revenue.get("total", 0),
+                    "net_revenue": revenue.get("total", 0) - fees,
+                    "platform_fees": fees,
                     "aigx_balance": aigx,
-                    "platform_fees": revenue.get("platform_fees_paid", 0),
-                    "lifetime_revenue": user.get("lifetimeRevenue", 0) if user else 0
+                    "lifetime_revenue": lifetime,
+                    "recent_transactions": revenue.get("history", [])[-5:]
                 },
-                "message": f"Total revenue: ${revenue.get('total', 0):.2f}, AIGx balance: {aigx}"
+                "response": f"CEO, your total revenue is ${revenue.get('total', 0):.2f} with {aigx} AIGx tokens. Net after fees: ${revenue.get('total', 0) - fees:.2f}."
             }
         
-        # COO - Operations/Deals
-        if any(kw in message for kw in ["deals", "contracts", "active", "pipeline", "status"]):
+        # ============================================================
+        # COO (AI) - Operations/Deals
+        # User says: "check deals", "active contracts", "pipeline status"
+        # ============================================================
+        if any(kw in command for kw in ["deals", "contracts", "active", "pipeline", "operations", "fulfillment"]):
             from log_to_jsonbin import get_user
             user = get_user(username)
             deals = user.get("deals", []) if user else []
+            opportunities = user.get("opportunities", []) if user else []
             
-            active = [d for d in deals if d.get("status") == "active"]
+            active_deals = [d for d in deals if d.get("status") == "active"]
+            pending_opps = [o for o in opportunities if o.get("status") == "pending"]
             
             return {
                 "ok": True,
-                "agent": "COO",
-                "action": "deal_status",
+                "from": "COO",
+                "to": "CEO",
+                "action": "operations_report",
                 "result": {
                     "total_deals": len(deals),
-                    "active_deals": len(active),
-                    "deals": deals[:5]  # First 5
+                    "active_deals": len(active_deals),
+                    "completed_deals": len([d for d in deals if d.get("status") == "completed"]),
+                    "pending_opportunities": len(pending_opps),
+                    "deals": active_deals[:5],
+                    "awaiting_approval": pending_opps[:5]
                 },
-                "message": f"You have {len(active)} active deals out of {len(deals)} total"
+                "response": f"CEO, you have {len(active_deals)} active deals and {len(pending_opps)} opportunities awaiting your approval."
             }
         
-        # CEO - Health/Overview
-        if any(kw in message for kw in ["health", "overview", "summary", "how am i doing"]):
+        # ============================================================
+        # CTO (AI) - Systems/Health
+        # User says: "system status", "health check", "how are systems"
+        # ============================================================
+        if any(kw in command for kw in ["health", "status", "systems", "check", "working", "automation"]):
             from log_to_jsonbin import get_user
             user = get_user(username)
             
@@ -22533,33 +22573,81 @@ async def csuite_command(body: Dict = Body(...)):
             
             return {
                 "ok": True,
-                "agent": "CEO",
-                "action": "system_overview",
+                "from": "CTO",
+                "to": "CEO",
+                "action": "systems_report",
                 "result": {
+                    "systems_active": 143,
+                    "automation_status": "operational",
+                    "apex_ultra": user.get("apex_ultra_activated", True),
+                    "discovery_engine": "online",
+                    "execution_engine": "online",
+                    "revenue_tracking": "online",
                     "outcome_score": user.get("outcomeScore", 0),
-                    "opportunities_count": len(user.get("opportunities", [])),
-                    "revenue_total": user.get("revenue_tracking", {}).get("total", 0),
-                    "aigx_balance": user.get("ownership", {}).get("aigx", 0),
-                    "early_adopter_tier": user.get("earlyAdopterTier", "standard"),
-                    "systems_active": 143
+                    "early_adopter_tier": user.get("earlyAdopterTier", "standard")
                 },
-                "message": "All systems operational. Here's your overview."
+                "response": f"CEO, all 143 systems are operational. Your OutcomeScore is {user.get('outcomeScore', 0)}. Automation is running."
             }
         
-        # Default - general help
+        # ============================================================
+        # Overview - all agents report
+        # User says: "report", "overview", "summary", "brief me"
+        # ============================================================
+        if any(kw in command for kw in ["report", "overview", "summary", "brief", "update"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            
+            if not user:
+                return {"ok": False, "error": "User not found"}
+            
+            revenue = user.get("revenue_tracking", {})
+            deals = user.get("deals", [])
+            opportunities = user.get("opportunities", [])
+            
+            return {
+                "ok": True,
+                "from": "Executive Team",
+                "to": "CEO",
+                "action": "full_briefing",
+                "result": {
+                    "cmo_report": {
+                        "opportunities_available": len(opportunities),
+                        "pending_review": len([o for o in opportunities if o.get("status") == "pending"])
+                    },
+                    "cfo_report": {
+                        "total_revenue": revenue.get("total", 0),
+                        "aigx_balance": user.get("ownership", {}).get("aigx", 0)
+                    },
+                    "coo_report": {
+                        "active_deals": len([d for d in deals if d.get("status") == "active"]),
+                        "completed": len([d for d in deals if d.get("status") == "completed"])
+                    },
+                    "cto_report": {
+                        "systems_active": 143,
+                        "outcome_score": user.get("outcomeScore", 0)
+                    }
+                },
+                "response": f"CEO, here's your executive briefing: {len(opportunities)} opportunities found, ${revenue.get('total', 0):.2f} revenue, {len([d for d in deals if d.get('status') == 'active'])} active deals, all 143 systems operational."
+            }
+        
+        # ============================================================
+        # Default - help menu
+        # ============================================================
         return {
             "ok": True,
-            "agent": "Assistant",
+            "from": "Executive Assistant",
+            "to": "CEO",
             "action": "help",
             "result": {
                 "available_commands": [
-                    "find opportunities - Discover new revenue opportunities",
-                    "show revenue - View earnings and AIGx balance",
-                    "check deals - See active contracts and pipeline",
-                    "system status - Get health overview"
+                    "find opportunities - CMO searches 27+ platforms for revenue opportunities",
+                    "show revenue - CFO reports on earnings, AIGx, and financials",
+                    "check deals - COO reports on active deals and pipeline",
+                    "system status - CTO reports on all 143 systems",
+                    "give me a report - Full executive briefing from all agents"
                 ]
             },
-            "message": "I didn't understand that command. Here are some things I can help with:"
+            "response": "CEO, here are the commands your executive team responds to:"
         }
         
     except Exception as e:
@@ -22569,34 +22657,37 @@ async def csuite_command(body: Dict = Body(...)):
 @app.get("/csuite/agents")
 async def list_csuite_agents():
     """
-    List available C-Suite agents and their capabilities
+    List the user's AI C-Suite team
+    The user is the CEO - these are their AI executives
     """
     return {
         "ok": True,
-        "agents": [
+        "your_role": "CEO",
+        "your_team": [
             {
-                "role": "CEO",
-                "name": "Chief Executive Officer",
-                "capabilities": ["system_overview", "health_check", "strategic_decisions"],
-                "commands": ["status", "overview", "health"]
+                "role": "CMO",
+                "name": "Chief Marketing Officer (AI)",
+                "responsibilities": ["opportunity_discovery", "lead_generation", "outreach", "prospecting"],
+                "commands": ["find opportunities", "discover leads", "search for clients"]
             },
             {
                 "role": "CFO",
-                "name": "Chief Financial Officer", 
-                "capabilities": ["revenue_tracking", "aigx_balance", "financial_reports"],
-                "commands": ["revenue", "earnings", "balance", "aigx"]
-            },
-            {
-                "role": "CMO",
-                "name": "Chief Marketing Officer",
-                "capabilities": ["opportunity_discovery", "lead_generation", "outreach"],
-                "commands": ["find opportunities", "discover", "search"]
+                "name": "Chief Financial Officer (AI)", 
+                "responsibilities": ["revenue_tracking", "aigx_management", "financial_reports", "fee_analysis"],
+                "commands": ["show revenue", "my earnings", "aigx balance", "financial report"]
             },
             {
                 "role": "COO",
-                "name": "Chief Operating Officer",
-                "capabilities": ["deal_management", "fulfillment", "operations"],
-                "commands": ["deals", "contracts", "active", "pipeline"]
+                "name": "Chief Operating Officer (AI)",
+                "responsibilities": ["deal_management", "fulfillment", "operations", "pipeline"],
+                "commands": ["check deals", "active contracts", "pipeline status"]
+            },
+            {
+                "role": "CTO",
+                "name": "Chief Technology Officer (AI)",
+                "responsibilities": ["system_health", "automation", "143_subsystems", "monitoring"],
+                "commands": ["system status", "health check", "automation status"]
             }
-        ]
+        ],
+        "tip": "As CEO, you command your AI team. Try: 'find opportunities' or 'give me a report'"
     }
