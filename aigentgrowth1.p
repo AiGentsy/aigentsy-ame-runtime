@@ -18,17 +18,7 @@ from langgraph.graph import StateGraph
 from events import emit
 from log_to_jsonbin_aam_patched import log_event
 # ADD AFTER EXISTING IMPORTS:
-from ultimate_discovery_engine import (
-    discover_all_opportunities,
-    scrape_github,
-    scrape_linkedin,
-    scrape_upwork,
-    scrape_reddit,
-    scrape_hackernews,
-    scrape_indiehackers,
-    auto_bid_on_opportunity,
-    start_realtime_monitoring
-)
+from ultimate_discovery_engine import discover_all_opportunities
 
 def emit_both(kind: str, data: dict):
     try:
@@ -1245,25 +1235,20 @@ async def scan_external_content(request: Request):
         
         # OPTION 2: Scrape specific platform (NEW)
         elif platform:
-            opportunities = []
+            # Use discover_all_opportunities with specific platform
+            discovery_result = await discover_all_opportunities(
+                username=username,
+                user_profile=user_profile,
+                platforms=[platform]
+            )
             
-            if platform == "github":
-                opportunities = await scrape_github(user_profile)
-            elif platform == "linkedin":
-                opportunities = await scrape_linkedin(user_profile)
-            elif platform == "upwork":
-                opportunities = await scrape_upwork(user_profile)
-            elif platform == "reddit":
-                opportunities = await scrape_reddit(user_profile)
-            elif platform == "hackernews":
-                opportunities = await scrape_hackernews(user_profile)
-            elif platform == "indiehackers":
-                opportunities = await scrape_indiehackers(user_profile)
-            else:
+            if not discovery_result.get("ok"):
                 return {
                     "status": "error",
-                    "message": f"Platform '{platform}' not supported"
+                    "message": f"Discovery failed for platform '{platform}'"
                 }
+            
+            opportunities = discovery_result.get("opportunities", [])
             
             # Store opportunities
             user_record.setdefault("opportunities", []).extend(opportunities)
@@ -1368,15 +1353,11 @@ async def discover_opportunities_endpoint(request: Request):
         )
         
         # Optional: Auto-bid on ultra-high matches
+        # TODO: Re-enable when auto_bid_on_opportunity is implemented
         if auto_bid:
-            auto_bids = []
-            for opp in result["opportunities"]:
-                if opp.get("match_score", 0) >= 95:
-                    bid_result = await auto_bid_on_opportunity(opp, user_profile)
-                    if bid_result.get("ok"):
-                        auto_bids.append(bid_result)
-            
-            result["auto_bids"] = auto_bids
+            # Auto-bidding feature temporarily disabled
+            result["auto_bids"] = []
+            result["auto_bid_note"] = "Auto-bidding feature pending implementation"
         
         # Store opportunities in user record
         user_record.setdefault("opportunities", []).extend(result["opportunities"])
@@ -1426,13 +1407,14 @@ async def start_monitoring_endpoint(request: Request):
         }
         
         # Start monitoring in background
-        asyncio.create_task(
-            start_realtime_monitoring(username, user_profile, platforms)
-        )
+        # TODO: Re-enable when start_realtime_monitoring is implemented
+        # asyncio.create_task(
+        #     start_realtime_monitoring(username, user_profile, platforms)
+        # )
         
         return {
             "status": "ok",
-            "message": f"Real-time monitoring started for {username}",
+            "message": f"Discovery configured for {username} (real-time monitoring pending implementation)",
             "platforms": platforms
         }
     
