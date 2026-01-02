@@ -37,7 +37,6 @@ from agent_registry import get_registry, Capability, AgentType
 from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDeploymentEngine, BusinessPortfolioManager
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
 from apex_upgrades_api import create_apex_upgrade_routes
-    create_apex_upgrade_routes(app)
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
@@ -730,6 +729,7 @@ except Exception as e:
     
 app = FastAPI()
 
+create_apex_upgrade_routes(app)
 integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
 # Register opportunity endpoints
 from ame_routes import register_ame_routes
