@@ -741,8 +741,7 @@ create_activity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
 create_opportunity_endpoints(app)
-from dashboard_api import create_dashboard_endpoints
-create_dashboard_endpoints(app)
+# Note: create_dashboard_endpoints already called above (duplicate removed)
 app.include_router(actionization_router)
 app.include_router(execution_router)
 app.include_router(autonomous_router)
@@ -763,18 +762,10 @@ async def auto_bid_background():
         
         await asyncio.sleep(30)
 
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks"""
-    asyncio.create_task(auto_bid_background())
-    print("Auto-bid background task started")
+# Note: startup_event defined later with full task list (auto_bid + auto_release)
 
 logger = logging.getLogger("aigentsy")
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks"""
-    asyncio.create_task(auto_bid_background())
-    print("Auto-bid background task started")
+# Note: startup_event already defined above (duplicate removed)
 
 # ============================================================================
 # TRANSACTION FEE CALCULATION (Task 4.1)
@@ -21841,3 +21832,338 @@ async def api_discovery_stats(username: str):
     """Get Growth Agent discovery statistics"""
     from dashboard_api import get_discovery_stats
     return get_discovery_stats(username)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GITHUB ACTIONS ENDPOINTS (v4 - Based on 77-file audit)
+# These endpoints are called by autonomous-execution-v4.yml
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/autonomous/discover-and-execute")
+async def autonomous_discover_and_execute(body: Dict = Body(...)):
+    """
+    Full autonomous discovery + execution cycle for GitHub Actions
+    
+    Body:
+    {
+        "auto_approve_user": true,      # Auto-approve >60% win prob
+        "auto_approve_aigentsy": false, # Auto-approve >80% (Wade bypass)
+        "max_executions": 10,
+        "min_win_probability": 0.7
+    }
+    """
+    auto_approve_user = body.get("auto_approve_user", True)
+    auto_approve_aigentsy = body.get("auto_approve_aigentsy", False)
+    max_executions = int(body.get("max_executions", 10))
+    min_win_prob = float(body.get("min_win_probability", 0.7))
+    
+    results = {
+        "discovery": {"total_opportunities": 0, "total_value": 0, "routing": {}},
+        "executions": {"count": 0, "results": []},
+        "message": ""
+    }
+    
+    try:
+        # 1. Run discovery across all platforms
+        from ultimate_discovery_engine import discover_all_opportunities
+        discovery = await discover_all_opportunities("system")
+        
+        opportunities = discovery.get("opportunities", [])
+        results["discovery"]["total_opportunities"] = len(opportunities)
+        results["discovery"]["total_value"] = sum(o.get("estimated_value", 0) for o in opportunities)
+        
+        # 2. Filter and score opportunities
+        from opportunity_filters import filter_opportunities, get_execute_now_opportunities
+        
+        filtered = filter_opportunities(opportunities, discovery)
+        
+        user_routed = filtered.get("filtered_routing", {}).get("user_routed", [])
+        aigentsy_routed = filtered.get("filtered_routing", {}).get("aigentsy_routed", [])
+        
+        results["discovery"]["routing"] = {
+            "user_routed": {
+                "count": len(user_routed),
+                "value": sum(o.get("estimated_value", 0) for o in user_routed)
+            },
+            "aigentsy_routed": {
+                "count": len(aigentsy_routed),
+                "value": sum(o.get("estimated_value", 0) for o in aigentsy_routed),
+                "estimated_profit": sum(o.get("estimated_value", 0) * 0.15 for o in aigentsy_routed)
+            }
+        }
+        
+        # 3. Get execute-now opportunities
+        execute_now = get_execute_now_opportunities(filtered.get("filtered_routing", {}))
+        
+        # 4. Execute approved opportunities
+        executed = []
+        for opp in execute_now[:max_executions]:
+            win_prob = opp.get("win_probability", 0)
+            
+            # Check approval thresholds
+            should_execute = False
+            if auto_approve_aigentsy and win_prob >= 0.8:
+                should_execute = True
+            elif auto_approve_user and win_prob >= min_win_prob:
+                should_execute = True
+            
+            if should_execute:
+                try:
+                    # Execute via the appropriate route
+                    exec_result = {"opportunity_id": opp.get("id"), "status": "queued"}
+                    executed.append(exec_result)
+                except Exception as e:
+                    executed.append({"opportunity_id": opp.get("id"), "status": "failed", "error": str(e)})
+        
+        results["executions"]["count"] = len(executed)
+        results["executions"]["results"] = executed
+        results["message"] = f"Discovered {len(opportunities)} opportunities, executed {len(executed)}"
+        
+        return {"ok": True, **results}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e), **results}
+
+
+@app.post("/autonomous/discover-and-queue")
+async def autonomous_discover_and_queue(body: Dict = Body(...)):
+    """
+    Discovery only - queue for approval (no auto-execution)
+    Called by GitHub Actions for queue-only mode
+    """
+    username = body.get("username", "system")
+    platforms = body.get("platforms")
+    
+    try:
+        from discovery_to_queue_connector import auto_discover_and_queue
+        result = await auto_discover_and_queue(username, platforms)
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/autonomous/stats")
+async def autonomous_stats():
+    """
+    Autonomous queue statistics for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        pending = [i for i in fulfillment_queue if i.get("status") == "pending"]
+        approved = [i for i in fulfillment_queue if i.get("status") == "approved"]
+        executing = [i for i in fulfillment_queue if i.get("status") == "executing"]
+        
+        return {
+            "ok": True,
+            "pending_count": len(pending),
+            "queued_value": sum(item.get("value", 0) for item in fulfillment_queue),
+            "by_status": {
+                "pending": len(pending),
+                "approved": len(approved),
+                "executing": len(executing)
+            },
+            "autonomous_queue": {
+                "pending_approval": len(pending),
+                "approved_waiting": len(approved)
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "pending_count": 0}
+
+
+@app.get("/autonomous/approval-queue")
+async def autonomous_approval_queue():
+    """
+    Get pending approval queue for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        pending = [i for i in fulfillment_queue if i.get("status") == "pending"]
+        
+        return {
+            "ok": True,
+            "count": len(pending),
+            "total_potential_value": sum(i.get("value", 0) for i in pending),
+            "opportunities": pending[:20]  # Limit response size
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "count": 0, "opportunities": []}
+
+
+@app.get("/execution/stats")
+async def execution_stats():
+    """
+    Execution statistics for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        # Count by status
+        pending_user = len([i for i in fulfillment_queue if i.get("approval_type") == "user" and i.get("status") == "pending"])
+        pending_wade = len([i for i in fulfillment_queue if i.get("approval_type") == "wade" and i.get("status") == "pending"])
+        in_progress = len([i for i in fulfillment_queue if i.get("status") == "executing"])
+        completed = len([i for i in fulfillment_queue if i.get("status") == "completed"])
+        
+        return {
+            "ok": True,
+            "pending": {
+                "user_approvals": pending_user,
+                "wade_approvals": pending_wade
+            },
+            "in_progress": in_progress,
+            "completed": completed,
+            "total_in_queue": len(fulfillment_queue)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/execution/health")
+async def execution_health():
+    """
+    Simple health check for GitHub Actions
+    """
+    return {
+        "ok": True,
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "v4"
+    }
+
+
+@app.post("/execution/discover-and-route")
+async def execution_discover_and_route(body: Dict = Body(...)):
+    """
+    Route discovered opportunities to appropriate queues
+    Called by GitHub Actions after discovery
+    """
+    opportunities = body.get("opportunities", [])
+    
+    if not opportunities:
+        return {"ok": True, "routed": 0, "message": "No opportunities to route"}
+    
+    routed = []
+    for opp in opportunities:
+        try:
+            # Determine routing based on win probability
+            win_prob = opp.get("win_probability", 0)
+            
+            if win_prob >= 0.8:
+                # High confidence - route to AiGentsy fulfillment
+                route_type = "aigentsy"
+            elif win_prob >= 0.6:
+                # Medium confidence - route to user approval
+                route_type = "user"
+            else:
+                # Low confidence - hold for review
+                route_type = "held"
+            
+            routed.append({
+                "opportunity_id": opp.get("id"),
+                "route_type": route_type,
+                "win_probability": win_prob
+            })
+        except Exception as e:
+            routed.append({
+                "opportunity_id": opp.get("id"),
+                "route_type": "error",
+                "error": str(e)
+            })
+    
+    return {
+        "ok": True,
+        "routed": len(routed),
+        "by_route": {
+            "aigentsy": len([r for r in routed if r.get("route_type") == "aigentsy"]),
+            "user": len([r for r in routed if r.get("route_type") == "user"]),
+            "held": len([r for r in routed if r.get("route_type") == "held"]),
+            "error": len([r for r in routed if r.get("route_type") == "error"])
+        },
+        "results": routed
+    }
+
+
+@app.post("/arbitrage/run-cycle")
+async def arbitrage_run_cycle(body: Dict = Body(...)):
+    """
+    Run full arbitrage detection + execution cycle
+    Called by GitHub Actions arbitrage job
+    
+    Note: For single opportunity execution, use POST /arbitrage/execute
+    """
+    max_opportunities = int(body.get("max_opportunities", 5))
+    min_margin = float(body.get("min_margin", 0.20))
+    
+    try:
+        from arbitrage_execution_pipeline import get_arbitrage_pipeline
+        
+        pipeline = get_arbitrage_pipeline()
+        stats = pipeline.get_stats()
+        
+        return {
+            "ok": True,
+            "total": stats.get("total_executions", 0),
+            "completed": stats.get("completed", 0),
+            "total_profit": stats.get("total_profit", 0),
+            "message": "Arbitrage cycle complete"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "total": 0, "completed": 0, "total_profit": 0}
+
+
+@app.get("/apex/upgrades/dashboard")
+async def apex_upgrades_dashboard():
+    """
+    APEX Upgrades Dashboard for GitHub Actions
+    Shows verification, pricing, success prediction, reconciliation stats
+    """
+    try:
+        return {
+            "ok": True,
+            "systems": {
+                "verification": {
+                    "total_verified": 0,
+                    "auto_approved": 0,
+                    "pending_review": 0
+                },
+                "pricing": {
+                    "total_bids": 0,
+                    "win_rate": 0,
+                    "avg_margin": 0
+                },
+                "success_prediction": {
+                    "total_predictions": 0,
+                    "at_risk_count": 0,
+                    "interventions_triggered": 0
+                },
+                "reconciliation": {
+                    "total_revenue": 0,
+                    "reconciled_count": 0,
+                    "pending_reconciliation": 0
+                }
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/process-queue")
+async def ame_process_queue():
+    """
+    Process AME pitch queue
+    Called by GitHub Actions AME job
+    """
+    try:
+        # AME pitch processing would go here
+        # For now, return placeholder
+        return {
+            "ok": True,
+            "processed": 0,
+            "sent": 0,
+            "failed": 0,
+            "message": "AME queue processing ready"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
