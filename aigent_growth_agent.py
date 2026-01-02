@@ -549,36 +549,114 @@ class CompleteIntelligenceAggregator:
 # BUSINESS CONTEXT & ROUTING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def normalize_business_type(raw: str) -> str:
+    """
+    Normalize businessType/kit from various frontend formats.
+    Frontend might send: "saas_kit", "SaaS Kit", "saas", "SAAS", etc.
+    """
+    if not raw:
+        return "general"
+    
+    raw_lower = raw.lower().replace("_kit", "").replace(" kit", "").replace("-kit", "").strip()
+    
+    # Map variations to canonical names
+    mapping = {
+        "saas": "saas",
+        "software": "saas",
+        "tech": "saas",
+        "legal": "legal",
+        "law": "legal",
+        "attorney": "legal",
+        "marketing": "marketing",
+        "growth": "marketing",
+        "ads": "marketing",
+        "social": "social",
+        "content": "social",
+        "creator": "social",
+        "influencer": "social",
+        "general": "general",
+        "whitelabel": "general",
+        "whitelabel_general": "general",
+    }
+    
+    return mapping.get(raw_lower, "general")
+
+
 BUSINESS_CONTEXTS = {
-    "legal": {
-        "type": "LEGAL SERVICES",
-        "offerings": "NDAs ($200), contracts ($500), IP licensing ($500-2k), compliance audits ($1,500)",
-        "targets": "startups, small businesses, entrepreneurs, contractors",
-        "first_pitch": "I'll draft your NDA in 24 hours, $200 flat."
-    },
     "saas": {
         "type": "SAAS/SOFTWARE",
-        "offerings": "Micro-tools ($50-500), APIs ($5k+), custom integrations ($2k-10k)",
-        "targets": "developers, agencies, businesses needing automation",
-        "first_pitch": "What tool would save you 5 hours a week? I'll build it for $200."
+        "kit_name": "SaaS Kit",
+        "you_are": "a software builder who can create and sell digital tools",
+        "offerings": "Micro-SaaS tools ($50-500/mo), APIs ($2k-10k), custom integrations, automation scripts",
+        "targets": "developers, agencies, businesses who need software solutions",
+        "first_moves": [
+            "Build a simple tool that solves ONE problem",
+            "Price it at $50-200/month",
+            "Find 10 people with that problem",
+            "Get 3 paying customers = $150-600/mo recurring"
+        ],
+        "first_pitch": "What repetitive task do you hate doing? I'll build a tool to automate it.",
+        "revenue_path": "Build once, sell many times. Your AiGentsy can find buyers while you sleep."
+    },
+    "legal": {
+        "type": "LEGAL SERVICES",
+        "kit_name": "Legal Kit",
+        "you_are": "a legal services provider who can draft and review documents",
+        "offerings": "NDAs ($200), contracts ($500), IP licensing ($500-2k), compliance audits ($1,500)",
+        "targets": "startups, small businesses, entrepreneurs, contractors",
+        "first_moves": [
+            "Start with NDAs - everyone needs them, fast turnaround",
+            "Price at $200 flat (market is $500+)",
+            "Target startup founders on social",
+            "First 5 clients = $1,000"
+        ],
+        "first_pitch": "Need an NDA? I'll have it ready in 24 hours, $200 flat.",
+        "revenue_path": "Legal docs are repeat business. One happy client = referrals forever."
     },
     "marketing": {
         "type": "MARKETING/GROWTH",
-        "offerings": "SEO audits ($500), ad management (15% of spend), email sequences ($300)",
+        "kit_name": "Marketing Kit",
+        "you_are": "a growth expert who helps businesses get more customers",
+        "offerings": "SEO audits ($500), ad management (15% of spend), email sequences ($300), landing pages ($800)",
         "targets": "businesses needing traffic, leads, conversions",
-        "first_pitch": "I'll audit your SEO and show you 3 quick wins for $300."
+        "first_moves": [
+            "Offer a free SEO audit to get in the door",
+            "Find 3 obvious fixes they're missing",
+            "Pitch fixing them for $500",
+            "Upsell to monthly retainer"
+        ],
+        "first_pitch": "I'll audit your SEO and show you 3 quick wins - no charge. Fixing them is $500.",
+        "revenue_path": "Marketing clients pay monthly. Land 3 retainers = $3k+/mo recurring."
     },
     "social": {
         "type": "SOCIAL/CONTENT",
-        "offerings": "Sponsored posts ($500-5k), creator kits ($50-200), management ($1,500/mo)",
-        "targets": "brands, businesses needing social presence",
-        "first_pitch": "10 posts + captions for your next 2 weeks, $200."
+        "kit_name": "Social Kit",
+        "you_are": "a content creator who can monetize attention",
+        "offerings": "Sponsored posts ($500-5k), content packages ($200), management ($1,500/mo)",
+        "targets": "brands needing social presence, businesses wanting content",
+        "first_moves": [
+            "Package your content creation as a service",
+            "10 posts + captions = $200",
+            "Find 5 small businesses who need content",
+            "First week = $1,000"
+        ],
+        "first_pitch": "I'll create 10 posts with captions for your next 2 weeks - $200.",
+        "revenue_path": "Content is recurring. Businesses always need more posts."
     },
     "general": {
         "type": "GENERAL",
+        "kit_name": "General Kit",
+        "you_are": "someone with skills that can be monetized",
         "offerings": "Consulting ($150/hr), strategy sessions, custom projects",
         "targets": "anyone with a problem you can solve",
-        "first_pitch": "What's eating up your time? I might be able to solve it."
+        "first_moves": [
+            "Identify your #1 skill",
+            "Find someone with a problem that skill solves",
+            "Offer to solve it for a fair price",
+            "Deliver, get testimonial, repeat"
+        ],
+        "first_pitch": "What's eating up your time? Tell me and I'll see if I can help.",
+        "revenue_path": "Start with what you know. Your AiGentsy will help you find buyers."
     }
 }
 
@@ -655,6 +733,9 @@ def route_to_csuite(user_input: str, business_type: str = "general") -> dict:
 def build_system_context(username: str, business_type: str, role: str, personality: str, intel_text: str) -> str:
     biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["general"])
     
+    # Build first moves as a string
+    first_moves = "\n".join([f"   {i+1}. {move}" for i, move in enumerate(biz.get("first_moves", []))])
+    
     return f"""
 ═══════════════════════════════════════════════════════════════
 🏢 AIGENTSY C-SUITE v5.0 - {role}
@@ -665,17 +746,43 @@ def build_system_context(username: str, business_type: str, role: str, personali
 You are {username}'s {role} - part of their AI executive team that works 24/7.
 
 ═══════════════════════════════════════════════════════════════
-🎯 THEIR BUSINESS: {biz['type']}
+🎯 {username}'s BUSINESS: {biz['kit_name']} → {biz['type']}
 ═══════════════════════════════════════════════════════════════
-**OFFERINGS:** {biz['offerings']}
-**TARGETS:** {biz['targets']}
-**FIRST SALE PITCH:** "{biz['first_pitch']}"
+
+**WHO THEY ARE:** {biz['you_are']}
+
+**THEIR OFFERINGS:**
+{biz['offerings']}
+
+**THEIR TARGETS:**
+{biz['targets']}
+
+**FIRST MOVES TO MONEY:**
+{first_moves}
+
+**FIRST PITCH TEMPLATE:**
+"{biz['first_pitch']}"
+
+**REVENUE PATH:**
+{biz['revenue_path']}
 
 {intel_text}
 
 ═══════════════════════════════════════════════════════════════
 ⚠️ CRITICAL RESPONSE RULES
 ═══════════════════════════════════════════════════════════════
+
+**GROUND YOUR RESPONSE IN THEIR KIT:**
+- They have the {biz['kit_name']} - your advice MUST match this
+- Reference their specific offerings and targets
+- Use the first moves as your framework
+- Never give generic advice that doesn't fit their kit
+
+**IF THIS IS THEIR FIRST MESSAGE:**
+- Acknowledge their kit and what it means
+- Reference their actual stats (AIGx, tier, multiplier)
+- Give them ONE clear first step toward revenue
+- Don't overwhelm - just get them moving
 
 **TONE - THIS IS EVERYTHING:**
 You're a billionaire friend who texts back. Warm, direct, been-there-done-that.
@@ -687,30 +794,30 @@ You're a billionaire friend who texts back. Warm, direct, been-there-done-that.
 **NEVER SOUND LIKE:**
 - A corporate consultant
 - A formal business advisor  
-- A chatbot following a script
-- Someone who hasn't done this before
+- Someone giving generic advice
+- Someone who doesn't know their kit
 
 **ALWAYS SOUND LIKE:**
 - A successful friend giving real advice
-- Someone who's made millions and wants to help
+- Someone who's made millions with THIS EXACT business model
 - Direct, warm, actionable
 - Genuinely invested in their success
 
 **SPECIFICS:**
-1. **MONEY IN EVERY RESPONSE** - Specific dollar amounts, real paths to revenue
-2. **USE THE INTELLIGENCE DATA** - Reference their actual stats, not generic advice
-3. **EVERYTHING IS "YOUR AIGENTSY"** - Never mention system names
-4. **NO LIMITS LANGUAGE** - Never say "only X platforms" etc.
+1. **MATCH THEIR KIT** - SaaS kit = software advice, not consulting advice
+2. **USE THEIR DATA** - Reference their AIGx, tier, multiplier, achievements
+3. **MONEY IN EVERY RESPONSE** - Specific dollar amounts from their kit offerings
+4. **EVERYTHING IS "YOUR AIGENTSY"** - Never mention system names
 5. **END WITH ONE QUESTION** - Keep momentum, move them forward
 
-**PHRASING EXAMPLES:**
-✅ "Look, here's what I'd do..."
-✅ "I've seen this exact situation - here's the move"
-✅ "Let's get you to $500 this week"
-✅ "Your AiGentsy already found some opportunities"
-❌ "I recommend considering..."
-❌ "It would be advisable to..."
-❌ "The optimal strategy involves..."
+**EXAMPLE FOR SAAS KIT FIRST MESSAGE:**
+"Hey! You've got the SaaS Kit - that means you're building tools people pay for monthly. Love it.
+
+I see you're a Founder with 10,100 AIGx and that sweet 3x multiplier. Your AiGentsy is already scanning for opportunities.
+
+Here's the move: What's ONE annoying task you do every week? Something repetitive that takes 30+ minutes. That's your first micro-tool. Build it, price it at $50/mo, find 10 people with the same problem. That's $500/mo recurring.
+
+What task drives you crazy that we could automate first?"
 
 ═══════════════════════════════════════════════════════════════
 """
@@ -746,9 +853,11 @@ async def invoke(state: AgentState) -> dict:
     
     try:
         username = state.username or "user"
-        business_type = state.business_type or "general"
+        # CRITICAL: Normalize business type from various frontend formats
+        raw_business_type = state.business_type or "general"
+        business_type = normalize_business_type(raw_business_type)
         
-        print(f"🎯 v5.0 FINAL - User: {username}, Business: {business_type}")
+        print(f"🎯 v5.0 FINAL - User: {username}, Raw kit: {raw_business_type}, Normalized: {business_type}")
         
         # Gather ALL intelligence
         intel = await CompleteIntelligenceAggregator.gather_all(username, business_type)
@@ -776,7 +885,7 @@ async def invoke(state: AgentState) -> dict:
             out = f"**{csuite['role']}:** {resp.content}"
         else:
             biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["general"])
-            out = f"**{csuite['role']}:** With your {business_type} business, I recommend starting with {biz['offerings'].split(',')[0]}. {biz['first_pitch']}"
+            out = f"**{csuite['role']}:** Hey! You've got the {biz['kit_name']} - {biz['you_are']}. {biz['first_pitch']}"
         
         # Feed back to learning systems (silent)
         if SYSTEMS["yield_memory"]:
@@ -787,7 +896,7 @@ async def invoke(state: AgentState) -> dict:
             try: contribute_to_hive(pattern_type="csuite", pattern_data={"business_type": business_type, "role": csuite["role"], "systems": intel["systems_connected"]})
             except: pass
         
-        return {"output": out, "memory": state.memory, "systems_connected": intel["systems_connected"]}
+        return {"output": out, "memory": state.memory, "systems_connected": intel["systems_connected"], "business_type": business_type}
     
     except Exception as e:
         import traceback
@@ -818,7 +927,10 @@ async def agent_endpoint(request: Request):
         user_input = data.get("input", "")
         memory = data.get("memory", [])
         username = data.get("username", "user")
-        business_type = data.get("businessType") or data.get("kit") or "general"
+        # Accept multiple field names from frontend
+        raw_business_type = data.get("businessType") or data.get("kit") or data.get("companyType") or data.get("business_type") or "general"
+        
+        print(f"📥 Received: username={username}, raw_kit={raw_business_type}")
         
         if not user_input:
             return {"output": "No input provided."}
@@ -826,13 +938,20 @@ async def agent_endpoint(request: Request):
         result = await get_agent_graph().ainvoke({
             "input": user_input,
             "memory": memory,
-            "business_type": business_type,
+            "business_type": raw_business_type,  # Will be normalized in invoke()
             "username": username
         })
         
-        return {"output": result.get("output"), "memory": result.get("memory", memory), "systems_connected": result.get("systems_connected", 0)}
+        return {
+            "output": result.get("output"), 
+            "memory": result.get("memory", memory), 
+            "systems_connected": result.get("systems_connected", 0),
+            "business_type": result.get("business_type", "general")  # Return normalized type
+        }
     
     except Exception as e:
+        import traceback
+        print(f"❌ Endpoint error: {e}\n{traceback.format_exc()}")
         return {"output": f"I encountered an issue. What would you like help with?"}
 
 
