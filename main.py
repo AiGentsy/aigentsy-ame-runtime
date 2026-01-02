@@ -99,6 +99,11 @@ from log_to_jsonbin_merged import (
     log_metaloop, log_autoconnect, log_metabridge, log_metahive,
     get_user_count, increment_user_count  # NEW: Counter functions
 )
+from open_metahive_api import get_metahive_api
+from universal_platform_adapter import (
+    get_platform_registry, PlatformConfig, PlatformCategory,
+    IntentType, MonetizationMethod, AccessMethod
+)
 
 from aigx_config import (
     AIGX_CONFIG,
