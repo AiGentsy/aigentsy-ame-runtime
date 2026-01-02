@@ -349,8 +349,8 @@ class CompleteIntelligenceAggregator:
         # 8. PRICING INTELLIGENCE
         if SYSTEMS["pricing_oracle"] or SYSTEMS["pricing_autopilot"]:
             try:
-                service_map = {"legal": "nda", "saas": "software_development", "marketing": "seo_audit", "social": "content_creation", "general": "consulting"}
-                service = service_map.get(business_type, "consulting")
+                service_map = {"saas": "software_development", "marketing": "seo_audit", "social": "content_creation"}
+                service = service_map.get(business_type, "software_development")
                 if SYSTEMS["pricing_oracle"]:
                     pricing = calculate_dynamic_price(service_type=service, base_price=500, context={"urgency": "normal"})
                     intel["pricing"] = {"recommended": pricing} if not isinstance(pricing, dict) else pricing
@@ -772,7 +772,7 @@ Make complexity feel manageable. Show them the path. End with one question about
     }
 }
 
-def route_to_csuite(user_input: str, business_type: str = "general") -> dict:
+def route_to_csuite(user_input: str, business_type: str = "saas") -> dict:
     msg = user_input.lower()
     for role, config in ROLE_CONFIGS.items():
         if any(kw in msg for kw in config["keywords"]):
@@ -785,7 +785,7 @@ def route_to_csuite(user_input: str, business_type: str = "general") -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def build_system_context(username: str, business_type: str, role: str, personality: str, intel_text: str) -> str:
-    biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["general"])
+    biz = BUSINESS_CONTEXTS.get(business_type, BUSINESS_CONTEXTS["saas"])
     
     # Build first moves as a string
     first_moves = "\n".join([f"   {i+1}. {move}" for i, move in enumerate(biz.get("first_moves", []))])
@@ -911,7 +911,7 @@ async def invoke(state: AgentState) -> dict:
         custom_input = state.custom_input or ""
         
         # CRITICAL: Normalize business type, using customInput for bespoke detection
-        raw_business_type = state.business_type or "general"
+        raw_business_type = state.business_type or "saas"
         business_type = normalize_business_type(raw_business_type, custom_input)
         
         print(f"🎯 v5.0 FINAL - User: {username}, Raw kit: {raw_business_type}, Normalized: {business_type}")
@@ -1009,7 +1009,7 @@ async def agent_endpoint(request: Request):
         memory = data.get("memory", [])
         username = data.get("username", "user")
         # Accept multiple field names from frontend
-        raw_business_type = data.get("businessType") or data.get("kit") or data.get("companyType") or data.get("business_type") or "general"
+        raw_business_type = data.get("businessType") or data.get("kit") or data.get("companyType") or data.get("business_type") or "saas"
         # Get custom business description for bespoke kit generation
         custom_input = data.get("customInput") or data.get("custom_input") or data.get("businessIdea") or ""
         
@@ -1047,14 +1047,14 @@ async def intelligence_status():
 
 
 @app.get("/intelligence/full/{username}")
-async def get_full_intelligence(username: str, business_type: str = "general"):
+async def get_full_intelligence(username: str, business_type: str = "saas"):
     """Get complete intelligence for a user."""
     intel = await CompleteIntelligenceAggregator.gather_all(username, business_type)
     return {"ok": True, "username": username, "business_type": business_type, "intelligence": intel}
 
 
 @app.get("/dashboard/{username}")
-async def get_user_dashboard(username: str, business_type: str = "general"):
+async def get_user_dashboard(username: str, business_type: str = "saas"):
     """
     CRITICAL ENDPOINT: Powers the user dashboard.
     Returns all data needed for frontend display.
