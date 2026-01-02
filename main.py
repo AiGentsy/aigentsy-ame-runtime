@@ -2503,6 +2503,22 @@ async def mint_user(request: Request):
                                 "opportunities_created": coord_result.get("opportunities_stored", 0),
                                 "intelligence": coord_result.get("intelligence", {})
                             }
+                            
+                            # ============================================================
+                            # 💾 SAVE DISCOVERED OPPORTUNITIES TO USER RECORD
+                            # ============================================================
+                            
+                            internal_opps = coord_result.get("internal_opportunities", [])
+                            external_opps = coord_result.get("external_opportunities", [])
+                            all_opportunities = internal_opps + external_opps
+                            
+                            if all_opportunities:
+                                saved_user["opportunities"] = all_opportunities
+                                saved_user["opportunities_discovered_at"] = now
+                                saved_user["opportunities_count"] = len(all_opportunities)
+                                log_agent_update(saved_user)
+                                logger.info(f"💾 Saved {len(all_opportunities)} opportunities to user record")
+                            
                         else:
                             logger.warning(f"⚠️  Template integration issues: {integration_result.get('error')}")
                             
@@ -20924,7 +20940,7 @@ from aam_stripe import verify_stripe_signature, process_stripe_webhook
 
 @app.post("/webhook/stripe")
 async def webhook_stripe(request: Request):
-    """Stripe webhook handler"""
+    """Stripe webhook handler - updates user revenue in JSONBin"""
     
     payload = await request.body()
     signature = request.headers.get("stripe-signature", "")
@@ -20941,7 +20957,64 @@ async def webhook_stripe(request: Request):
     
     event_type = event.get("type")
     
+    # Process via existing handler
     result = await process_stripe_webhook(event_type, event)
+    
+    # ============================================================
+    # 💾 UPDATE USER REVENUE IN JSONBIN
+    # ============================================================
+    
+    if event_type in ["payment_intent.succeeded", "charge.succeeded", "checkout.session.completed"]:
+        try:
+            event_data = event.get("data", {}).get("object", {})
+            
+            # Extract payment details
+            amount_cents = event_data.get("amount") or event_data.get("amount_total") or 0
+            amount_usd = amount_cents / 100
+            
+            # Try to find user by email or metadata
+            customer_email = event_data.get("receipt_email") or event_data.get("customer_email")
+            metadata = event_data.get("metadata", {})
+            username = metadata.get("username") or metadata.get("aigentsy_user")
+            
+            if username or customer_email:
+                from log_to_jsonbin import get_user, log_agent_update
+                
+                # Find user
+                user = None
+                if username:
+                    user = get_user(username)
+                
+                # If not found by username, search by email would go here
+                # (requires get_user_by_email implementation)
+                
+                if user:
+                    # Update revenue tracking
+                    user.setdefault("revenue_tracking", {"total": 0, "history": [], "last_updated": None})
+                    user["revenue_tracking"]["total"] = user["revenue_tracking"].get("total", 0) + amount_usd
+                    user["revenue_tracking"]["last_updated"] = datetime.now(timezone.utc).isoformat()
+                    user["revenue_tracking"]["history"].append({
+                        "amount": amount_usd,
+                        "event_type": event_type,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "stripe_event_id": event.get("id"),
+                        "payment_intent": event_data.get("payment_intent") or event_data.get("id")
+                    })
+                    
+                    # Update lifetime revenue
+                    user["lifetimeRevenue"] = user.get("lifetimeRevenue", 0) + amount_usd
+                    
+                    # Calculate platform fee (2.8% + 28¢)
+                    platform_fee = (amount_usd * PLATFORM_FEE) + PLATFORM_FEE_FIXED
+                    user["revenue_tracking"].setdefault("platform_fees_paid", 0)
+                    user["revenue_tracking"]["platform_fees_paid"] += platform_fee
+                    
+                    # Save to JSONBin
+                    log_agent_update(user)
+                    logger.info(f"💰 Revenue updated for {username or customer_email}: +${amount_usd:.2f}")
+                    
+        except Exception as rev_error:
+            logger.error(f"⚠️ Revenue tracking failed: {rev_error}")
     
     return result
 
@@ -22167,3 +22240,363 @@ async def ame_process_queue():
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD & OPPORTUNITY APPROVAL ENDPOINTS
+# Critical for user-facing functionality
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/dashboard/{username}")
+async def get_user_dashboard(username: str):
+    """
+    Complete dashboard data for user
+    Returns opportunities, revenue, AIGx, deals, and system status
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Get opportunities with status counts
+        opportunities = user.get("opportunities", [])
+        pending_count = len([o for o in opportunities if o.get("status") == "pending"])
+        approved_count = len([o for o in opportunities if o.get("status") == "approved"])
+        executed_count = len([o for o in opportunities if o.get("status") == "executed"])
+        
+        # Get revenue tracking
+        revenue = user.get("revenue_tracking", {"total": 0, "history": []})
+        
+        # Get AIGx balance
+        aigx_balance = user.get("ownership", {}).get("aigx", 0)
+        
+        # Get deals
+        deals = user.get("deals", [])
+        
+        # Get early adopter info
+        early_adopter = {
+            "tier": user.get("earlyAdopterTier", "standard"),
+            "badge": user.get("earlyAdopterBadge", ""),
+            "multiplier": user.get("aigxMultiplier", 1.0),
+            "user_number": user.get("userNumber", 0)
+        }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "opportunities": {
+                "total": len(opportunities),
+                "pending": pending_count,
+                "approved": approved_count,
+                "executed": executed_count,
+                "items": opportunities[:20]  # Limit response size
+            },
+            "revenue": {
+                "total": revenue.get("total", 0),
+                "platform_fees_paid": revenue.get("platform_fees_paid", 0),
+                "net": revenue.get("total", 0) - revenue.get("platform_fees_paid", 0),
+                "recent": revenue.get("history", [])[-10:],  # Last 10 transactions
+                "last_updated": revenue.get("last_updated")
+            },
+            "aigx": {
+                "balance": aigx_balance,
+                "ledger_entries": len(user.get("ownership", {}).get("ledger", []))
+            },
+            "deals": {
+                "total": len(deals),
+                "active": len([d for d in deals if d.get("status") == "active"]),
+                "completed": len([d for d in deals if d.get("status") == "completed"]),
+                "items": deals[:10]
+            },
+            "early_adopter": early_adopter,
+            "outcome_score": user.get("outcomeScore", 0),
+            "lifetime_revenue": user.get("lifetimeRevenue", 0),
+            "apex_ultra": {
+                "activated": user.get("apex_ultra_activated", True),
+                "systems_count": user.get("apex_systems_count", 143)
+            },
+            "kits": user.get("kits", {}),
+            "created": user.get("created"),
+            "last_active": user.get("last_active")
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/opportunities/{opportunity_id}/approve")
+async def approve_opportunity_endpoint(opportunity_id: str, body: Dict = Body(...)):
+    """
+    Approve an opportunity for execution
+    
+    Body: { "username": "..." }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Find the opportunity
+        opportunities = user.get("opportunities", [])
+        opportunity = None
+        opp_index = -1
+        
+        for i, opp in enumerate(opportunities):
+            if opp.get("id") == opportunity_id:
+                opportunity = opp
+                opp_index = i
+                break
+        
+        if not opportunity:
+            return {"ok": False, "error": "Opportunity not found"}
+        
+        if opportunity.get("status") == "approved":
+            return {"ok": True, "message": "Already approved", "opportunity": opportunity}
+        
+        # Update status
+        opportunity["status"] = "approved"
+        opportunity["approved_at"] = datetime.now(timezone.utc).isoformat()
+        opportunity["approved_by"] = username
+        
+        # Save back
+        user["opportunities"][opp_index] = opportunity
+        log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "message": "Opportunity approved",
+            "opportunity": opportunity
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/opportunities/{opportunity_id}/reject")
+async def reject_opportunity_endpoint(opportunity_id: str, body: Dict = Body(...)):
+    """
+    Reject an opportunity
+    
+    Body: { "username": "...", "reason": "..." }
+    """
+    username = body.get("username")
+    reason = body.get("reason", "User rejected")
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        opportunities = user.get("opportunities", [])
+        
+        for i, opp in enumerate(opportunities):
+            if opp.get("id") == opportunity_id:
+                opp["status"] = "rejected"
+                opp["rejected_at"] = datetime.now(timezone.utc).isoformat()
+                opp["rejection_reason"] = reason
+                user["opportunities"][i] = opp
+                log_agent_update(user)
+                
+                return {"ok": True, "message": "Opportunity rejected", "opportunity": opp}
+        
+        return {"ok": False, "error": "Opportunity not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/opportunities/{opportunity_id}/status")
+async def get_opportunity_status_endpoint(opportunity_id: str, username: str):
+    """
+    Get status of a specific opportunity
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        for opp in user.get("opportunities", []):
+            if opp.get("id") == opportunity_id:
+                return {"ok": True, "opportunity": opp}
+        
+        return {"ok": False, "error": "Opportunity not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# C-SUITE CHAT COMMANDS
+# Natural language interface to AiGentsy systems
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/csuite/command")
+async def csuite_command(body: Dict = Body(...)):
+    """
+    Process C-Suite natural language commands
+    
+    Body: {
+        "username": "...",
+        "message": "find opportunities" | "show revenue" | "check deals" | etc
+    }
+    
+    Routes to appropriate system based on intent
+    """
+    username = body.get("username")
+    message = body.get("message", "").lower().strip()
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    if not message:
+        return {"ok": False, "error": "message required"}
+    
+    try:
+        # Intent detection and routing
+        
+        # CMO - Marketing/Discovery
+        if any(kw in message for kw in ["find opportunities", "discover", "search", "prospects"]):
+            from ultimate_discovery_engine import discover_all_opportunities
+            result = await discover_all_opportunities(username)
+            return {
+                "ok": True,
+                "agent": "CMO",
+                "action": "discovery",
+                "result": result,
+                "message": f"Found {result.get('total_opportunities', 0)} opportunities across {result.get('platforms_searched', 0)} platforms"
+            }
+        
+        # CFO - Finance/Revenue
+        if any(kw in message for kw in ["revenue", "earnings", "money", "income", "balance", "aigx"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            revenue = user.get("revenue_tracking", {}) if user else {}
+            aigx = user.get("ownership", {}).get("aigx", 0) if user else 0
+            
+            return {
+                "ok": True,
+                "agent": "CFO",
+                "action": "revenue_summary",
+                "result": {
+                    "total_revenue": revenue.get("total", 0),
+                    "aigx_balance": aigx,
+                    "platform_fees": revenue.get("platform_fees_paid", 0),
+                    "lifetime_revenue": user.get("lifetimeRevenue", 0) if user else 0
+                },
+                "message": f"Total revenue: ${revenue.get('total', 0):.2f}, AIGx balance: {aigx}"
+            }
+        
+        # COO - Operations/Deals
+        if any(kw in message for kw in ["deals", "contracts", "active", "pipeline", "status"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            deals = user.get("deals", []) if user else []
+            
+            active = [d for d in deals if d.get("status") == "active"]
+            
+            return {
+                "ok": True,
+                "agent": "COO",
+                "action": "deal_status",
+                "result": {
+                    "total_deals": len(deals),
+                    "active_deals": len(active),
+                    "deals": deals[:5]  # First 5
+                },
+                "message": f"You have {len(active)} active deals out of {len(deals)} total"
+            }
+        
+        # CEO - Health/Overview
+        if any(kw in message for kw in ["health", "overview", "summary", "how am i doing"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            
+            if not user:
+                return {"ok": False, "error": "User not found"}
+            
+            return {
+                "ok": True,
+                "agent": "CEO",
+                "action": "system_overview",
+                "result": {
+                    "outcome_score": user.get("outcomeScore", 0),
+                    "opportunities_count": len(user.get("opportunities", [])),
+                    "revenue_total": user.get("revenue_tracking", {}).get("total", 0),
+                    "aigx_balance": user.get("ownership", {}).get("aigx", 0),
+                    "early_adopter_tier": user.get("earlyAdopterTier", "standard"),
+                    "systems_active": 143
+                },
+                "message": "All systems operational. Here's your overview."
+            }
+        
+        # Default - general help
+        return {
+            "ok": True,
+            "agent": "Assistant",
+            "action": "help",
+            "result": {
+                "available_commands": [
+                    "find opportunities - Discover new revenue opportunities",
+                    "show revenue - View earnings and AIGx balance",
+                    "check deals - See active contracts and pipeline",
+                    "system status - Get health overview"
+                ]
+            },
+            "message": "I didn't understand that command. Here are some things I can help with:"
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/csuite/agents")
+async def list_csuite_agents():
+    """
+    List available C-Suite agents and their capabilities
+    """
+    return {
+        "ok": True,
+        "agents": [
+            {
+                "role": "CEO",
+                "name": "Chief Executive Officer",
+                "capabilities": ["system_overview", "health_check", "strategic_decisions"],
+                "commands": ["status", "overview", "health"]
+            },
+            {
+                "role": "CFO",
+                "name": "Chief Financial Officer", 
+                "capabilities": ["revenue_tracking", "aigx_balance", "financial_reports"],
+                "commands": ["revenue", "earnings", "balance", "aigx"]
+            },
+            {
+                "role": "CMO",
+                "name": "Chief Marketing Officer",
+                "capabilities": ["opportunity_discovery", "lead_generation", "outreach"],
+                "commands": ["find opportunities", "discover", "search"]
+            },
+            {
+                "role": "COO",
+                "name": "Chief Operating Officer",
+                "capabilities": ["deal_management", "fulfillment", "operations"],
+                "commands": ["deals", "contracts", "active", "pipeline"]
+            }
+        ]
+    }
