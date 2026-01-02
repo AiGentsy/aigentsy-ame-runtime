@@ -454,6 +454,17 @@ async def record_platform_payout(
     return result
 
 
+async def get_revenue_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get a revenue reconciliation report."""
+    engine = get_reconciliation_engine()
+    report = engine.generate_report(start_date, end_date, user_id)
+    return {"ok": True, "report": report}
+
+
 async def _test_reconciliation_engine():
     print("\n" + "="*60)
     print("🧪 TESTING REVENUE RECONCILIATION ENGINE")
