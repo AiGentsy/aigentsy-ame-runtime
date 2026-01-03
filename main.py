@@ -24696,3 +24696,360 @@ async def autonomous_v6_health():
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V6 AUTONOMOUS ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V6 AUTONOMOUS LEARNING LOOP - CROSS-AI INTELLIGENCE
+# The Novel AiGentsy Concept: AI Workers Teaching Each Other
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ARCHITECTURE:
+# 1. Every successful outcome → Yield Memory (per-user) + MetaHive (global)
+# 2. Before every decision → Query Yield Memory + MetaHive for best action
+# 3. After every action → Report back actual ROAS to improve patterns
+#
+# THE FLYWHEEL:
+# Claude finds winning pattern → Contributes to MetaHive → 
+# ChatGPT uses pattern → Reports success → Pattern gains weight →
+# All AIs benefit from collective intelligence
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/learning/process-outcomes")
+async def learning_process_outcomes():
+    """
+    🧠 AUTONOMOUS LEARNING: Process all recent outcomes and learn from them
+    
+    This endpoint should be called hourly to:
+    1. Find all completed deals/bids with outcome data
+    2. Store successful patterns in Yield Memory (per-user)
+    3. Contribute winning patterns to MetaHive (global)
+    4. Report pattern usage back to improve weights
+    """
+    
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            users = await _load_users(client)
+            
+            patterns_stored = 0
+            hive_contributions = 0
+            users_processed = 0
+            
+            for user in users:
+                username = _username_of(user)
+                
+                # Check completed opportunities with outcomes
+                opportunities = user.get("opportunities", [])
+                
+                for opp in opportunities:
+                    # Only process completed opportunities with outcome data
+                    if opp.get("status") != "completed":
+                        continue
+                    
+                    if opp.get("learning_processed"):
+                        continue  # Already processed
+                    
+                    outcome = opp.get("outcome", {})
+                    revenue = float(outcome.get("revenue_usd", 0) or opp.get("value", 0))
+                    cost = float(outcome.get("cost_usd", 0) or opp.get("bid_amount", 0) or 0)
+                    
+                    if cost <= 0:
+                        cost = 1  # Avoid division by zero
+                    
+                    roas = revenue / cost
+                    
+                    # Build context from opportunity
+                    context = {
+                        "platform": opp.get("platform", "unknown"),
+                        "category": opp.get("category", "general"),
+                        "value_tier": "high" if revenue > 500 else "medium" if revenue > 100 else "low",
+                        "hour": datetime.now(timezone.utc).hour,
+                        "day_of_week": datetime.now(timezone.utc).weekday()
+                    }
+                    
+                    # Build action from what was done
+                    action = {
+                        "bid_strategy": opp.get("bid_strategy", "standard"),
+                        "response_time": opp.get("response_time", "normal"),
+                        "pitch_style": opp.get("pitch_style", "professional")
+                    }
+                    
+                    # Store in Yield Memory (per-user learning)
+                    try:
+                        from yield_memory import store_pattern
+                        store_result = store_pattern(
+                            username=username,
+                            pattern_type=opp.get("type", "opportunity"),
+                            context=context,
+                            action=action,
+                            outcome={
+                                "roas": roas,
+                                "revenue_usd": revenue,
+                                "cost_usd": cost
+                            }
+                        )
+                        if store_result.get("ok"):
+                            patterns_stored += 1
+                    except Exception as e:
+                        pass
+                    
+                    # Contribute to MetaHive if ROAS > 1.5 (winning pattern)
+                    if roas >= 1.5:
+                        try:
+                            from metahive_brain import contribute_to_hive
+                            hive_result = await contribute_to_hive(
+                                username=username,
+                                pattern_type=opp.get("type", "opportunity"),
+                                context=context,
+                                action=action,
+                                outcome={
+                                    "roas": roas,
+                                    "revenue_usd": revenue,
+                                    "cost_usd": cost
+                                },
+                                anonymize=True  # Privacy-preserving
+                            )
+                            if hive_result.get("ok"):
+                                hive_contributions += 1
+                        except Exception as e:
+                            pass
+                    
+                    # Mark as processed
+                    opp["learning_processed"] = True
+                    opp["learning_processed_at"] = _now()
+                
+                users_processed += 1
+            
+            # Save updated users
+            if patterns_stored > 0 or hive_contributions > 0:
+                await _save_users(client, users)
+            
+            return {
+                "ok": True,
+                "users_processed": users_processed,
+                "patterns_stored": patterns_stored,
+                "hive_contributions": hive_contributions,
+                "message": f"Learned from {patterns_stored} outcomes, contributed {hive_contributions} to MetaHive"
+            }
+            
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/learning/get-recommendations")
+async def learning_get_recommendations(body: Dict = Body(...)):
+    """
+    🧠 BEFORE MAKING A DECISION: Query collective intelligence
+    
+    Call this before:
+    - Bidding on opportunity
+    - Setting price
+    - Choosing platform
+    - Crafting pitch
+    
+    Returns recommended action based on:
+    1. User's own Yield Memory (what worked for them)
+    2. MetaHive global patterns (what worked for everyone)
+    """
+    
+    username = body.get("username")
+    context = body.get("context", {})
+    decision_type = body.get("decision_type", "opportunity")  # pricing, timing, targeting, etc.
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    recommendations = {
+        "user_patterns": [],
+        "hive_patterns": [],
+        "recommended_action": None,
+        "confidence": 0.0
+    }
+    
+    # 1. Query user's Yield Memory
+    try:
+        from yield_memory import get_best_action, find_similar_patterns
+        
+        user_result = get_best_action(
+            username=username,
+            context=context,
+            pattern_type=decision_type
+        )
+        
+        if user_result.get("ok"):
+            recommendations["user_patterns"].append({
+                "action": user_result.get("recommended_action"),
+                "expected_roas": user_result.get("expected_roas"),
+                "confidence": user_result.get("confidence"),
+                "source": "yield_memory"
+            })
+    except Exception as e:
+        pass
+    
+    # 2. Query MetaHive global patterns
+    try:
+        from metahive_brain import query_hive
+        
+        hive_result = query_hive(
+            context=context,
+            pattern_type=decision_type,
+            min_weight=1.0,
+            limit=3
+        )
+        
+        if hive_result.get("ok") and hive_result.get("patterns"):
+            for pattern in hive_result["patterns"]:
+                recommendations["hive_patterns"].append({
+                    "action": pattern.get("action"),
+                    "weight": pattern.get("weight"),
+                    "usage_count": pattern.get("usage_count"),
+                    "source": "metahive"
+                })
+    except Exception as e:
+        pass
+    
+    # 3. Determine best recommendation
+    all_patterns = recommendations["user_patterns"] + recommendations["hive_patterns"]
+    
+    if all_patterns:
+        # Prefer user's own patterns if confidence is high
+        user_patterns = [p for p in all_patterns if p.get("source") == "yield_memory"]
+        hive_patterns = [p for p in all_patterns if p.get("source") == "metahive"]
+        
+        if user_patterns and user_patterns[0].get("confidence", 0) > 0.7:
+            recommendations["recommended_action"] = user_patterns[0]["action"]
+            recommendations["confidence"] = user_patterns[0]["confidence"]
+            recommendations["source"] = "yield_memory"
+        elif hive_patterns:
+            recommendations["recommended_action"] = hive_patterns[0]["action"]
+            recommendations["confidence"] = min(hive_patterns[0].get("weight", 0) / 5.0, 1.0)
+            recommendations["source"] = "metahive"
+        elif user_patterns:
+            recommendations["recommended_action"] = user_patterns[0]["action"]
+            recommendations["confidence"] = user_patterns[0].get("confidence", 0.5)
+            recommendations["source"] = "yield_memory"
+    
+    return {
+        "ok": True,
+        **recommendations
+    }
+
+
+@app.post("/learning/report-usage")
+async def learning_report_usage(body: Dict = Body(...)):
+    """
+    🧠 AFTER USING A PATTERN: Report back the actual outcome
+    
+    This closes the learning loop by:
+    1. Updating pattern weight in MetaHive based on actual performance
+    2. Adjusting future recommendations
+    """
+    
+    pattern_id = body.get("pattern_id")
+    success = body.get("success", False)
+    actual_roas = body.get("actual_roas")
+    
+    if not pattern_id:
+        return {"ok": False, "error": "pattern_id required"}
+    
+    try:
+        from metahive_brain import report_pattern_usage
+        
+        result = report_pattern_usage(
+            pattern_id=pattern_id,
+            success=success,
+            actual_roas=actual_roas
+        )
+        
+        return result
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/learning/stats")
+async def learning_stats(username: str = None):
+    """
+    🧠 Get learning system statistics
+    """
+    
+    stats = {
+        "yield_memory": None,
+        "metahive": None,
+        "open_metahive": None
+    }
+    
+    # User's Yield Memory stats
+    if username:
+        try:
+            from yield_memory import get_memory_stats
+            stats["yield_memory"] = get_memory_stats(username)
+        except Exception as e:
+            stats["yield_memory"] = {"error": str(e)}
+    
+    # MetaHive global stats
+    try:
+        from metahive_brain import get_hive_stats
+        stats["metahive"] = get_hive_stats()
+    except Exception as e:
+        stats["metahive"] = {"error": str(e)}
+    
+    # Open MetaHive API stats
+    try:
+        from open_metahive_api import get_metahive_api
+        api = get_metahive_api()
+        stats["open_metahive"] = api.get_metahive_stats()
+    except Exception as e:
+        stats["open_metahive"] = {"error": str(e)}
+    
+    return {
+        "ok": True,
+        "stats": stats,
+        "description": "Cross-AI Learning System - All AIs teaching each other"
+    }
+
+
+@app.get("/learning/health")
+async def learning_health():
+    """
+    🧠 Check health of all learning systems
+    """
+    
+    systems = {}
+    
+    # Check Yield Memory
+    try:
+        from yield_memory import store_pattern
+        systems["yield_memory"] = True
+    except:
+        systems["yield_memory"] = False
+    
+    # Check MetaHive Brain
+    try:
+        from metahive_brain import get_hive_stats
+        systems["metahive_brain"] = True
+    except:
+        systems["metahive_brain"] = False
+    
+    # Check Open MetaHive API
+    try:
+        from open_metahive_api import get_metahive_api
+        systems["open_metahive_api"] = True
+    except:
+        systems["open_metahive_api"] = False
+    
+    working = sum(1 for v in systems.values() if v)
+    
+    return {
+        "ok": True,
+        "learning_ready": working == len(systems),
+        "systems": systems,
+        "working": working,
+        "total": len(systems)
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END AUTONOMOUS LEARNING LOOP
+# ═══════════════════════════════════════════════════════════════════════════════
