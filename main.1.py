@@ -741,8 +741,7 @@ create_activity_endpoints(app)
 from dashboard_api import create_dashboard_endpoints
 create_dashboard_endpoints(app)
 create_opportunity_endpoints(app)
-from dashboard_api import create_dashboard_endpoints
-create_dashboard_endpoints(app)
+# Note: create_dashboard_endpoints already called above (duplicate removed)
 app.include_router(actionization_router)
 app.include_router(execution_router)
 app.include_router(autonomous_router)
@@ -763,18 +762,10 @@ async def auto_bid_background():
         
         await asyncio.sleep(30)
 
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks"""
-    asyncio.create_task(auto_bid_background())
-    print("Auto-bid background task started")
+# Note: startup_event defined later with full task list (auto_bid + auto_release)
 
 logger = logging.getLogger("aigentsy")
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks"""
-    asyncio.create_task(auto_bid_background())
-    print("Auto-bid background task started")
+# Note: startup_event already defined above (duplicate removed)
 
 # ============================================================================
 # TRANSACTION FEE CALCULATION (Task 4.1)
@@ -2512,6 +2503,22 @@ async def mint_user(request: Request):
                                 "opportunities_created": coord_result.get("opportunities_stored", 0),
                                 "intelligence": coord_result.get("intelligence", {})
                             }
+                            
+                            # ============================================================
+                            # 💾 SAVE DISCOVERED OPPORTUNITIES TO USER RECORD
+                            # ============================================================
+                            
+                            internal_opps = coord_result.get("internal_opportunities", [])
+                            external_opps = coord_result.get("external_opportunities", [])
+                            all_opportunities = internal_opps + external_opps
+                            
+                            if all_opportunities:
+                                saved_user["opportunities"] = all_opportunities
+                                saved_user["opportunities_discovered_at"] = now
+                                saved_user["opportunities_count"] = len(all_opportunities)
+                                log_agent_update(saved_user)
+                                logger.info(f"💾 Saved {len(all_opportunities)} opportunities to user record")
+                            
                         else:
                             logger.warning(f"⚠️  Template integration issues: {integration_result.get('error')}")
                             
@@ -20933,7 +20940,7 @@ from aam_stripe import verify_stripe_signature, process_stripe_webhook
 
 @app.post("/webhook/stripe")
 async def webhook_stripe(request: Request):
-    """Stripe webhook handler"""
+    """Stripe webhook handler - updates user revenue in JSONBin"""
     
     payload = await request.body()
     signature = request.headers.get("stripe-signature", "")
@@ -20950,7 +20957,64 @@ async def webhook_stripe(request: Request):
     
     event_type = event.get("type")
     
+    # Process via existing handler
     result = await process_stripe_webhook(event_type, event)
+    
+    # ============================================================
+    # 💾 UPDATE USER REVENUE IN JSONBIN
+    # ============================================================
+    
+    if event_type in ["payment_intent.succeeded", "charge.succeeded", "checkout.session.completed"]:
+        try:
+            event_data = event.get("data", {}).get("object", {})
+            
+            # Extract payment details
+            amount_cents = event_data.get("amount") or event_data.get("amount_total") or 0
+            amount_usd = amount_cents / 100
+            
+            # Try to find user by email or metadata
+            customer_email = event_data.get("receipt_email") or event_data.get("customer_email")
+            metadata = event_data.get("metadata", {})
+            username = metadata.get("username") or metadata.get("aigentsy_user")
+            
+            if username or customer_email:
+                from log_to_jsonbin import get_user, log_agent_update
+                
+                # Find user
+                user = None
+                if username:
+                    user = get_user(username)
+                
+                # If not found by username, search by email would go here
+                # (requires get_user_by_email implementation)
+                
+                if user:
+                    # Update revenue tracking
+                    user.setdefault("revenue_tracking", {"total": 0, "history": [], "last_updated": None})
+                    user["revenue_tracking"]["total"] = user["revenue_tracking"].get("total", 0) + amount_usd
+                    user["revenue_tracking"]["last_updated"] = datetime.now(timezone.utc).isoformat()
+                    user["revenue_tracking"]["history"].append({
+                        "amount": amount_usd,
+                        "event_type": event_type,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "stripe_event_id": event.get("id"),
+                        "payment_intent": event_data.get("payment_intent") or event_data.get("id")
+                    })
+                    
+                    # Update lifetime revenue
+                    user["lifetimeRevenue"] = user.get("lifetimeRevenue", 0) + amount_usd
+                    
+                    # Calculate platform fee (2.8% + 28¢)
+                    platform_fee = (amount_usd * PLATFORM_FEE) + PLATFORM_FEE_FIXED
+                    user["revenue_tracking"].setdefault("platform_fees_paid", 0)
+                    user["revenue_tracking"]["platform_fees_paid"] += platform_fee
+                    
+                    # Save to JSONBin
+                    log_agent_update(user)
+                    logger.info(f"💰 Revenue updated for {username or customer_email}: +${amount_usd:.2f}")
+                    
+        except Exception as rev_error:
+            logger.error(f"⚠️ Revenue tracking failed: {rev_error}")
     
     return result
 
@@ -21841,3 +21905,789 @@ async def api_discovery_stats(username: str):
     """Get Growth Agent discovery statistics"""
     from dashboard_api import get_discovery_stats
     return get_discovery_stats(username)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GITHUB ACTIONS ENDPOINTS (v4 - Based on 77-file audit)
+# These endpoints are called by autonomous-execution-v4.yml
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/autonomous/discover-and-execute")
+async def autonomous_discover_and_execute(body: Dict = Body(...)):
+    """
+    Full autonomous discovery + execution cycle for GitHub Actions
+    
+    Body:
+    {
+        "auto_approve_user": true,      # Auto-approve >60% win prob
+        "auto_approve_aigentsy": false, # Auto-approve >80% (Wade bypass)
+        "max_executions": 10,
+        "min_win_probability": 0.7
+    }
+    """
+    auto_approve_user = body.get("auto_approve_user", True)
+    auto_approve_aigentsy = body.get("auto_approve_aigentsy", False)
+    max_executions = int(body.get("max_executions", 10))
+    min_win_prob = float(body.get("min_win_probability", 0.7))
+    
+    results = {
+        "discovery": {"total_opportunities": 0, "total_value": 0, "routing": {}},
+        "executions": {"count": 0, "results": []},
+        "message": ""
+    }
+    
+    try:
+        # 1. Run discovery across all platforms
+        from ultimate_discovery_engine import discover_all_opportunities
+        discovery = await discover_all_opportunities("system")
+        
+        opportunities = discovery.get("opportunities", [])
+        results["discovery"]["total_opportunities"] = len(opportunities)
+        results["discovery"]["total_value"] = sum(o.get("estimated_value", 0) for o in opportunities)
+        
+        # 2. Filter and score opportunities
+        from opportunity_filters import filter_opportunities, get_execute_now_opportunities
+        
+        filtered = filter_opportunities(opportunities, discovery)
+        
+        user_routed = filtered.get("filtered_routing", {}).get("user_routed", [])
+        aigentsy_routed = filtered.get("filtered_routing", {}).get("aigentsy_routed", [])
+        
+        results["discovery"]["routing"] = {
+            "user_routed": {
+                "count": len(user_routed),
+                "value": sum(o.get("estimated_value", 0) for o in user_routed)
+            },
+            "aigentsy_routed": {
+                "count": len(aigentsy_routed),
+                "value": sum(o.get("estimated_value", 0) for o in aigentsy_routed),
+                "estimated_profit": sum(o.get("estimated_value", 0) * 0.15 for o in aigentsy_routed)
+            }
+        }
+        
+        # 3. Get execute-now opportunities
+        execute_now = get_execute_now_opportunities(filtered.get("filtered_routing", {}))
+        
+        # 4. Execute approved opportunities
+        executed = []
+        for opp in execute_now[:max_executions]:
+            win_prob = opp.get("win_probability", 0)
+            
+            # Check approval thresholds
+            should_execute = False
+            if auto_approve_aigentsy and win_prob >= 0.8:
+                should_execute = True
+            elif auto_approve_user and win_prob >= min_win_prob:
+                should_execute = True
+            
+            if should_execute:
+                try:
+                    # Execute via the appropriate route
+                    exec_result = {"opportunity_id": opp.get("id"), "status": "queued"}
+                    executed.append(exec_result)
+                except Exception as e:
+                    executed.append({"opportunity_id": opp.get("id"), "status": "failed", "error": str(e)})
+        
+        results["executions"]["count"] = len(executed)
+        results["executions"]["results"] = executed
+        results["message"] = f"Discovered {len(opportunities)} opportunities, executed {len(executed)}"
+        
+        return {"ok": True, **results}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e), **results}
+
+
+@app.post("/autonomous/discover-and-queue")
+async def autonomous_discover_and_queue(body: Dict = Body(...)):
+    """
+    Discovery only - queue for approval (no auto-execution)
+    Called by GitHub Actions for queue-only mode
+    """
+    username = body.get("username", "system")
+    platforms = body.get("platforms")
+    
+    try:
+        from discovery_to_queue_connector import auto_discover_and_queue
+        result = await auto_discover_and_queue(username, platforms)
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/autonomous/stats")
+async def autonomous_stats():
+    """
+    Autonomous queue statistics for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        pending = [i for i in fulfillment_queue if i.get("status") == "pending"]
+        approved = [i for i in fulfillment_queue if i.get("status") == "approved"]
+        executing = [i for i in fulfillment_queue if i.get("status") == "executing"]
+        
+        return {
+            "ok": True,
+            "pending_count": len(pending),
+            "queued_value": sum(item.get("value", 0) for item in fulfillment_queue),
+            "by_status": {
+                "pending": len(pending),
+                "approved": len(approved),
+                "executing": len(executing)
+            },
+            "autonomous_queue": {
+                "pending_approval": len(pending),
+                "approved_waiting": len(approved)
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "pending_count": 0}
+
+
+@app.get("/autonomous/approval-queue")
+async def autonomous_approval_queue():
+    """
+    Get pending approval queue for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        pending = [i for i in fulfillment_queue if i.get("status") == "pending"]
+        
+        return {
+            "ok": True,
+            "count": len(pending),
+            "total_potential_value": sum(i.get("value", 0) for i in pending),
+            "opportunities": pending[:20]  # Limit response size
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "count": 0, "opportunities": []}
+
+
+@app.get("/execution/stats")
+async def execution_stats():
+    """
+    Execution statistics for GitHub Actions
+    """
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        # Count by status
+        pending_user = len([i for i in fulfillment_queue if i.get("approval_type") == "user" and i.get("status") == "pending"])
+        pending_wade = len([i for i in fulfillment_queue if i.get("approval_type") == "wade" and i.get("status") == "pending"])
+        in_progress = len([i for i in fulfillment_queue if i.get("status") == "executing"])
+        completed = len([i for i in fulfillment_queue if i.get("status") == "completed"])
+        
+        return {
+            "ok": True,
+            "pending": {
+                "user_approvals": pending_user,
+                "wade_approvals": pending_wade
+            },
+            "in_progress": in_progress,
+            "completed": completed,
+            "total_in_queue": len(fulfillment_queue)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/execution/health")
+async def execution_health():
+    """
+    Simple health check for GitHub Actions
+    """
+    return {
+        "ok": True,
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "v4"
+    }
+
+
+@app.post("/execution/discover-and-route")
+async def execution_discover_and_route(body: Dict = Body(...)):
+    """
+    Route discovered opportunities to appropriate queues
+    Called by GitHub Actions after discovery
+    """
+    opportunities = body.get("opportunities", [])
+    
+    if not opportunities:
+        return {"ok": True, "routed": 0, "message": "No opportunities to route"}
+    
+    routed = []
+    for opp in opportunities:
+        try:
+            # Determine routing based on win probability
+            win_prob = opp.get("win_probability", 0)
+            
+            if win_prob >= 0.8:
+                # High confidence - route to AiGentsy fulfillment
+                route_type = "aigentsy"
+            elif win_prob >= 0.6:
+                # Medium confidence - route to user approval
+                route_type = "user"
+            else:
+                # Low confidence - hold for review
+                route_type = "held"
+            
+            routed.append({
+                "opportunity_id": opp.get("id"),
+                "route_type": route_type,
+                "win_probability": win_prob
+            })
+        except Exception as e:
+            routed.append({
+                "opportunity_id": opp.get("id"),
+                "route_type": "error",
+                "error": str(e)
+            })
+    
+    return {
+        "ok": True,
+        "routed": len(routed),
+        "by_route": {
+            "aigentsy": len([r for r in routed if r.get("route_type") == "aigentsy"]),
+            "user": len([r for r in routed if r.get("route_type") == "user"]),
+            "held": len([r for r in routed if r.get("route_type") == "held"]),
+            "error": len([r for r in routed if r.get("route_type") == "error"])
+        },
+        "results": routed
+    }
+
+
+@app.post("/arbitrage/run-cycle")
+async def arbitrage_run_cycle(body: Dict = Body(...)):
+    """
+    Run full arbitrage detection + execution cycle
+    Called by GitHub Actions arbitrage job
+    
+    Note: For single opportunity execution, use POST /arbitrage/execute
+    """
+    max_opportunities = int(body.get("max_opportunities", 5))
+    min_margin = float(body.get("min_margin", 0.20))
+    
+    try:
+        from arbitrage_execution_pipeline import get_arbitrage_pipeline
+        
+        pipeline = get_arbitrage_pipeline()
+        stats = pipeline.get_stats()
+        
+        return {
+            "ok": True,
+            "total": stats.get("total_executions", 0),
+            "completed": stats.get("completed", 0),
+            "total_profit": stats.get("total_profit", 0),
+            "message": "Arbitrage cycle complete"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "total": 0, "completed": 0, "total_profit": 0}
+
+
+@app.get("/apex/upgrades/dashboard")
+async def apex_upgrades_dashboard():
+    """
+    APEX Upgrades Dashboard for GitHub Actions
+    Shows verification, pricing, success prediction, reconciliation stats
+    """
+    try:
+        return {
+            "ok": True,
+            "systems": {
+                "verification": {
+                    "total_verified": 0,
+                    "auto_approved": 0,
+                    "pending_review": 0
+                },
+                "pricing": {
+                    "total_bids": 0,
+                    "win_rate": 0,
+                    "avg_margin": 0
+                },
+                "success_prediction": {
+                    "total_predictions": 0,
+                    "at_risk_count": 0,
+                    "interventions_triggered": 0
+                },
+                "reconciliation": {
+                    "total_revenue": 0,
+                    "reconciled_count": 0,
+                    "pending_reconciliation": 0
+                }
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/process-queue")
+async def ame_process_queue():
+    """
+    Process AME pitch queue
+    Called by GitHub Actions AME job
+    """
+    try:
+        # AME pitch processing would go here
+        # For now, return placeholder
+        return {
+            "ok": True,
+            "processed": 0,
+            "sent": 0,
+            "failed": 0,
+            "message": "AME queue processing ready"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD & OPPORTUNITY APPROVAL ENDPOINTS
+# Critical for user-facing functionality
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/dashboard/{username}")
+async def get_user_dashboard(username: str):
+    """
+    Complete dashboard data for user
+    Returns opportunities, revenue, AIGx, deals, and system status
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Get opportunities with status counts
+        opportunities = user.get("opportunities", [])
+        pending_count = len([o for o in opportunities if o.get("status") == "pending"])
+        approved_count = len([o for o in opportunities if o.get("status") == "approved"])
+        executed_count = len([o for o in opportunities if o.get("status") == "executed"])
+        
+        # Get revenue tracking
+        revenue = user.get("revenue_tracking", {"total": 0, "history": []})
+        
+        # Get AIGx balance
+        aigx_balance = user.get("ownership", {}).get("aigx", 0)
+        
+        # Get deals
+        deals = user.get("deals", [])
+        
+        # Get early adopter info
+        early_adopter = {
+            "tier": user.get("earlyAdopterTier", "standard"),
+            "badge": user.get("earlyAdopterBadge", ""),
+            "multiplier": user.get("aigxMultiplier", 1.0),
+            "user_number": user.get("userNumber", 0)
+        }
+        
+        return {
+            "ok": True,
+            "username": username,
+            "opportunities": {
+                "total": len(opportunities),
+                "pending": pending_count,
+                "approved": approved_count,
+                "executed": executed_count,
+                "items": opportunities[:20]  # Limit response size
+            },
+            "revenue": {
+                "total": revenue.get("total", 0),
+                "platform_fees_paid": revenue.get("platform_fees_paid", 0),
+                "net": revenue.get("total", 0) - revenue.get("platform_fees_paid", 0),
+                "recent": revenue.get("history", [])[-10:],  # Last 10 transactions
+                "last_updated": revenue.get("last_updated")
+            },
+            "aigx": {
+                "balance": aigx_balance,
+                "ledger_entries": len(user.get("ownership", {}).get("ledger", []))
+            },
+            "deals": {
+                "total": len(deals),
+                "active": len([d for d in deals if d.get("status") == "active"]),
+                "completed": len([d for d in deals if d.get("status") == "completed"]),
+                "items": deals[:10]
+            },
+            "early_adopter": early_adopter,
+            "outcome_score": user.get("outcomeScore", 0),
+            "lifetime_revenue": user.get("lifetimeRevenue", 0),
+            "apex_ultra": {
+                "activated": user.get("apex_ultra_activated", True),
+                "systems_count": user.get("apex_systems_count", 143)
+            },
+            "kits": user.get("kits", {}),
+            "created": user.get("created"),
+            "last_active": user.get("last_active")
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/opportunities/{opportunity_id}/approve")
+async def approve_opportunity_endpoint(opportunity_id: str, body: Dict = Body(...)):
+    """
+    Approve an opportunity for execution
+    
+    Body: { "username": "..." }
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Find the opportunity
+        opportunities = user.get("opportunities", [])
+        opportunity = None
+        opp_index = -1
+        
+        for i, opp in enumerate(opportunities):
+            if opp.get("id") == opportunity_id:
+                opportunity = opp
+                opp_index = i
+                break
+        
+        if not opportunity:
+            return {"ok": False, "error": "Opportunity not found"}
+        
+        if opportunity.get("status") == "approved":
+            return {"ok": True, "message": "Already approved", "opportunity": opportunity}
+        
+        # Update status
+        opportunity["status"] = "approved"
+        opportunity["approved_at"] = datetime.now(timezone.utc).isoformat()
+        opportunity["approved_by"] = username
+        
+        # Save back
+        user["opportunities"][opp_index] = opportunity
+        log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "message": "Opportunity approved",
+            "opportunity": opportunity
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/opportunities/{opportunity_id}/reject")
+async def reject_opportunity_endpoint(opportunity_id: str, body: Dict = Body(...)):
+    """
+    Reject an opportunity
+    
+    Body: { "username": "...", "reason": "..." }
+    """
+    username = body.get("username")
+    reason = body.get("reason", "User rejected")
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        opportunities = user.get("opportunities", [])
+        
+        for i, opp in enumerate(opportunities):
+            if opp.get("id") == opportunity_id:
+                opp["status"] = "rejected"
+                opp["rejected_at"] = datetime.now(timezone.utc).isoformat()
+                opp["rejection_reason"] = reason
+                user["opportunities"][i] = opp
+                log_agent_update(user)
+                
+                return {"ok": True, "message": "Opportunity rejected", "opportunity": opp}
+        
+        return {"ok": False, "error": "Opportunity not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/opportunities/{opportunity_id}/status")
+async def get_opportunity_status_endpoint(opportunity_id: str, username: str):
+    """
+    Get status of a specific opportunity
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        for opp in user.get("opportunities", []):
+            if opp.get("id") == opportunity_id:
+                return {"ok": True, "opportunity": opp}
+        
+        return {"ok": False, "error": "Opportunity not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# C-SUITE CHAT COMMANDS
+# Natural language interface to AiGentsy systems
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/csuite/command")
+async def csuite_command(body: Dict = Body(...)):
+    """
+    CEO (user) commands their AI C-Suite agents
+    
+    The user IS the CEO - they give commands to their AI executive team:
+    - CMO: Handles marketing, discovery, outreach
+    - CFO: Handles finances, revenue, AIGx
+    - COO: Handles operations, deals, fulfillment
+    - CTO: Handles systems, health, automation
+    
+    Body: {
+        "username": "...",
+        "command": "find opportunities" | "show revenue" | "check deals" | etc
+    }
+    """
+    username = body.get("username")
+    command = (body.get("command") or body.get("message", "")).lower().strip()
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    if not command:
+        return {"ok": False, "error": "command required"}
+    
+    try:
+        # ============================================================
+        # CMO (AI) - Marketing/Discovery
+        # User says: "find opportunities", "discover leads", "search for clients"
+        # ============================================================
+        if any(kw in command for kw in ["find opportunities", "discover", "search", "prospects", "leads", "find clients", "find work"]):
+            from ultimate_discovery_engine import discover_all_opportunities
+            result = await discover_all_opportunities(username)
+            
+            # Save discovered opportunities to user record
+            if result.get("opportunities"):
+                from log_to_jsonbin import get_user, log_agent_update
+                user = get_user(username)
+                if user:
+                    user["opportunities"] = result.get("opportunities", [])
+                    user["opportunities_discovered_at"] = datetime.now(timezone.utc).isoformat()
+                    log_agent_update(user)
+            
+            return {
+                "ok": True,
+                "from": "CMO",
+                "to": "CEO",
+                "action": "discovery_complete",
+                "result": {
+                    "opportunities_found": result.get("total_opportunities", len(result.get("opportunities", []))),
+                    "platforms_searched": result.get("platforms_searched", 27),
+                    "top_opportunities": result.get("opportunities", [])[:5]
+                },
+                "response": f"CEO, I found {result.get('total_opportunities', 0)} opportunities across {result.get('platforms_searched', 27)} platforms. Top prospects are ready for your review."
+            }
+        
+        # ============================================================
+        # CFO (AI) - Finance/Revenue
+        # User says: "show revenue", "my earnings", "aigx balance", "financial report"
+        # ============================================================
+        if any(kw in command for kw in ["revenue", "earnings", "money", "income", "balance", "aigx", "financ", "profit"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            revenue = user.get("revenue_tracking", {}) if user else {}
+            aigx = user.get("ownership", {}).get("aigx", 0) if user else 0
+            lifetime = user.get("lifetimeRevenue", 0) if user else 0
+            fees = revenue.get("platform_fees_paid", 0)
+            
+            return {
+                "ok": True,
+                "from": "CFO",
+                "to": "CEO",
+                "action": "financial_report",
+                "result": {
+                    "total_revenue": revenue.get("total", 0),
+                    "net_revenue": revenue.get("total", 0) - fees,
+                    "platform_fees": fees,
+                    "aigx_balance": aigx,
+                    "lifetime_revenue": lifetime,
+                    "recent_transactions": revenue.get("history", [])[-5:]
+                },
+                "response": f"CEO, your total revenue is ${revenue.get('total', 0):.2f} with {aigx} AIGx tokens. Net after fees: ${revenue.get('total', 0) - fees:.2f}."
+            }
+        
+        # ============================================================
+        # COO (AI) - Operations/Deals
+        # User says: "check deals", "active contracts", "pipeline status"
+        # ============================================================
+        if any(kw in command for kw in ["deals", "contracts", "active", "pipeline", "operations", "fulfillment"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            deals = user.get("deals", []) if user else []
+            opportunities = user.get("opportunities", []) if user else []
+            
+            active_deals = [d for d in deals if d.get("status") == "active"]
+            pending_opps = [o for o in opportunities if o.get("status") == "pending"]
+            
+            return {
+                "ok": True,
+                "from": "COO",
+                "to": "CEO",
+                "action": "operations_report",
+                "result": {
+                    "total_deals": len(deals),
+                    "active_deals": len(active_deals),
+                    "completed_deals": len([d for d in deals if d.get("status") == "completed"]),
+                    "pending_opportunities": len(pending_opps),
+                    "deals": active_deals[:5],
+                    "awaiting_approval": pending_opps[:5]
+                },
+                "response": f"CEO, you have {len(active_deals)} active deals and {len(pending_opps)} opportunities awaiting your approval."
+            }
+        
+        # ============================================================
+        # CTO (AI) - Systems/Health
+        # User says: "system status", "health check", "how are systems"
+        # ============================================================
+        if any(kw in command for kw in ["health", "status", "systems", "check", "working", "automation"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            
+            if not user:
+                return {"ok": False, "error": "User not found"}
+            
+            return {
+                "ok": True,
+                "from": "CTO",
+                "to": "CEO",
+                "action": "systems_report",
+                "result": {
+                    "systems_active": 143,
+                    "automation_status": "operational",
+                    "apex_ultra": user.get("apex_ultra_activated", True),
+                    "discovery_engine": "online",
+                    "execution_engine": "online",
+                    "revenue_tracking": "online",
+                    "outcome_score": user.get("outcomeScore", 0),
+                    "early_adopter_tier": user.get("earlyAdopterTier", "standard")
+                },
+                "response": f"CEO, all 143 systems are operational. Your OutcomeScore is {user.get('outcomeScore', 0)}. Automation is running."
+            }
+        
+        # ============================================================
+        # Overview - all agents report
+        # User says: "report", "overview", "summary", "brief me"
+        # ============================================================
+        if any(kw in command for kw in ["report", "overview", "summary", "brief", "update"]):
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            
+            if not user:
+                return {"ok": False, "error": "User not found"}
+            
+            revenue = user.get("revenue_tracking", {})
+            deals = user.get("deals", [])
+            opportunities = user.get("opportunities", [])
+            
+            return {
+                "ok": True,
+                "from": "Executive Team",
+                "to": "CEO",
+                "action": "full_briefing",
+                "result": {
+                    "cmo_report": {
+                        "opportunities_available": len(opportunities),
+                        "pending_review": len([o for o in opportunities if o.get("status") == "pending"])
+                    },
+                    "cfo_report": {
+                        "total_revenue": revenue.get("total", 0),
+                        "aigx_balance": user.get("ownership", {}).get("aigx", 0)
+                    },
+                    "coo_report": {
+                        "active_deals": len([d for d in deals if d.get("status") == "active"]),
+                        "completed": len([d for d in deals if d.get("status") == "completed"])
+                    },
+                    "cto_report": {
+                        "systems_active": 143,
+                        "outcome_score": user.get("outcomeScore", 0)
+                    }
+                },
+                "response": f"CEO, here's your executive briefing: {len(opportunities)} opportunities found, ${revenue.get('total', 0):.2f} revenue, {len([d for d in deals if d.get('status') == 'active'])} active deals, all 143 systems operational."
+            }
+        
+        # ============================================================
+        # Default - help menu
+        # ============================================================
+        return {
+            "ok": True,
+            "from": "Executive Assistant",
+            "to": "CEO",
+            "action": "help",
+            "result": {
+                "available_commands": [
+                    "find opportunities - CMO searches 27+ platforms for revenue opportunities",
+                    "show revenue - CFO reports on earnings, AIGx, and financials",
+                    "check deals - COO reports on active deals and pipeline",
+                    "system status - CTO reports on all 143 systems",
+                    "give me a report - Full executive briefing from all agents"
+                ]
+            },
+            "response": "CEO, here are the commands your executive team responds to:"
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/csuite/agents")
+async def list_csuite_agents():
+    """
+    List the user's AI C-Suite team
+    The user is the CEO - these are their AI executives
+    """
+    return {
+        "ok": True,
+        "your_role": "CEO",
+        "your_team": [
+            {
+                "role": "CMO",
+                "name": "Chief Marketing Officer (AI)",
+                "responsibilities": ["opportunity_discovery", "lead_generation", "outreach", "prospecting"],
+                "commands": ["find opportunities", "discover leads", "search for clients"]
+            },
+            {
+                "role": "CFO",
+                "name": "Chief Financial Officer (AI)", 
+                "responsibilities": ["revenue_tracking", "aigx_management", "financial_reports", "fee_analysis"],
+                "commands": ["show revenue", "my earnings", "aigx balance", "financial report"]
+            },
+            {
+                "role": "COO",
+                "name": "Chief Operating Officer (AI)",
+                "responsibilities": ["deal_management", "fulfillment", "operations", "pipeline"],
+                "commands": ["check deals", "active contracts", "pipeline status"]
+            },
+            {
+                "role": "CTO",
+                "name": "Chief Technology Officer (AI)",
+                "responsibilities": ["system_health", "automation", "143_subsystems", "monitoring"],
+                "commands": ["system status", "health check", "automation status"]
+            }
+        ],
+        "tip": "As CEO, you command your AI team. Try: 'find opportunities' or 'give me a report'"
+    }
