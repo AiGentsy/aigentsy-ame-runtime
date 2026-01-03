@@ -4370,6 +4370,306 @@ async def get_kit_summary(kit_type: str):
         "ok": True,
         **summary
     }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# KIT DOCUMENTS API (Called by aigent0.html dashboard)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Kit document definitions by business type
+KIT_DOCUMENTS = {
+    "social": {
+        "kit_name": "Social Media Creator Kit",
+        "kit_value": 1900,
+        "documents": [
+            {"id": "social-complete", "name": "Social Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "119 KB", "retail_value": 1900, "icon": "📦", "download_url": "/kit/download/social-complete-pack.docx"},
+            {"id": "social-quickref", "name": "Social Kit - Quick Reference", "type": "download", "file_type": "docx", "file_size": "17 KB", "retail_value": 0, "icon": "📋", "download_url": "/kit/download/social-quick-reference.docx"},
+            {"id": "social-docs", "name": "Social Kit - Documentation", "type": "download", "file_type": "md", "file_size": "8 KB", "retail_value": 0, "icon": "📄", "download_url": "/kit/download/social-documentation.md"},
+            {"id": "content-calendar", "name": "Social Media Content Calendar", "type": "editable", "estimated_time": "10 minutes", "retail_value": 300, "icon": "📅"},
+            {"id": "influencer-brief", "name": "Influencer Campaign Brief", "type": "editable", "estimated_time": "12 minutes", "retail_value": 600, "icon": "📢"},
+            {"id": "creator-rate-card", "name": "Creator Rate Card", "type": "editable", "estimated_time": "5 minutes", "retail_value": 200, "icon": "💰"},
+            {"id": "brand-guidelines", "name": "Social Media Brand Guidelines", "type": "editable", "estimated_time": "15 minutes", "retail_value": 400, "icon": "🎨"}
+        ]
+    },
+    "saas": {
+        "kit_name": "SaaS Builder Kit",
+        "kit_value": 2500,
+        "documents": [
+            {"id": "saas-complete", "name": "SaaS Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "145 KB", "retail_value": 2500, "icon": "📦", "download_url": "/kit/download/saas-complete-pack.docx"},
+            {"id": "saas-quickref", "name": "SaaS Kit - Quick Reference", "type": "download", "file_type": "docx", "file_size": "12 KB", "retail_value": 0, "icon": "📋", "download_url": "/kit/download/saas-quick-reference.docx"},
+            {"id": "pricing-model", "name": "SaaS Pricing Model Calculator", "type": "editable", "estimated_time": "8 minutes", "retail_value": 500, "icon": "💵"},
+            {"id": "onboarding-flow", "name": "User Onboarding Flow", "type": "editable", "estimated_time": "15 minutes", "retail_value": 400, "icon": "🚀"},
+            {"id": "feature-roadmap", "name": "Feature Roadmap Template", "type": "editable", "estimated_time": "10 minutes", "retail_value": 300, "icon": "🗺️"},
+            {"id": "api-docs", "name": "API Documentation Template", "type": "editable", "estimated_time": "20 minutes", "retail_value": 600, "icon": "📡"}
+        ]
+    },
+    "agency": {
+        "kit_name": "Agency Starter Kit",
+        "kit_value": 2200,
+        "documents": [
+            {"id": "agency-complete", "name": "Agency Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "132 KB", "retail_value": 2200, "icon": "📦", "download_url": "/kit/download/agency-complete-pack.docx"},
+            {"id": "client-proposal", "name": "Client Proposal Template", "type": "editable", "estimated_time": "15 minutes", "retail_value": 500, "icon": "📝"},
+            {"id": "sow-template", "name": "Statement of Work Template", "type": "editable", "estimated_time": "12 minutes", "retail_value": 400, "icon": "📋"},
+            {"id": "retainer-agreement", "name": "Retainer Agreement", "type": "editable", "estimated_time": "10 minutes", "retail_value": 350, "icon": "🤝"},
+            {"id": "client-intake", "name": "Client Intake Form", "type": "editable", "estimated_time": "8 minutes", "retail_value": 200, "icon": "📥"},
+            {"id": "case-study", "name": "Case Study Template", "type": "editable", "estimated_time": "20 minutes", "retail_value": 300, "icon": "📊"}
+        ]
+    },
+    "ecommerce": {
+        "kit_name": "E-Commerce Seller Kit",
+        "kit_value": 1800,
+        "documents": [
+            {"id": "ecom-complete", "name": "E-Commerce Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "98 KB", "retail_value": 1800, "icon": "📦", "download_url": "/kit/download/ecommerce-complete-pack.docx"},
+            {"id": "product-listing", "name": "Product Listing Optimizer", "type": "editable", "estimated_time": "10 minutes", "retail_value": 300, "icon": "🏷️"},
+            {"id": "inventory-tracker", "name": "Inventory Tracker", "type": "editable", "estimated_time": "8 minutes", "retail_value": 250, "icon": "📦"},
+            {"id": "supplier-outreach", "name": "Supplier Outreach Template", "type": "editable", "estimated_time": "5 minutes", "retail_value": 200, "icon": "🏭"},
+            {"id": "shipping-calculator", "name": "Shipping Cost Calculator", "type": "editable", "estimated_time": "5 minutes", "retail_value": 150, "icon": "🚚"}
+        ]
+    },
+    "consulting": {
+        "kit_name": "Consulting Practice Kit",
+        "kit_value": 2800,
+        "documents": [
+            {"id": "consult-complete", "name": "Consulting Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "156 KB", "retail_value": 2800, "icon": "📦", "download_url": "/kit/download/consulting-complete-pack.docx"},
+            {"id": "discovery-call", "name": "Discovery Call Script", "type": "editable", "estimated_time": "10 minutes", "retail_value": 400, "icon": "📞"},
+            {"id": "engagement-letter", "name": "Engagement Letter", "type": "editable", "estimated_time": "12 minutes", "retail_value": 500, "icon": "✉️"},
+            {"id": "diagnostic-framework", "name": "Client Diagnostic Framework", "type": "editable", "estimated_time": "15 minutes", "retail_value": 600, "icon": "🔍"},
+            {"id": "deliverable-template", "name": "Deliverable Template", "type": "editable", "estimated_time": "20 minutes", "retail_value": 450, "icon": "📄"}
+        ]
+    },
+    "general": {
+        "kit_name": "Business Starter Kit",
+        "kit_value": 1500,
+        "documents": [
+            {"id": "general-complete", "name": "Business Kit - Complete Pack", "type": "download", "file_type": "docx", "file_size": "85 KB", "retail_value": 1500, "icon": "📦", "download_url": "/kit/download/business-complete-pack.docx"},
+            {"id": "business-plan", "name": "Business Plan Template", "type": "editable", "estimated_time": "20 minutes", "retail_value": 400, "icon": "📋"},
+            {"id": "invoice-template", "name": "Invoice Template", "type": "editable", "estimated_time": "5 minutes", "retail_value": 100, "icon": "💵"},
+            {"id": "contract-template", "name": "Service Contract", "type": "editable", "estimated_time": "10 minutes", "retail_value": 300, "icon": "📝"},
+            {"id": "pitch-deck", "name": "Pitch Deck Template", "type": "editable", "estimated_time": "15 minutes", "retail_value": 350, "icon": "📊"}
+        ]
+    }
+}
+
+@app.get("/kit/documents/{username}")
+async def get_kit_documents(username: str):
+    """
+    Get kit documents for user's dashboard
+    Called by aigent0.html renderDynamicKit()
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        kit_type = "general"
+        
+        if user:
+            kit_type = user.get("companyType") or user.get("kit_type") or "general"
+        
+        # Normalize kit type
+        kit_type = kit_type.lower().replace(" ", "_")
+        if kit_type not in KIT_DOCUMENTS:
+            kit_type = "general"
+        
+        kit_data = KIT_DOCUMENTS[kit_type]
+        
+        return {
+            "ok": True,
+            "kit_type": kit_type,
+            "kit_name": kit_data["kit_name"],
+            "kit_value": kit_data["kit_value"],
+            "template_count": len(kit_data["documents"]),
+            "documents": kit_data["documents"]
+        }
+        
+    except Exception as e:
+        # Return general kit on error
+        kit_data = KIT_DOCUMENTS["general"]
+        return {
+            "ok": True,
+            "kit_type": "general",
+            "kit_name": kit_data["kit_name"],
+            "kit_value": kit_data["kit_value"],
+            "template_count": len(kit_data["documents"]),
+            "documents": kit_data["documents"],
+            "warning": str(e)
+        }
+
+
+@app.get("/kit/document/{username}/{doc_id}")
+async def get_kit_document(username: str, doc_id: str):
+    """
+    Get a specific kit document for editing
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        kit_type = user.get("companyType", "general") if user else "general"
+        
+        if kit_type not in KIT_DOCUMENTS:
+            kit_type = "general"
+        
+        kit_data = KIT_DOCUMENTS[kit_type]
+        
+        # Find the document
+        for doc in kit_data["documents"]:
+            if doc["id"] == doc_id:
+                # Return document with editable content
+                return {
+                    "ok": True,
+                    "document": {
+                        **doc,
+                        "content": get_document_template_content(doc_id, kit_type),
+                        "editable": doc.get("type") == "editable"
+                    }
+                }
+        
+        return {"ok": False, "error": "Document not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/kit/save")
+async def save_kit_document(body: Dict = Body(...)):
+    """
+    Save user's edited kit document
+    """
+    username = body.get("username")
+    doc_id = body.get("doc_id")
+    content = body.get("content")
+    
+    if not all([username, doc_id, content]):
+        return {"ok": False, "error": "username, doc_id, and content required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Save to user's kit_documents
+        user.setdefault("kit_documents", {})
+        user["kit_documents"][doc_id] = {
+            "content": content,
+            "saved_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        log_agent_update(user)
+        
+        return {"ok": True, "message": "Document saved"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_document_template_content(doc_id: str, kit_type: str) -> str:
+    """Get default template content for a document"""
+    
+    templates = {
+        "business-plan": """# BUSINESS PLAN
+
+## 1. EXECUTIVE SUMMARY
+[Describe your business in 2-3 sentences]
+
+## 2. PROBLEM & SOLUTION
+**Problem:** [What problem are you solving?]
+**Solution:** [How does your business solve it?]
+
+## 3. TARGET MARKET
+[Who are your customers?]
+
+## 4. REVENUE MODEL
+[How will you make money?]
+
+## 5. MARKETING STRATEGY
+[How will you reach customers?]
+
+---
+*Customize this plan for your business*""",
+        
+        "content-calendar": """# SOCIAL MEDIA CONTENT CALENDAR
+
+## Week 1
+| Day | Platform | Content Type | Topic | Status |
+|-----|----------|--------------|-------|--------|
+| Mon | Instagram | Reel | [Topic] | Draft |
+| Tue | TikTok | Video | [Topic] | Draft |
+| Wed | Twitter | Thread | [Topic] | Draft |
+| Thu | LinkedIn | Post | [Topic] | Draft |
+| Fri | YouTube | Short | [Topic] | Draft |
+
+## Content Ideas
+- [ ] Behind the scenes
+- [ ] Tutorial/How-to
+- [ ] Customer testimonial
+- [ ] Industry news reaction
+- [ ] Q&A session""",
+
+        "creator-rate-card": """# CREATOR RATE CARD
+
+## [Your Name/Brand]
+
+### Sponsorship Rates
+
+| Content Type | Rate | Deliverables |
+|--------------|------|--------------|
+| Instagram Reel | $500-2,000 | 1 Reel + Story |
+| TikTok Video | $300-1,500 | 1 Video |
+| YouTube Integration | $1,000-5,000 | 60-90s segment |
+| Full YouTube Sponsor | $2,000-10,000 | Dedicated video |
+| Instagram Story | $200-500 | 3-5 slides |
+| Bundle Deal | Custom | Multi-platform |
+
+### Audience Demographics
+- **Total Reach:** [X followers]
+- **Engagement Rate:** [X%]
+- **Primary Age:** 18-34
+- **Top Locations:** US, UK, Canada
+
+### Contact
+📧 [email]
+📱 [social handle]""",
+
+        "client-proposal": """# CLIENT PROPOSAL
+
+**Prepared for:** [Client Name]
+**Prepared by:** [Your Name]
+**Date:** [Date]
+
+---
+
+## Project Overview
+[Brief description of what you'll deliver]
+
+## Scope of Work
+1. [Deliverable 1]
+2. [Deliverable 2]
+3. [Deliverable 3]
+
+## Timeline
+- **Start Date:** [Date]
+- **End Date:** [Date]
+- **Key Milestones:** [List]
+
+## Investment
+| Item | Price |
+|------|-------|
+| [Service 1] | $X,XXX |
+| [Service 2] | $X,XXX |
+| **Total** | **$X,XXX** |
+
+## Next Steps
+1. Sign this proposal
+2. 50% deposit to begin
+3. Kick-off call scheduled
+
+---
+*Valid for 14 days*"""
+    }
+    
+    return templates.get(doc_id, f"# {doc_id.replace('-', ' ').title()}\n\n[Your content here]")
+
 # ---------- 1) ORDER-TO-CASH ----------
 @app.post("/quote/create")
 async def quote_create(body: Dict = Body(...)):
@@ -23405,3 +23705,147 @@ async def dashboard_available_actions(username: str):
             }
         ]
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROPOSAL SYSTEM ENDPOINTS
+# Called by aigent0.html for deal proposals
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/propose_deal")
+async def propose_deal(body: Dict = Body(...)):
+    """
+    Create a deal proposal
+    Called by submitProposal() in aigent0.html
+    """
+    from_user = body.get("from")
+    to_user = body.get("to")
+    title = body.get("title")
+    details = body.get("body") or body.get("details")
+    link = body.get("link")
+    
+    if not all([from_user, to_user, title]):
+        return {"ok": False, "error": "from, to, and title required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        # Get recipient user
+        recipient = get_user(to_user)
+        if not recipient:
+            return {"ok": False, "error": "Recipient not found"}
+        
+        # Create proposal
+        proposal = {
+            "id": f"prop_{uuid4().hex[:8]}",
+            "sender": from_user,
+            "recipient": to_user,
+            "title": title,
+            "details": details,
+            "link": link,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Add to recipient's proposals
+        recipient.setdefault("proposals", [])
+        recipient["proposals"].append(proposal)
+        log_agent_update(recipient)
+        
+        return {"ok": True, "proposal_id": proposal["id"], "message": "Proposal sent"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/get_proposals")
+async def get_proposals(body: Dict = Body(...)):
+    """
+    Get proposals for a user
+    Called by openProposalInboxModal() in aigent0.html
+    """
+    username = body.get("username")
+    
+    if not username:
+        return {"ok": False, "error": "username required"}
+    
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found", "proposals": []}
+        
+        proposals = user.get("proposals", [])
+        
+        # Also include opportunities that need approval (surfaced as proposals)
+        opportunities = user.get("opportunities", [])
+        pending_opps = [o for o in opportunities if o.get("status") == "pending"]
+        
+        # Convert opportunities to proposal format
+        for opp in pending_opps[:10]:
+            proposals.append({
+                "id": opp.get("id"),
+                "sender": "AiGentsy",
+                "title": f"🎯 Opportunity: {opp.get('title', 'New Opportunity')}",
+                "details": f"{opp.get('description', '')}\n\nEstimated value: ${opp.get('estimated_value', 0)}\nWin probability: {opp.get('win_probability', 0.5)*100:.0f}%",
+                "link": opp.get("url"),
+                "status": "pending",
+                "type": "opportunity",
+                "opportunity_id": opp.get("id"),
+                "created_at": opp.get("discovered_at")
+            })
+        
+        return {
+            "ok": True,
+            "proposals": proposals,
+            "total": len(proposals),
+            "pending_opportunities": len(pending_opps)
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e), "proposals": []}
+
+
+@app.post("/respond_proposal")
+async def respond_to_proposal(body: Dict = Body(...)):
+    """
+    Accept or decline a proposal
+    """
+    username = body.get("username")
+    proposal_id = body.get("proposal_id")
+    action = body.get("action")  # "accept" or "decline"
+    
+    if not all([username, proposal_id, action]):
+        return {"ok": False, "error": "username, proposal_id, and action required"}
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        proposals = user.get("proposals", [])
+        
+        for prop in proposals:
+            if prop.get("id") == proposal_id:
+                prop["status"] = "accepted" if action == "accept" else "declined"
+                prop["responded_at"] = datetime.now(timezone.utc).isoformat()
+                
+                # If this was an opportunity, update its status too
+                if prop.get("type") == "opportunity":
+                    opp_id = prop.get("opportunity_id")
+                    for opp in user.get("opportunities", []):
+                        if opp.get("id") == opp_id:
+                            opp["status"] = "approved" if action == "accept" else "rejected"
+                            opp["approved_at"] = datetime.now(timezone.utc).isoformat()
+                            break
+                
+                log_agent_update(user)
+                return {"ok": True, "message": f"Proposal {action}ed"}
+        
+        return {"ok": False, "error": "Proposal not found"}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
