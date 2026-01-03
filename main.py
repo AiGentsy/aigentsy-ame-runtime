@@ -26131,3 +26131,262 @@ async def intelligence_collect():
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V89 - ALL APIS NOW WIRED
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 11: ELEVENLABS AUDIO GENERATION
+# Uses: ELEVENLABS_API_KEY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+
+@app.post("/audio/generate")
+async def audio_generate(body: Dict = Body(...)):
+    """Generate audio/voice using ElevenLabs"""
+    if not ELEVENLABS_API_KEY:
+        return {"ok": False, "error": "ELEVENLABS_API_KEY not configured"}
+    
+    text = body.get("text")
+    if not text:
+        return {"ok": False, "error": "text required"}
+    
+    voice_id = body.get("voice_id", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice default
+    
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": ELEVENLABS_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg"
+                },
+                json={
+                    "text": text,
+                    "model_id": body.get("model_id", "eleven_monolingual_v1"),
+                    "voice_settings": {
+                        "stability": body.get("stability", 0.5),
+                        "similarity_boost": body.get("similarity_boost", 0.75)
+                    }
+                }
+            )
+            
+            if response.status_code == 200:
+                # Return base64 encoded audio
+                import base64
+                audio_base64 = base64.b64encode(response.content).decode('utf-8')
+                return {
+                    "ok": True,
+                    "audio_base64": audio_base64,
+                    "content_type": "audio/mpeg",
+                    "api_used": "ELEVENLABS_API_KEY"
+                }
+            else:
+                return {"ok": False, "error": f"ElevenLabs error: {response.status_code}", "details": response.text}
+                
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/audio/batch-generate")
+async def audio_batch_generate():
+    """Generate all pending audio requests using ElevenLabs"""
+    if not ELEVENLABS_API_KEY:
+        return {"ok": False, "error": "ELEVENLABS_API_KEY not configured"}
+    
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            users = await _load_users(client)
+            
+            generated = 0
+            failed = 0
+            
+            for user in users:
+                audio_queue = user.get("audio_queue", [])
+                
+                for req in audio_queue:
+                    if req.get("status") == "pending":
+                        try:
+                            voice_id = req.get("voice_id", "21m00Tcm4TlvDq8ikWAM")
+                            
+                            response = await client.post(
+                                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                                headers={
+                                    "xi-api-key": ELEVENLABS_API_KEY,
+                                    "Content-Type": "application/json",
+                                    "Accept": "audio/mpeg"
+                                },
+                                json={
+                                    "text": req.get("text", ""),
+                                    "model_id": "eleven_monolingual_v1",
+                                    "voice_settings": {
+                                        "stability": 0.5,
+                                        "similarity_boost": 0.75
+                                    }
+                                }
+                            )
+                            
+                            if response.status_code == 200:
+                                import base64
+                                req["status"] = "generated"
+                                req["audio_base64"] = base64.b64encode(response.content).decode('utf-8')
+                                req["generated_at"] = _now()
+                                generated += 1
+                            else:
+                                req["status"] = "failed"
+                                req["error"] = f"HTTP {response.status_code}"
+                                failed += 1
+                                
+                        except Exception as e:
+                            req["status"] = "failed"
+                            req["error"] = str(e)
+                            failed += 1
+            
+            if generated > 0 or failed > 0:
+                await _save_users(client, users)
+            
+            return {
+                "ok": True,
+                "audio_generated": generated,
+                "audio_failed": failed,
+                "api_used": "ELEVENLABS_API_KEY"
+            }
+            
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/audio/voices")
+async def audio_get_voices():
+    """Get available ElevenLabs voices"""
+    if not ELEVENLABS_API_KEY:
+        return {"ok": False, "error": "ELEVENLABS_API_KEY not configured"}
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                "https://api.elevenlabs.io/v1/voices",
+                headers={"xi-api-key": ELEVENLABS_API_KEY}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                voices = [{"voice_id": v.get("voice_id"), "name": v.get("name")} for v in data.get("voices", [])]
+                return {
+                    "ok": True,
+                    "voices": voices,
+                    "count": len(voices),
+                    "api_used": "ELEVENLABS_API_KEY"
+                }
+            else:
+                return {"ok": False, "error": f"ElevenLabs error: {response.status_code}"}
+                
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 12: VIDEO BATCH GENERATION
+# Uses: RUNWAY_API_KEY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/video/batch-generate")
+async def video_batch_generate():
+    """Generate all pending video requests using Runway"""
+    if not RUNWAY_API_KEY:
+        return {"ok": False, "error": "RUNWAY_API_KEY not configured"}
+    
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            users = await _load_users(client)
+            
+            generated = 0
+            failed = 0
+            
+            for user in users:
+                video_queue = user.get("video_queue", [])
+                
+                for req in video_queue:
+                    if req.get("status") == "pending":
+                        try:
+                            response = await client.post(
+                                "https://api.runwayml.com/v1/generations",
+                                headers={
+                                    "Authorization": f"Bearer {RUNWAY_API_KEY}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "prompt": req.get("prompt"),
+                                    "model": "gen3a_turbo",
+                                    "duration": req.get("duration", 5),
+                                    "ratio": req.get("ratio", "16:9")
+                                }
+                            )
+                            
+                            if response.status_code in [200, 201, 202]:
+                                data = response.json()
+                                req["status"] = "processing"
+                                req["generation_id"] = data.get("id")
+                                req["started_at"] = _now()
+                                generated += 1
+                            else:
+                                req["status"] = "failed"
+                                req["error"] = f"HTTP {response.status_code}"
+                                failed += 1
+                                
+                        except Exception as e:
+                            req["status"] = "failed"
+                            req["error"] = str(e)
+                            failed += 1
+            
+            if generated > 0 or failed > 0:
+                await _save_users(client, users)
+            
+            return {
+                "ok": True,
+                "videos_generated": generated,
+                "videos_failed": failed,
+                "api_used": "RUNWAY_API_KEY"
+            }
+            
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UPDATE API HEALTH TO INCLUDE ALL 10 APIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/health/v2")
+async def api_health_v2():
+    """Check health of ALL 10 configured APIs"""
+    
+    apis = {
+        "RESEND_API_KEY": bool(RESEND_API_KEY),
+        "STABILITY_API_KEY": bool(STABILITY_API_KEY),
+        "OPENROUTER_API_KEY": bool(OPENROUTER_API_KEY),
+        "PERPLEXITY_API_KEY": bool(PERPLEXITY_API_KEY),
+        "GEMINI_API_KEY": bool(GEMINI_API_KEY),
+        "RUNWAY_API_KEY": bool(RUNWAY_API_KEY),
+        "ELEVENLABS_API_KEY": bool(ELEVENLABS_API_KEY),
+        "GITHUB_TOKEN": bool(GITHUB_TOKEN),
+        "SHOPIFY_ADMIN_TOKEN": bool(SHOPIFY_ADMIN_TOKEN),
+        "JSONBIN_URL": bool(os.getenv("JSONBIN_URL")),
+    }
+    
+    configured = sum(1 for v in apis.values() if v)
+    total = len(apis)
+    
+    return {
+        "ok": True,
+        "apis_configured": configured,
+        "apis_total": total,
+        "health_pct": round(configured / total * 100, 1),
+        "apis": apis,
+        "version": "v89"
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END V89 AUDIO/VIDEO ADDITIONS
+# ═══════════════════════════════════════════════════════════════════════════════
