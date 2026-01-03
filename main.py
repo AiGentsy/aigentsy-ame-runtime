@@ -30351,7 +30351,7 @@ async def test_everything():
     
     # Arbitrage stats
     try:
-        arb = await arbitrage_stats()
+        arb = await get_arbitrage_stats()
         add_result("9_endpoints", "/arbitrage/stats", arb.get("ok", False), "Direct call")
     except Exception as e:
         add_result("9_endpoints", "/arbitrage/stats", False, str(e)[:40])
