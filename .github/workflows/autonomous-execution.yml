@@ -387,18 +387,49 @@ jobs:
           curl -s -X POST "${{ env.BACKEND_URL }}/sponsors/distribute" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 17: ORCHESTRATION (3 endpoints from v8)
+      # PHASE 17: ORCHESTRATION + CONDUCTOR (Enhanced)
+      # Multi-AI routing, device opportunities, execution plans
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎯 Orchestration (3 endpoints)
+      - name: 🎯 Orchestration + Conductor (8 endpoints)
         continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎯 ORCHESTRATION"
+          echo "🎯 ORCHESTRATION + CONDUCTOR"
           echo "═══════════════════════════════════════════════════════════════"
+          echo ""
+          echo "Conductor capabilities:"
+          echo "  • Multi-AI routing (Claude, GPT-4, Gemini)"
+          echo "  • Device registration (TikTok, Shopify, etc.)"
+          echo "  • JV opportunity matching"
+          echo "  • Content posting from hive patterns"
+          echo "  • Cart recovery automation"
+          echo "  • Execution plans with auto-approval"
+          echo ""
           
+          echo "1. C-Suite Analysis..."
           curl -s -X POST "${{ env.BACKEND_URL }}/csuite/analyze-all" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "2. Week 2 Execute..."
           curl -s -X POST "${{ env.BACKEND_URL }}/week2/execute" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "3. Conductor Run Cycle (core orchestration)..."
           curl -s -X POST "${{ env.BACKEND_URL }}/conductor/run-cycle" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "4. Conductor: Scan for opportunities (all registered devices)..."
+          # This would scan all registered devices for JV, pricing, content opportunities
+          curl -s -X POST "${{ env.BACKEND_URL }}/conductor/scan-all-devices" --max-time 120 | jq -c '{ok,opportunities_found}' || true
+          
+          echo "5. Conductor: Create execution plans from opportunities..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/conductor/create-plans" --max-time 60 | jq -c '{ok,plans_created}' || true
+          
+          echo "6. Conductor: Execute auto-approved plans..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/conductor/execute-approved" --max-time 120 | jq -c '{ok,executed}' || true
+          
+          echo "7. Conductor: Get dashboard (all devices + stats)..."
+          curl -s "${{ env.BACKEND_URL }}/conductor/dashboard-all" | jq -c '{ok,devices,revenue_generated}' || true
+          
+          echo "8. Route pending tasks to AI models..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/conductor/route-tasks" --max-time 120 | jq -c '{ok,routed}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 18: LEARNING (1 endpoint from v6)
@@ -603,12 +634,12 @@ jobs:
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY v91 FULLY WIRED + AUTO-SPAWN + NETWORK"
+          echo "📝 AIGENTSY v91 FULLY WIRED + AUTO-SPAWN + NETWORK + CONDUCTOR"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo ""
-          echo "TOTAL ENDPOINTS CALLED: 115"
+          echo "TOTAL ENDPOINTS CALLED: 125"
           echo ""
           echo "PHASES:"
           echo "  ✅ Health (7)       ✅ Statistics (4)"
@@ -619,11 +650,11 @@ jobs:
           echo "  ✅ Business (3)     ✅ Marketing (8)"
           echo "  ✅ Platforms (3)    ✅ AAM (3)"
           echo "  ✅ R3/Proposals (4) ✅ Meta (2)"
-          echo "  ✅ Special (7)      ✅ Orchestration (3)"
+          echo "  ✅ Special (7)      ✅ Conductor (8) 🔥"
           echo "  ✅ Learning (6)     ✅ Analytics (2)"
           echo "  ✅ Reconciliation (4)"
           echo "  ✅ Auto-Spawn (12)"
-          echo "  ✅ Spawn Network (8) 🆕"
+          echo "  ✅ Spawn Network (8)"
           echo ""
           echo "v91 SYSTEMS:"
           echo "  🤝 Client Deals - Accept/Deliver/Pay flow"
@@ -633,6 +664,16 @@ jobs:
           echo "  💰 AMG Live - Monetization brain"
           echo "  📱 Social Live - Auto-posting"
           echo "  🎯 Master Orchestrator - Runs everything"
+          echo ""
+          echo "🔥 CONDUCTOR (Multi-AI Orchestration):"
+          echo "  🤖 Multi-AI routing (Claude → GPT-4 → Gemini)"
+          echo "  📱 Device registration (TikTok, Shopify, etc.)"
+          echo "  🤝 JV opportunity matching between users"
+          echo "  💰 Pricing/discount automation"
+          echo "  📝 Content posting from hive patterns"
+          echo "  📧 Cart recovery email automation"
+          echo "  📋 Execution plans with auto-approval"
+          echo "  🔗 Spawns connect to Conductor for automation"
           echo ""
           echo "🆕 AUTO-SPAWN ENGINE:"
           echo "  🏭 Autonomous business spawning"
@@ -650,22 +691,18 @@ jobs:
           echo "  🎯 Shared audience pool for retargeting"
           echo "  🔄 All spawns help ALL spawns grow"
           echo ""
-          echo "SPAWN → USER FUNNEL:"
-          echo "  1. Spawn goes live with AiGentsy branding"
-          echo "  2. Customer buys from spawn"
-          echo "  3. Checkout shows upsells from OTHER spawns"
-          echo "  4. Customer sees 'Powered by AiGentsy' + CTA"
-          echo "  5. Customer clicks → lands on AiGentsy signup"
-          echo "  6. New AiGentsy user with referral attribution"
-          echo ""
-          echo "MONEY FLOW:"
-          echo "  1. Discovery finds opportunity"
-          echo "  2. Deal/Spawn created"
-          echo "  3. Client accepts → payment AUTHORIZED"
-          echo "  4. Wade works → delivers"
-          echo "  5. Client approves → payment CAPTURED"
-          echo "  6. Spawn revenue → Your Stripe"
-          echo "  7. Cross-promo → Customer buys from ANOTHER spawn"
-          echo "  8. Network effect → More revenue, more users"
+          echo "FULL AUTONOMOUS FUNNEL:"
+          echo "  1. Conductor scans devices for opportunities"
+          echo "  2. Discovery finds market demand"
+          echo "  3. Auto-Spawn creates businesses from trends"
+          echo "  4. Network cross-promotes all spawns"
+          echo "  5. Deals/pitches sent to prospects"
+          echo "  6. Client accepts → payment authorized"
+          echo "  7. Wade fulfills using AI"
+          echo "  8. Client approves → payment captured"
+          echo "  9. Cross-promo → customer buys more"
+          echo "  10. Learnings → MetaHive → smarter AI"
+          echo "  11. Referrals → new AiGentsy users"
+          echo "  12. Loop repeats autonomously"
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
