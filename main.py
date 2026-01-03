@@ -28802,7 +28802,8 @@ async def orchestrator_status():
             "amg": AMG_AVAILABLE,
             "third_party_monetization": THIRD_PARTY_MONETIZATION_AVAILABLE,
             "wade_workflow": WADE_WORKFLOW_AVAILABLE,
-            "social_engine": SOCIAL_ENGINE_AVAILABLE
+            "social_engine": SOCIAL_ENGINE_AVAILABLE,
+            "client_portal": CLIENT_PORTAL_AVAILABLE
         },
         "reconciliation": {
             "wade_balance": reconciliation_state["wade_balance"],
@@ -29149,4 +29150,308 @@ async def wade_create_invoice(body: Dict = Body(...)):
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 41
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 42: CLIENT ACCEPTANCE PORTAL
+# The handshake between AiGentsy and trade partners
+# Money authorized on accept, captured on delivery approval
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from client_acceptance_portal import (
+        AI_SERVICE_CATALOG,
+        get_service_pricing,
+        create_accept_link,
+        get_deal,
+        accept_deal,
+        mark_deal_in_progress,
+        submit_delivery,
+        client_approve_delivery,
+        client_request_revision,
+        client_dispute_delivery,
+        get_pending_deals,
+        get_in_progress_deals,
+        get_awaiting_approval_deals,
+        get_deal_stats
+    )
+    CLIENT_PORTAL_AVAILABLE = True
+    print("✅ client_acceptance_portal loaded")
+except ImportError as e:
+    CLIENT_PORTAL_AVAILABLE = False
+    print(f"⚠️ client_acceptance_portal not available: {e}")
+    # Stub functions
+    AI_SERVICE_CATALOG = {}
+    def get_service_pricing(*args, **kwargs): return {"ok": False, "error": "not available"}
+    def create_accept_link(*args, **kwargs): return {"ok": False, "error": "not available"}
+    def get_deal(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def accept_deal(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def mark_deal_in_progress(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def submit_delivery(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def client_approve_delivery(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def client_request_revision(*args, **kwargs): return {"ok": False, "error": "not available"}
+    async def client_dispute_delivery(*args, **kwargs): return {"ok": False, "error": "not available"}
+    def get_pending_deals(): return []
+    def get_in_progress_deals(): return []
+    def get_awaiting_approval_deals(): return []
+    def get_deal_stats(): return {}
+
+
+@app.get("/services/catalog")
+async def services_catalog():
+    """Get full service catalog with AI pricing"""
+    catalog = []
+    for service_id, service in AI_SERVICE_CATALOG.items():
+        catalog.append({
+            "id": service_id,
+            "name": service["name"],
+            "market_price": service["market_price"],
+            "ai_price_standard": service["ai_prices"]["standard"],
+            "ai_time_hours": service["ai_times_hours"]["standard"],
+            "savings_percent": round((1 - service["ai_prices"]["standard"] / service["market_price"]) * 100),
+            "deliverables": service["deliverables"]
+        })
+    return {"ok": True, "services": catalog, "count": len(catalog)}
+
+
+@app.get("/services/{service_type}/pricing")
+async def service_pricing(service_type: str, tier: str = "standard"):
+    """Get detailed pricing for a service"""
+    return get_service_pricing(service_type, tier)
+
+
+@app.post("/deals/create")
+async def create_deal_endpoint(body: dict = Body(...)):
+    """
+    Create a new deal with accept link
+    
+    Body: {
+        workflow_id: str,
+        service_type: str,
+        tier?: "express" | "standard" | "budget",
+        client_email?: str,
+        custom_price?: float,
+        custom_description?: str
+    }
+    """
+    result = create_accept_link(
+        workflow_id=body.get("workflow_id", f"wf_{datetime.utcnow().timestamp()}"),
+        service_type=body["service_type"],
+        tier=body.get("tier", "standard"),
+        client_email=body.get("client_email"),
+        custom_price=body.get("custom_price"),
+        custom_description=body.get("custom_description")
+    )
+    
+    # Log activity
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "deal_created",
+            "endpoint": "/deals/create",
+            "owner": "wade",
+            "revenue_path": "path_b_wade",
+            "amount": result.get("price", 0),
+            "details": {"deal_id": result.get("deal_id"), "service": body["service_type"]}
+        })
+    
+    return result
+
+
+@app.get("/deals/{deal_id}")
+async def get_deal_details(deal_id: str, token: str = None):
+    """Get deal details"""
+    return get_deal(deal_id, token)
+
+
+@app.post("/deals/{deal_id}/accept")
+async def accept_deal_endpoint(deal_id: str, body: dict = Body(...)):
+    """
+    Client accepts deal - authorizes payment
+    
+    Body: {
+        token: str,
+        client_name: str,
+        client_email: str,
+        disclosures_accepted: bool,
+        terms_accepted: bool,
+        payment_method_id?: str
+    }
+    """
+    result = await accept_deal(
+        deal_id=deal_id,
+        token=body["token"],
+        client_name=body["client_name"],
+        client_email=body["client_email"],
+        disclosures_accepted=body["disclosures_accepted"],
+        terms_accepted=body["terms_accepted"],
+        payment_method_id=body.get("payment_method_id")
+    )
+    
+    # Log activity and notify Wade
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "deal_accepted",
+            "endpoint": "/deals/accept",
+            "owner": "client",
+            "revenue_path": "path_b_wade",
+            "amount": result.get("amount", 0),
+            "details": {"deal_id": deal_id, "client": body["client_name"]}
+        })
+    
+    return result
+
+
+@app.post("/deals/{deal_id}/start")
+async def start_deal(deal_id: str):
+    """Wade marks deal as in progress"""
+    result = await mark_deal_in_progress(deal_id)
+    
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "deal_started",
+            "endpoint": "/deals/start",
+            "owner": "wade",
+            "details": {"deal_id": deal_id}
+        })
+    
+    return result
+
+
+@app.post("/deals/{deal_id}/deliver")
+async def deliver_deal(deal_id: str, body: dict = Body(...)):
+    """
+    Submit delivery for client review
+    
+    Body: {
+        deliverables: [{type, name, url/content}],
+        quality_scores?: {check_name: score}
+    }
+    """
+    result = await submit_delivery(
+        deal_id=deal_id,
+        deliverables=body["deliverables"],
+        quality_scores=body.get("quality_scores")
+    )
+    
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "deal_delivered",
+            "endpoint": "/deals/deliver",
+            "owner": "wade",
+            "details": {"deal_id": deal_id, "on_time": result.get("delivered_on_time")}
+        })
+    
+    return result
+
+
+@app.post("/deals/{deal_id}/approve")
+async def approve_deal_endpoint(deal_id: str, body: dict = Body(...)):
+    """
+    Client approves delivery - triggers payment capture
+    
+    Body: {token: str, rating?: int}
+    """
+    result = await client_approve_delivery(
+        deal_id=deal_id,
+        token=body["token"],
+        rating=body.get("rating", 5)
+    )
+    
+    # Record revenue when payment captured
+    if result.get("ok") and result.get("payment_captured"):
+        amount = result.get("amount", 0)
+        
+        # Update Wade balance
+        reconciliation_state["wade_balance"] += amount
+        
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "payment_captured",
+            "endpoint": "/deals/approve",
+            "owner": "client",
+            "revenue_path": "path_b_wade",
+            "amount": amount,
+            "details": {"deal_id": deal_id, "rating": body.get("rating", 5)}
+        })
+    
+    return result
+
+
+@app.post("/deals/{deal_id}/revision")
+async def request_revision(deal_id: str, body: dict = Body(...)):
+    """
+    Client requests revisions
+    
+    Body: {token: str, revision_notes: str}
+    """
+    return await client_request_revision(
+        deal_id=deal_id,
+        token=body["token"],
+        revision_notes=body["revision_notes"]
+    )
+
+
+@app.post("/deals/{deal_id}/dispute")
+async def dispute_deal(deal_id: str, body: dict = Body(...)):
+    """
+    Client disputes delivery
+    
+    Body: {token: str, reason: str}
+    """
+    result = await client_dispute_delivery(
+        deal_id=deal_id,
+        token=body["token"],
+        reason=body["reason"]
+    )
+    
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "deal_disputed",
+            "endpoint": "/deals/dispute",
+            "owner": "client",
+            "details": {"deal_id": deal_id, "reason": body["reason"][:100]}
+        })
+    
+    return result
+
+
+@app.get("/deals/stats")
+async def deals_stats():
+    """Get deal statistics"""
+    stats = get_deal_stats()
+    return {"ok": True, **stats}
+
+
+@app.get("/deals/pending")
+async def pending_deals_endpoint():
+    """Get deals awaiting client acceptance"""
+    return {"ok": True, "deals": get_pending_deals()}
+
+
+@app.get("/deals/in-progress")
+async def in_progress_deals_endpoint():
+    """Get deals being worked on"""
+    return {"ok": True, "deals": get_in_progress_deals()}
+
+
+@app.get("/deals/awaiting-approval")
+async def awaiting_approval_deals_endpoint():
+    """Get delivered deals awaiting client approval"""
+    return {"ok": True, "deals": get_awaiting_approval_deals()}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END SECTION 42
 # ═══════════════════════════════════════════════════════════════════════════════
