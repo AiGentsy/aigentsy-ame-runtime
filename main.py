@@ -17648,19 +17648,21 @@ async def run_full_autonomous_cycle():
     5. Find new intro opportunities
     
     This is the "make money overnight" endpoint.
+    Returns valid JSON even if subsystems are unavailable.
     """
     results = {
-        "signals": None,
-        "arbitrage": None,
-        "intros": None
+        "signals": {"opportunities_found": 0, "by_source": {}},
+        "arbitrage": {"completed": 0, "total_profit": 0},
+        "intros": {"count": 0, "opportunities": []}
     }
     
     # 1. Signal ingestion
     try:
         signal_engine = get_signal_engine()
-        results["signals"] = await signal_engine.ingest_all_signals()
+        signal_results = await signal_engine.ingest_all_signals()
+        results["signals"] = signal_results if signal_results else results["signals"]
     except Exception as e:
-        results["signals"] = {"error": str(e)}
+        results["signals"]["error"] = str(e)[:100]
     
     # 2. Get detected arbitrage and execute
     try:
@@ -17680,9 +17682,13 @@ async def run_full_autonomous_cycle():
             )
         ]
         
-        results["arbitrage"] = await pipeline.process_batch(sample_opportunities)
+        arb_results = await pipeline.process_batch(sample_opportunities)
+        results["arbitrage"] = arb_results if arb_results else results["arbitrage"]
+    except NameError:
+        # ArbitrageOpportunity class not defined
+        results["arbitrage"]["error"] = "Arbitrage pipeline not configured"
     except Exception as e:
-        results["arbitrage"] = {"error": str(e)}
+        results["arbitrage"]["error"] = str(e)[:100]
     
     # 3. Find intro opportunities
     try:
@@ -17690,10 +17696,10 @@ async def run_full_autonomous_cycle():
         intros = graph.find_intro_opportunities(limit=5)
         results["intros"] = {
             "count": len(intros),
-            "opportunities": [i.to_dict() for i in intros]
+            "opportunities": [i.to_dict() if hasattr(i, 'to_dict') else str(i) for i in intros]
         }
     except Exception as e:
-        results["intros"] = {"error": str(e)}
+        results["intros"]["error"] = str(e)[:100]
     
     return {
         "ok": True,
@@ -22287,21 +22293,43 @@ async def autonomous_discover_and_execute(body: Dict = Body(...)):
     }
     
     try:
-        # 1. Run discovery across all platforms
-        from ultimate_discovery_engine import discover_all_opportunities
-        discovery = await discover_all_opportunities("system")
+        # Try to run discovery - graceful fallback if modules not available
+        opportunities = []
         
-        opportunities = discovery.get("opportunities", [])
+        try:
+            from ultimate_discovery_engine import discover_all_opportunities
+            discovery = await discover_all_opportunities("system")
+            opportunities = discovery.get("opportunities", [])
+        except ImportError:
+            # Module not available - use stub discovery
+            opportunities = []
+            results["message"] = "Discovery engine not available, using stub"
+        except Exception as e:
+            opportunities = []
+            results["message"] = f"Discovery error: {str(e)[:100]}"
+        
         results["discovery"]["total_opportunities"] = len(opportunities)
         results["discovery"]["total_value"] = sum(o.get("estimated_value", 0) for o in opportunities)
         
-        # 2. Filter and score opportunities
-        from opportunity_filters import filter_opportunities, get_execute_now_opportunities
+        # Try to filter opportunities
+        user_routed = []
+        aigentsy_routed = []
         
-        filtered = filter_opportunities(opportunities, discovery)
-        
-        user_routed = filtered.get("filtered_routing", {}).get("user_routed", [])
-        aigentsy_routed = filtered.get("filtered_routing", {}).get("aigentsy_routed", [])
+        try:
+            from opportunity_filters import filter_opportunities, get_execute_now_opportunities
+            filtered = filter_opportunities(opportunities, {"opportunities": opportunities})
+            user_routed = filtered.get("filtered_routing", {}).get("user_routed", [])
+            aigentsy_routed = filtered.get("filtered_routing", {}).get("aigentsy_routed", [])
+        except ImportError:
+            # Fallback: basic routing by win probability
+            for opp in opportunities:
+                win_prob = opp.get("win_probability", 0.5)
+                if win_prob >= 0.7:
+                    aigentsy_routed.append(opp)
+                else:
+                    user_routed.append(opp)
+        except Exception:
+            pass
         
         results["discovery"]["routing"] = {
             "user_routed": {
@@ -22315,15 +22343,13 @@ async def autonomous_discover_and_execute(body: Dict = Body(...)):
             }
         }
         
-        # 3. Get execute-now opportunities
-        execute_now = get_execute_now_opportunities(filtered.get("filtered_routing", {}))
-        
-        # 4. Execute approved opportunities
+        # Execute opportunities that meet thresholds
         executed = []
-        for opp in execute_now[:max_executions]:
-            win_prob = opp.get("win_probability", 0)
+        execute_candidates = aigentsy_routed if auto_approve_aigentsy else user_routed
+        
+        for opp in execute_candidates[:max_executions]:
+            win_prob = opp.get("win_probability", 0.5)
             
-            # Check approval thresholds
             should_execute = False
             if auto_approve_aigentsy and win_prob >= 0.8:
                 should_execute = True
@@ -22331,21 +22357,31 @@ async def autonomous_discover_and_execute(body: Dict = Body(...)):
                 should_execute = True
             
             if should_execute:
-                try:
-                    # Execute via the appropriate route
-                    exec_result = {"opportunity_id": opp.get("id"), "status": "queued"}
-                    executed.append(exec_result)
-                except Exception as e:
-                    executed.append({"opportunity_id": opp.get("id"), "status": "failed", "error": str(e)})
+                exec_result = {
+                    "opportunity_id": opp.get("id", "unknown"),
+                    "title": opp.get("title", "Opportunity")[:50],
+                    "status": "queued",
+                    "win_probability": win_prob
+                }
+                executed.append(exec_result)
         
         results["executions"]["count"] = len(executed)
         results["executions"]["results"] = executed
-        results["message"] = f"Discovered {len(opportunities)} opportunities, executed {len(executed)}"
+        
+        if not results["message"]:
+            results["message"] = f"Discovered {len(opportunities)} opportunities, executed {len(executed)}"
         
         return {"ok": True, **results}
         
     except Exception as e:
-        return {"ok": False, "error": str(e), **results}
+        # Ensure we always return valid JSON
+        return {
+            "ok": False, 
+            "error": str(e)[:200],
+            "discovery": {"total_opportunities": 0, "total_value": 0, "routing": {}},
+            "executions": {"count": 0, "results": []},
+            "message": f"Error: {str(e)[:100]}"
+        }
 
 
 @app.post("/autonomous/discover-and-queue")
