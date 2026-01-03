@@ -27444,3 +27444,395 @@ async def autonomous_v90_health():
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V90 - COMPLETE AUTONOMOUS WIRING
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 39: RECONCILIATION ENGINE - MASTER COORDINATOR
+# Ties all 77+ autonomous endpoints together
+# Tracks revenue by path: User Platform (A), Wade Direct (B), Enterprise (C), AI Economy (D)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass, field, asdict
+from enum import Enum as PyEnum
+
+
+class RevenuePath(str, PyEnum):
+    USER_PLATFORM = "path_a_user"
+    WADE_DIRECT = "path_b_wade"
+    ENTERPRISE = "path_c_enterprise"
+    AI_ECONOMY = "path_d_ai"
+
+
+class ActivityType(str, PyEnum):
+    DISCOVERY = "discovery"
+    BID_SUBMITTED = "bid_submitted"
+    CLIENT_APPROVED = "client_approved"
+    EXECUTION_STARTED = "execution_started"
+    EXECUTION_COMPLETED = "execution_completed"
+    DELIVERED = "delivered"
+    PAYMENT_RECEIVED = "payment_received"
+    FEE_COLLECTED = "fee_collected"
+
+
+class WorkflowOwner(str, PyEnum):
+    USER = "user"
+    WADE = "wade"
+
+
+# In-memory state (persisted to JSONBin)
+reconciliation_state = {
+    "wade_balance": 0.0,
+    "fees_collected": 0.0,
+    "wade_workflows": {},
+    "activities": []
+}
+
+
+@app.get("/reconciliation/dashboard")
+async def get_reconciliation_dashboard():
+    """
+    Master dashboard for all autonomous activity
+    Shows revenue by path, Wade's balance, and activity summary
+    """
+    
+    # Calculate summaries
+    activities = reconciliation_state["activities"]
+    
+    # Last 24 hours
+    from datetime import timedelta
+    now = datetime.utcnow()
+    cutoff_24h = (now - timedelta(hours=24)).isoformat()
+    cutoff_7d = (now - timedelta(days=7)).isoformat()
+    
+    activities_24h = [a for a in activities if a.get("timestamp", "") >= cutoff_24h]
+    activities_7d = [a for a in activities if a.get("timestamp", "") >= cutoff_7d]
+    
+    def summarize(activity_list):
+        summary = {
+            "total_activities": len(activity_list),
+            "discoveries": 0,
+            "payments": 0,
+            "path_a_revenue": 0.0,
+            "path_a_fees": 0.0,
+            "path_b_wade_revenue": 0.0
+        }
+        for a in activity_list:
+            if a.get("activity_type") == "discovery":
+                summary["discoveries"] += 1
+            if a.get("activity_type") == "payment_received":
+                summary["payments"] += 1
+            if a.get("revenue_path") == "path_a_user":
+                summary["path_a_revenue"] += a.get("amount", 0)
+                summary["path_a_fees"] += a.get("fee_collected", 0)
+            if a.get("revenue_path") == "path_b_wade":
+                summary["path_b_wade_revenue"] += a.get("amount", 0)
+        return summary
+    
+    return {
+        "ok": True,
+        "timestamp": datetime.utcnow().isoformat(),
+        "balances": {
+            "wade_balance": reconciliation_state["wade_balance"],
+            "fees_collected": reconciliation_state["fees_collected"],
+            "total_aigentsy_earnings": reconciliation_state["wade_balance"] + reconciliation_state["fees_collected"]
+        },
+        "last_24h": summarize(activities_24h),
+        "last_7d": summarize(activities_7d),
+        "wade_workflows": {
+            "pending": len([w for w in reconciliation_state["wade_workflows"].values() if w.get("stage") == "pending_wade_approval"]),
+            "active": len([w for w in reconciliation_state["wade_workflows"].values() if w.get("stage") not in ["paid", "rejected"]]),
+            "total": len(reconciliation_state["wade_workflows"])
+        },
+        "total_activities": len(activities)
+    }
+
+
+@app.post("/reconciliation/persist")
+async def persist_reconciliation():
+    """Save reconciliation state to JSONBin"""
+    
+    if not JSONBIN_URL:
+        return {"ok": False, "error": "JSONBIN_URL not configured"}
+    
+    try:
+        state_to_save = {
+            "reconciliation_state": {
+                "wade_balance": reconciliation_state["wade_balance"],
+                "fees_collected": reconciliation_state["fees_collected"],
+                "wade_workflows": reconciliation_state["wade_workflows"],
+                "activities_count": len(reconciliation_state["activities"]),
+                "recent_activities": reconciliation_state["activities"][-100:],
+                "last_persisted": datetime.utcnow().isoformat()
+            }
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                JSONBIN_URL,
+                json=state_to_save,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                return {"ok": True, "persisted": True, "timestamp": datetime.utcnow().isoformat()}
+            else:
+                return {"ok": False, "error": f"JSONBin returned {response.status_code}"}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reconciliation/load")
+async def load_reconciliation():
+    """Load reconciliation state from JSONBin"""
+    
+    if not JSONBIN_URL:
+        return {"ok": False, "error": "JSONBIN_URL not configured"}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(JSONBIN_URL, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                state = data.get("record", {}).get("reconciliation_state", {})
+                
+                reconciliation_state["wade_balance"] = state.get("wade_balance", 0)
+                reconciliation_state["fees_collected"] = state.get("fees_collected", 0)
+                reconciliation_state["wade_workflows"] = state.get("wade_workflows", {})
+                reconciliation_state["activities"] = state.get("recent_activities", [])
+                
+                return {"ok": True, "loaded": True, "wade_balance": reconciliation_state["wade_balance"]}
+            else:
+                return {"ok": False, "error": f"JSONBin returned {response.status_code}"}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/reconciliation/record-activity")
+async def record_reconciliation_activity(
+    activity_type: str,
+    endpoint: str,
+    owner: str = "user",
+    revenue_path: str = "path_a_user",
+    amount: float = 0.0,
+    fee_collected: float = 0.0,
+    opportunity_id: str = None,
+    details: dict = None
+):
+    """Record any autonomous activity for reconciliation"""
+    
+    activity = {
+        "id": f"act_{datetime.utcnow().timestamp()}_{len(reconciliation_state['activities'])}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "activity_type": activity_type,
+        "endpoint": endpoint,
+        "owner": owner,
+        "revenue_path": revenue_path,
+        "amount": amount,
+        "fee_collected": fee_collected,
+        "opportunity_id": opportunity_id,
+        "details": details or {}
+    }
+    
+    reconciliation_state["activities"].append(activity)
+    
+    # Update balances
+    if owner == "wade":
+        reconciliation_state["wade_balance"] += amount
+    
+    reconciliation_state["fees_collected"] += fee_collected
+    
+    return {"ok": True, "activity_id": activity["id"]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 40: WADE DASHBOARD - PATH B REVENUE TRACKING
+# Wade/AiGentsy direct fulfillment - we keep 100%
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/wade/dashboard")
+async def get_wade_dashboard():
+    """
+    Wade's personal dashboard - Path B revenue
+    Shows pending approvals, active workflows, and balance
+    """
+    
+    workflows = reconciliation_state["wade_workflows"]
+    
+    pending = [w for w in workflows.values() if w.get("stage") == "pending_wade_approval"]
+    active = [w for w in workflows.values() if w.get("stage") not in ["paid", "rejected", "cancelled"]]
+    completed = [w for w in workflows.values() if w.get("stage") == "paid"]
+    
+    return {
+        "ok": True,
+        "wade_balance": reconciliation_state["wade_balance"],
+        "pending_approval": len(pending),
+        "active_workflows": len(active),
+        "completed_workflows": len(completed),
+        "total_workflows": len(workflows),
+        "queue": pending[:20],  # Top 20 pending
+        "active": active[:20]   # Top 20 active
+    }
+
+
+@app.post("/wade/workflow/create")
+async def create_wade_workflow(opportunity: dict):
+    """Create a new Wade workflow from discovered opportunity"""
+    
+    workflow_id = f"wade_wf_{datetime.utcnow().timestamp()}"
+    
+    workflow = {
+        "id": workflow_id,
+        "opportunity_id": opportunity.get("id"),
+        "opportunity": opportunity,
+        "stage": "pending_wade_approval",
+        "created_at": datetime.utcnow().isoformat(),
+        "revenue_path": "path_b_wade",
+        "estimated_value": opportunity.get("estimated_value", 0),
+        "estimated_profit": opportunity.get("fulfillability", {}).get("estimated_profit", 0),
+        "history": [{
+            "stage": "discovered",
+            "timestamp": datetime.utcnow().isoformat(),
+            "action": "Opportunity discovered and added to Wade queue"
+        }]
+    }
+    
+    reconciliation_state["wade_workflows"][workflow_id] = workflow
+    
+    # Record activity
+    reconciliation_state["activities"].append({
+        "id": f"act_{datetime.utcnow().timestamp()}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "activity_type": "discovery",
+        "endpoint": "/wade/workflow/create",
+        "owner": "wade",
+        "revenue_path": "path_b_wade",
+        "amount": 0,
+        "fee_collected": 0,
+        "opportunity_id": opportunity.get("id"),
+        "details": {"workflow_id": workflow_id, "value": workflow["estimated_value"]}
+    })
+    
+    return {"ok": True, "workflow_id": workflow_id, "workflow": workflow}
+
+
+@app.post("/wade/workflow/{workflow_id}/approve")
+async def approve_wade_workflow(workflow_id: str):
+    """Wade approves a workflow - triggers auto-bid"""
+    
+    if workflow_id not in reconciliation_state["wade_workflows"]:
+        return {"ok": False, "error": "Workflow not found"}
+    
+    workflow = reconciliation_state["wade_workflows"][workflow_id]
+    workflow["stage"] = "wade_approved"
+    workflow["approved_at"] = datetime.utcnow().isoformat()
+    workflow["history"].append({
+        "stage": "wade_approved",
+        "timestamp": datetime.utcnow().isoformat(),
+        "action": "Wade approved - ready for bidding"
+    })
+    
+    return {"ok": True, "workflow_id": workflow_id, "stage": "wade_approved"}
+
+
+@app.post("/wade/workflow/{workflow_id}/reject")
+async def reject_wade_workflow(workflow_id: str, reason: str = None):
+    """Wade rejects a workflow"""
+    
+    if workflow_id not in reconciliation_state["wade_workflows"]:
+        return {"ok": False, "error": "Workflow not found"}
+    
+    workflow = reconciliation_state["wade_workflows"][workflow_id]
+    workflow["stage"] = "rejected"
+    workflow["rejected_at"] = datetime.utcnow().isoformat()
+    workflow["rejection_reason"] = reason
+    workflow["history"].append({
+        "stage": "rejected",
+        "timestamp": datetime.utcnow().isoformat(),
+        "action": f"Wade rejected: {reason or 'No reason given'}"
+    })
+    
+    return {"ok": True, "workflow_id": workflow_id, "stage": "rejected"}
+
+
+@app.post("/wade/workflow/{workflow_id}/payment")
+async def record_wade_payment(workflow_id: str, amount: float, proof: str = None):
+    """Record payment received for Wade workflow"""
+    
+    if workflow_id not in reconciliation_state["wade_workflows"]:
+        return {"ok": False, "error": "Workflow not found"}
+    
+    workflow = reconciliation_state["wade_workflows"][workflow_id]
+    workflow["stage"] = "paid"
+    workflow["paid_at"] = datetime.utcnow().isoformat()
+    workflow["payment"] = {
+        "amount": amount,
+        "proof": proof,
+        "received_at": datetime.utcnow().isoformat()
+    }
+    workflow["history"].append({
+        "stage": "paid",
+        "timestamp": datetime.utcnow().isoformat(),
+        "action": f"Payment received: ${amount}"
+    })
+    
+    # Update Wade's balance
+    reconciliation_state["wade_balance"] += amount
+    
+    # Record activity
+    reconciliation_state["activities"].append({
+        "id": f"act_{datetime.utcnow().timestamp()}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "activity_type": "payment_received",
+        "endpoint": f"/wade/workflow/{workflow_id}/payment",
+        "owner": "wade",
+        "revenue_path": "path_b_wade",
+        "amount": amount,
+        "fee_collected": 0,
+        "opportunity_id": workflow.get("opportunity_id"),
+        "details": {"workflow_id": workflow_id, "proof": proof}
+    })
+    
+    return {
+        "ok": True,
+        "workflow_id": workflow_id,
+        "amount": amount,
+        "new_wade_balance": reconciliation_state["wade_balance"]
+    }
+
+
+@app.get("/wade/workflow/{workflow_id}")
+async def get_wade_workflow(workflow_id: str):
+    """Get a specific Wade workflow"""
+    
+    if workflow_id not in reconciliation_state["wade_workflows"]:
+        return {"ok": False, "error": "Workflow not found"}
+    
+    return {"ok": True, "workflow": reconciliation_state["wade_workflows"][workflow_id]}
+
+
+@app.post("/wade/auto-queue-opportunities")
+async def auto_queue_wade_opportunities():
+    """
+    Automatically queue Wade-fulfillable opportunities from discovery
+    Called by autonomous workflow to feed Wade's queue
+    """
+    
+    queued = 0
+    
+    # This would integrate with discovery engine
+    # For now, it's a hook for the autonomous workflow to call
+    
+    return {
+        "ok": True,
+        "queued": queued,
+        "message": "Hook ready - integrate with discovery to auto-queue Wade opportunities"
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END RECONCILIATION + WADE DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════════
