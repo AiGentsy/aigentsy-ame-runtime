@@ -28815,3 +28815,338 @@ async def orchestrator_status():
 # ═══════════════════════════════════════════════════════════════════════════════
 # END MASTER WIRING SECTION
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 41: AIGENTSY LLC PAYMENT COLLECTION
+# All revenue flows to your business Stripe account
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Import Stripe (already imported above, but ensure it's configured)
+import stripe
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+PLATFORM_FEE_PERCENT = 0.028  # 2.8%
+PLATFORM_FEE_FIXED = 0.28     # 28¢
+
+
+@app.get("/admin/balance")
+async def admin_get_balance():
+    """
+    Get current Stripe balance for AiGentsy LLC
+    Shows available and pending funds
+    """
+    try:
+        balance = stripe.Balance.retrieve()
+        
+        available_usd = 0
+        pending_usd = 0
+        
+        for bal in balance.available:
+            if bal.currency == "usd":
+                available_usd = bal.amount / 100
+                
+        for bal in balance.pending:
+            if bal.currency == "usd":
+                pending_usd = bal.amount / 100
+        
+        return {
+            "ok": True,
+            "available": available_usd,
+            "pending": pending_usd,
+            "total": available_usd + pending_usd,
+            "currency": "USD",
+            "note": "This is your AiGentsy LLC Stripe balance"
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/admin/revenue")
+async def admin_get_revenue(days: int = 30):
+    """
+    Get revenue breakdown by path for the last N days
+    Path A = Platform fees from user transactions
+    Path B = Wade direct fulfillment
+    """
+    try:
+        import time
+        since = int(time.time()) - (days * 86400)
+        
+        charges = stripe.Charge.list(
+            created={"gte": since},
+            limit=100
+        )
+        
+        path_a = 0  # Platform fees
+        path_b = 0  # Wade direct
+        
+        for charge in charges.data:
+            if not charge.paid or charge.refunded:
+                continue
+                
+            revenue_path = charge.metadata.get("revenue_path", "")
+            
+            if revenue_path == "path_a_user":
+                if hasattr(charge, 'application_fee_amount') and charge.application_fee_amount:
+                    path_a += charge.application_fee_amount / 100
+            elif revenue_path == "path_b_wade":
+                path_b += charge.amount / 100
+            else:
+                path_b += charge.amount / 100
+        
+        return {
+            "ok": True,
+            "period_days": days,
+            "path_a_fees": round(path_a, 2),
+            "path_b_wade": round(path_b, 2),
+            "total_revenue": round(path_a + path_b, 2)
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/admin/payments")
+async def admin_get_payments(limit: int = 10):
+    """
+    Get recent successful payments to AiGentsy
+    """
+    try:
+        charges = stripe.Charge.list(limit=limit)
+        
+        payments = []
+        for charge in charges.data:
+            if charge.paid and not charge.refunded:
+                payments.append({
+                    "id": charge.id,
+                    "amount": charge.amount / 100,
+                    "description": charge.description,
+                    "created": datetime.fromtimestamp(charge.created).isoformat(),
+                    "revenue_path": charge.metadata.get("revenue_path", "unknown"),
+                    "workflow_id": charge.metadata.get("workflow_id")
+                })
+        
+        return {
+            "ok": True,
+            "payments": payments,
+            "total": sum(p["amount"] for p in payments),
+            "count": len(payments)
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/admin/payout")
+async def admin_initiate_payout(body: Dict = Body(default={})):
+    """
+    Initiate payout from Stripe to your bank account
+    If amount is None, pays out entire available balance
+    
+    Body: { amount?: float }  (omit for full balance)
+    """
+    try:
+        # Get current balance
+        balance = stripe.Balance.retrieve()
+        
+        available = 0
+        for bal in balance.available:
+            if bal.currency == "usd":
+                available = bal.amount / 100
+        
+        amount = body.get("amount")
+        
+        if amount is None:
+            amount = available
+            
+        if amount > available:
+            return {
+                "ok": False,
+                "error": f"Requested ${amount} but only ${available} available"
+            }
+        
+        if amount < 1:
+            return {
+                "ok": False,
+                "error": "Minimum payout is $1.00"
+            }
+        
+        payout = stripe.Payout.create(
+            amount=int(amount * 100),
+            currency="usd",
+            description=body.get("description", "AiGentsy LLC Payout"),
+            metadata={
+                "initiated_at": datetime.utcnow().isoformat(),
+                "source": "aigentsy_admin"
+            }
+        )
+        
+        return {
+            "ok": True,
+            "payout_id": payout.id,
+            "amount": amount,
+            "status": payout.status,
+            "arrival_date": payout.arrival_date
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/wade/payment-link")
+async def wade_create_payment_link(body: Dict = Body(...)):
+    """
+    Create a Stripe Payment Link for Wade fulfillment
+    Payment goes directly to AiGentsy LLC
+    
+    Body: {
+        amount: float,
+        description: str,
+        workflow_id: str,
+        client_email?: str
+    }
+    """
+    try:
+        amount = body["amount"]
+        description = body["description"]
+        workflow_id = body["workflow_id"]
+        
+        # Create a product for this job
+        product = stripe.Product.create(
+            name=f"AiGentsy Service: {description[:50]}",
+            metadata={
+                "workflow_id": workflow_id,
+                "type": "wade_fulfillment"
+            }
+        )
+        
+        # Create a price
+        price = stripe.Price.create(
+            unit_amount=int(amount * 100),
+            currency="usd",
+            product=product.id
+        )
+        
+        # Create payment link
+        payment_link = stripe.PaymentLink.create(
+            line_items=[{"price": price.id, "quantity": 1}],
+            metadata={
+                "workflow_id": workflow_id,
+                "revenue_path": "path_b_wade",
+                "created_at": datetime.utcnow().isoformat()
+            },
+            after_completion={
+                "type": "redirect",
+                "redirect": {
+                    "url": f"https://aigentsy.com/payment-success?workflow_id={workflow_id}"
+                }
+            }
+        )
+        
+        # Update workflow with payment link
+        if workflow_id in reconciliation_state.get("wade_workflows", {}):
+            reconciliation_state["wade_workflows"][workflow_id]["payment_link"] = payment_link.url
+            reconciliation_state["wade_workflows"][workflow_id]["payment_link_id"] = payment_link.id
+        
+        return {
+            "ok": True,
+            "payment_link": payment_link.url,
+            "payment_link_id": payment_link.id,
+            "amount": amount,
+            "workflow_id": workflow_id
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/wade/invoice")
+async def wade_create_invoice(body: Dict = Body(...)):
+    """
+    Create a Stripe Invoice for Wade fulfillment
+    More formal than payment link - good for larger amounts
+    
+    Body: {
+        amount: float,
+        client_email: str,
+        description: str,
+        workflow_id: str,
+        due_days?: int (default 7)
+    }
+    """
+    try:
+        amount = body["amount"]
+        client_email = body["client_email"]
+        description = body["description"]
+        workflow_id = body["workflow_id"]
+        due_days = body.get("due_days", 7)
+        
+        # Create or get customer
+        customers = stripe.Customer.list(email=client_email, limit=1)
+        if customers.data:
+            customer = customers.data[0]
+        else:
+            customer = stripe.Customer.create(
+                email=client_email,
+                metadata={"source": "wade_fulfillment"}
+            )
+        
+        # Create invoice
+        invoice = stripe.Invoice.create(
+            customer=customer.id,
+            collection_method="send_invoice",
+            days_until_due=due_days,
+            metadata={
+                "workflow_id": workflow_id,
+                "revenue_path": "path_b_wade"
+            }
+        )
+        
+        # Add line item
+        stripe.InvoiceItem.create(
+            customer=customer.id,
+            invoice=invoice.id,
+            amount=int(amount * 100),
+            currency="usd",
+            description=description
+        )
+        
+        # Finalize and send
+        invoice = stripe.Invoice.finalize_invoice(invoice.id)
+        stripe.Invoice.send_invoice(invoice.id)
+        
+        # Update workflow
+        if workflow_id in reconciliation_state.get("wade_workflows", {}):
+            reconciliation_state["wade_workflows"][workflow_id]["invoice_id"] = invoice.id
+            reconciliation_state["wade_workflows"][workflow_id]["invoice_url"] = invoice.hosted_invoice_url
+        
+        return {
+            "ok": True,
+            "invoice_id": invoice.id,
+            "invoice_url": invoice.hosted_invoice_url,
+            "invoice_pdf": invoice.invoice_pdf,
+            "amount": amount,
+            "workflow_id": workflow_id
+        }
+        
+    except stripe.error.StripeError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END SECTION 41
+# ═══════════════════════════════════════════════════════════════════════════════
