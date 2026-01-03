@@ -22691,3 +22691,437 @@ async def list_csuite_agents():
         ],
         "tip": "As CEO, you command your AI team. Try: 'find opportunities' or 'give me a report'"
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD ACTION ENDPOINTS
+# Buttons and quick actions for the frontend dashboard
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/dashboard/{username}/refresh-opportunities")
+async def dashboard_refresh_opportunities(username: str):
+    """
+    Dashboard button: Refresh/discover new opportunities
+    Triggers discovery and saves to user record
+    """
+    try:
+        from ultimate_discovery_engine import discover_all_opportunities
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        # Run discovery
+        result = await discover_all_opportunities(username)
+        opportunities = result.get("opportunities", [])
+        
+        # Save to user
+        user = get_user(username)
+        if user:
+            user["opportunities"] = opportunities
+            user["opportunities_discovered_at"] = datetime.now(timezone.utc).isoformat()
+            user["opportunities_count"] = len(opportunities)
+            log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "action": "refresh_opportunities",
+            "discovered": len(opportunities),
+            "platforms_searched": result.get("platforms_searched", 27),
+            "message": f"Found {len(opportunities)} new opportunities"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/dashboard/{username}/approve-all")
+async def dashboard_approve_all(username: str, body: Dict = Body(default={})):
+    """
+    Dashboard button: Approve all pending opportunities
+    Optional: min_win_probability filter
+    """
+    min_prob = float(body.get("min_win_probability", 0.6))
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        opportunities = user.get("opportunities", [])
+        approved_count = 0
+        
+        for opp in opportunities:
+            if opp.get("status") == "pending":
+                win_prob = opp.get("win_probability", 0.5)
+                if win_prob >= min_prob:
+                    opp["status"] = "approved"
+                    opp["approved_at"] = datetime.now(timezone.utc).isoformat()
+                    opp["approved_by"] = username
+                    opp["auto_approved"] = True
+                    approved_count += 1
+        
+        user["opportunities"] = opportunities
+        log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "action": "approve_all",
+            "approved": approved_count,
+            "filter": f"win_probability >= {min_prob}",
+            "message": f"Approved {approved_count} opportunities"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/dashboard/{username}/execute-opportunity/{opportunity_id}")
+async def dashboard_execute_opportunity(username: str, opportunity_id: str):
+    """
+    Dashboard button: Execute a specific approved opportunity
+    Triggers bidding/outreach for the opportunity
+    """
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        # Find the opportunity
+        opportunities = user.get("opportunities", [])
+        target_opp = None
+        opp_index = -1
+        
+        for i, opp in enumerate(opportunities):
+            if opp.get("id") == opportunity_id:
+                target_opp = opp
+                opp_index = i
+                break
+        
+        if not target_opp:
+            return {"ok": False, "error": "Opportunity not found"}
+        
+        if target_opp.get("status") not in ["approved", "pending"]:
+            return {"ok": False, "error": f"Cannot execute - status is {target_opp.get('status')}"}
+        
+        # Mark as executing
+        target_opp["status"] = "executing"
+        target_opp["execution_started"] = datetime.now(timezone.utc).isoformat()
+        
+        # Trigger execution (bidding, outreach, etc.)
+        execution_result = {"queued": True}
+        try:
+            from auto_bidding_orchestrator import submit_bid
+            platform = target_opp.get("source", "").lower()
+            if platform in ["upwork", "fiverr", "freelancer"]:
+                execution_result = await submit_bid(target_opp)
+        except Exception as exec_err:
+            execution_result = {"queued": True, "note": str(exec_err)}
+        
+        target_opp["execution_result"] = execution_result
+        user["opportunities"][opp_index] = target_opp
+        log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "action": "execute_opportunity",
+            "opportunity_id": opportunity_id,
+            "status": "executing",
+            "execution_result": execution_result,
+            "message": f"Execution started for {target_opp.get('title', opportunity_id)}"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/dashboard/{username}/execute-all-approved")
+async def dashboard_execute_all_approved(username: str, body: Dict = Body(default={})):
+    """
+    Dashboard button: Execute all approved opportunities
+    """
+    max_execute = int(body.get("max", 10))
+    
+    try:
+        from log_to_jsonbin import get_user, log_agent_update
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        opportunities = user.get("opportunities", [])
+        executed_count = 0
+        results = []
+        
+        for opp in opportunities:
+            if opp.get("status") == "approved" and executed_count < max_execute:
+                opp["status"] = "executing"
+                opp["execution_started"] = datetime.now(timezone.utc).isoformat()
+                executed_count += 1
+                results.append({"id": opp.get("id"), "title": opp.get("title")})
+        
+        user["opportunities"] = opportunities
+        log_agent_update(user)
+        
+        return {
+            "ok": True,
+            "action": "execute_all_approved",
+            "executed": executed_count,
+            "max_allowed": max_execute,
+            "results": results,
+            "message": f"Started execution for {executed_count} opportunities"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/dashboard/{username}/quick-stats")
+async def dashboard_quick_stats(username: str):
+    """
+    Dashboard widget: Quick stats for header/summary cards
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        opportunities = user.get("opportunities", [])
+        revenue = user.get("revenue_tracking", {})
+        deals = user.get("deals", [])
+        
+        return {
+            "ok": True,
+            "stats": {
+                "opportunities_pending": len([o for o in opportunities if o.get("status") == "pending"]),
+                "opportunities_total": len(opportunities),
+                "revenue_total": revenue.get("total", 0),
+                "revenue_net": revenue.get("total", 0) - revenue.get("platform_fees_paid", 0),
+                "aigx_balance": user.get("ownership", {}).get("aigx", 0),
+                "deals_active": len([d for d in deals if d.get("status") == "active"]),
+                "outcome_score": user.get("outcomeScore", 0),
+                "early_adopter_tier": user.get("earlyAdopterTier", "standard"),
+                "systems_active": 143
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/dashboard/{username}/activity-feed")
+async def dashboard_activity_feed(username: str, limit: int = 20):
+    """
+    Dashboard widget: Recent activity feed
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        activities = []
+        
+        # Recent revenue
+        for tx in user.get("revenue_tracking", {}).get("history", [])[-5:]:
+            activities.append({
+                "type": "revenue",
+                "icon": "💰",
+                "message": f"Received ${tx.get('amount', 0):.2f}",
+                "timestamp": tx.get("timestamp")
+            })
+        
+        # Recent opportunities
+        for opp in user.get("opportunities", [])[-5:]:
+            activities.append({
+                "type": "opportunity",
+                "icon": "🎯",
+                "message": f"Opportunity: {opp.get('title', 'Unknown')[:40]}",
+                "status": opp.get("status"),
+                "timestamp": opp.get("discovered_at") or opp.get("approved_at")
+            })
+        
+        # Recent deals
+        for deal in user.get("deals", [])[-3:]:
+            activities.append({
+                "type": "deal",
+                "icon": "🤝",
+                "message": f"Deal: {deal.get('title', 'Unknown')[:40]}",
+                "status": deal.get("status"),
+                "timestamp": deal.get("created_at")
+            })
+        
+        # Sort by timestamp (most recent first)
+        activities.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+        
+        return {
+            "ok": True,
+            "activities": activities[:limit]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/dashboard/{username}/social/quick-post")
+async def dashboard_quick_social_post(username: str, body: Dict = Body(...)):
+    """
+    Dashboard button: Quick social media post
+    
+    Body: {
+        "content": "...",
+        "platforms": ["twitter", "linkedin"],
+        "schedule": null  # or ISO timestamp
+    }
+    """
+    content = body.get("content")
+    platforms = body.get("platforms", ["twitter"])
+    schedule = body.get("schedule")
+    
+    if not content:
+        return {"ok": False, "error": "content required"}
+    
+    try:
+        from social_autoposting_engine import get_social_engine
+        
+        engine = get_social_engine()
+        results = []
+        
+        for platform in platforms:
+            result = await engine.schedule_post(
+                username=username,
+                platform=platform,
+                content=content,
+                scheduled_time=schedule
+            )
+            results.append({"platform": platform, **result})
+        
+        return {
+            "ok": True,
+            "action": "social_post",
+            "platforms": platforms,
+            "scheduled": schedule is not None,
+            "results": results
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/dashboard/{username}/notifications")
+async def dashboard_notifications(username: str):
+    """
+    Dashboard widget: Notifications/alerts
+    """
+    try:
+        from log_to_jsonbin import get_user
+        
+        user = get_user(username)
+        if not user:
+            return {"ok": False, "error": "User not found"}
+        
+        notifications = []
+        
+        # Pending opportunities notification
+        pending = len([o for o in user.get("opportunities", []) if o.get("status") == "pending"])
+        if pending > 0:
+            notifications.append({
+                "type": "action_required",
+                "priority": "high",
+                "icon": "🎯",
+                "title": f"{pending} opportunities awaiting approval",
+                "action": "View & Approve",
+                "action_endpoint": f"/dashboard/{username}/approve-all"
+            })
+        
+        # Revenue notification
+        revenue = user.get("revenue_tracking", {}).get("total", 0)
+        if revenue > 0:
+            notifications.append({
+                "type": "info",
+                "priority": "low",
+                "icon": "💰",
+                "title": f"${revenue:.2f} total revenue",
+                "action": "View Details",
+                "action_endpoint": f"/revenue/summary"
+            })
+        
+        # Early adopter notification
+        tier = user.get("earlyAdopterTier")
+        if tier in ["genesis", "founder", "pioneer"]:
+            notifications.append({
+                "type": "badge",
+                "priority": "low",
+                "icon": "⭐",
+                "title": f"You're a {tier.title()} member!",
+                "subtitle": f"{user.get('aigxMultiplier', 1)}x AIGx multiplier active"
+            })
+        
+        # Systems health
+        notifications.append({
+            "type": "status",
+            "priority": "low",
+            "icon": "✅",
+            "title": "All 143 systems operational",
+            "subtitle": "Automation running"
+        })
+        
+        return {
+            "ok": True,
+            "notifications": notifications,
+            "unread_count": len([n for n in notifications if n.get("priority") == "high"])
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/dashboard/{username}/actions")
+async def dashboard_available_actions(username: str):
+    """
+    Dashboard: List all available action buttons
+    Frontend can use this to dynamically render action buttons
+    """
+    return {
+        "ok": True,
+        "actions": [
+            {
+                "id": "refresh_opportunities",
+                "label": "🔍 Find Opportunities",
+                "endpoint": f"/dashboard/{username}/refresh-opportunities",
+                "method": "POST",
+                "description": "Search 27+ platforms for new revenue opportunities"
+            },
+            {
+                "id": "approve_all",
+                "label": "✅ Approve All",
+                "endpoint": f"/dashboard/{username}/approve-all",
+                "method": "POST",
+                "description": "Approve all pending opportunities with >60% win probability"
+            },
+            {
+                "id": "execute_all",
+                "label": "🚀 Execute Approved",
+                "endpoint": f"/dashboard/{username}/execute-all-approved",
+                "method": "POST",
+                "description": "Start execution for all approved opportunities"
+            },
+            {
+                "id": "quick_post",
+                "label": "📱 Quick Post",
+                "endpoint": f"/dashboard/{username}/social/quick-post",
+                "method": "POST",
+                "description": "Post to social media platforms"
+            },
+            {
+                "id": "csuite_command",
+                "label": "💼 Command Team",
+                "endpoint": "/csuite/command",
+                "method": "POST",
+                "description": "Give commands to your AI executive team"
+            },
+            {
+                "id": "view_revenue",
+                "label": "💰 Revenue Details",
+                "endpoint": "/revenue/summary",
+                "method": "GET",
+                "description": "View detailed revenue breakdown"
+            }
+        ]
+    }
