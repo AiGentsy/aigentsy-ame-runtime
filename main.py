@@ -284,7 +284,8 @@ except Exception as e:
     async def collect_insurance(u, i, v): return {"ok": False, "fee": 0}
     async def get_pool_balance(p): return 0
 
-    from third_party_monetization_enhanced import (
+try:
+    from third_party_monetization import (
         parse_and_track_visitor,
         generate_monetization_strategy,
         track_conversion as track_monetization_conversion,
@@ -294,6 +295,12 @@ except Exception as e:
         MonetizationTactic,
         PLATFORM_CONFIGS
     )
+except ImportError as e:
+    print(f"⚠️ third_party_monetization partial import: {e}")
+    # Define fallbacks
+    TrafficSource = None
+    MonetizationTactic = None
+    PLATFORM_CONFIGS = {}
 
 # ============ AGENT FACTORING ============
 try:
@@ -16466,7 +16473,7 @@ async def aigentsy_active_systems():
     
     # Monetization
     monetization = [
-        ("third_party_monetization_enhanced", "Traffic Monetization"),
+        ("third_party_monetization", "Traffic Monetization"),
         ("platform_recruitment_engine", "Platform Recruitment"),
         ("amg_orchestrator", "AMG Orchestrator"),
         ("outcome_oracle_max", "Outcome Oracle"),
@@ -27378,16 +27385,19 @@ async def syndication_process():
 async def monetization_third_party():
     """Process third-party monetization opportunities"""
     try:
-        from third_party_monetization import process_third_party_opportunities
+        from third_party_monetization import get_monetization_engine, get_optimization_insights
         
-        result = await process_third_party_opportunities()
+        engine = get_monetization_engine()
+        insights = get_optimization_insights()
+        
         return {
             "ok": True,
-            "opportunities_processed": result.get("processed", 0),
-            "revenue_generated": result.get("revenue", 0)
+            "opportunities_processed": insights.get("total_conversions", 0),
+            "revenue_generated": insights.get("total_revenue", 0),
+            "insights": insights
         }
-    except ImportError:
-        return {"ok": True, "opportunities_processed": 0, "note": "third_party_monetization not available"}
+    except ImportError as e:
+        return {"ok": False, "error": f"third_party_monetization not available: {e}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -28004,8 +28014,8 @@ try:
     from third_party_monetization import (
         parse_traffic_source,
         generate_monetization_strategy,
-        track_conversion,
-        get_session_tactics
+        get_monetization_engine,
+        get_optimization_insights
     )
     THIRD_PARTY_MONETIZATION_AVAILABLE = True
 except ImportError:
