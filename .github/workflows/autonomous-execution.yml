@@ -379,3 +379,25 @@ jobs:
           echo "  ✅ Analytics (2)"
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 20: RECONCILIATION (NEW - Ties everything together)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔄 Reconciliation (3 endpoints)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔄 RECONCILIATION - TYING IT ALL TOGETHER"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          echo "1. Load previous state..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/reconciliation/load" --max-time 30 | jq -c '{ok}' || true
+          
+          echo "2. Get dashboard (this run's results)..."
+          curl -s "${{ env.BACKEND_URL }}/reconciliation/dashboard" --max-time 30 | jq -c '{ok,balances}' || true
+          
+          echo "3. Persist updated state..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/reconciliation/persist" --max-time 30 | jq -c '{ok}' || true
+          
+          echo "4. Wade's dashboard..."
+          curl -s "${{ env.BACKEND_URL }}/wade/dashboard" --max-time 30 | jq -c '{ok,wade_balance,pending_approval,active_workflows}' || true
