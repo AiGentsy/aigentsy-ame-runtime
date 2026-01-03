@@ -20157,6 +20157,27 @@ from aigentsy_conductor import (
     get_device_dashboard
 )
 
+# Import additional conductor components (with fallback)
+try:
+    from aigentsy_conductor import (
+        _DEVICE_REGISTRY,
+        _EXECUTION_QUEUE,
+        _EXECUTION_HISTORY,
+        _USER_POLICIES,
+        MultiAIRouter,
+        AiGentsyConductor,
+        run_autonomous_cycle,
+        get_conductor
+    )
+    CONDUCTOR_FULL = True
+except ImportError as e:
+    print(f"⚠️ Conductor partial import: {e}")
+    CONDUCTOR_FULL = False
+    _DEVICE_REGISTRY = {}
+    _EXECUTION_QUEUE = []
+    _EXECUTION_HISTORY = []
+    _USER_POLICIES = {}
+
 @app.post("/conductor/register")
 async def conductor_register(
     username: str,
@@ -20219,9 +20240,10 @@ async def conductor_dashboard(username: str, device_id: str):
 @app.post("/conductor/scan-all-devices")
 async def conductor_scan_all_devices():
     """Scan all registered devices for opportunities"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available", "devices_scanned": 0, "opportunities_found": 0}
+    
     try:
-        from aigentsy_conductor import _DEVICE_REGISTRY, scan_opportunities
-        
         all_opportunities = []
         for device_key, device in _DEVICE_REGISTRY.items():
             username = device["username"]
@@ -20237,12 +20259,9 @@ async def conductor_scan_all_devices():
             "ok": True,
             "devices_scanned": len(_DEVICE_REGISTRY),
             "opportunities_found": len(all_opportunities),
-            "opportunities": all_opportunities[:20],  # Top 20
+            "opportunities": all_opportunities[:20],
             "by_type": {}
         }
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available", "devices_scanned": 0, "opportunities_found": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20250,9 +20269,10 @@ async def conductor_scan_all_devices():
 @app.post("/conductor/create-plans")
 async def conductor_create_plans():
     """Create execution plans from all opportunities"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available", "plans_created": 0}
+    
     try:
-        from aigentsy_conductor import _DEVICE_REGISTRY, create_execution_plan, _EXECUTION_QUEUE
-        
         plans_created = []
         for device_key, device in _DEVICE_REGISTRY.items():
             username = device["username"]
@@ -20274,9 +20294,6 @@ async def conductor_create_plans():
             "plans": plans_created,
             "total_estimated_value": sum(p["estimated_value"] for p in plans_created)
         }
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available", "plans_created": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20284,9 +20301,10 @@ async def conductor_create_plans():
 @app.post("/conductor/execute-approved")
 async def conductor_execute_approved():
     """Execute all auto-approved plans"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available", "executed": 0}
+    
     try:
-        from aigentsy_conductor import _EXECUTION_QUEUE, execute_plan
-        
         executed = []
         total_revenue = 0
         
@@ -20306,9 +20324,6 @@ async def conductor_execute_approved():
             "total_revenue": total_revenue,
             "plans": executed
         }
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available", "executed": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20316,9 +20331,10 @@ async def conductor_execute_approved():
 @app.get("/conductor/dashboard-all")
 async def conductor_dashboard_all():
     """Get dashboard for all registered devices"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available", "devices": 0}
+    
     try:
-        from aigentsy_conductor import _DEVICE_REGISTRY, _EXECUTION_HISTORY
-        
         total_revenue = 0
         total_actions = 0
         
@@ -20343,9 +20359,6 @@ async def conductor_dashboard_all():
             "actions_executed": total_actions,
             "executions_in_history": len(_EXECUTION_HISTORY)
         }
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available", "devices": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20353,9 +20366,10 @@ async def conductor_dashboard_all():
 @app.post("/conductor/route-tasks")
 async def conductor_route_tasks():
     """Route pending tasks to appropriate AI models"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available", "routed": 0}
+    
     try:
-        from aigentsy_conductor import MultiAIRouter, _EXECUTION_QUEUE
-        
         router = MultiAIRouter()
         routed_tasks = []
         
@@ -20364,7 +20378,6 @@ async def conductor_route_tasks():
                 for action in plan.get("actions_needing_approval", []):
                     task_type = action.get("type", "unknown").lower()
                     
-                    # Map action types to task types
                     type_map = {
                         "jv_partnership": "consulting",
                         "price_discount": "analysis",
@@ -20393,9 +20406,6 @@ async def conductor_route_tasks():
                 "gemini": router.gemini_available
             }
         }
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available", "routed": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20403,8 +20413,10 @@ async def conductor_route_tasks():
 @app.post("/conductor/connect-spawn")
 async def conductor_connect_spawn(spawn_id: str):
     """Connect a spawned business to Conductor for autonomous operation"""
+    if not CONDUCTOR_FULL:
+        return {"ok": True, "note": "conductor not fully available"}
+    
     try:
-        # Get spawn from Auto-Spawn Engine
         if AUTO_SPAWN_AVAILABLE:
             engine = get_spawn_engine()
             spawn = engine.spawner.spawned_businesses.get(spawn_id)
@@ -20412,10 +20424,6 @@ async def conductor_connect_spawn(spawn_id: str):
             if not spawn:
                 return {"ok": False, "error": "spawn_not_found"}
             
-            # Register spawn as a "device" in Conductor
-            from aigentsy_conductor import register_device
-            
-            # Map spawn category to connected apps
             app_mapping = {
                 "ai_art": [{"type": "stability_ai"}, {"type": "stripe"}],
                 "content": [{"type": "claude"}, {"type": "stripe"}],
@@ -20443,9 +20451,6 @@ async def conductor_connect_spawn(spawn_id: str):
             }
         
         return {"ok": False, "error": "auto_spawn_engine not available"}
-    except ImportError:
-        print("⚠️ aigentsy_conductor not available")
-        return {"ok": True, "note": "conductor not available"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
