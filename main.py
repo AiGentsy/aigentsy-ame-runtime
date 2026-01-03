@@ -20240,6 +20240,9 @@ async def conductor_scan_all_devices():
             "opportunities": all_opportunities[:20],  # Top 20
             "by_type": {}
         }
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available", "devices_scanned": 0, "opportunities_found": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20271,6 +20274,9 @@ async def conductor_create_plans():
             "plans": plans_created,
             "total_estimated_value": sum(p["estimated_value"] for p in plans_created)
         }
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available", "plans_created": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20300,6 +20306,9 @@ async def conductor_execute_approved():
             "total_revenue": total_revenue,
             "plans": executed
         }
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available", "executed": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20334,6 +20343,9 @@ async def conductor_dashboard_all():
             "actions_executed": total_actions,
             "executions_in_history": len(_EXECUTION_HISTORY)
         }
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available", "devices": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20381,6 +20393,9 @@ async def conductor_route_tasks():
                 "gemini": router.gemini_available
             }
         }
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available", "routed": 0}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -20428,6 +20443,9 @@ async def conductor_connect_spawn(spawn_id: str):
             }
         
         return {"ok": False, "error": "auto_spawn_engine not available"}
+    except ImportError:
+        print("⚠️ aigentsy_conductor not available")
+        return {"ok": True, "note": "conductor not available"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
