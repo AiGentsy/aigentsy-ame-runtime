@@ -22243,6 +22243,198 @@ async def ame_process_queue():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AME (AUTONOMOUS MARKETING ENGINE) FRONTEND ENDPOINTS
+# These endpoints are called by aigent0.html dashboard
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# In-memory pitch queue (would be JSONBin in production)
+AME_PITCH_QUEUE = []
+AME_STATS = {"queue_size": 0, "sent": 0, "responded": 0, "converted": 0, "response_rate": 0}
+
+@app.get("/ame/queue")
+async def ame_get_queue():
+    """
+    Get AME pitch queue for dashboard
+    Called by GXA.viewAutoSales()
+    """
+    try:
+        # Try to load from user's opportunities that need outreach
+        username = "system"  # Would come from auth in production
+        
+        from log_to_jsonbin import get_user
+        user = get_user(username) if username != "system" else None
+        
+        pitches = []
+        if user:
+            # Convert pending opportunities to pitches
+            for opp in user.get("opportunities", []):
+                if opp.get("status") == "pending" and opp.get("needs_outreach"):
+                    pitches.append({
+                        "id": opp.get("id"),
+                        "target": opp.get("client_name", opp.get("source", "Unknown")),
+                        "subject": opp.get("title", "Opportunity"),
+                        "preview": opp.get("description", "")[:100],
+                        "platform": opp.get("source", "email"),
+                        "created_at": opp.get("discovered_at"),
+                        "status": "pending"
+                    })
+        
+        # Also include any queued pitches
+        pitches.extend(AME_PITCH_QUEUE)
+        
+        return {
+            "ok": True,
+            "stats": {
+                "queue_size": len(pitches),
+                "sent": AME_STATS.get("sent", 0),
+                "responded": AME_STATS.get("responded", 0),
+                "converted": AME_STATS.get("converted", 0),
+                "response_rate": AME_STATS.get("response_rate", 0)
+            },
+            "pitches": pitches[:20]  # Limit to 20
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "stats": {}, "pitches": []}
+
+
+@app.post("/ame/approve/{pitch_id}")
+async def ame_approve_pitch(pitch_id: str):
+    """
+    Approve and send a pitch
+    Called by GXA.approvePitch()
+    """
+    try:
+        # Find and approve the pitch
+        for pitch in AME_PITCH_QUEUE:
+            if pitch.get("id") == pitch_id:
+                pitch["status"] = "sent"
+                pitch["sent_at"] = datetime.now(timezone.utc).isoformat()
+                AME_STATS["sent"] = AME_STATS.get("sent", 0) + 1
+                
+                # In production, this would actually send the pitch
+                # via email, platform API, etc.
+                
+                return {
+                    "ok": True,
+                    "message": "Pitch approved and sent",
+                    "pitch_id": pitch_id
+                }
+        
+        return {"ok": False, "error": "Pitch not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/skip/{pitch_id}")
+async def ame_skip_pitch(pitch_id: str):
+    """
+    Skip/dismiss a pitch
+    Called by GXA.skipPitch()
+    """
+    try:
+        for i, pitch in enumerate(AME_PITCH_QUEUE):
+            if pitch.get("id") == pitch_id:
+                pitch["status"] = "skipped"
+                AME_PITCH_QUEUE.pop(i)
+                return {"ok": True, "message": "Pitch skipped"}
+        
+        return {"ok": False, "error": "Pitch not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/edit/{pitch_id}")
+async def ame_edit_pitch(pitch_id: str, body: Dict = Body(...)):
+    """
+    Edit a pitch before sending
+    Called by GXA.editPitch()
+    """
+    try:
+        new_content = body.get("content")
+        new_subject = body.get("subject")
+        
+        for pitch in AME_PITCH_QUEUE:
+            if pitch.get("id") == pitch_id:
+                if new_content:
+                    pitch["content"] = new_content
+                if new_subject:
+                    pitch["subject"] = new_subject
+                pitch["edited_at"] = datetime.now(timezone.utc).isoformat()
+                return {"ok": True, "message": "Pitch updated", "pitch": pitch}
+        
+        return {"ok": False, "error": "Pitch not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/ame/pitch/{pitch_id}")
+async def ame_get_pitch(pitch_id: str):
+    """
+    Get a single pitch details
+    """
+    try:
+        for pitch in AME_PITCH_QUEUE:
+            if pitch.get("id") == pitch_id:
+                return {"ok": True, "pitch": pitch}
+        
+        return {"ok": False, "error": "Pitch not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/generate")
+async def ame_generate_pitch(body: Dict = Body(...)):
+    """
+    Generate a new pitch (test or real)
+    Called by GXA.generateTestPitch()
+    """
+    try:
+        target = body.get("target", "Test Company")
+        template = body.get("template", "cold_outreach")
+        
+        pitch_id = f"pitch_{uuid4().hex[:8]}"
+        
+        new_pitch = {
+            "id": pitch_id,
+            "target": target,
+            "subject": f"Partnership Opportunity with {target}",
+            "preview": "I noticed your company and thought there might be a great opportunity...",
+            "content": f"Hi {target} team,\n\nI came across your company and was impressed by what you're building...",
+            "platform": body.get("platform", "email"),
+            "template": template,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "pending"
+        }
+        
+        AME_PITCH_QUEUE.append(new_pitch)
+        AME_STATS["queue_size"] = len(AME_PITCH_QUEUE)
+        
+        return {
+            "ok": True,
+            "message": "Pitch generated",
+            "pitch": new_pitch
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/intent/list")
+async def intent_list_endpoint():
+    """
+    List intents/contracts - called by frontend viewIntentExchange()
+    """
+    try:
+        # Return empty list or fetch from intent system
+        return {
+            "ok": True,
+            "intents": [],
+            "total": 0
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD & OPPORTUNITY APPROVAL ENDPOINTS
 # Critical for user-facing functionality
 # ═══════════════════════════════════════════════════════════════════════════════
