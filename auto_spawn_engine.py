@@ -110,6 +110,42 @@ class SpawnedBusiness:
     auto_kill_at: str = ""
     owner: str = "aigentsy"
     adopted_by: str = ""
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # AIGENTSY ECOSYSTEM INTEGRATION
+    # Every spawned business is an AiGentsy property
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    # Referral & Attribution
+    referral_code: str = ""                    # Unique code for this spawn (e.g., "PETART-X7K2")
+    referral_signups: int = 0                  # Users who signed up via this spawn
+    referral_revenue: float = 0.0             # Revenue from referred users
+    
+    # AiGentsy Branding
+    powered_by_aigentsy: bool = True          # Shows "Powered by AiGentsy" footer
+    aigentsy_cta_enabled: bool = True         # "Want AI to build YOUR business?" CTA
+    aigentsy_dashboard_link: str = ""         # Link back to main dashboard
+    
+    # User Conversion Funnel
+    email_captures: int = 0                    # Emails collected (potential AiGentsy users)
+    aigentsy_cta_clicks: int = 0              # Clicks on "Join AiGentsy" CTA
+    converted_to_aigentsy_user: int = 0       # Actually became AiGentsy users
+    
+    # Wade Integration (fulfillment ties to main system)
+    wade_user_id: str = "wade_system"         # Wade account handling fulfillment
+    fulfillment_queue_id: str = ""            # Links to /wade/fulfillment-queue
+    
+    # Revenue Attribution (ties to your Stripe)
+    stripe_connect_account: str = ""          # Your Stripe Connect account
+    revenue_split_aigentsy: float = 1.0       # 100% to AiGentsy (until adopted)
+    
+    # Dashboard Integration
+    visible_in_wade_dashboard: bool = True    # Shows in wade-dashboard.html
+    visible_in_main_dashboard: bool = False   # Shows in aigent0.html (after adoption)
+    
+    # MetaHive/Yield Memory
+    contributes_to_hive: bool = True          # Learnings shared with network
+    yield_memory_entries: int = 0             # Patterns learned from this spawn
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -479,11 +515,18 @@ class TrendDetector:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BUSINESS SPAWNER - Creates businesses from signals
+# All spawned businesses are AiGentsy properties with full ecosystem integration
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class BusinessSpawner:
     def __init__(self):
         self.spawned_businesses: Dict[str, SpawnedBusiness] = {}
+    
+    def _generate_referral_code(self, category: str, spawn_id: str) -> str:
+        """Generate unique referral code like PETART-X7K2"""
+        prefix = category.upper()[:6]
+        suffix = spawn_id[-4:].upper()
+        return f"{prefix}-{suffix}"
     
     async def spawn_from_signal(self, signal: TrendSignal) -> SpawnedBusiness:
         template = BUSINESS_TEMPLATES.get(signal.category)
@@ -501,7 +544,11 @@ class BusinessSpawner:
         )
         
         spawn_id = f"spawn_{secrets.token_hex(8)}"
-        base_url = os.getenv("SPAWNS_URL", "https://spawns.aigentsy.com")
+        referral_code = self._generate_referral_code(signal.category.value, spawn_id)
+        
+        # All spawns live under AiGentsy's domain
+        base_url = os.getenv("AIGENTSY_URL", "https://aigentsy.com")
+        spawns_url = os.getenv("SPAWNS_URL", "https://spawns.aigentsy.com")
         
         business = SpawnedBusiness(
             spawn_id=spawn_id,
@@ -513,12 +560,23 @@ class BusinessSpawner:
             trigger_signal=signal,
             spawned_at=datetime.now(timezone.utc).isoformat(),
             status=SpawnStatus.LAUNCHING,
-            landing_page_url=f"{base_url}/{slug}",
+            landing_page_url=f"{spawns_url}/{slug}",
             stripe_product_id=f"prod_{secrets.token_hex(12)}",
             base_price=template["services"][0]["price"],
             current_price=template["services"][0]["price"],
             services=[{**s, "service_id": f"svc_{secrets.token_hex(4)}"} for s in template["services"]],
-            auto_kill_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+            auto_kill_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+            
+            # AiGentsy Ecosystem Integration
+            referral_code=referral_code,
+            powered_by_aigentsy=True,
+            aigentsy_cta_enabled=True,
+            aigentsy_dashboard_link=f"{base_url}/start?ref={referral_code}",
+            wade_user_id="wade_system",
+            stripe_connect_account=os.getenv("STRIPE_CONNECT_ACCOUNT", ""),
+            revenue_split_aigentsy=1.0,  # 100% to AiGentsy until adopted
+            visible_in_wade_dashboard=True,
+            contributes_to_hive=True
         )
         
         business.content_queue = await self._generate_content(business, template)
@@ -532,22 +590,51 @@ class BusinessSpawner:
             NicheCategory.DESIGN: ["Thumbnails", "Graphics", "Logos"],
             NicheCategory.VOICE: ["Voiceovers", "Narration"],
             NicheCategory.VIDEO: ["Video Edits", "Shorts", "Reels"],
-            NicheCategory.AUTOMATION: ["Workflows", "Bots"]
+            NicheCategory.AUTOMATION: ["Workflows", "Bots"],
+            NicheCategory.RESEARCH: ["Market Research", "Analysis"],
+            NicheCategory.ECOMMERCE: ["Store", "Products"],
+            NicheCategory.SAAS_MICRO: ["Tool", "App"]
         }
         return subjects.get(signal.category, ["Services"])[0]
     
     async def _generate_content(self, biz: SpawnedBusiness, template: Dict) -> List[Dict]:
+        """Generate marketing content with AiGentsy CTAs embedded"""
         content = []
         for platform in template["platforms"][:3]:
             for i in range(3):
+                # Every 3rd post includes AiGentsy CTA
+                include_cta = (i % 3 == 2)
+                
                 content.append({
                     "id": f"content_{secrets.token_hex(4)}",
                     "platform": platform,
                     "hook": biz.tagline,
+                    "cta": f"🚀 Want AI building YOUR business? {biz.aigentsy_dashboard_link}" if include_cta else f"Order now: {biz.landing_page_url}",
+                    "referral_code": biz.referral_code,
                     "scheduled": (datetime.now(timezone.utc) + timedelta(hours=i*4)).isoformat(),
                     "status": "queued"
                 })
         return content
+    
+    def get_ecosystem_stats(self) -> Dict[str, Any]:
+        """Get stats on how spawns are feeding AiGentsy ecosystem"""
+        businesses = list(self.spawned_businesses.values())
+        
+        return {
+            "total_spawns": len(businesses),
+            "active_spawns": len([b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]),
+            "total_spawn_revenue": sum(b.revenue for b in businesses),
+            "total_referral_signups": sum(b.referral_signups for b in businesses),
+            "total_referral_revenue": sum(b.referral_revenue for b in businesses),
+            "total_email_captures": sum(b.email_captures for b in businesses),
+            "total_aigentsy_conversions": sum(b.converted_to_aigentsy_user for b in businesses),
+            "total_yield_patterns": sum(b.yield_memory_entries for b in businesses),
+            "top_referral_spawns": sorted(
+                [{"name": b.name, "signups": b.referral_signups, "code": b.referral_code} 
+                 for b in businesses if b.referral_signups > 0],
+                key=lambda x: x["signups"], reverse=True
+            )[:5]
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -717,6 +804,8 @@ class AutoSpawnEngine:
     
     def get_dashboard(self) -> Dict:
         businesses = list(self.spawner.spawned_businesses.values())
+        ecosystem = self.spawner.get_ecosystem_stats()
+        
         return {
             "total_spawned": len(businesses),
             "active": len([b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]),
@@ -727,7 +816,19 @@ class AutoSpawnEngine:
                                       for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]], 
                                      key=lambda x: x["revenue"], reverse=True)[:5],
             "adoptable": self.adoption.get_adoptable(),
-            "recent_signals": [{"query": s.query, "score": s.opportunity_score} for s in self.detector.signals[:10]]
+            "recent_signals": [{"query": s.query, "score": s.opportunity_score} for s in self.detector.signals[:10]],
+            
+            # AiGentsy Ecosystem Stats
+            "ecosystem": ecosystem,
+            "referral_codes_active": len([b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]),
+            "total_aigentsy_conversions": ecosystem.get("total_aigentsy_conversions", 0),
+            "spawn_to_user_funnel": {
+                "spawns_live": len([b for b in businesses if b.status == SpawnStatus.LIVE]),
+                "email_captures": ecosystem.get("total_email_captures", 0),
+                "cta_clicks": sum(b.aigentsy_cta_clicks for b in businesses),
+                "signups": ecosystem.get("total_referral_signups", 0),
+                "conversions": ecosystem.get("total_aigentsy_conversions", 0)
+            }
         }
 
 
