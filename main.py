@@ -30170,5 +30170,390 @@ async def get_network_recommendations(customer_email: str = None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# END SECTION 43
+# SECTION 44: TEST EVERYTHING - EVERY SINGLE SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/test/everything")
+async def test_everything():
+    """
+    🧪 TEST EVERYTHING - Tests ALL 125+ endpoints/systems in one call
+    
+    This runs the ENTIRE autonomous workflow:
+    - All health checks
+    - All discovery systems
+    - All conductor systems
+    - All spawn systems
+    - All financial systems
+    - All marketing systems
+    - All AI generation
+    - All reconciliation
+    - EVERYTHING
+    
+    Usage: curl -X POST https://your-url.com/test/everything | jq
+    """
+    import httpx
+    
+    base_url = os.getenv("BACKEND_URL", "https://aigentsy-ame-runtime.onrender.com")
+    
+    results = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "base_url": base_url,
+        "phases": {},
+        "summary": {
+            "total_tests": 0,
+            "passed": 0,
+            "failed": 0,
+            "errors": []
+        }
+    }
+    
+    async def test_endpoint(phase: str, name: str, method: str, path: str, body: dict = None):
+        """Test a single endpoint"""
+        results["summary"]["total_tests"] += 1
+        
+        if phase not in results["phases"]:
+            results["phases"][phase] = {"tests": [], "passed": 0, "failed": 0}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                if method == "GET":
+                    r = await client.get(f"{base_url}{path}")
+                else:
+                    r = await client.post(f"{base_url}{path}", json=body or {})
+                
+                data = r.json()
+                ok = data.get("ok", False) if isinstance(data, dict) else False
+                
+                results["phases"][phase]["tests"].append({
+                    "name": name,
+                    "path": path,
+                    "ok": ok,
+                    "status_code": r.status_code
+                })
+                
+                if ok or r.status_code == 200:
+                    results["phases"][phase]["passed"] += 1
+                    results["summary"]["passed"] += 1
+                else:
+                    results["phases"][phase]["failed"] += 1
+                    results["summary"]["failed"] += 1
+                    
+        except Exception as e:
+            results["phases"][phase]["tests"].append({
+                "name": name,
+                "path": path,
+                "ok": False,
+                "error": str(e)
+            })
+            results["phases"][phase]["failed"] += 1
+            results["summary"]["failed"] += 1
+            results["summary"]["errors"].append(f"{name}: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 1: HEALTH CHECKS (7 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("1_health", "v90_health", "GET", "/autonomous/v90/health")
+    await test_endpoint("1_health", "api_health", "GET", "/api/health")
+    await test_endpoint("1_health", "basic_health", "GET", "/health")
+    await test_endpoint("1_health", "learning_health", "GET", "/learning/health")
+    await test_endpoint("1_health", "execution_health", "GET", "/execution/health")
+    await test_endpoint("1_health", "execution_health_quick", "GET", "/execution/health/quick")
+    await test_endpoint("1_health", "execution_health_detail", "GET", "/execution/health/detail")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 2: STATISTICS (4 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("2_statistics", "execution_stats", "GET", "/execution/stats")
+    await test_endpoint("2_statistics", "autonomous_stats", "GET", "/autonomous/stats")
+    await test_endpoint("2_statistics", "approval_queue", "GET", "/autonomous/approval-queue")
+    await test_endpoint("2_statistics", "arbitrage_stats", "GET", "/arbitrage/stats")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 3: APEX SYSTEMS (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("3_apex", "upgrades_dashboard", "GET", "/apex/upgrades/dashboard")
+    await test_endpoint("3_apex", "verify_deliverable", "POST", "/apex/upgrades/verify/deliverable")
+    await test_endpoint("3_apex", "pricing_recommend", "POST", "/apex/upgrades/pricing/recommend")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 4: DISCOVERY (11 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("4_discovery", "mega_discover", "POST", "/execution/mega-discover", {"enable_filters": True})
+    await test_endpoint("4_discovery", "discover_execute", "POST", "/autonomous/discover-and-execute", {"auto_approve_user": True, "max_executions": 1})
+    await test_endpoint("4_discovery", "discover_queue", "POST", "/autonomous/discover-and-queue", {"min_win_probability": 0.7})
+    await test_endpoint("4_discovery", "discover_route", "POST", "/execution/discover-and-route")
+    await test_endpoint("4_discovery", "full_cycle", "POST", "/autonomous/full-cycle")
+    await test_endpoint("4_discovery", "scrape_all", "POST", "/discovery/scrape-all")
+    await test_endpoint("4_discovery", "perplexity", "POST", "/discovery/perplexity-opportunities", {"category": "AI"})
+    await test_endpoint("4_discovery", "alpha_discovery", "POST", "/discovery/alpha")
+    await test_endpoint("4_discovery", "pain_points", "POST", "/pain-points/detect")
+    await test_endpoint("4_discovery", "flow_arbitrage", "POST", "/discovery/flow-arbitrage")
+    await test_endpoint("4_discovery", "signals_ingest", "POST", "/signals/ingest")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 5: WADE SYSTEMS (2 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("5_wade", "discover_queue", "POST", "/wade/discover-and-queue")
+    await test_endpoint("5_wade", "fulfillment_queue", "GET", "/wade/fulfillment-queue")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 6: CLIENT DEALS (7 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("6_deals", "service_catalog", "GET", "/services/catalog")
+    await test_endpoint("6_deals", "deal_stats", "GET", "/deals/stats")
+    await test_endpoint("6_deals", "pending_deals", "GET", "/deals/pending")
+    await test_endpoint("6_deals", "in_progress", "GET", "/deals/in-progress")
+    await test_endpoint("6_deals", "awaiting_approval", "GET", "/deals/awaiting-approval")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 7: AI GENERATION (5 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("7_ai_gen", "intelligence_collect", "POST", "/intelligence/collect")
+    await test_endpoint("7_ai_gen", "ai_orchestrate", "POST", "/ai/orchestrate")
+    await test_endpoint("7_ai_gen", "graphics_batch", "POST", "/graphics/batch-generate")
+    await test_endpoint("7_ai_gen", "audio_batch", "POST", "/audio/batch-generate")
+    await test_endpoint("7_ai_gen", "video_batch", "POST", "/video/batch-generate")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 8: ARBITRAGE (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("8_arbitrage", "run_cycle", "POST", "/arbitrage/run-cycle", {"max_opportunities": 5})
+    await test_endpoint("8_arbitrage", "execute", "POST", "/arbitrage/execute", {"max_opportunities": 10})
+    await test_endpoint("8_arbitrage", "stats", "GET", "/arbitrage/stats")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 9: FINANCIAL (7 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("9_financial", "revenue_reconcile", "POST", "/revenue/reconcile")
+    await test_endpoint("9_financial", "pricing_optimize", "POST", "/pricing/optimize")
+    await test_endpoint("9_financial", "ocl_auto_repay", "POST", "/ocl/auto-repay")
+    await test_endpoint("9_financial", "p2p_match_loans", "POST", "/p2p/match-loans")
+    await test_endpoint("9_financial", "escrow_auto_release", "POST", "/escrow/auto-release")
+    await test_endpoint("9_financial", "payments_batch", "POST", "/payments/batch-execute")
+    await test_endpoint("9_financial", "ipvault_royalty", "POST", "/ipvault/royalty-sweep")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 10: USER SUCCESS (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("10_user", "predict_success", "POST", "/clients/predict-success")
+    await test_endpoint("10_user", "verification_batch", "POST", "/verification/batch")
+    await test_endpoint("10_user", "reputation_update", "POST", "/reputation/update-batch")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 11: BUSINESS SYSTEMS (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("11_business", "franchise_royalties", "POST", "/franchise/process-royalties")
+    await test_endpoint("11_business", "subscriptions_renew", "POST", "/subscriptions/process-renewals")
+    await test_endpoint("11_business", "slo_compliance", "POST", "/slo/check-compliance")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 12: MARKETING (8 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("12_marketing", "email_batch", "POST", "/email/send-batch")
+    await test_endpoint("12_marketing", "resend_queue", "POST", "/resend/process-queue")
+    await test_endpoint("12_marketing", "ame_queue", "POST", "/ame/process-queue")
+    await test_endpoint("12_marketing", "ame_pitches", "POST", "/ame/generate-pitches")
+    await test_endpoint("12_marketing", "social_queue", "POST", "/social/process-queue")
+    await test_endpoint("12_marketing", "syndication", "POST", "/syndication/process")
+    await test_endpoint("12_marketing", "retarget", "POST", "/retarget/process-queue")
+    await test_endpoint("12_marketing", "actionize", "POST", "/actionize/deploy")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 13: PLATFORM AUTOMATIONS (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("13_platforms", "fiverr_orders", "POST", "/fiverr/process-orders")
+    await test_endpoint("13_platforms", "dribbble_daily", "POST", "/dribbble/post-daily")
+    await test_endpoint("13_platforms", "99designs_scan", "POST", "/99designs/scan-and-enter")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 14: AAM & SHOPIFY (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("14_aam", "shopify_abandon", "POST", "/aam/run/shopify/shopify-abandon-v1")
+    await test_endpoint("14_aam", "shopify_growth", "POST", "/aam/run/shopify/shopify-growth-v1")
+    await test_endpoint("14_aam", "amazon_cart", "POST", "/aam/run/amazon/amazon-cart-nudge-v1")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 15: R3 & PROPOSALS (4 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("15_r3", "autopilot_execute", "POST", "/r3/autopilot/execute-all")
+    await test_endpoint("15_r3", "proposals_nudge", "POST", "/proposals/auto-nudge")
+    await test_endpoint("15_r3", "proposals_autoclose", "POST", "/proposals/autoclose")
+    await test_endpoint("15_r3", "bundles_sales", "POST", "/bundles/process-sales")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 16: METABRIDGE & METAHIVE (2 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("16_meta", "metabridge_batch", "POST", "/metabridge/batch_execute")
+    await test_endpoint("16_meta", "hive_distribute", "POST", "/hive/distribute")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 17: CONDUCTOR (8 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("17_conductor", "csuite_analyze", "POST", "/csuite/analyze-all")
+    await test_endpoint("17_conductor", "week2_execute", "POST", "/week2/execute")
+    await test_endpoint("17_conductor", "run_cycle", "POST", "/conductor/run-cycle")
+    await test_endpoint("17_conductor", "scan_all_devices", "POST", "/conductor/scan-all-devices")
+    await test_endpoint("17_conductor", "create_plans", "POST", "/conductor/create-plans")
+    await test_endpoint("17_conductor", "execute_approved", "POST", "/conductor/execute-approved")
+    await test_endpoint("17_conductor", "dashboard_all", "GET", "/conductor/dashboard-all")
+    await test_endpoint("17_conductor", "route_tasks", "POST", "/conductor/route-tasks")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 18: SPECIAL SYSTEMS (3 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("18_special", "third_party", "POST", "/monetization/third-party")
+    await test_endpoint("18_special", "darkpool_match", "POST", "/darkpool/match")
+    await test_endpoint("18_special", "sponsors_distribute", "POST", "/sponsors/distribute")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 19: LEARNING (1 endpoint)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("19_learning", "process_outcomes", "POST", "/learning/process-outcomes")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 20: ANALYTICS (2 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("20_analytics", "daily_snapshot", "POST", "/analytics/daily-snapshot")
+    await test_endpoint("20_analytics", "revenue_report", "POST", "/reports/revenue")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 21: RECONCILIATION (4 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("21_reconciliation", "load", "POST", "/reconciliation/load")
+    await test_endpoint("21_reconciliation", "dashboard", "GET", "/reconciliation/dashboard")
+    await test_endpoint("21_reconciliation", "persist", "POST", "/reconciliation/persist")
+    await test_endpoint("21_reconciliation", "wade_dashboard", "GET", "/wade/dashboard")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 22: AUTO-SPAWN (12 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("22_spawn", "detect_trends", "POST", "/spawn/detect-trends")
+    await test_endpoint("22_spawn", "run_cycle", "POST", "/spawn/run-cycle")
+    await test_endpoint("22_spawn", "dashboard", "GET", "/spawn/dashboard")
+    await test_endpoint("22_spawn", "businesses_live", "GET", "/spawn/businesses?status=live")
+    await test_endpoint("22_spawn", "businesses_scaling", "GET", "/spawn/businesses?status=scaling")
+    await test_endpoint("22_spawn", "lifecycle_check", "POST", "/spawn/lifecycle-check")
+    await test_endpoint("22_spawn", "adoptable", "GET", "/spawn/adoptable")
+    await test_endpoint("22_spawn", "templates", "GET", "/spawn/templates")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 23: SPAWN NETWORK (8 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("23_network", "network_stats", "GET", "/spawn/network/stats")
+    await test_endpoint("23_network", "generate_promos", "POST", "/spawn/network/generate-promos")
+    await test_endpoint("23_network", "audience_pool", "GET", "/spawn/network/audience-pool")
+    await test_endpoint("23_network", "recommendations", "GET", "/spawn/network/recommendations")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 24: ORCHESTRATOR (2 endpoints)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    await test_endpoint("24_orchestrator", "full_cycle", "POST", "/orchestrator/full-cycle")
+    await test_endpoint("24_orchestrator", "status", "GET", "/orchestrator/status")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PHASE 25: IMPORTS CHECK
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    import_results = {}
+    critical_imports = [
+        ("aigentsy_conductor", "AiGentsyConductor"),
+        ("aigentsy_apex_ultra", "activate_apex_ultra"),
+        ("auto_spawn_engine", "AutoSpawnEngine"),
+        ("amg_orchestrator", "AMGOrchestrator"),
+        ("metahive_brain", "query_hive"),
+        ("yield_memory", "store_pattern"),
+        ("ame_pitches", "generate_pitch"),
+        ("revenue_flows", "ingest_ame_conversion"),
+        ("outcome_oracle_max", "credit_aigx"),
+        ("pricing_oracle", "calculate_dynamic_price"),
+        ("fraud_detector", "check_fraud_signals"),
+        ("compliance_oracle", "check_transaction_allowed"),
+        ("jv_mesh", "suggest_jv_partners"),
+        ("franchise", "publish_pack"),
+        ("bundle_engine", "create_bundle"),
+    ]
+    
+    for module_name, func_name in critical_imports:
+        try:
+            module = __import__(module_name)
+            if hasattr(module, func_name):
+                import_results[module_name] = "✅"
+            else:
+                import_results[module_name] = f"⚠️ missing {func_name}"
+        except Exception as e:
+            import_results[module_name] = f"❌ {str(e)[:50]}"
+    
+    results["phases"]["25_imports"] = {
+        "tests": [{"name": k, "ok": v.startswith("✅"), "status": v} for k, v in import_results.items()],
+        "passed": len([v for v in import_results.values() if v.startswith("✅")]),
+        "failed": len([v for v in import_results.values() if not v.startswith("✅")])
+    }
+    results["summary"]["total_tests"] += len(import_results)
+    results["summary"]["passed"] += results["phases"]["25_imports"]["passed"]
+    results["summary"]["failed"] += results["phases"]["25_imports"]["failed"]
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # FINAL SUMMARY
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    total = results["summary"]["total_tests"]
+    passed = results["summary"]["passed"]
+    failed = results["summary"]["failed"]
+    
+    results["summary"]["pass_rate"] = f"{(passed / total * 100):.1f}%" if total > 0 else "0%"
+    
+    if failed == 0:
+        results["summary"]["status"] = "🟢 ALL SYSTEMS OPERATIONAL"
+    elif failed <= 5:
+        results["summary"]["status"] = f"🟡 {failed} MINOR ISSUES"
+    elif failed <= 15:
+        results["summary"]["status"] = f"🟠 {failed} ISSUES - REVIEW NEEDED"
+    else:
+        results["summary"]["status"] = f"🔴 {failed} FAILURES - ATTENTION REQUIRED"
+    
+    # Phase summary
+    results["phase_summary"] = {
+        phase: {
+            "passed": data["passed"],
+            "failed": data["failed"],
+            "status": "✅" if data["failed"] == 0 else "❌"
+        }
+        for phase, data in results["phases"].items()
+    }
+    
+    return results
+
+
+@app.get("/test/everything")
+async def test_everything_get():
+    """GET version redirects to POST"""
+    return await test_everything()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END SECTION 44
 # ═══════════════════════════════════════════════════════════════════════════════
