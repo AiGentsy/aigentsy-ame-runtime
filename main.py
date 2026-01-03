@@ -27985,22 +27985,8 @@ except ImportError:
     def get_hive_stats(*args, **kwargs): return {"ok": True, "stats": {}}
     def get_top_patterns(*args, **kwargs): return {"ok": True, "patterns": []}
 
-# AME Pitches
-try:
-    from ame_pitches import (
-        generate_pitch,
-        get_pending_pitches,
-        approve_pitch,
-        skip_pitch,
-        edit_pitch,
-        send_pitch,
-        get_pitch_stats,
-        mark_pitch_opened,
-        mark_pitch_responded
-    )
-    AME_PITCHES_AVAILABLE = True
-except ImportError:
-    AME_PITCHES_AVAILABLE = False
+# AME Pitches (uses imports from top of file)
+# AME_PITCHES_AVAILABLE already set at top
 
 # AMG Orchestrator
 try:
