@@ -457,6 +457,269 @@ def get_available_categories() -> List[str]:
             categories.append(key)
     return categories
 # ═══════════════════════════════════════════════════════════════════════════════
+# CROSS-PROMOTION NETWORK
+# All spawned businesses help each other reach users/customers
+# They're all AiGentsy properties - should act as ONE network
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class CrossPromotion:
+    """A cross-promotion between two spawned businesses"""
+    promo_id: str
+    source_spawn_id: str          # Business doing the promoting
+    target_spawn_id: str          # Business being promoted
+    promo_type: str               # "email", "checkout", "content", "bundle"
+    impressions: int = 0
+    clicks: int = 0
+    conversions: int = 0
+    revenue_generated: float = 0.0
+    created_at: str = ""
+    active: bool = True
+
+
+class SpawnNetwork:
+    """
+    The network that connects all spawned businesses.
+    Every spawn helps every other spawn reach customers.
+    
+    CROSS-PROMO TYPES:
+    1. CHECKOUT UPSELL: "You might also like..." after purchase
+    2. EMAIL CROSS-SELL: "Other AI services you'll love"
+    3. CONTENT MENTIONS: Social posts mention related spawns
+    4. BUNDLE DEALS: Buy from 2+ spawns, get discount
+    5. REFERRAL CHAIN: Customer of Spawn A → referred to Spawn B
+    6. RETARGETING POOL: Shared pixel/audience across all spawns
+    """
+    
+    def __init__(self):
+        self.promotions: Dict[str, CrossPromotion] = {}
+        self.network_stats = {
+            "total_cross_promos": 0,
+            "cross_promo_revenue": 0.0,
+            "cross_promo_conversions": 0
+        }
+    
+    def find_complementary_spawns(self, spawn: SpawnedBusiness, all_spawns: List[SpawnedBusiness]) -> List[SpawnedBusiness]:
+        """
+        Find spawns that complement this one (different category, same audience).
+        Example: Pet Portrait buyer might want Content Writing for their pet blog.
+        """
+        complementary = []
+        
+        # Category affinity map - which categories go well together
+        CATEGORY_AFFINITY = {
+            NicheCategory.AI_ART: [NicheCategory.CONTENT, NicheCategory.DESIGN, NicheCategory.VIDEO],
+            NicheCategory.CONTENT: [NicheCategory.DESIGN, NicheCategory.VOICE, NicheCategory.AI_ART],
+            NicheCategory.DESIGN: [NicheCategory.AI_ART, NicheCategory.VIDEO, NicheCategory.CONTENT],
+            NicheCategory.VOICE: [NicheCategory.VIDEO, NicheCategory.CONTENT, NicheCategory.AUTOMATION],
+            NicheCategory.VIDEO: [NicheCategory.DESIGN, NicheCategory.VOICE, NicheCategory.AI_ART],
+            NicheCategory.AUTOMATION: [NicheCategory.SAAS_MICRO, NicheCategory.CONTENT, NicheCategory.RESEARCH],
+            NicheCategory.RESEARCH: [NicheCategory.CONTENT, NicheCategory.AUTOMATION, NicheCategory.SAAS_MICRO],
+            NicheCategory.ECOMMERCE: [NicheCategory.DESIGN, NicheCategory.CONTENT, NicheCategory.AI_ART],
+            NicheCategory.SAAS_MICRO: [NicheCategory.AUTOMATION, NicheCategory.CONTENT, NicheCategory.DESIGN]
+        }
+        
+        affinity_categories = CATEGORY_AFFINITY.get(spawn.category, [])
+        
+        for other in all_spawns:
+            if other.spawn_id == spawn.spawn_id:
+                continue
+            if other.status not in [SpawnStatus.LIVE, SpawnStatus.SCALING]:
+                continue
+            if other.category in affinity_categories:
+                complementary.append(other)
+        
+        # Sort by health score (promote healthiest spawns)
+        complementary.sort(key=lambda x: x.health_score, reverse=True)
+        return complementary[:3]  # Top 3 complementary
+    
+    def generate_checkout_upsells(self, spawn: SpawnedBusiness, all_spawns: List[SpawnedBusiness]) -> List[Dict]:
+        """
+        Generate "You might also like" suggestions for checkout page.
+        Shown after customer purchases from this spawn.
+        """
+        complementary = self.find_complementary_spawns(spawn, all_spawns)
+        
+        upsells = []
+        for comp in complementary:
+            upsells.append({
+                "spawn_id": comp.spawn_id,
+                "name": comp.name,
+                "tagline": comp.tagline,
+                "price": comp.current_price,
+                "discount": 15,  # 15% off when buying from network
+                "discounted_price": round(comp.current_price * 0.85, 2),
+                "url": f"{comp.landing_page_url}?ref={spawn.referral_code}&network=1",
+                "promo_code": f"NETWORK15_{spawn.referral_code[:6]}"
+            })
+        
+        return upsells
+    
+    def generate_email_cross_sell(self, spawn: SpawnedBusiness, all_spawns: List[SpawnedBusiness]) -> Dict:
+        """
+        Generate cross-sell email content to send to spawn's customers.
+        "Thanks for your order! Here are other AI services you'll love..."
+        """
+        complementary = self.find_complementary_spawns(spawn, all_spawns)
+        
+        if not complementary:
+            return {}
+        
+        email = {
+            "subject": f"🚀 More AI magic for you, from AiGentsy",
+            "preview": "Exclusive deals on services that pair perfectly with your recent order",
+            "intro": f"You loved {spawn.name} - here are other AI-powered services from our network:",
+            "offers": [],
+            "footer_cta": {
+                "text": "Want AI building YOUR business? Join AiGentsy free →",
+                "url": f"https://aigentsy.com/start?ref={spawn.referral_code}"
+            }
+        }
+        
+        for comp in complementary:
+            email["offers"].append({
+                "name": comp.name,
+                "tagline": comp.tagline,
+                "original_price": comp.current_price,
+                "network_price": round(comp.current_price * 0.80, 2),  # 20% off
+                "savings": f"Save ${round(comp.current_price * 0.20, 2)}",
+                "cta_url": f"{comp.landing_page_url}?ref={spawn.referral_code}&email=1",
+                "promo_code": f"EMAIL20_{spawn.referral_code[:6]}"
+            })
+        
+        return email
+    
+    def generate_social_mentions(self, spawn: SpawnedBusiness, all_spawns: List[SpawnedBusiness]) -> List[Dict]:
+        """
+        Generate social content that mentions other spawns.
+        Every 4th post mentions a complementary spawn.
+        """
+        complementary = self.find_complementary_spawns(spawn, all_spawns)
+        
+        mentions = []
+        for comp in complementary:
+            mention_hooks = [
+                f"🔥 Loving {spawn.name}? Check out {comp.name} for {comp.niche.lower()}!",
+                f"✨ {spawn.name} + {comp.name} = unstoppable combo 💪",
+                f"Pro tip: Pair your {spawn.niche} with {comp.niche} from our network →",
+                f"🚀 Our AI network keeps growing! {comp.name} just launched - {comp.tagline}"
+            ]
+            
+            mentions.append({
+                "hook": random.choice(mention_hooks),
+                "target_spawn": comp.spawn_id,
+                "target_url": f"{comp.landing_page_url}?ref={spawn.referral_code}&social=1",
+                "hashtags": [f"#{spawn.niche.replace(' ', '')}", f"#{comp.niche.replace(' ', '')}", "#AiGentsy", "#AINetwork"]
+            })
+        
+        return mentions
+    
+    def create_bundle_deal(self, spawns: List[SpawnedBusiness]) -> Dict:
+        """
+        Create a bundle deal across multiple spawns.
+        "Get all 3 for 30% off!"
+        """
+        if len(spawns) < 2:
+            return {}
+        
+        bundle_id = f"bundle_{secrets.token_hex(6)}"
+        total_price = sum(s.current_price for s in spawns)
+        bundle_discount = 0.25 if len(spawns) == 2 else 0.30  # 25% for 2, 30% for 3+
+        bundle_price = round(total_price * (1 - bundle_discount), 2)
+        
+        return {
+            "bundle_id": bundle_id,
+            "name": f"AI Power Bundle ({len(spawns)} services)",
+            "spawns": [{"spawn_id": s.spawn_id, "name": s.name, "price": s.current_price} for s in spawns],
+            "original_total": total_price,
+            "bundle_price": bundle_price,
+            "savings": round(total_price - bundle_price, 2),
+            "discount_percent": int(bundle_discount * 100),
+            "promo_code": f"BUNDLE{int(bundle_discount*100)}_{bundle_id[:6].upper()}",
+            "landing_url": f"https://spawns.aigentsy.com/bundles/{bundle_id}"
+        }
+    
+    def get_network_recommendations(self, customer_history: List[str], all_spawns: List[SpawnedBusiness]) -> List[Dict]:
+        """
+        Based on what customer has bought, recommend other spawns.
+        Uses collaborative filtering logic.
+        """
+        # Find categories customer has purchased from
+        purchased_categories = set()
+        for spawn_id in customer_history:
+            for spawn in all_spawns:
+                if spawn.spawn_id == spawn_id:
+                    purchased_categories.add(spawn.category)
+        
+        # Find spawns in complementary categories they haven't bought
+        recommendations = []
+        for spawn in all_spawns:
+            if spawn.spawn_id in customer_history:
+                continue
+            if spawn.status not in [SpawnStatus.LIVE, SpawnStatus.SCALING]:
+                continue
+            
+            # Score based on category affinity
+            score = 0
+            for purchased_cat in purchased_categories:
+                if spawn.category in CATEGORY_AFFINITY.get(purchased_cat, []):
+                    score += 30
+            
+            # Boost by health score
+            score += spawn.health_score * 0.5
+            
+            if score > 0:
+                recommendations.append({
+                    "spawn_id": spawn.spawn_id,
+                    "name": spawn.name,
+                    "category": spawn.category.value,
+                    "price": spawn.current_price,
+                    "score": score,
+                    "reason": f"Because you liked {list(purchased_categories)[0].value if purchased_categories else 'similar'} services"
+                })
+        
+        recommendations.sort(key=lambda x: x["score"], reverse=True)
+        return recommendations[:5]
+    
+    def get_shared_audience_pool(self, all_spawns: List[SpawnedBusiness]) -> Dict:
+        """
+        Aggregate all customer emails across spawns for retargeting.
+        One big audience pool that all spawns can use.
+        """
+        all_emails = set()
+        by_category = {}
+        
+        for spawn in all_spawns:
+            all_emails.update(spawn.customer_emails)
+            
+            cat = spawn.category.value
+            if cat not in by_category:
+                by_category[cat] = set()
+            by_category[cat].update(spawn.customer_emails)
+        
+        return {
+            "total_audience": len(all_emails),
+            "by_category": {k: len(v) for k, v in by_category.items()},
+            "retarget_eligible": len([e for e in all_emails if e]),  # Non-empty
+            "lookalike_seed_size": min(len(all_emails), 10000)  # For FB/Google lookalikes
+        }
+
+
+# Category affinity map (global for reference)
+CATEGORY_AFFINITY = {
+    NicheCategory.AI_ART: [NicheCategory.CONTENT, NicheCategory.DESIGN, NicheCategory.VIDEO],
+    NicheCategory.CONTENT: [NicheCategory.DESIGN, NicheCategory.VOICE, NicheCategory.AI_ART],
+    NicheCategory.DESIGN: [NicheCategory.AI_ART, NicheCategory.VIDEO, NicheCategory.CONTENT],
+    NicheCategory.VOICE: [NicheCategory.VIDEO, NicheCategory.CONTENT, NicheCategory.AUTOMATION],
+    NicheCategory.VIDEO: [NicheCategory.DESIGN, NicheCategory.VOICE, NicheCategory.AI_ART],
+    NicheCategory.AUTOMATION: [NicheCategory.SAAS_MICRO, NicheCategory.CONTENT, NicheCategory.RESEARCH],
+    NicheCategory.RESEARCH: [NicheCategory.CONTENT, NicheCategory.AUTOMATION, NicheCategory.SAAS_MICRO],
+    NicheCategory.ECOMMERCE: [NicheCategory.DESIGN, NicheCategory.CONTENT, NicheCategory.AI_ART],
+    NicheCategory.SAAS_MICRO: [NicheCategory.AUTOMATION, NicheCategory.CONTENT, NicheCategory.DESIGN]
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # TREND DETECTOR - Finds opportunities
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -767,6 +1030,7 @@ class AutoSpawnEngine:
         self.spawner = BusinessSpawner()
         self.lifecycle = LifecycleManager(self.spawner)
         self.adoption = AdoptionSystem(self.spawner)
+        self.network = SpawnNetwork()  # Cross-promotion network
         self.total_spawned = 0
     
     async def run_full_cycle(self) -> Dict[str, Any]:
@@ -781,7 +1045,7 @@ class AutoSpawnEngine:
         for signal in signals[:3]:
             try:
                 biz = await self.spawner.spawn_from_signal(signal)
-                spawned.append({"id": biz.spawn_id, "name": biz.name})
+                spawned.append({"id": biz.spawn_id, "name": biz.name, "referral_code": biz.referral_code})
                 self.total_spawned += 1
             except Exception as e:
                 pass
@@ -791,24 +1055,79 @@ class AutoSpawnEngine:
         lifecycle = await self.lifecycle.run_lifecycle_check()
         results["phases"]["lifecycle"] = lifecycle
         
-        # 4. Stats
+        # 4. Generate cross-promotions for active spawns
+        cross_promos = await self._generate_network_promos()
+        results["phases"]["cross_promotions"] = cross_promos
+        
+        # 5. Stats
         active = [b for b in self.spawner.spawned_businesses.values() if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]
         results["stats"] = {
             "total_spawned": self.total_spawned,
             "active": len(active),
             "total_revenue": sum(b.revenue for b in self.spawner.spawned_businesses.values()),
-            "adoptable": len(self.adoption.get_adoptable())
+            "adoptable": len(self.adoption.get_adoptable()),
+            "network_size": len(active),
+            "cross_promo_opportunities": cross_promos.get("total_promos", 0)
         }
         
         return results
+    
+    async def _generate_network_promos(self) -> Dict:
+        """Generate cross-promotions between all active spawns"""
+        all_spawns = list(self.spawner.spawned_businesses.values())
+        active_spawns = [s for s in all_spawns if s.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]
+        
+        promos_generated = {
+            "checkout_upsells": 0,
+            "email_cross_sells": 0,
+            "social_mentions": 0,
+            "bundles": 0,
+            "total_promos": 0
+        }
+        
+        for spawn in active_spawns:
+            # Generate checkout upsells
+            upsells = self.network.generate_checkout_upsells(spawn, all_spawns)
+            promos_generated["checkout_upsells"] += len(upsells)
+            
+            # Generate email cross-sells
+            email = self.network.generate_email_cross_sell(spawn, all_spawns)
+            if email:
+                promos_generated["email_cross_sells"] += 1
+            
+            # Generate social mentions
+            mentions = self.network.generate_social_mentions(spawn, all_spawns)
+            promos_generated["social_mentions"] += len(mentions)
+        
+        # Generate bundles (pairs of complementary spawns)
+        if len(active_spawns) >= 2:
+            for i, spawn1 in enumerate(active_spawns[:5]):
+                complementary = self.network.find_complementary_spawns(spawn1, active_spawns)
+                if complementary:
+                    bundle = self.network.create_bundle_deal([spawn1, complementary[0]])
+                    if bundle:
+                        promos_generated["bundles"] += 1
+        
+        promos_generated["total_promos"] = sum([
+            promos_generated["checkout_upsells"],
+            promos_generated["email_cross_sells"],
+            promos_generated["social_mentions"],
+            promos_generated["bundles"]
+        ])
+        
+        return promos_generated
     
     def get_dashboard(self) -> Dict:
         businesses = list(self.spawner.spawned_businesses.values())
         ecosystem = self.spawner.get_ecosystem_stats()
         
+        # Network stats
+        active_spawns = [b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]
+        audience_pool = self.network.get_shared_audience_pool(businesses)
+        
         return {
             "total_spawned": len(businesses),
-            "active": len([b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]),
+            "active": len(active_spawns),
             "total_revenue": sum(b.revenue for b in businesses),
             "total_orders": sum(b.orders for b in businesses),
             "by_status": {s.value: len([b for b in businesses if b.status == s]) for s in SpawnStatus},
@@ -820,15 +1139,46 @@ class AutoSpawnEngine:
             
             # AiGentsy Ecosystem Stats
             "ecosystem": ecosystem,
-            "referral_codes_active": len([b for b in businesses if b.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]),
+            "referral_codes_active": len(active_spawns),
             "total_aigentsy_conversions": ecosystem.get("total_aigentsy_conversions", 0),
             "spawn_to_user_funnel": {
-                "spawns_live": len([b for b in businesses if b.status == SpawnStatus.LIVE]),
+                "spawns_live": len(active_spawns),
                 "email_captures": ecosystem.get("total_email_captures", 0),
                 "cta_clicks": sum(b.aigentsy_cta_clicks for b in businesses),
                 "signups": ecosystem.get("total_referral_signups", 0),
                 "conversions": ecosystem.get("total_aigentsy_conversions", 0)
+            },
+            
+            # Network Stats (Cross-Promotion)
+            "network": {
+                "total_spawns_in_network": len(active_spawns),
+                "network_categories": list(set(b.category.value for b in active_spawns)),
+                "shared_audience_size": audience_pool.get("total_audience", 0),
+                "audience_by_category": audience_pool.get("by_category", {}),
+                "cross_promo_active": len(active_spawns) >= 2,
+                "bundle_opportunities": len(active_spawns) // 2
             }
+        }
+    
+    def get_network_promos_for_spawn(self, spawn_id: str) -> Dict:
+        """Get all cross-promotion opportunities for a specific spawn"""
+        spawn = self.spawner.spawned_businesses.get(spawn_id)
+        if not spawn:
+            return {"ok": False, "error": "spawn_not_found"}
+        
+        all_spawns = list(self.spawner.spawned_businesses.values())
+        
+        return {
+            "ok": True,
+            "spawn_id": spawn_id,
+            "spawn_name": spawn.name,
+            "checkout_upsells": self.network.generate_checkout_upsells(spawn, all_spawns),
+            "email_cross_sell": self.network.generate_email_cross_sell(spawn, all_spawns),
+            "social_mentions": self.network.generate_social_mentions(spawn, all_spawns),
+            "complementary_spawns": [
+                {"spawn_id": s.spawn_id, "name": s.name, "category": s.category.value}
+                for s in self.network.find_complementary_spawns(spawn, all_spawns)
+            ]
         }
 
 
