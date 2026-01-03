@@ -105,11 +105,15 @@ try:
         approve_pitch,
         skip_pitch,
         edit_pitch,
-        send_pitch,
-        get_pitch_stats,
-        mark_pitch_opened,
-        mark_pitch_responded
+        get_stats as get_pitch_stats,
+        track_event as ame_track_event,
+        get_all_pitches,
+        generate_pitches_from_matches
     )
+    # Create aliases for compatibility
+    def send_pitch(pitch_id): return approve_pitch(pitch_id)
+    def mark_pitch_opened(pitch_id): return ame_track_event(pitch_id, "opened")
+    def mark_pitch_responded(pitch_id): return ame_track_event(pitch_id, "responded")
     AME_PITCHES_AVAILABLE = True
     print("✅ ame_pitches loaded")
 except ImportError as e:
