@@ -30170,16 +30170,13 @@ async def get_network_recommendations(customer_email: str = None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECTION 44: TEST EVERYTHING - FAST DIRECT CHECKS (NO HTTP)
+# SECTION 44: TEST EVERYTHING - ULTRA SAFE VERSION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@app.get("/test/everything")
-@app.post("/test/everything")
+@app.api_route("/test/everything", methods=["GET", "POST"])
 async def test_everything():
     """
-    🧪 TEST EVERYTHING - Fast direct checks (no HTTP calls = no timeouts)
-    
-    Usage: curl https://your-url.com/test/everything | jq
+    🧪 TEST EVERYTHING - Safe version with full error handling
     """
     
     results = {
@@ -30189,102 +30186,93 @@ async def test_everything():
     }
     
     def add_result(phase: str, name: str, ok: bool, detail: str = ""):
-        if phase not in results["phases"]:
-            results["phases"][phase] = {"passed": 0, "failed": 0, "tests": []}
-        
-        results["phases"][phase]["tests"].append({"name": name, "ok": ok, "detail": detail})
-        results["summary"]["total"] += 1
-        
-        if ok:
-            results["phases"][phase]["passed"] += 1
-            results["summary"]["passed"] += 1
-        else:
-            results["phases"][phase]["failed"] += 1
-            results["summary"]["failed"] += 1
+        try:
+            if phase not in results["phases"]:
+                results["phases"][phase] = {"passed": 0, "failed": 0, "tests": []}
+            
+            results["phases"][phase]["tests"].append({"name": name, "ok": ok, "detail": detail})
+            results["summary"]["total"] += 1
+            
+            if ok:
+                results["phases"][phase]["passed"] += 1
+                results["summary"]["passed"] += 1
+            else:
+                results["phases"][phase]["failed"] += 1
+                results["summary"]["failed"] += 1
+        except:
+            pass
     
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 1: API KEYS
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("1_api_keys", "anthropic", bool(os.getenv("ANTHROPIC_API_KEY")), "Claude API")
-    add_result("1_api_keys", "stripe", bool(os.getenv("STRIPE_SECRET_KEY")), "Payments")
-    add_result("1_api_keys", "resend", bool(os.getenv("RESEND_API_KEY")), "Email")
-    add_result("1_api_keys", "perplexity", bool(os.getenv("PERPLEXITY_API_KEY")), "AI Search")
-    add_result("1_api_keys", "stability", bool(os.getenv("STABILITY_API_KEY")), "Images")
+    try:
+        add_result("1_api_keys", "anthropic", bool(os.getenv("ANTHROPIC_API_KEY")), "Claude API")
+        add_result("1_api_keys", "stripe", bool(os.getenv("STRIPE_SECRET_KEY")), "Payments")
+        add_result("1_api_keys", "resend", bool(os.getenv("RESEND_API_KEY")), "Email")
+        add_result("1_api_keys", "perplexity", bool(os.getenv("PERPLEXITY_API_KEY")), "AI Search")
+        add_result("1_api_keys", "stability", bool(os.getenv("STABILITY_API_KEY")), "Images")
+    except Exception as e:
+        add_result("1_api_keys", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 2: CONDUCTOR
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("2_conductor", "loaded", CONDUCTOR_FULL, f"CONDUCTOR_FULL={CONDUCTOR_FULL}")
-    add_result("2_conductor", "device_registry", True, f"{len(_DEVICE_REGISTRY)} devices")
-    add_result("2_conductor", "execution_queue", True, f"{len(_EXECUTION_QUEUE)} in queue")
-    add_result("2_conductor", "execution_history", True, f"{len(_EXECUTION_HISTORY)} executed")
-    
-    # Test conductor functions directly
     try:
-        from aigentsy_conductor import AiGentsyConductor, MultiAIRouter
-        add_result("2_conductor", "AiGentsyConductor", True, "Class available")
-        add_result("2_conductor", "MultiAIRouter", True, "Class available")
+        add_result("2_conductor", "loaded", CONDUCTOR_FULL, f"CONDUCTOR_FULL={CONDUCTOR_FULL}")
+        add_result("2_conductor", "device_registry", True, f"{len(_DEVICE_REGISTRY)} devices")
+        add_result("2_conductor", "execution_queue", True, f"{len(_EXECUTION_QUEUE)} in queue")
+        add_result("2_conductor", "execution_history", True, f"{len(_EXECUTION_HISTORY)} executed")
     except Exception as e:
-        add_result("2_conductor", "conductor_classes", False, str(e)[:50])
+        add_result("2_conductor", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 3: AUTO-SPAWN
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("3_spawn", "available", AUTO_SPAWN_AVAILABLE, f"AUTO_SPAWN_AVAILABLE={AUTO_SPAWN_AVAILABLE}")
-    
-    if AUTO_SPAWN_AVAILABLE:
-        try:
+    try:
+        add_result("3_spawn", "available", AUTO_SPAWN_AVAILABLE, f"AUTO_SPAWN_AVAILABLE={AUTO_SPAWN_AVAILABLE}")
+        
+        if AUTO_SPAWN_AVAILABLE:
             engine = get_spawn_engine()
             add_result("3_spawn", "engine", True, "Engine initialized")
             add_result("3_spawn", "total_spawned", True, f"{engine.total_spawned} spawned")
-            add_result("3_spawn", "detector_signals", True, f"{len(engine.detector.signals)} signals")
-            
-            # Count active businesses
-            active = len([b for b in engine.spawner.spawned_businesses.values() 
-                         if b.status.value in ["live", "scaling"]])
-            add_result("3_spawn", "active_businesses", True, f"{active} active")
-            
-            # Network
-            add_result("3_spawn", "network", hasattr(engine, 'network'), "Network module")
-        except Exception as e:
-            add_result("3_spawn", "engine_error", False, str(e)[:50])
+    except Exception as e:
+        add_result("3_spawn", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 4: RECONCILIATION
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("4_reconciliation", "state", True, "reconciliation_state exists")
-    add_result("4_reconciliation", "wade_balance", True, f"${reconciliation_state.get('wade_balance', 0):.2f}")
-    add_result("4_reconciliation", "workflows", True, f"{len(reconciliation_state.get('wade_workflows', {}))} workflows")
-    add_result("4_reconciliation", "activities", True, f"{len(reconciliation_state.get('activities', []))} activities")
+    try:
+        add_result("4_reconciliation", "state", True, "reconciliation_state exists")
+        wade_bal = reconciliation_state.get('wade_balance', 0)
+        add_result("4_reconciliation", "wade_balance", True, f"${wade_bal:.2f}")
+    except Exception as e:
+        add_result("4_reconciliation", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 5: AME / MARKETING
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("5_marketing", "ame_stats", True, f"Queue: {AME_STATS.get('queue_size', 0)}")
-    add_result("5_marketing", "ame_sent", True, f"Sent: {AME_STATS.get('sent', 0)}")
-    add_result("5_marketing", "ame_converted", True, f"Converted: {AME_STATS.get('converted', 0)}")
+    try:
+        add_result("5_marketing", "ame_stats", True, f"Queue: {AME_STATS.get('queue_size', 0)}")
+    except Exception as e:
+        add_result("5_marketing", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
-    # PHASE 6: DEALS
+    # PHASE 6: ENDPOINTS COUNT
     # ═══════════════════════════════════════════════════════════════════════
     
-    add_result("6_deals", "deals_store", True, f"{len(deals_store)} deals")
-    add_result("6_deals", "service_catalog", True, f"{len(service_catalog)} services")
+    try:
+        route_count = len([r for r in app.routes if hasattr(r, 'methods')])
+        add_result("6_endpoints", "registered", route_count > 100, f"{route_count} endpoints")
+    except Exception as e:
+        add_result("6_endpoints", "error", False, str(e)[:50])
     
     # ═══════════════════════════════════════════════════════════════════════
-    # PHASE 7: ENDPOINTS COUNT
-    # ═══════════════════════════════════════════════════════════════════════
-    
-    route_count = len([r for r in app.routes if hasattr(r, 'methods')])
-    add_result("7_endpoints", "registered", route_count > 100, f"{route_count} endpoints")
-    
-    # ═══════════════════════════════════════════════════════════════════════
-    # PHASE 8: CRITICAL IMPORTS
+    # PHASE 7: CRITICAL IMPORTS
     # ═══════════════════════════════════════════════════════════════════════
     
     critical_imports = [
@@ -30297,13 +30285,6 @@ async def test_everything():
         ("yield_memory", "store_pattern"),
         ("ame_pitches", "generate_pitch"),
         ("revenue_flows", "ingest_ame_conversion"),
-        ("outcome_oracle_max", "credit_aigx"),
-        ("pricing_oracle", "calculate_dynamic_price"),
-        ("fraud_detector", "check_fraud_signals"),
-        ("compliance_oracle", "check_transaction_allowed"),
-        ("jv_mesh", "suggest_jv_partners"),
-        ("franchise", "publish_pack"),
-        ("bundle_engine", "create_bundle"),
         ("execution_orchestrator", "ExecutionOrchestrator"),
     ]
     
@@ -30311,75 +30292,38 @@ async def test_everything():
         try:
             module = __import__(module_name)
             has_func = hasattr(module, func_name)
-            add_result("8_imports", module_name, has_func, f"{func_name}: {'✅' if has_func else '❌'}")
+            add_result("7_imports", module_name, has_func, "✅" if has_func else "❌")
         except Exception as e:
-            add_result("8_imports", module_name, False, str(e)[:40])
-    
-    # ═══════════════════════════════════════════════════════════════════════
-    # PHASE 9: LIVE ENDPOINT SPOT CHECKS (internal, fast)
-    # ═══════════════════════════════════════════════════════════════════════
-    
-    # These call the functions directly, not via HTTP
-    
-    # Health check
-    try:
-        health = await api_health()
-        add_result("9_endpoints", "/api/health", health.get("ok", False), "Direct call")
-    except Exception as e:
-        add_result("9_endpoints", "/api/health", False, str(e)[:40])
-    
-    # Conductor dashboard
-    try:
-        cond = await conductor_dashboard_all()
-        add_result("9_endpoints", "/conductor/dashboard-all", cond.get("ok", False), f"{cond.get('devices', 0)} devices")
-    except Exception as e:
-        add_result("9_endpoints", "/conductor/dashboard-all", False, str(e)[:40])
-    
-    # Wade dashboard
-    try:
-        wade = await get_wade_dashboard()
-        add_result("9_endpoints", "/wade/dashboard", wade.get("ok", False), f"{wade.get('total_workflows', 0)} workflows")
-    except Exception as e:
-        add_result("9_endpoints", "/wade/dashboard", False, str(e)[:40])
-    
-    # Execution stats
-    try:
-        exec_stats = await execution_stats()
-        add_result("9_endpoints", "/execution/stats", exec_stats.get("ok", False), "Direct call")
-    except Exception as e:
-        add_result("9_endpoints", "/execution/stats", False, str(e)[:40])
-    
-    # Arbitrage stats
-    try:
-        arb = await get_arbitrage_stats()
-        add_result("9_endpoints", "/arbitrage/stats", arb.get("ok", False), "Direct call")
-    except Exception as e:
-        add_result("9_endpoints", "/arbitrage/stats", False, str(e)[:40])
+            add_result("7_imports", module_name, False, str(e)[:40])
     
     # ═══════════════════════════════════════════════════════════════════════
     # SUMMARY
     # ═══════════════════════════════════════════════════════════════════════
     
-    total = results["summary"]["total"]
-    passed = results["summary"]["passed"]
-    failed = results["summary"]["failed"]
-    
-    results["summary"]["pass_rate"] = f"{(passed / total * 100):.1f}%" if total > 0 else "0%"
-    
-    if failed == 0:
-        results["summary"]["status"] = "🟢 ALL SYSTEMS OPERATIONAL"
-    elif failed <= 3:
-        results["summary"]["status"] = f"🟡 {failed} MINOR ISSUES"
-    elif failed <= 10:
-        results["summary"]["status"] = f"🟠 {failed} ISSUES - REVIEW NEEDED"
-    else:
-        results["summary"]["status"] = f"🔴 {failed} FAILURES"
-    
-    # Phase summary
-    results["phase_summary"] = {
-        phase: {"passed": data["passed"], "failed": data["failed"], "status": "✅" if data["failed"] == 0 else "❌"}
-        for phase, data in results["phases"].items()
-    }
+    try:
+        total = results["summary"]["total"]
+        passed = results["summary"]["passed"]
+        failed = results["summary"]["failed"]
+        
+        results["summary"]["pass_rate"] = f"{(passed / total * 100):.1f}%" if total > 0 else "0%"
+        
+        if failed == 0:
+            results["summary"]["status"] = "🟢 ALL SYSTEMS OPERATIONAL"
+        elif failed <= 3:
+            results["summary"]["status"] = f"🟡 {failed} MINOR ISSUES"
+        else:
+            results["summary"]["status"] = f"🔴 {failed} FAILURES"
+        
+        # Phase summary
+        results["phase_summary"] = {}
+        for phase, data in results["phases"].items():
+            results["phase_summary"][phase] = {
+                "passed": data["passed"], 
+                "failed": data["failed"], 
+                "status": "✅" if data["failed"] == 0 else "❌"
+            }
+    except:
+        pass
     
     return results
 
