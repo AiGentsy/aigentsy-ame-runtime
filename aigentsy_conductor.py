@@ -783,3 +783,144 @@ def get_device_dashboard(username: str, device_id: str) -> Dict[str, Any]:
         "recent_executions": recent_executions,
         "policy": _USER_POLICIES.get(username, {})
     }
+
+
+# ============================================================
+# AIGENTSY CONDUCTOR CLASS (Main orchestrator)
+# ============================================================
+
+class AiGentsyConductor:
+    """
+    Main orchestrator class that ties everything together.
+    Runs autonomous cycles across all registered devices.
+    """
+    
+    def __init__(self):
+        self.router = MultiAIRouter()
+        self.cycle_count = 0
+        self.total_revenue_generated = 0.0
+        self.total_actions_executed = 0
+    
+    async def run_cycle(self) -> Dict[str, Any]:
+        """Run a complete autonomous cycle"""
+        
+        self.cycle_count += 1
+        cycle_start = now_iso()
+        
+        results = {
+            "cycle_id": self.cycle_count,
+            "started_at": cycle_start,
+            "phases": {}
+        }
+        
+        # Phase 1: Scan all devices for opportunities
+        all_opportunities = []
+        for device_key, device in _DEVICE_REGISTRY.items():
+            try:
+                scan_result = await scan_opportunities(
+                    device["username"], 
+                    device["device_id"]
+                )
+                if scan_result.get("ok"):
+                    all_opportunities.extend(scan_result.get("opportunities", []))
+            except Exception as e:
+                print(f"Error scanning {device_key}: {e}")
+        
+        results["phases"]["scan"] = {
+            "devices_scanned": len(_DEVICE_REGISTRY),
+            "opportunities_found": len(all_opportunities)
+        }
+        
+        # Phase 2: Create execution plans
+        plans_created = []
+        for device_key, device in _DEVICE_REGISTRY.items():
+            try:
+                plan_result = await create_execution_plan(
+                    device["username"],
+                    device["device_id"]
+                )
+                if plan_result.get("ok"):
+                    plans_created.append(plan_result)
+            except Exception as e:
+                print(f"Error creating plan for {device_key}: {e}")
+        
+        results["phases"]["plan"] = {
+            "plans_created": len(plans_created),
+            "total_estimated_value": sum(
+                p.get("summary", {}).get("total_estimated_value", 0) 
+                for p in plans_created
+            )
+        }
+        
+        # Phase 3: Execute auto-approved plans
+        executed_count = 0
+        revenue_this_cycle = 0.0
+        
+        for plan in _EXECUTION_QUEUE:
+            if plan.get("status") == "READY_TO_EXECUTE":
+                try:
+                    exec_result = await execute_plan(plan["id"])
+                    if exec_result.get("ok"):
+                        executed_count += 1
+                        revenue_this_cycle += exec_result.get("total_revenue", 0)
+                except Exception as e:
+                    print(f"Error executing plan {plan['id']}: {e}")
+        
+        self.total_revenue_generated += revenue_this_cycle
+        self.total_actions_executed += executed_count
+        
+        results["phases"]["execute"] = {
+            "plans_executed": executed_count,
+            "revenue_generated": revenue_this_cycle
+        }
+        
+        results["completed_at"] = now_iso()
+        results["summary"] = {
+            "cycle_revenue": revenue_this_cycle,
+            "total_revenue_all_time": self.total_revenue_generated,
+            "total_actions_all_time": self.total_actions_executed
+        }
+        
+        return results
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get conductor statistics"""
+        return {
+            "cycle_count": self.cycle_count,
+            "total_revenue_generated": self.total_revenue_generated,
+            "total_actions_executed": self.total_actions_executed,
+            "registered_devices": len(_DEVICE_REGISTRY),
+            "pending_plans": len([p for p in _EXECUTION_QUEUE if p.get("status") == "PENDING_USER_REVIEW"]),
+            "ready_plans": len([p for p in _EXECUTION_QUEUE if p.get("status") == "READY_TO_EXECUTE"])
+        }
+
+
+# Global conductor instance
+_conductor: AiGentsyConductor = None
+
+def get_conductor() -> AiGentsyConductor:
+    """Get or create the global conductor instance"""
+    global _conductor
+    if _conductor is None:
+        _conductor = AiGentsyConductor()
+    return _conductor
+
+
+async def run_autonomous_cycle() -> Dict[str, Any]:
+    """
+    Run a complete autonomous cycle.
+    This is the main entry point for the hourly GitHub Action.
+    """
+    conductor = get_conductor()
+    return await conductor.run_cycle()
+
+
+# ============================================================
+# MODULE INITIALIZATION
+# ============================================================
+
+print("🎯 AIGENTSY CONDUCTOR LOADED")
+print("   • Multi-AI Routing: Claude (primary), GPT-4, Gemini")
+print("   • Device Registration & Opportunity Scanning")
+print("   • Execution Plans with Auto-Approval")
+print("   • JV Matching, Pricing, Content, Cart Recovery")
