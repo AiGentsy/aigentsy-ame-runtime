@@ -383,7 +383,50 @@ jobs:
           fi
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 9: ARBITRAGE
+      # PHASE 9: METABRIDGE & METAHIVE
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🌉 MetaBridge Team Formation
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' }}
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🌉 METABRIDGE - Auto-Assemble JV Teams"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get pending high-value intents that need teams
+          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/metabridge/batch_execute" \
+            -H "Content-Type: application/json" \
+            -d '{"intent_ids": []}' \
+            --max-time 120 2>&1 || echo '{"ok": false}')
+          
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            TEAMS=$(echo "$RESPONSE" | jq -r '.teams_formed // 0')
+            echo "✅ MetaBridge: $TEAMS teams formed"
+          else
+            echo "⚠️ MetaBridge batch not available or no pending intents"
+          fi
+
+      - name: 🐝 MetaHive Reward Distribution
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' }}
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🐝 METAHIVE - Distribute Learning Rewards"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/hive/distribute" \
+            -H "Content-Type: application/json" \
+            --max-time 60 2>&1 || echo '{"ok": false}')
+          
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            DISTRIBUTED=$(echo "$RESPONSE" | jq -r '.total_distributed // 0')
+            echo "✅ MetaHive: $DISTRIBUTED AIGx distributed"
+          else
+            echo "⚠️ MetaHive distribution not available"
+          fi
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 10: ARBITRAGE
       # ═══════════════════════════════════════════════════════════════════════
       - name: 💵 Arbitrage Execution
         continue-on-error: true
@@ -406,7 +449,7 @@ jobs:
           fi
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 10: SUMMARY
+      # PHASE 11: SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📝 Run Summary
         if: always()
@@ -434,6 +477,8 @@ jobs:
           echo "   ✅ Social Posting"
           echo "   ✅ Proposals"
           echo "   ✅ Bundles"
+          echo "   ✅ MetaBridge Team Formation"
+          echo "   ✅ MetaHive Reward Distribution"
           echo "   ✅ Arbitrage"
           echo ""
           echo "💰 TARGET: \$6,500-26,500/month"
