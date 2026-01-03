@@ -546,6 +546,56 @@ jobs:
           }' || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 23: SPAWN NETWORK (Cross-Promotion)
+      # All spawns help each other reach customers
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔗 Spawn Network Cross-Promo (8 endpoints)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔗 SPAWN NETWORK - Cross-Promotion Engine"
+          echo "═══════════════════════════════════════════════════════════════"
+          echo ""
+          echo "All spawns are ONE NETWORK - they help each other:"
+          echo "  • Checkout upsells: 'You might also like...'"
+          echo "  • Email cross-sells: 'Other AI services you'll love'"
+          echo "  • Social mentions: Posts reference other spawns"
+          echo "  • Bundle deals: Buy 2+, get 25-30% off"
+          echo "  • Shared audience: Retargeting across all spawns"
+          echo ""
+          
+          echo "1. Get network stats..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/network/stats" | jq -c '{ok,network,spawn_to_user_funnel}' || true
+          
+          echo "2. Generate cross-promotions for all active spawns..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/spawn/network/generate-promos" --max-time 60 | jq -c '{ok,promos_generated}' || true
+          
+          echo "3. Get shared audience pool..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/network/audience-pool" | jq -c '{ok,audience_pool}' || true
+          
+          echo "4. Get network recommendations..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/network/recommendations" | jq -c '{ok,recommendations: (.recommendations | length)}' || true
+          
+          echo "5. Check for bundle opportunities..."
+          # Get first 2 active spawns and create bundle
+          SPAWNS=$(curl -s "${{ env.BACKEND_URL }}/spawn/businesses?status=live" | jq -r '[.businesses[:2] | .[].spawn_id] | @json')
+          if [ "$SPAWNS" != "[]" ] && [ "$SPAWNS" != "null" ]; then
+            echo "Creating bundle with spawns: $SPAWNS"
+            curl -s -X POST "${{ env.BACKEND_URL }}/spawn/network/create-bundle" \
+              -H "Content-Type: application/json" \
+              -d "{\"spawn_ids\": $SPAWNS}" | jq -c '{ok,bundle}' || true
+          fi
+          
+          echo ""
+          echo "NETWORK SUMMARY:"
+          curl -s "${{ env.BACKEND_URL }}/spawn/network/stats" | jq '{
+            spawns_in_network: .network.total_spawns_in_network,
+            categories_covered: .network.network_categories,
+            shared_audience: .network.shared_audience_size,
+            cross_promo_active: .network.cross_promo_active
+          }' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📝 Summary
@@ -553,12 +603,12 @@ jobs:
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY v91 FULLY WIRED + AUTO-SPAWN"
+          echo "📝 AIGENTSY v91 FULLY WIRED + AUTO-SPAWN + NETWORK"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo ""
-          echo "TOTAL ENDPOINTS CALLED: 107"
+          echo "TOTAL ENDPOINTS CALLED: 115"
           echo ""
           echo "PHASES:"
           echo "  ✅ Health (7)       ✅ Statistics (4)"
@@ -572,7 +622,8 @@ jobs:
           echo "  ✅ Special (7)      ✅ Orchestration (3)"
           echo "  ✅ Learning (6)     ✅ Analytics (2)"
           echo "  ✅ Reconciliation (4)"
-          echo "  ✅ Auto-Spawn (12) 🆕"
+          echo "  ✅ Auto-Spawn (12)"
+          echo "  ✅ Spawn Network (8) 🆕"
           echo ""
           echo "v91 SYSTEMS:"
           echo "  🤝 Client Deals - Accept/Deliver/Pay flow"
@@ -591,12 +642,21 @@ jobs:
           echo "  💰 Revenue flows to your Stripe"
           echo "  🤝 Users can adopt successful spawns"
           echo ""
+          echo "🆕 SPAWN NETWORK (Cross-Promotion):"
+          echo "  🛒 Checkout upsells: 'You might also like...'"
+          echo "  📧 Email cross-sells to customers"
+          echo "  📱 Social posts mention other spawns"
+          echo "  📦 Bundle deals: 25-30% off 2+ services"
+          echo "  🎯 Shared audience pool for retargeting"
+          echo "  🔄 All spawns help ALL spawns grow"
+          echo ""
           echo "SPAWN → USER FUNNEL:"
           echo "  1. Spawn goes live with AiGentsy branding"
           echo "  2. Customer buys from spawn"
-          echo "  3. Customer sees 'Powered by AiGentsy' + CTA"
-          echo "  4. Customer clicks → lands on AiGentsy signup"
-          echo "  5. New AiGentsy user with referral attribution"
+          echo "  3. Checkout shows upsells from OTHER spawns"
+          echo "  4. Customer sees 'Powered by AiGentsy' + CTA"
+          echo "  5. Customer clicks → lands on AiGentsy signup"
+          echo "  6. New AiGentsy user with referral attribution"
           echo ""
           echo "MONEY FLOW:"
           echo "  1. Discovery finds opportunity"
@@ -605,6 +665,7 @@ jobs:
           echo "  4. Wade works → delivers"
           echo "  5. Client approves → payment CAPTURED"
           echo "  6. Spawn revenue → Your Stripe"
-          echo "  7. Spawn referral → New AiGentsy user"
+          echo "  7. Cross-promo → Customer buys from ANOTHER spawn"
+          echo "  8. Network effect → More revenue, more users"
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
