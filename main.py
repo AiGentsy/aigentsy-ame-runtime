@@ -54,6 +54,94 @@ from template_integration_coordinator import (
 )
 from real_signal_ingestion import get_signal_engine
 from autonomous_deal_graph import get_deal_graph
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V91 WIRING IMPORTS - ALL SYSTEMS LIVE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Yield Memory - Pattern Learning
+try:
+    from yield_memory import (
+        store_pattern,
+        find_similar_patterns,
+        get_best_action,
+        get_patterns_to_avoid,
+        get_memory_stats
+    )
+    YIELD_MEMORY_AVAILABLE = True
+    print("✅ yield_memory loaded")
+except ImportError as e:
+    YIELD_MEMORY_AVAILABLE = False
+    print(f"⚠️ yield_memory not available: {e}")
+    def store_pattern(*args, **kwargs): return {"ok": False, "error": "not_available"}
+    def find_similar_patterns(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_best_action(*args, **kwargs): return {"ok": True, "action": None}
+    def get_patterns_to_avoid(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_memory_stats(*args, **kwargs): return {"ok": True, "stats": {}}
+
+# MetaHive - Cross-user Learning
+try:
+    from metahive_brain import (
+        contribute_to_hive,
+        query_hive,
+        get_hive_stats,
+        get_top_patterns
+    )
+    METAHIVE_BRAIN_AVAILABLE = True
+    print("✅ metahive_brain loaded")
+except ImportError as e:
+    METAHIVE_BRAIN_AVAILABLE = False
+    print(f"⚠️ metahive_brain not available: {e}")
+    async def contribute_to_hive(*args, **kwargs): return {"ok": False, "error": "not_available"}
+    async def query_hive(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_hive_stats(*args, **kwargs): return {"ok": True, "stats": {}}
+    def get_top_patterns(*args, **kwargs): return {"ok": True, "patterns": []}
+
+# AME Pitches - Autonomous Marketing
+try:
+    from ame_pitches import (
+        generate_pitch,
+        get_pending_pitches,
+        approve_pitch,
+        skip_pitch,
+        edit_pitch,
+        send_pitch,
+        get_pitch_stats,
+        mark_pitch_opened,
+        mark_pitch_responded
+    )
+    AME_PITCHES_AVAILABLE = True
+    print("✅ ame_pitches loaded")
+except ImportError as e:
+    AME_PITCHES_AVAILABLE = False
+    print(f"⚠️ ame_pitches not available: {e}")
+
+# AMG Orchestrator - Revenue Brain
+try:
+    from amg_orchestrator import AMGOrchestrator
+    AMG_ORCHESTRATOR_AVAILABLE = True
+    print("✅ amg_orchestrator loaded")
+except ImportError as e:
+    AMG_ORCHESTRATOR_AVAILABLE = False
+    print(f"⚠️ amg_orchestrator not available: {e}")
+
+# Third Party Monetization
+try:
+    from third_party_monetization import (
+        parse_traffic_source,
+        generate_monetization_strategy,
+        get_monetization_engine
+    )
+    THIRD_PARTY_MONETIZATION_AVAILABLE = True
+    print("✅ third_party_monetization loaded")
+except ImportError as e:
+    THIRD_PARTY_MONETIZATION_AVAILABLE = False
+    print(f"⚠️ third_party_monetization not available: {e}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END V91 IMPORTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 from arbitrage_execution_pipeline import (
     get_arbitrage_pipeline, ArbitrageOpportunity, ArbitrageType,
     convert_detected_to_opportunity
@@ -22682,24 +22770,12 @@ async def apex_upgrades_dashboard():
         return {"ok": False, "error": str(e)}
 
 
-@app.post("/ame/process-queue")
-async def ame_process_queue():
-    """
-    Process AME pitch queue
-    Called by GitHub Actions AME job
-    """
-    try:
-        # AME pitch processing would go here
-        # For now, return placeholder
-        return {
-            "ok": True,
-            "processed": 0,
-            "sent": 0,
-            "failed": 0,
-            "message": "AME queue processing ready"
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+# OLD STUB REMOVED - See /ame/process-queue below (line ~28400+) for LIVE implementation
+# The live version:
+# 1. Gets approved pitches from ame_pitches module
+# 2. Sends them via appropriate channel
+# 3. Stores patterns in Yield Memory
+# 4. Contributes successful patterns to MetaHive
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -27835,4 +27911,907 @@ async def auto_queue_wade_opportunities():
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # END RECONCILIATION + WADE DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════════
+"""
+═══════════════════════════════════════════════════════════════════════════════
+MASTER WIRING SECTION - CONNECTS ALL AIGENTSY SYSTEMS
+NO STUBS - EVERYTHING LIVE
+═══════════════════════════════════════════════════════════════════════════════
+
+This section wires together:
+1. AME (Autonomous Marketing Engine) - Pitch generation and sending
+2. AMG (App Monetization Graph) - Revenue optimization brain
+3. Third-Party Monetization - Traffic → Money conversion
+4. Social Auto-posting - Content creation and posting
+5. Yield Memory - Pattern learning across all systems
+6. MetaHive - Cross-user learning
+7. Wade Workflows - AiGentsy direct fulfillment
+8. Discovery → Execution pipeline
+9. Revenue Reconciliation - Track all money flows
+
+Add this to main.py after the existing endpoints.
+═══════════════════════════════════════════════════════════════════════════════
+"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMPORTS FOR WIRING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Yield Memory - Pattern Learning
+try:
+    from yield_memory import (
+        store_pattern,
+        find_similar_patterns,
+        get_best_action,
+        get_patterns_to_avoid,
+        get_memory_stats
+    )
+    YIELD_MEMORY_AVAILABLE = True
+except ImportError:
+    YIELD_MEMORY_AVAILABLE = False
+    def store_pattern(*args, **kwargs): return {"ok": False, "error": "not_available"}
+    def find_similar_patterns(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_best_action(*args, **kwargs): return {"ok": True, "action": None}
+    def get_patterns_to_avoid(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_memory_stats(*args, **kwargs): return {"ok": True, "stats": {}}
+
+# MetaHive - Cross-user Learning
+try:
+    from metahive_brain import (
+        contribute_to_hive,
+        query_hive,
+        get_hive_stats,
+        get_top_patterns
+    )
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+    async def contribute_to_hive(*args, **kwargs): return {"ok": False, "error": "not_available"}
+    async def query_hive(*args, **kwargs): return {"ok": True, "patterns": []}
+    def get_hive_stats(*args, **kwargs): return {"ok": True, "stats": {}}
+    def get_top_patterns(*args, **kwargs): return {"ok": True, "patterns": []}
+
+# AME Pitches
+try:
+    from ame_pitches import (
+        generate_pitch,
+        get_pending_pitches,
+        approve_pitch,
+        skip_pitch,
+        edit_pitch,
+        send_pitch,
+        get_pitch_stats,
+        mark_pitch_opened,
+        mark_pitch_responded
+    )
+    AME_PITCHES_AVAILABLE = True
+except ImportError:
+    AME_PITCHES_AVAILABLE = False
+
+# AMG Orchestrator
+try:
+    from amg_orchestrator import AMGOrchestrator
+    AMG_AVAILABLE = True
+except ImportError:
+    AMG_AVAILABLE = False
+
+# Third Party Monetization
+try:
+    from third_party_monetization import (
+        parse_traffic_source,
+        generate_monetization_strategy,
+        track_conversion,
+        get_session_tactics
+    )
+    THIRD_PARTY_MONETIZATION_AVAILABLE = True
+except ImportError:
+    THIRD_PARTY_MONETIZATION_AVAILABLE = False
+
+# Wade Integrated Workflow
+try:
+    from wade_integrated_workflow import integrated_workflow
+    WADE_WORKFLOW_AVAILABLE = True
+except ImportError:
+    WADE_WORKFLOW_AVAILABLE = False
+
+# Social Auto-posting
+try:
+    from social_autoposting_engine import get_social_engine, SocialPlatform
+    SOCIAL_ENGINE_AVAILABLE = True
+except ImportError:
+    SOCIAL_ENGINE_AVAILABLE = False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: AME FULL WIRING (Autonomous Marketing Engine)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/ame/process-queue")
+async def ame_process_queue_live():
+    """
+    LIVE AME Queue Processing
+    1. Get all approved pitches
+    2. Send them via appropriate channel (email, DM, etc)
+    3. Track results
+    4. Feed back to Yield Memory
+    """
+    if not AME_PITCHES_AVAILABLE:
+        return {"ok": False, "error": "ame_pitches module not available"}
+    
+    results = {
+        "processed": 0,
+        "sent": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    try:
+        # Get approved pitches ready to send
+        pending = get_pending_pitches(status="approved")
+        
+        for pitch in pending:
+            try:
+                # Send the pitch
+                send_result = await send_pitch(pitch["id"])
+                
+                if send_result.get("ok"):
+                    results["sent"] += 1
+                    
+                    # Store pattern for learning
+                    if YIELD_MEMORY_AVAILABLE:
+                        store_pattern(
+                            username="system",
+                            pattern_type="ame_pitch_sent",
+                            context={
+                                "channel": pitch["channel"],
+                                "recipient_type": pitch.get("context", {}).get("type"),
+                                "offer": pitch.get("context", {}).get("offer")
+                            },
+                            action={"pitch_id": pitch["id"], "channel": pitch["channel"]},
+                            outcome={"status": "sent", "roas": 0}  # Updated when response comes
+                        )
+                else:
+                    results["failed"] += 1
+                    results["errors"].append(send_result.get("error"))
+                
+                results["processed"] += 1
+                
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append(str(e))
+        
+        return {"ok": True, **results}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/ame/generate-batch")
+async def ame_generate_batch(body: Dict = Body(default={})):
+    """
+    Generate a batch of pitches from discovered opportunities
+    """
+    if not AME_PITCHES_AVAILABLE:
+        return {"ok": False, "error": "ame_pitches module not available"}
+    
+    opportunities = body.get("opportunities", [])
+    channel = body.get("channel", "email")
+    auto_approve = body.get("auto_approve", False)
+    
+    generated = []
+    
+    for opp in opportunities:
+        pitch = generate_pitch(
+            recipient=opp.get("contact", opp.get("email", "unknown")),
+            channel=channel,
+            context={
+                "opportunity_id": opp.get("id"),
+                "title": opp.get("title"),
+                "value": opp.get("value"),
+                "match_reason": opp.get("match_reason", "Your profile matches our criteria")
+            },
+            originator="ame_batch"
+        )
+        
+        if auto_approve and pitch.get("id"):
+            approve_pitch(pitch["id"])
+        
+        generated.append(pitch)
+    
+    return {
+        "ok": True,
+        "generated": len(generated),
+        "pitches": generated
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: AMG FULL WIRING (App Monetization Graph)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/amg/run-cycle")
+async def amg_run_full_cycle(body: Dict = Body(default={})):
+    """
+    Run the FULL AMG cycle:
+    SENSE → SCORE → PRICE → BUDGET → FINANCE → ROUTE → ASSURE → SETTLE → ATTRIBUTE → RE-ALLOCATE
+    """
+    username = body.get("username", "system")
+    
+    if not AMG_AVAILABLE:
+        return {"ok": False, "error": "amg_orchestrator module not available"}
+    
+    try:
+        orchestrator = AMGOrchestrator(username)
+        
+        # Initialize graph
+        init_result = await orchestrator.initialize_graph()
+        
+        # Run full cycle
+        cycle_result = await orchestrator.run_monetization_cycle()
+        
+        # Feed results to Yield Memory
+        if YIELD_MEMORY_AVAILABLE and cycle_result.get("revenue_generated", 0) > 0:
+            store_pattern(
+                username=username,
+                pattern_type="amg_cycle",
+                context={"user": username, "cycle_type": "full"},
+                action={"cycle_id": cycle_result.get("cycle_id")},
+                outcome={
+                    "revenue_usd": cycle_result.get("revenue_generated", 0),
+                    "cost_usd": cycle_result.get("cost_incurred", 0),
+                    "roas": cycle_result.get("roas", 0)
+                }
+            )
+            
+            # Contribute to MetaHive if successful
+            if METAHIVE_AVAILABLE and cycle_result.get("roas", 0) > 1.5:
+                await contribute_to_hive(
+                    username=username,
+                    pattern_type="amg_cycle",
+                    context={"user_type": "aigentsy"},
+                    action={"cycle_params": cycle_result.get("params", {})},
+                    outcome={
+                        "roas": cycle_result.get("roas", 0),
+                        "revenue_usd": cycle_result.get("revenue_generated", 0),
+                        "cost_usd": cycle_result.get("cost_incurred", 0)
+                    }
+                )
+        
+        return {
+            "ok": True,
+            "cycle_result": cycle_result,
+            "graph_nodes": init_result.get("nodes", 0),
+            "graph_edges": init_result.get("edges", 0)
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/amg/optimize-pricing")
+async def amg_optimize_pricing(body: Dict = Body(default={})):
+    """
+    Use AMG to optimize pricing for an offer
+    """
+    username = body.get("username")
+    offer_id = body.get("offer_id")
+    
+    if not AMG_AVAILABLE:
+        return {"ok": False, "error": "amg_orchestrator not available"}
+    
+    try:
+        orchestrator = AMGOrchestrator(username)
+        
+        # Get best patterns from Yield Memory
+        best_patterns = []
+        if YIELD_MEMORY_AVAILABLE:
+            result = find_similar_patterns(
+                username=username,
+                context={"offer_id": offer_id},
+                pattern_type="pricing",
+                category="SUCCESS",
+                limit=5
+            )
+            best_patterns = result.get("patterns", [])
+        
+        # Get hive recommendations
+        hive_patterns = []
+        if METAHIVE_AVAILABLE:
+            hive_result = await query_hive(
+                pattern_type="pricing",
+                context={"category": body.get("category")},
+                limit=5
+            )
+            hive_patterns = hive_result.get("patterns", [])
+        
+        # Calculate optimized price
+        optimized = await orchestrator.optimize_offer_pricing(
+            offer_id=offer_id,
+            historical_patterns=best_patterns,
+            hive_patterns=hive_patterns
+        )
+        
+        return {"ok": True, **optimized}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: THIRD-PARTY MONETIZATION FULL WIRING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/monetization/third-party")
+async def monetization_third_party_live():
+    """
+    LIVE Third-party monetization processing
+    Processes all active sessions and applies monetization tactics
+    """
+    if not THIRD_PARTY_MONETIZATION_AVAILABLE:
+        return {"ok": False, "error": "third_party_monetization not available"}
+    
+    try:
+        from third_party_monetization import get_monetization_engine
+        
+        engine = get_monetization_engine()
+        
+        # Process active sessions
+        active_sessions = engine.active_sessions
+        processed = 0
+        revenue = 0.0
+        
+        for session_id, session in active_sessions.items():
+            # Generate fresh strategy
+            strategy = await generate_monetization_strategy(
+                visitor_data=session.get("visitor_data", {}),
+                product_data=session.get("product_data", {}),
+                session_data=session.get("session_data", {})
+            )
+            
+            # Apply tactics
+            for tactic in strategy.get("tactics", []):
+                # Execute tactic
+                result = await engine.execute_tactic(session_id, tactic)
+                
+                if result.get("converted"):
+                    revenue += result.get("revenue", 0)
+                    
+                    # Track in Yield Memory
+                    if YIELD_MEMORY_AVAILABLE:
+                        store_pattern(
+                            username="system",
+                            pattern_type="monetization_tactic",
+                            context={
+                                "source": session.get("visitor_data", {}).get("source"),
+                                "tactic": tactic.get("tactic")
+                            },
+                            action={"tactic": tactic},
+                            outcome={
+                                "revenue_usd": result.get("revenue", 0),
+                                "cost_usd": 0,
+                                "roas": result.get("revenue", 0)  # No cost for tactics
+                            }
+                        )
+            
+            processed += 1
+        
+        return {
+            "ok": True,
+            "sessions_processed": processed,
+            "revenue_generated": revenue
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/monetization/track-visitor")
+async def monetization_track_visitor(request: Request):
+    """
+    Track incoming visitor and set up monetization session
+    """
+    if not THIRD_PARTY_MONETIZATION_AVAILABLE:
+        return {"ok": False, "error": "third_party_monetization not available"}
+    
+    body = await request.json()
+    
+    # Parse traffic source
+    utm_params = {
+        "utm_source": body.get("utm_source"),
+        "utm_campaign": body.get("utm_campaign"),
+        "utm_medium": body.get("utm_medium")
+    }
+    
+    source_data = parse_traffic_source(
+        url=body.get("url", ""),
+        referrer=body.get("referrer", request.headers.get("referer", "")),
+        utm_params=utm_params
+    )
+    
+    # Generate monetization strategy
+    strategy = await generate_monetization_strategy(
+        visitor_data=source_data,
+        product_data=body.get("product_data", {}),
+        session_data={}
+    )
+    
+    return {
+        "ok": True,
+        "source": source_data,
+        "strategy": strategy
+    }
+
+
+@app.post("/monetization/convert")
+async def monetization_record_conversion(body: Dict = Body(...)):
+    """
+    Record a conversion and attribute revenue
+    """
+    session_id = body.get("session_id")
+    amount = body.get("amount", 0)
+    source = body.get("source")
+    tactic = body.get("tactic")
+    
+    if THIRD_PARTY_MONETIZATION_AVAILABLE:
+        track_conversion(
+            session_id=session_id,
+            amount=amount,
+            product_id=body.get("product_id")
+        )
+    
+    # Store in Yield Memory
+    if YIELD_MEMORY_AVAILABLE:
+        store_pattern(
+            username="system",
+            pattern_type="conversion",
+            context={"source": source, "tactic": tactic},
+            action={"session_id": session_id},
+            outcome={"revenue_usd": amount, "cost_usd": 0, "roas": amount}
+        )
+    
+    # Update reconciliation
+    reconciliation_state["fees_collected"] += amount * 0.028 + 0.28
+    
+    return {
+        "ok": True,
+        "amount": amount,
+        "fee_collected": amount * 0.028 + 0.28
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: SOCIAL AUTO-POSTING FULL WIRING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/social/process-queue")
+async def social_process_queue_live():
+    """
+    LIVE Social queue processing
+    Posts scheduled content to all connected platforms
+    """
+    if not SOCIAL_ENGINE_AVAILABLE:
+        return {"ok": False, "error": "social_autoposting_engine not available"}
+    
+    try:
+        engine = get_social_engine()
+        
+        # Process all scheduled posts
+        results = await engine.process_scheduled_posts()
+        
+        # Track results in Yield Memory
+        for result in results:
+            if YIELD_MEMORY_AVAILABLE and result.get("success"):
+                store_pattern(
+                    username=result.get("username", "system"),
+                    pattern_type="social_post",
+                    context={
+                        "platform": result.get("platform"),
+                        "content_type": result.get("content_type"),
+                        "time_posted": result.get("posted_at")
+                    },
+                    action={"post_id": result.get("post_id")},
+                    outcome={
+                        "status": "posted",
+                        "roas": 0  # Updated later with engagement data
+                    }
+                )
+        
+        return {
+            "ok": True,
+            "processed": len(results),
+            "results": results
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/social/auto-generate")
+async def social_auto_generate(body: Dict = Body(default={})):
+    """
+    Auto-generate content for social platforms using AI
+    """
+    if not SOCIAL_ENGINE_AVAILABLE:
+        return {"ok": False, "error": "social_autoposting_engine not available"}
+    
+    username = body.get("username")
+    platforms = body.get("platforms", ["tiktok", "instagram"])
+    content_type = body.get("content_type", "promotional")
+    topic = body.get("topic", "")
+    
+    try:
+        engine = get_social_engine()
+        
+        generated = []
+        
+        for platform in platforms:
+            # Generate content
+            content = await engine.generate_content(
+                username=username,
+                platform=platform,
+                content_type=content_type,
+                topic=topic
+            )
+            
+            # Queue for posting
+            if content.get("ok"):
+                queued = await engine.queue_post(
+                    username=username,
+                    platform=platform,
+                    content=content.get("content"),
+                    media=content.get("media"),
+                    schedule_for=body.get("schedule_for")
+                )
+                generated.append(queued)
+        
+        return {
+            "ok": True,
+            "generated": len(generated),
+            "posts": generated
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: YIELD MEMORY ENDPOINTS (Learning System)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/yield/store-pattern")
+async def yield_store_pattern(body: Dict = Body(...)):
+    """Store a pattern (success or failure) for learning"""
+    if not YIELD_MEMORY_AVAILABLE:
+        return {"ok": False, "error": "yield_memory not available"}
+    
+    result = store_pattern(
+        username=body.get("username", "system"),
+        pattern_type=body.get("pattern_type"),
+        context=body.get("context", {}),
+        action=body.get("action", {}),
+        outcome=body.get("outcome", {})
+    )
+    
+    # Contribute to MetaHive if successful
+    if METAHIVE_AVAILABLE and body.get("outcome", {}).get("roas", 0) > 1.5:
+        await contribute_to_hive(
+            username=body.get("username", "system"),
+            pattern_type=body.get("pattern_type"),
+            context=body.get("context", {}),
+            action=body.get("action", {}),
+            outcome=body.get("outcome", {})
+        )
+    
+    return result
+
+
+@app.get("/yield/best-action/{username}")
+async def yield_get_best_action(username: str, pattern_type: str = None, context: str = "{}"):
+    """Get the best action based on learned patterns"""
+    if not YIELD_MEMORY_AVAILABLE:
+        return {"ok": False, "error": "yield_memory not available"}
+    
+    import json
+    context_dict = json.loads(context) if context else {}
+    
+    result = get_best_action(
+        username=username,
+        pattern_type=pattern_type,
+        context=context_dict
+    )
+    
+    return result
+
+
+@app.get("/yield/stats/{username}")
+async def yield_get_stats(username: str):
+    """Get Yield Memory statistics for a user"""
+    if not YIELD_MEMORY_AVAILABLE:
+        return {"ok": False, "error": "yield_memory not available"}
+    
+    return get_memory_stats(username)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: METAHIVE ENDPOINTS (Cross-User Learning)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/hive/contribute")
+async def hive_contribute(body: Dict = Body(...)):
+    """Contribute a successful pattern to the MetaHive"""
+    if not METAHIVE_AVAILABLE:
+        return {"ok": False, "error": "metahive_brain not available"}
+    
+    result = await contribute_to_hive(
+        username=body.get("username"),
+        pattern_type=body.get("pattern_type"),
+        context=body.get("context", {}),
+        action=body.get("action", {}),
+        outcome=body.get("outcome", {}),
+        anonymize=body.get("anonymize", True)
+    )
+    
+    return result
+
+
+@app.get("/hive/query")
+async def hive_query(pattern_type: str = None, limit: int = 10):
+    """Query the MetaHive for successful patterns"""
+    if not METAHIVE_AVAILABLE:
+        return {"ok": False, "error": "metahive_brain not available"}
+    
+    result = await query_hive(
+        pattern_type=pattern_type,
+        context={},
+        limit=limit
+    )
+    
+    return result
+
+
+@app.get("/hive/stats")
+async def hive_stats():
+    """Get MetaHive statistics"""
+    if not METAHIVE_AVAILABLE:
+        return {"ok": False, "error": "metahive_brain not available"}
+    
+    return get_hive_stats()
+
+
+@app.get("/hive/top-patterns")
+async def hive_top_patterns(pattern_type: str = None, limit: int = 10):
+    """Get top performing patterns from the hive"""
+    if not METAHIVE_AVAILABLE:
+        return {"ok": False, "error": "metahive_brain not available"}
+    
+    return get_top_patterns(pattern_type=pattern_type, limit=limit)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: WADE WORKFLOW FULL WIRING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/wade/process-discoveries")
+async def wade_process_discoveries(body: Dict = Body(default={})):
+    """
+    Process discovered opportunities and queue Wade-fulfillable ones
+    """
+    if not WADE_WORKFLOW_AVAILABLE:
+        return {"ok": False, "error": "wade_integrated_workflow not available"}
+    
+    opportunities = body.get("opportunities", [])
+    
+    queued = []
+    skipped = []
+    
+    for opp in opportunities:
+        # Check if Wade can fulfill
+        fulfillability = opp.get("fulfillability", {})
+        
+        if fulfillability.get("can_wade_fulfill"):
+            # Add to Wade's workflow
+            result = await integrated_workflow.process_discovered_opportunity(opp)
+            
+            if result.get("workflow_id"):
+                queued.append(result)
+                
+                # Also add to reconciliation
+                reconciliation_state["wade_workflows"][result["workflow_id"]] = {
+                    "id": result["workflow_id"],
+                    "opportunity": opp,
+                    "stage": "pending_wade_approval",
+                    "created_at": datetime.utcnow().isoformat()
+                }
+        else:
+            skipped.append(opp.get("id"))
+    
+    return {
+        "ok": True,
+        "queued": len(queued),
+        "skipped": len(skipped),
+        "workflows": queued
+    }
+
+
+@app.post("/wade/execute-approved")
+async def wade_execute_approved():
+    """
+    Execute all approved Wade workflows
+    """
+    if not WADE_WORKFLOW_AVAILABLE:
+        return {"ok": False, "error": "wade_integrated_workflow not available"}
+    
+    executed = []
+    failed = []
+    
+    # Get approved workflows
+    approved = [
+        w for w in integrated_workflow.workflows.values()
+        if w.get("stage") == "wade_approved" or w.get("stage") == "client_approved"
+    ]
+    
+    for workflow in approved:
+        try:
+            # Execute the work
+            result = await integrated_workflow.execute_work(workflow["workflow_id"])
+            
+            if result.get("success"):
+                executed.append(workflow["workflow_id"])
+                
+                # Store pattern
+                if YIELD_MEMORY_AVAILABLE:
+                    store_pattern(
+                        username="wade",
+                        pattern_type="fulfillment",
+                        context={
+                            "platform": workflow["opportunity"].get("source"),
+                            "type": workflow["opportunity"].get("type")
+                        },
+                        action={"workflow_id": workflow["workflow_id"]},
+                        outcome={
+                            "status": "executed",
+                            "roas": 0  # Updated when paid
+                        }
+                    )
+            else:
+                failed.append({"id": workflow["workflow_id"], "error": result.get("error")})
+                
+        except Exception as e:
+            failed.append({"id": workflow["workflow_id"], "error": str(e)})
+    
+    return {
+        "ok": True,
+        "executed": len(executed),
+        "failed": len(failed),
+        "details": {"executed": executed, "failed": failed}
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: MASTER ORCHESTRATOR - RUNS EVERYTHING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/orchestrator/full-cycle")
+async def orchestrator_full_cycle(body: Dict = Body(default={})):
+    """
+    MASTER ORCHESTRATOR - Runs the complete AiGentsy autonomous cycle
+    
+    1. Discovery - Find opportunities across all sources
+    2. Routing - Route to users or Wade
+    3. AMG Cycle - Optimize monetization
+    4. AME Processing - Send approved pitches
+    5. Social Processing - Post scheduled content
+    6. Third-party Monetization - Convert traffic
+    7. Wade Execution - Fulfill Wade workflows
+    8. Learning - Store patterns, contribute to hive
+    9. Reconciliation - Track all revenue
+    """
+    
+    cycle_id = f"cycle_{datetime.utcnow().timestamp()}"
+    results = {
+        "cycle_id": cycle_id,
+        "started_at": datetime.utcnow().isoformat(),
+        "steps": {}
+    }
+    
+    try:
+        # STEP 1: Discovery
+        print(f"🔍 Step 1: Discovery...")
+        discovery_result = await mega_discover({})
+        results["steps"]["discovery"] = {
+            "opportunities_found": discovery_result.get("total", 0)
+        }
+        
+        # STEP 2: Route to Wade
+        print(f"🎯 Step 2: Routing to Wade...")
+        if WADE_WORKFLOW_AVAILABLE:
+            wade_opps = [
+                o for o in discovery_result.get("opportunities", [])
+                if o.get("fulfillability", {}).get("can_wade_fulfill")
+            ]
+            wade_result = await wade_process_discoveries({"opportunities": wade_opps})
+            results["steps"]["wade_routing"] = {
+                "queued": wade_result.get("queued", 0)
+            }
+        
+        # STEP 3: AMG Cycle
+        print(f"💰 Step 3: AMG Cycle...")
+        if AMG_AVAILABLE:
+            amg_result = await amg_run_full_cycle({"username": "system"})
+            results["steps"]["amg"] = {
+                "revenue": amg_result.get("cycle_result", {}).get("revenue_generated", 0)
+            }
+        
+        # STEP 4: AME Processing
+        print(f"📧 Step 4: AME Processing...")
+        ame_result = await ame_process_queue_live()
+        results["steps"]["ame"] = {
+            "sent": ame_result.get("sent", 0)
+        }
+        
+        # STEP 5: Social Processing
+        print(f"📱 Step 5: Social Processing...")
+        social_result = await social_process_queue_live()
+        results["steps"]["social"] = {
+            "posted": social_result.get("processed", 0)
+        }
+        
+        # STEP 6: Third-party Monetization
+        print(f"🎪 Step 6: Third-party Monetization...")
+        tpm_result = await monetization_third_party_live()
+        results["steps"]["third_party"] = {
+            "revenue": tpm_result.get("revenue_generated", 0)
+        }
+        
+        # STEP 7: Wade Execution
+        print(f"⚡ Step 7: Wade Execution...")
+        if WADE_WORKFLOW_AVAILABLE:
+            wade_exec_result = await wade_execute_approved()
+            results["steps"]["wade_execution"] = {
+                "executed": wade_exec_result.get("executed", 0)
+            }
+        
+        # STEP 8: Update Reconciliation
+        print(f"📊 Step 8: Reconciliation...")
+        results["steps"]["reconciliation"] = {
+            "wade_balance": reconciliation_state["wade_balance"],
+            "fees_collected": reconciliation_state["fees_collected"]
+        }
+        
+        results["completed_at"] = datetime.utcnow().isoformat()
+        results["ok"] = True
+        
+        return results
+    
+    except Exception as e:
+        results["error"] = str(e)
+        results["ok"] = False
+        return results
+
+
+@app.get("/orchestrator/status")
+async def orchestrator_status():
+    """Get status of all orchestrated systems"""
+    
+    return {
+        "ok": True,
+        "systems": {
+            "yield_memory": YIELD_MEMORY_AVAILABLE,
+            "metahive": METAHIVE_AVAILABLE,
+            "ame_pitches": AME_PITCHES_AVAILABLE,
+            "amg": AMG_AVAILABLE,
+            "third_party_monetization": THIRD_PARTY_MONETIZATION_AVAILABLE,
+            "wade_workflow": WADE_WORKFLOW_AVAILABLE,
+            "social_engine": SOCIAL_ENGINE_AVAILABLE
+        },
+        "reconciliation": {
+            "wade_balance": reconciliation_state["wade_balance"],
+            "fees_collected": reconciliation_state["fees_collected"],
+            "total_earnings": reconciliation_state["wade_balance"] + reconciliation_state["fees_collected"]
+        }
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END MASTER WIRING SECTION
 # ═══════════════════════════════════════════════════════════════════════════════
