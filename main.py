@@ -29455,3 +29455,318 @@ async def awaiting_approval_deals_endpoint():
 # ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 42
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 43: AUTO-SPAWN ENGINE
+# Autonomous business generation - AiGentsy spawns businesses, not users
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from auto_spawn_engine import (
+        get_engine as get_spawn_engine,
+        SpawnStatus,
+        NicheCategory
+    )
+    AUTO_SPAWN_AVAILABLE = True
+    print("✅ auto_spawn_engine loaded")
+except ImportError as e:
+    AUTO_SPAWN_AVAILABLE = False
+    print(f"⚠️ auto_spawn_engine not available: {e}")
+
+
+@app.post("/spawn/run-cycle")
+async def run_spawn_cycle():
+    """Run a full auto-spawn cycle: detect → spawn → manage → report"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    result = await engine.run_full_cycle()
+    
+    # Log activity
+    reconciliation_state["activities"].append({
+        "id": f"act_{datetime.utcnow().timestamp()}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "activity_type": "spawn_cycle",
+        "endpoint": "/spawn/run-cycle",
+        "owner": "auto_spawn",
+        "details": result.get("stats", {})
+    })
+    
+    return {"ok": True, **result}
+
+
+@app.get("/spawn/dashboard")
+async def spawn_dashboard():
+    """Get auto-spawn dashboard data"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    return {"ok": True, **engine.get_dashboard()}
+
+
+@app.get("/spawn/businesses")
+async def list_spawned_businesses(status: str = None, category: str = None):
+    """List all spawned businesses with optional filters"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    businesses = list(engine.spawner.spawned_businesses.values())
+    
+    if status:
+        businesses = [b for b in businesses if b.status.value == status]
+    if category:
+        businesses = [b for b in businesses if b.category.value == category]
+    
+    return {
+        "ok": True,
+        "count": len(businesses),
+        "businesses": [{
+            "spawn_id": b.spawn_id,
+            "name": b.name,
+            "category": b.category.value,
+            "niche": b.niche,
+            "status": b.status.value,
+            "health_score": b.health_score,
+            "revenue": b.revenue,
+            "orders": b.orders,
+            "days_live": b.days_live,
+            "landing_page": b.landing_page_url
+        } for b in businesses]
+    }
+
+
+@app.get("/spawn/businesses/{spawn_id}")
+async def get_spawned_business(spawn_id: str):
+    """Get detailed info about a spawned business"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    biz = engine.spawner.spawned_businesses.get(spawn_id)
+    
+    if not biz:
+        return {"ok": False, "error": "not_found"}
+    
+    return {
+        "ok": True,
+        "business": {
+            "spawn_id": biz.spawn_id,
+            "name": biz.name,
+            "slug": biz.slug,
+            "tagline": biz.tagline,
+            "category": biz.category.value,
+            "niche": biz.niche,
+            "status": biz.status.value,
+            "landing_page_url": biz.landing_page_url,
+            "services": biz.services,
+            "base_price": biz.base_price,
+            "current_price": biz.current_price,
+            "impressions": biz.impressions,
+            "clicks": biz.clicks,
+            "orders": biz.orders,
+            "revenue": biz.revenue,
+            "profit": biz.profit,
+            "health_score": biz.health_score,
+            "days_live": biz.days_live,
+            "owner": biz.owner
+        }
+    }
+
+
+@app.post("/spawn/detect-trends")
+async def detect_trends():
+    """Scan for new trend signals across all sources"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    signals = await engine.detector.scan_all_sources()
+    
+    return {
+        "ok": True,
+        "signals_found": len(signals),
+        "signals": [{
+            "signal_id": s.signal_id,
+            "source": s.source,
+            "query": s.query,
+            "category": s.category.value,
+            "opportunity_score": round(s.opportunity_score, 1),
+            "demand": s.demand_score,
+            "competition": s.competition_score,
+            "viral_potential": s.viral_potential
+        } for s in signals[:20]]
+    }
+
+
+@app.post("/spawn/force-spawn")
+async def force_spawn(body: dict = Body(...)):
+    """Force spawn a business from a specific category/niche"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    
+    from auto_spawn_engine import TrendSignal, NicheCategory
+    
+    category = body.get("category", "ai_art")
+    niche = body.get("niche", "Pet Portraits")
+    
+    signal = TrendSignal(
+        signal_id=f"manual_{secrets.token_hex(6)}",
+        source="manual",
+        query=f"Manual spawn: {niche}",
+        category=NicheCategory(category),
+        demand_score=80,
+        competition_score=50,
+        monetization_potential=85,
+        urgency=70,
+        viral_potential=60,
+        detected_at=datetime.utcnow().isoformat()
+    )
+    
+    biz = await engine.spawner.spawn_from_signal(signal)
+    engine.total_spawned += 1
+    
+    return {
+        "ok": True,
+        "spawn_id": biz.spawn_id,
+        "name": biz.name,
+        "landing_page": biz.landing_page_url,
+        "services": biz.services
+    }
+
+
+@app.get("/spawn/adoptable")
+async def get_adoptable_spawns():
+    """Get businesses available for user adoption"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    return {"ok": True, "businesses": engine.adoption.get_adoptable()}
+
+
+@app.post("/spawn/adopt/{spawn_id}")
+async def adopt_spawn(spawn_id: str, body: dict = Body(...)):
+    """Adopt a spawned business (user takes ownership)"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    result = await engine.adoption.adopt(spawn_id, body.get("user_id", "unknown"))
+    
+    if result.get("ok"):
+        reconciliation_state["activities"].append({
+            "id": f"act_{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "activity_type": "spawn_adopted",
+            "endpoint": "/spawn/adopt",
+            "owner": body.get("user_id"),
+            "details": {"spawn_id": spawn_id, "business": result.get("business_name")}
+        })
+    
+    return result
+
+
+@app.post("/spawn/lifecycle-check")
+async def spawn_lifecycle_check():
+    """Run lifecycle checks on all spawned businesses"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    return {"ok": True, **await engine.lifecycle.run_lifecycle_check()}
+
+
+@app.get("/spawn/templates")
+async def list_spawn_templates():
+    """List all available business templates (built-in + custom)"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    from auto_spawn_engine import BUSINESS_TEMPLATES, ACTIONIZED_TEMPLATES, get_available_categories
+    
+    templates = []
+    for key, template in BUSINESS_TEMPLATES.items():
+        cat_name = key.value if hasattr(key, 'value') else str(key)
+        templates.append({
+            "category": cat_name,
+            "name_patterns": template.get("name_patterns", []),
+            "service_count": len(template.get("services", [])),
+            "price_range": f"${template['services'][0]['price']}-${template['services'][-1]['price']}" if template.get("services") else "N/A",
+            "platforms": template.get("platforms", []),
+            "fulfillment": template.get("fulfillment", ""),
+            "landing_template": template.get("landing_template", ""),
+            "revenue_model": template.get("revenue_model", "one_time")
+        })
+    
+    return {
+        "ok": True,
+        "template_count": len(templates),
+        "templates": templates,
+        "actionized_templates": list(ACTIONIZED_TEMPLATES.keys()),
+        "categories": get_available_categories()
+    }
+
+
+@app.post("/spawn/templates/register")
+async def register_spawn_template(body: dict = Body(...)):
+    """
+    Register a custom business template.
+    
+    Example body:
+    {
+        "category": "consulting",
+        "name_patterns": ["{Niche} Consulting", "{Niche} Advisors"],
+        "services": [
+            {"name": "Strategy Call", "price": 199, "delivery_hours": 1, "features": ["1 hour call", "Recording", "Action plan"]}
+        ],
+        "hooks": ["🎯 {Niche} expertise on demand"],
+        "platforms": ["linkedin", "twitter"],
+        "fulfillment": "human_ai_hybrid",
+        "landing_template": "professional_service"
+    }
+    """
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    from auto_spawn_engine import register_custom_template
+    
+    category = body.get("category")
+    if not category:
+        return {"ok": False, "error": "category required"}
+    
+    # Remove category from body to pass rest as template
+    template = {k: v for k, v in body.items() if k != "category"}
+    
+    success = register_custom_template(category, template)
+    
+    return {
+        "ok": success,
+        "category": category,
+        "message": f"Template '{category}' registered successfully" if success else "Failed to register template"
+    }
+
+
+@app.get("/spawn/templates/{template_name}")
+async def get_actionized_template(template_name: str):
+    """Get details of an Actionized landing page template"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    from auto_spawn_engine import ACTIONIZED_TEMPLATES
+    
+    template = ACTIONIZED_TEMPLATES.get(template_name)
+    if not template:
+        return {"ok": False, "error": "template not found", "available": list(ACTIONIZED_TEMPLATES.keys())}
+    
+    return {"ok": True, "name": template_name, "template": template}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END SECTION 43
+# ═══════════════════════════════════════════════════════════════════════════════
