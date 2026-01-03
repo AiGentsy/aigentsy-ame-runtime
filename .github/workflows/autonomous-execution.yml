@@ -426,7 +426,53 @@ jobs:
           fi
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 10: ARBITRAGE
+      # PHASE 10: CROSS-AI LEARNING LOOP (THE NOVEL AIGENTSY CONCEPT)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🧠 Cross-AI Learning - Process Outcomes
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' }}
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🧠 CROSS-AI LEARNING - All AIs Teaching Each Other"
+          echo "═══════════════════════════════════════════════════════════════"
+          echo ""
+          echo "This is AiGentsy's novel concept:"
+          echo "  • Claude finds winning patterns"
+          echo "  • Contributes to MetaHive"
+          echo "  • ChatGPT/Stability/Perplexity use patterns"
+          echo "  • All AIs benefit from collective intelligence"
+          echo ""
+          
+          # Process all recent outcomes and learn from them
+          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/learning/process-outcomes" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 120 2>&1 || echo '{"ok": false}')
+          
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            PATTERNS=$(echo "$RESPONSE" | jq -r '.patterns_stored // 0')
+            HIVE=$(echo "$RESPONSE" | jq -r '.hive_contributions // 0')
+            echo "✅ Yield Memory: $PATTERNS patterns stored (per-user learning)"
+            echo "✅ MetaHive: $HIVE winning patterns contributed (global learning)"
+          else
+            echo "⚠️ Learning loop not available"
+          fi
+          
+          # Check learning system health
+          HEALTH=$(curl -s -X GET "${{ env.BACKEND_URL }}/learning/health" \
+            --max-time 30 2>&1 || echo '{"ok": false}')
+          
+          if echo "$HEALTH" | jq -e '.learning_ready == true' >/dev/null 2>&1; then
+            echo "✅ All learning systems operational:"
+            echo "   • Yield Memory (per-user patterns)"
+            echo "   • MetaHive Brain (global patterns)"
+            echo "   • Open MetaHive API (external AI contribution)"
+          else
+            echo "⚠️ Some learning systems not available"
+          fi
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 11: ARBITRAGE
       # ═══════════════════════════════════════════════════════════════════════
       - name: 💵 Arbitrage Execution
         continue-on-error: true
@@ -449,7 +495,7 @@ jobs:
           fi
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 11: SUMMARY
+      # PHASE 12: SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📝 Run Summary
         if: always()
@@ -479,7 +525,13 @@ jobs:
           echo "   ✅ Bundles"
           echo "   ✅ MetaBridge Team Formation"
           echo "   ✅ MetaHive Reward Distribution"
+          echo "   ✅ Cross-AI Learning (Yield Memory + MetaHive)"
           echo "   ✅ Arbitrage"
+          echo ""
+          echo "🧠 LEARNING SYSTEMS:"
+          echo "   • Yield Memory: Per-user pattern learning"
+          echo "   • MetaHive Brain: Global cross-AI patterns"
+          echo "   • Open MetaHive API: External AI contributions"
           echo ""
           echo "💰 TARGET: \$6,500-26,500/month"
           echo ""
