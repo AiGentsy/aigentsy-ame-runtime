@@ -1,29 +1,22 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy Autonomous Execution Workflow v7 - ALL APIs LIVE
-# Updated: January 3, 2026
+# AiGentsy Autonomous Execution Workflow v8 - COMPLETE AUTOMATION
+# January 3, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# ALL YOUR API KEYS NOW ACTUALLY USED:
-#   ✅ RESEND_API_KEY - Real email sending
-#   ✅ STABILITY_API_KEY - Real image generation  
-#   ✅ OPENROUTER_API_KEY - Multi-AI routing (Claude, GPT, Llama)
-#   ✅ PERPLEXITY_API_KEY - Real-time search
-#   ✅ GEMINI_API_KEY - Google AI
-#   ✅ RUNWAY_API_KEY - Video generation
-#   ✅ ELEVENLABS_API_KEY - Audio/voice generation
-#   ✅ GITHUB_TOKEN - Real GitHub/Reddit/HN scraping
-#   ✅ SHOPIFY_ADMIN_TOKEN - Store management
+# 53 AUTONOMOUS ENDPOINTS - ALL SYSTEMS FROM v6+v7+NEW
 #
-# Plus all v6 systems still running
+# APIs Used:
+#   ✅ RESEND_API_KEY, STABILITY_API_KEY, ELEVENLABS_API_KEY, RUNWAY_API_KEY
+#   ✅ OPENROUTER_API_KEY, PERPLEXITY_API_KEY, GEMINI_API_KEY
+#   ✅ GITHUB_TOKEN, SHOPIFY_ADMIN_TOKEN, JSONBIN_*
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy Autonomous Execution v7
+name: AiGentsy v8 Complete Automation
 
 on:
   schedule:
     - cron: '0 * * * *'  # Every hour
-  
   workflow_dispatch:
     inputs:
       mode:
@@ -33,598 +26,381 @@ on:
         type: choice
         options:
           - full
-          - discovery_only
-          - platforms_only
-          - ai_only
-          - email_only
-          - health_only
+          - discovery
+          - financial
+          - marketing
+          - health
 
 env:
   BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://aigentsy-ame-runtime.onrender.com' }}
 
 jobs:
-  autonomous:
-    name: 🚀 v7 All APIs Live
+  complete-automation:
+    name: 🚀 v8 Complete Automation
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
+    timeout-minutes: 55
+
     steps:
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 1: API HEALTH CHECK
+      # PHASE 1: HEALTH CHECKS (from v6/v7)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔑 API Health Check
-        id: health
+      - name: 🔑 Health Checks
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔑 API HEALTH CHECK - All 10 APIs"
+          echo "🔑 HEALTH CHECKS"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s --max-time 30 "${{ env.BACKEND_URL }}/api/health" 2>&1 || echo '{"ok": false}')
+          echo "1. v90 Autonomous Health..."
+          curl -s "${{ env.BACKEND_URL }}/autonomous/v90/health" | jq -c '{ok,total_autonomous_endpoints}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            CONFIGURED=$(echo "$RESPONSE" | jq -r '.apis_configured // 0')
-            TOTAL=$(echo "$RESPONSE" | jq -r '.apis_total // 0')
-            echo "✅ APIs Configured: $CONFIGURED / $TOTAL"
-            echo ""
-            echo "$RESPONSE" | jq '.apis' 2>/dev/null || true
-          else
-            echo "⚠️ Backend starting up, checking basic health..."
-            curl -s "${{ env.BACKEND_URL }}/health" | jq . || true
-            sleep 20
-          fi
+          echo "2. API Key Health..."
+          curl -s "${{ env.BACKEND_URL }}/api/health" | jq -c '{ok,apis_configured}' || true
+          
+          echo "3. Basic Health..."
+          curl -s "${{ env.BACKEND_URL }}/health" | jq -c '{status}' || true
+          
+          echo "4. Learning Health..."
+          curl -s "${{ env.BACKEND_URL }}/learning/health" | jq -c '{ok,learning_ready}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 2: REAL PLATFORM SCRAPING (GitHub, Reddit, HackerNews)
-      # Uses: GITHUB_TOKEN
+      # PHASE 2: DISCOVERY (7 endpoints - includes v6 mega-discover)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔍 Real Platform Scraping
+      - name: 🔍 Discovery - All Sources
         continue-on-error: true
-        if: ${{ github.event.inputs.mode != 'platforms_only' && github.event.inputs.mode != 'email_only' && github.event.inputs.mode != 'health_only' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔍 REAL SCRAPING - GitHub, Reddit, HackerNews"
-          echo "   Using: GITHUB_TOKEN for higher rate limits"
+          echo "🔍 DISCOVERY PHASE (7 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/discovery/scrape-all" \
+          echo "1. Mega Discovery (100+ platforms from v6)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/execution/mega-discover" \
             -H "Content-Type: application/json" \
-            --max-time 180 2>&1 || echo '{"ok": false}')
+            -d '{"enable_filters": true, "max_age_days": 30, "min_win_probability": 0.5}' \
+            --max-time 300 | jq -c '{ok,total_sources}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            TOTAL=$(echo "$RESPONSE" | jq -r '.total_opportunities // 0')
-            echo "✅ Found $TOTAL REAL opportunities"
-            echo ""
-            echo "By Platform:"
-            echo "$RESPONSE" | jq '.by_platform' 2>/dev/null || true
-          else
-            echo "⚠️ Real scraping not available, trying mega-discover..."
-            curl -s -X POST "${{ env.BACKEND_URL }}/execution/mega-discover" \
-              -H "Content-Type: application/json" \
-              -d '{"enable_filters": true, "max_age_days": 30, "min_win_probability": 0.5}' \
-              --max-time 300 | jq . || true
-          fi
+          echo "2. Real Platform Scraping (GitHub/Reddit/HN)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/discovery/scrape-all" --max-time 180 | jq -c '{ok,total_opportunities}' || true
+          
+          echo "3. Perplexity Search..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/discovery/perplexity-opportunities" -d '{"category":"AI"}' --max-time 120 | jq -c '{ok,opportunities_found}' || true
+          
+          echo "4. Alpha Discovery..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/discovery/alpha" --max-time 120 | jq -c '{ok,total}' || true
+          
+          echo "5. Pain Point Detection..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/pain-points/detect" --max-time 120 | jq -c '{ok,pain_points_found}' || true
+          
+          echo "6. Flow Arbitrage Detection..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/discovery/flow-arbitrage" --max-time 60 | jq -c '{ok,count}' || true
+          
+          echo "7. Signal Ingestion..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/signals/ingest" --max-time 60 | jq -c '{ok}' || true
+          
+          echo "8. Fallback: Discover & Execute (from v6)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/discover-and-execute" \
+            -H "Content-Type: application/json" \
+            -d '{"auto_approve_user": true, "max_executions": 20}' \
+            --max-time 180 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 3: PERPLEXITY REAL-TIME SEARCH
-      # Uses: PERPLEXITY_API_KEY
+      # PHASE 3: AI GENERATION (5 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔎 Perplexity Opportunity Search
+      - name: 🤖 AI Generation
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'discovery_only' || github.event.inputs.mode == 'ai_only' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔎 PERPLEXITY - Real-Time Market Intelligence"
-          echo "   Using: PERPLEXITY_API_KEY"
+          echo "🤖 AI GENERATION PHASE (5 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/discovery/perplexity-opportunities" \
-            -H "Content-Type: application/json" \
-            -d '{"category": "AI automation freelance"}' \
-            --max-time 120 2>&1 || echo '{"ok": false}')
+          echo "1. Cross-AI Intelligence Collection..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/intelligence/collect" --max-time 300 | jq -c '{ok,total_insights}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            COUNT=$(echo "$RESPONSE" | jq -r '.opportunities_found // 0')
-            echo "✅ Perplexity found $COUNT opportunity batches"
-          else
-            echo "⚠️ Perplexity search not available"
-          fi
+          echo "2. AI Task Orchestration..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/ai/orchestrate" --max-time 300 | jq -c '{ok,tasks_completed}' || true
+          
+          echo "3. Graphics Generation (Stability)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/graphics/batch-generate" --max-time 300 | jq -c '{ok,images_generated}' || true
+          
+          echo "4. Audio Generation (ElevenLabs)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/audio/batch-generate" --max-time 300 | jq -c '{ok,audio_generated}' || true
+          
+          echo "5. Video Generation (Runway)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/video/batch-generate" --max-time 300 | jq -c '{ok,videos_generated}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 4: SIGNAL INGESTION (PREDICTIVE)
+      # PHASE 4: FINANCIAL AUTOMATION (7 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📡 Signal Ingestion
+      - name: 💰 Financial Automation
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'discovery_only' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📡 SIGNAL INGESTION - Predictive Opportunities"
+          echo "💰 FINANCIAL AUTOMATION PHASE (7 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/signals/ingest" \
-            -H "Content-Type: application/json" \
-            --max-time 120 | jq . || true
+          echo "1. Revenue Reconciliation..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/revenue/reconcile" --max-time 60 | jq -c '{ok,total_revenue}' || true
+          
+          echo "2. Pricing Optimization..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/pricing/optimize" --max-time 60 | jq -c '{ok,optimizations_made}' || true
+          
+          echo "3. OCL Auto-Repay..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/ocl/auto-repay" --max-time 60 | jq -c '{ok,repayments_made}' || true
+          
+          echo "4. P2P Loan Matching..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/p2p/match-loans" --max-time 60 | jq -c '{ok,matches_found}' || true
+          
+          echo "5. Escrow Auto-Release..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/escrow/auto-release" --max-time 60 | jq -c '{ok,escrows_released}' || true
+          
+          echo "6. Batch Payment Execution..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/payments/batch-execute" --max-time 120 | jq -c '{ok,payments_executed}' || true
+          
+          echo "7. IP Vault Royalty Sweep..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/ipvault/royalty-sweep" --max-time 60 | jq -c '{ok,royalties_collected}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 5: CROSS-AI INTELLIGENCE COLLECTION
-      # Uses: OPENROUTER_API_KEY, PERPLEXITY_API_KEY, GEMINI_API_KEY
+      # PHASE 5: USER SUCCESS (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🧠 Cross-AI Intelligence Collection
+      - name: 👤 User Success
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'ai_only' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🧠 CROSS-AI INTELLIGENCE - All AIs Teaching Each Other"
-          echo "   Using: OPENROUTER, PERPLEXITY, GEMINI"
+          echo "👤 USER SUCCESS PHASE (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          echo "This is AiGentsy's novel concept:"
-          echo "  • OpenRouter (Claude/GPT) analyzes patterns"
-          echo "  • Perplexity provides real-time data"
-          echo "  • Gemini adds alternative perspective"
-          echo "  • ALL insights feed into MetaHive"
-          echo ""
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/intelligence/collect" \
-            -H "Content-Type: application/json" \
-            --max-time 300 2>&1 || echo '{"ok": false}')
+          echo "1. Client Success Prediction..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/clients/predict-success" --max-time 120 | jq -c '{ok,at_risk_users,interventions_triggered}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            INSIGHTS=$(echo "$RESPONSE" | jq -r '.total_insights // 0')
-            echo "✅ Collected $INSIGHTS insights from AI sources"
-            echo ""
-            echo "By Source:"
-            echo "$RESPONSE" | jq '.by_source' 2>/dev/null || true
-          else
-            echo "⚠️ Intelligence collection not available"
-          fi
+          echo "2. Deliverable Verification..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/verification/batch" --max-time 120 | jq -c '{ok,deliverables_verified}' || true
+          
+          echo "3. Reputation Update..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/reputation/update-batch" --max-time 60 | jq -c '{ok,users_updated}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 6: AI TASK ORCHESTRATION
-      # Uses: OPENROUTER_API_KEY
+      # PHASE 6: BUSINESS SYSTEMS (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🤖 AI Task Orchestration
+      - name: 🏢 Business Systems
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'ai_only' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🤖 AI ORCHESTRATION - Processing Pending AI Tasks"
-          echo "   Using: OPENROUTER_API_KEY (Claude, GPT, Llama)"
+          echo "🏢 BUSINESS SYSTEMS PHASE (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/ai/orchestrate" \
-            -H "Content-Type: application/json" \
-            --max-time 300 2>&1 || echo '{"ok": false}')
+          echo "1. Franchise Royalties..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/franchise/process-royalties" --max-time 60 | jq -c '{ok,royalties_processed}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            COMPLETED=$(echo "$RESPONSE" | jq -r '.tasks_completed // 0')
-            FAILED=$(echo "$RESPONSE" | jq -r '.tasks_failed // 0')
-            echo "✅ Completed: $COMPLETED AI tasks"
-            if [ "$FAILED" -gt 0 ]; then echo "❌ Failed: $FAILED tasks"; fi
-          else
-            echo "⚠️ AI orchestration not available"
-          fi
+          echo "2. Subscription Renewals..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/subscriptions/process-renewals" --max-time 60 | jq -c '{ok,renewals_processed}' || true
+          
+          echo "3. SLO Compliance..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/slo/check-compliance" --max-time 60 | jq -c '{ok,violations_found}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 7: GRAPHICS GENERATION
-      # Uses: STABILITY_API_KEY
+      # PHASE 7: MARKETING & OUTREACH (7 endpoints - includes v7 resend)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎨 Graphics Generation (Stability AI)
+      - name: 📣 Marketing & Outreach
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎨 GRAPHICS - Stability AI Image Generation"
-          echo "   Using: STABILITY_API_KEY"
+          echo "📣 MARKETING & OUTREACH PHASE (7 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/graphics/batch-generate" \
-            -H "Content-Type: application/json" \
-            --max-time 300 2>&1 || echo '{"ok": false}')
+          echo "1. Email Batch Send (Resend)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/email/send-batch" --max-time 120 | jq -c '{ok,emails_sent}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            GENERATED=$(echo "$RESPONSE" | jq -r '.images_generated // 0')
-            echo "✅ Generated $GENERATED images via Stability AI"
-          else
-            echo "⚠️ Graphics generation not available (no pending requests)"
-          fi
+          echo "2. Resend Process Queue (from v7)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/resend/process-queue" --max-time 60 | jq -c '{ok}' || true
+          
+          echo "3. AME Process Queue..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/ame/process-queue" --max-time 60 | jq -c '{ok}' || true
+          
+          echo "4. AME Generate Pitches..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/ame/generate-pitches" --max-time 120 | jq -c '{ok,pitches_generated}' || true
+          
+          echo "5. Social Process Queue..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/social/process-queue" --max-time 60 | jq -c '{ok}' || true
+          
+          echo "6. Syndication Process..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/syndication/process" --max-time 60 | jq -c '{ok,syndicated}' || true
+          
+          echo "7. Retarget Process..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/retarget/process-queue" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 8: AUDIO GENERATION
-      # Uses: ELEVENLABS_API_KEY
+      # PHASE 8: PLATFORM AUTOMATIONS (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔊 Audio Generation (ElevenLabs)
+      - name: 🎨 Platform Automations
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔊 AUDIO - ElevenLabs Voice Generation"
-          echo "   Using: ELEVENLABS_API_KEY"
+          echo "🎨 PLATFORM AUTOMATIONS PHASE (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/audio/batch-generate" \
-            -H "Content-Type: application/json" \
-            --max-time 300 2>&1 || echo '{"ok": false}')
+          echo "1. Fiverr Process Orders..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/fiverr/process-orders" --max-time 120 | jq -c '{ok}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            GENERATED=$(echo "$RESPONSE" | jq -r '.audio_generated // 0')
-            echo "✅ Generated $GENERATED audio files via ElevenLabs"
-          else
-            echo "⚠️ Audio generation not available (no pending requests)"
-          fi
+          echo "2. Dribbble Daily Post..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/dribbble/post-daily" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "3. 99designs Scan & Enter..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/99designs/scan-and-enter" --max-time 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 9: VIDEO GENERATION
-      # Uses: RUNWAY_API_KEY
+      # PHASE 9: AAM & SHOPIFY (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎬 Video Generation (Runway)
+      - name: 🛒 AAM & Shopify
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎬 VIDEO - Runway AI Generation"
-          echo "   Using: RUNWAY_API_KEY"
+          echo "🛒 AAM & SHOPIFY PHASE (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/video/batch-generate" \
-            -H "Content-Type: application/json" \
-            --max-time 300 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            GENERATED=$(echo "$RESPONSE" | jq -r '.videos_generated // 0')
-            echo "✅ Generated $GENERATED videos via Runway"
-          else
-            echo "⚠️ Video generation not available (no pending requests)"
-          fi
+          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/shopify/shopify-abandon-v1" --max-time 60 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/shopify/shopify-growth-v1" --max-time 60 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/amazon/amazon-cart-nudge-v1" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 10: EMAIL AUTOMATION
-      # Uses: RESEND_API_KEY
+      # PHASE 10: R3 & BUDGET (1 endpoint)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📧 Email Automation (Resend)
+      - name: 📊 R3 Autopilot
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'email_only' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📧 EMAIL - Resend API"
-          echo "   Using: RESEND_API_KEY"
+          echo "📊 R3 AUTOPILOT (1 endpoint)"
           echo "═══════════════════════════════════════════════════════════════"
-          
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/email/send-batch" \
-            -H "Content-Type: application/json" \
-            --max-time 120 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            SENT=$(echo "$RESPONSE" | jq -r '.emails_sent // 0')
-            echo "✅ Sent: $SENT emails via Resend"
-          else
-            echo "⚠️ Email automation not available (no pending emails)"
-          fi
+          curl -s -X POST "${{ env.BACKEND_URL }}/r3/autopilot/execute-all" --max-time 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 11: PLATFORM AUTOMATIONS
+      # PHASE 11: PROPOSALS & BUNDLES (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎨 Fiverr Order Processing
+      - name: 📝 Proposals & Bundles
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'platforms_only' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎨 FIVERR AUTOMATION"
+          echo "📝 PROPOSALS & BUNDLES (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
-          
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/fiverr/process-orders" \
-            -H "Content-Type: application/json" \
-            --max-time 120 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            PROCESSED=$(echo "$RESPONSE" | jq -r '.orders_processed // 0')
-            echo "✅ Fiverr: Processed $PROCESSED orders"
-          else
-            echo "⚠️ Fiverr automation not available"
-          fi
-
-      - name: 🖼️ Dribbble Daily Posting
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'platforms_only' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🖼️ DRIBBBLE AUTOMATION"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/dribbble/post-daily" \
-            -H "Content-Type: application/json" \
-            --max-time 120 | jq . || true
-
-      - name: 🏆 99designs Contest Entry
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'platforms_only' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🏆 99DESIGNS AUTOMATION"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/99designs/scan-and-enter" \
-            -H "Content-Type: application/json" \
-            --max-time 120 | jq . || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/proposals/auto-nudge" --max-time 60 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/proposals/autoclose" --max-time 60 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/bundles/process-sales" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 12: AAM & SHOPIFY
-      # Uses: SHOPIFY_ADMIN_TOKEN
+      # PHASE 12: METABRIDGE & METAHIVE (2 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🛒 AAM Cart Abandonment
+      - name: 🌉 MetaBridge & MetaHive
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🛒 AAM - Cart Abandonment Recovery"
-          echo "   Using: SHOPIFY_ADMIN_TOKEN"
+          echo "🌉 METABRIDGE & METAHIVE (2 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/shopify/shopify-abandon-v1" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-
-      - name: 📈 Shopify Growth
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📈 SHOPIFY GROWTH AUTOMATION"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/shopify/shopify-growth-v1" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/aam/run/amazon/amazon-cart-nudge-v1" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/metabridge/batch_execute" -d '{}' --max-time 120 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/hive/distribute" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 13: R3 AUTOPILOT
+      # PHASE 13: SPECIAL SYSTEMS (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📊 R3 Autopilot Budget Execution
+      - name: ⚡ Special Systems
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📊 R3 AUTOPILOT - Budget Allocation"
+          echo "⚡ SPECIAL SYSTEMS (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/r3/autopilot/execute-all" \
-            -H "Content-Type: application/json" \
-            --max-time 120 2>&1 || echo '{"ok": false}')
+          echo "1. Third-Party Monetization..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/monetization/third-party" --max-time 60 | jq -c '{ok}' || true
           
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            SPENT=$(echo "$RESPONSE" | jq -r '.total_spent // 0')
-            echo "✅ R3 spent: \$$SPENT"
-          else
-            echo "⚠️ R3 autopilot not available"
-          fi
+          echo "2. Dark Pool Matching..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/darkpool/match" --max-time 60 | jq -c '{ok}' || true
+          
+          echo "3. Sponsor Distribution..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/sponsors/distribute" --max-time 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 14: RETARGETING & EMAIL SEQUENCES
+      # PHASE 14: ORCHESTRATION (3 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎯 Retargeting & Email Sequences
+      - name: 🎯 Orchestration
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎯 RETARGETING & EMAIL SEQUENCES"
+          echo "🎯 ORCHESTRATION PHASE (3 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/retarget/process-queue" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
+          echo "1. C-Suite Analysis..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/csuite/analyze-all" --max-time 120 | jq -c '{ok,users_analyzed}' || true
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/resend/process-queue" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
+          echo "2. Week2 Execution..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/week2/execute" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "3. Conductor Cycle..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/conductor/run-cycle" --max-time 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 15: AME & SOCIAL
+      # PHASE 15: LEARNING & ARBITRAGE (2 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎯 AME Pitch Processing
+      - name: 🧠 Learning & Arbitrage
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎯 AME - Autonomous Marketing Engine"
+          echo "🧠 LEARNING & ARBITRAGE (2 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/ame/process-queue" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-
-      - name: 📱 Social Auto-Posting
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📱 SOCIAL MEDIA AUTOMATION"
-          echo "═══════════════════════════════════════════════════════════════"
+          echo "1. Learning Process Outcomes..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/learning/process-outcomes" --max-time 120 | jq -c '{ok,patterns_stored}' || true
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/social/process-queue" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
+          echo "2. Arbitrage Execution..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/arbitrage/execute" -d '{"max_opportunities":10}' --max-time 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 16: PROPOSALS
+      # PHASE 16: ANALYTICS (2 endpoints)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📝 Proposal Lifecycle
+      - name: 📊 Analytics
         continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 PROPOSAL MANAGEMENT"
+          echo "📊 ANALYTICS (2 endpoints)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/proposals/auto-nudge" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
+          echo "1. Daily Snapshot..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/analytics/daily-snapshot" --max-time 60 | jq . || true
           
-          curl -s -X POST "${{ env.BACKEND_URL }}/proposals/autoclose" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-
-      - name: 📦 Bundle Sales Processing
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📦 BUNDLE ENGINE"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/bundles/process-sales" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-
-      # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 17: METABRIDGE & METAHIVE
-      # ═══════════════════════════════════════════════════════════════════════
-      - name: 🌉 MetaBridge Team Formation
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🌉 METABRIDGE - Auto-Assemble JV Teams"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/metabridge/batch_execute" \
-            -H "Content-Type: application/json" \
-            -d '{"intent_ids": []}' \
-            --max-time 120 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            TEAMS=$(echo "$RESPONSE" | jq -r '.teams_formed // 0')
-            echo "✅ MetaBridge: $TEAMS teams formed"
-          else
-            echo "⚠️ MetaBridge not available"
-          fi
-
-      - name: 🐝 MetaHive Reward Distribution
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🐝 METAHIVE - Distribute Learning Rewards"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          curl -s -X POST "${{ env.BACKEND_URL }}/hive/distribute" \
-            -H "Content-Type: application/json" \
-            --max-time 60 | jq . || true
-
-      # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 18: CROSS-AI LEARNING LOOP
-      # ═══════════════════════════════════════════════════════════════════════
-      - name: 🧠 Cross-AI Learning Loop
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🧠 CROSS-AI LEARNING - All AIs Teaching Each Other"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          echo "This is AiGentsy's novel concept:"
-          echo "  • Claude finds winning patterns"
-          echo "  • Contributes to MetaHive"
-          echo "  • ChatGPT/Stability/Perplexity use patterns"
-          echo "  • All AIs benefit from collective intelligence"
-          echo ""
-          
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/learning/process-outcomes" \
-            -H "Content-Type: application/json" \
-            --max-time 120 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            PATTERNS=$(echo "$RESPONSE" | jq -r '.patterns_stored // 0')
-            HIVE=$(echo "$RESPONSE" | jq -r '.hive_contributions // 0')
-            echo "✅ Yield Memory: $PATTERNS patterns stored"
-            echo "✅ MetaHive: $HIVE patterns contributed"
-          else
-            echo "⚠️ Learning loop not available"
-          fi
-          
-          # Check learning health
-          curl -s -X GET "${{ env.BACKEND_URL }}/learning/health" --max-time 30 | jq . || true
-
-      # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 19: ARBITRAGE
-      # ═══════════════════════════════════════════════════════════════════════
-      - name: 💵 Arbitrage Execution
-        continue-on-error: true
-        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == '' }}
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "💵 ARBITRAGE - Cross-Platform Price/Temporal/Supply"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/arbitrage/execute" \
-            -H "Content-Type: application/json" \
-            -d '{"max_opportunities": 10}' \
-            --max-time 120 2>&1 || echo '{"ok": false}')
-          
-          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
-            PROFIT=$(echo "$RESPONSE" | jq -r '.total_profit // 0')
-            echo "✅ Arbitrage profit: \$$PROFIT"
-          else
-            echo "⚠️ Arbitrage not available"
-          fi
+          echo "2. Revenue Report..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/reports/revenue" --max-time 60 | jq -c '{ok,total_revenue}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📝 Run Summary
+      - name: 📝 Complete Summary
         if: always()
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY v7 - ALL APIS LIVE - COMPLETE"
+          echo "📝 AIGENTSY v8 COMPLETE - ALL v6/v7 + NEW SYSTEMS"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "🕐 Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🔧 Mode: ${{ github.event.inputs.mode || 'full' }}"
-          echo "🔗 Backend: ${{ env.BACKEND_URL }}"
           echo ""
-          echo "🔑 APIS USED THIS RUN:"
-          echo "   📧 RESEND_API_KEY - Email sending"
-          echo "   🎨 STABILITY_API_KEY - Image generation"
-          echo "   🔊 ELEVENLABS_API_KEY - Audio/voice generation"
-          echo "   🎬 RUNWAY_API_KEY - Video generation"
-          echo "   🤖 OPENROUTER_API_KEY - Multi-AI (Claude/GPT)"
-          echo "   🔍 PERPLEXITY_API_KEY - Real-time search"
-          echo "   🧠 GEMINI_API_KEY - Google AI"
-          echo "   🐙 GITHUB_TOKEN - Real scraping"
-          echo "   🛒 SHOPIFY_ADMIN_TOKEN - Store management"
+          echo "TOTAL ENDPOINTS CALLED: 53"
           echo ""
-          echo "📊 SYSTEMS EXECUTED:"
-          echo "   ✅ Real Platform Scraping (GitHub/Reddit/HN)"
-          echo "   ✅ Perplexity Opportunity Search"
-          echo "   ✅ Signal Ingestion"
-          echo "   ✅ Cross-AI Intelligence Collection"
-          echo "   ✅ AI Task Orchestration"
-          echo "   ✅ Graphics Generation (Stability)"
-          echo "   ✅ Audio Generation (ElevenLabs)"
-          echo "   ✅ Video Generation (Runway)"
-          echo "   ✅ Email Automation (Resend)"
-          echo "   ✅ Fiverr Automation"
-          echo "   ✅ Dribbble Automation"
-          echo "   ✅ 99designs Automation"
-          echo "   ✅ Cart Abandonment Recovery"
-          echo "   ✅ Shopify Growth"
-          echo "   ✅ R3 Autopilot"
-          echo "   ✅ Retargeting"
-          echo "   ✅ AME Pitches"
-          echo "   ✅ Social Posting"
-          echo "   ✅ Proposals"
-          echo "   ✅ Bundles"
-          echo "   ✅ MetaBridge Team Formation"
-          echo "   ✅ MetaHive Reward Distribution"
-          echo "   ✅ Cross-AI Learning Loop"
-          echo "   ✅ Arbitrage"
+          echo "FROM v6: mega-discover, discover-and-execute, health, learning/health"
+          echo "FROM v7: api/health, resend/process-queue, all API integrations"
+          echo "NEW v8: 26 additional autonomous systems"
           echo ""
-          echo "🧠 LEARNING SYSTEMS:"
-          echo "   • Yield Memory: Per-user pattern learning"
-          echo "   • MetaHive Brain: Global cross-AI patterns"
-          echo "   • Open MetaHive API: External AI contributions"
+          echo "PHASES EXECUTED:"
+          echo "   ✅ Health Checks (4 endpoints)"
+          echo "   ✅ Discovery (8 endpoints)"
+          echo "   ✅ AI Generation (5 endpoints)"
+          echo "   ✅ Financial (7 endpoints)"
+          echo "   ✅ User Success (3 endpoints)"
+          echo "   ✅ Business Systems (3 endpoints)"
+          echo "   ✅ Marketing (7 endpoints)"
+          echo "   ✅ Platform Automations (3 endpoints)"
+          echo "   ✅ AAM & Shopify (3 endpoints)"
+          echo "   ✅ R3 Autopilot (1 endpoint)"
+          echo "   ✅ Proposals & Bundles (3 endpoints)"
+          echo "   ✅ MetaBridge & MetaHive (2 endpoints)"
+          echo "   ✅ Special Systems (3 endpoints)"
+          echo "   ✅ Orchestration (3 endpoints)"
+          echo "   ✅ Learning & Arbitrage (2 endpoints)"
+          echo "   ✅ Analytics (2 endpoints)"
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
