@@ -4011,28 +4011,79 @@ async def run_agent(request: Request):
         if not user_input:
             return {"error": "No input provided."}
         
+        # ═══════════════════════════════════════════════════════════════
+        # FETCH USER'S ACTUAL KIT TYPE FROM JSONBIN
+        # ═══════════════════════════════════════════════════════════════
+        user_kit = "general"
+        user_context = ""
+        try:
+            from log_to_jsonbin import get_user
+            user = get_user(username)
+            if user:
+                user_kit = user.get("companyType") or user.get("kit_type") or "general"
+                lifetime_revenue = user.get("lifetimeRevenue", 0)
+                aigx_balance = user.get("ownership", {}).get("aigx", 0)
+                opportunities = user.get("opportunities", [])
+                pending_opps = len([o for o in opportunities if o.get("status") == "pending"])
+                
+                # Build user context for the agent
+                user_context = f"""
+USER CONTEXT (use this information):
+- Kit Type: {user_kit.upper()} (NOT SaaS unless they actually have SaaS kit)
+- Lifetime Revenue: ${lifetime_revenue}
+- AIGx Balance: {aigx_balance}
+- Pending Opportunities: {pending_opps}
+
+IMPORTANT: The user has a {user_kit.upper()} kit. Tailor your advice to {user_kit} business model.
+Do NOT mention SaaS unless their kit is actually SaaS.
+"""
+        except Exception as e:
+            print(f"Could not load user context: {e}")
+        
+        # Kit-specific context
+        KIT_CONTEXTS = {
+            "social": "Focus on: brand partnerships, sponsorships, content monetization, creator economy, influencer deals",
+            "saas": "Focus on: micro-tools, subscriptions, API access, recurring revenue, software licensing",
+            "agency": "Focus on: client retainers, project-based work, consulting, service packages",
+            "ecommerce": "Focus on: product sales, dropshipping, inventory, supplier relationships",
+            "consulting": "Focus on: hourly/project rates, expertise monetization, advisory services",
+            "marketing": "Focus on: SEO audits, ad management, lead generation, campaign services",
+            "legal": "Focus on: document services, compliance, contract drafting, legal consulting",
+            "general": "Focus on: services, products, consulting, or whatever fits their skills"
+        }
+        
+        kit_focus = KIT_CONTEXTS.get(user_kit.lower(), KIT_CONTEXTS["general"])
+        
         # Role-specific enforcement
         ROLE_INSTRUCTIONS = {
             "CFO": f"""CRITICAL: You are the CFO of {username}'s business. Speak ONLY in first person.
 NEVER say "your CFO" or "the agent" — you ARE the CFO.
+{user_context}
+Kit Focus: {kit_focus}
 Start with: "💰 CFO here —"
-Give 2-3 concrete financial next steps with ROI/pricing.
+Give 2-3 concrete financial next steps with ROI/pricing tailored to their {user_kit} kit.
 End with ONE clarifying question.""",
             
             "CMO": f"""CRITICAL: You are the CMO of {username}'s business. Speak ONLY in first person.
 NEVER say "your CMO" or "the growth agent" — you ARE the CMO.
+{user_context}
+Kit Focus: {kit_focus}
 Start with: "📣 CMO here —"
-Give 2-3 concrete growth plays with channels/targets.
+Give 2-3 concrete growth plays with channels/targets tailored to their {user_kit} kit.
 End with ONE clarifying question.""",
             
             "CTO": f"""CRITICAL: You are the CTO of {username}'s business. Speak ONLY in first person.
 NEVER say "your CTO" or "the SDK agent" — you ARE the CTO.
+{user_context}
+Kit Focus: {kit_focus}
 Start with: "🧬 CTO here —"
 Give 2-3 concrete technical steps with build/integration plan.
 End with ONE clarifying question.""",
             
             "CLO": f"""CRITICAL: You are the CLO of {username}'s business. Speak ONLY in first person.
 NEVER say "your CLO" or "the legal agent" — you ARE the CLO.
+{user_context}
+Kit Focus: {kit_focus}
 Start with: "📜 CLO here —"
 Give 2-3 concrete legal/branding steps with risk mitigation.
 End with ONE clarifying question.""",
@@ -4064,7 +4115,7 @@ End with ONE clarifying question.""",
         output = output.replace("AiGentsy SDK", "I")
         output = output.replace("AiGentsy Remix", "I")
         
-        return {"output": output, "role": role}
+        return {"output": output, "role": role, "user_kit": user_kit}
         
     except Exception as e:
         return {"error": f"Agent runtime error: {str(e)}"}
