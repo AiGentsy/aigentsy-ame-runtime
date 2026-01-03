@@ -22443,7 +22443,13 @@ async def intent_list_endpoint():
 async def get_user_dashboard(username: str):
     """
     Complete dashboard data for user
-    Returns opportunities, revenue, AIGx, deals, and system status
+    Returns data in format expected by aigent0.html frontend
+    
+    Frontend expects:
+    - tier_progression.lifetime_revenue, current_tier
+    - revenue_stats.aigx_by_source
+    - aigx_equity.aigx_balance
+    - recent_activity[]
     """
     try:
         from log_to_jsonbin import get_user
@@ -22461,41 +22467,118 @@ async def get_user_dashboard(username: str):
         
         # Get revenue tracking
         revenue = user.get("revenue_tracking", {"total": 0, "history": []})
+        lifetime_revenue = user.get("lifetimeRevenue", revenue.get("total", 0))
         
         # Get AIGx balance
         aigx_balance = user.get("ownership", {}).get("aigx", 0)
+        aigx_ledger = user.get("ownership", {}).get("ledger", [])
         
         # Get deals
         deals = user.get("deals", [])
         
         # Get early adopter info
-        early_adopter = {
-            "tier": user.get("earlyAdopterTier", "standard"),
-            "badge": user.get("earlyAdopterBadge", ""),
-            "multiplier": user.get("aigxMultiplier", 1.0),
-            "user_number": user.get("userNumber", 0)
-        }
+        early_adopter_tier = user.get("earlyAdopterTier", "standard")
+        
+        # Build recent_activity from multiple sources
+        recent_activity = []
+        
+        # Add revenue transactions
+        for tx in revenue.get("history", [])[-5:]:
+            recent_activity.append({
+                "type": "revenue",
+                "basis": "revenue",
+                "description": f"Payment received",
+                "amount": tx.get("amount", 0),
+                "currency": "USD",
+                "timestamp": tx.get("timestamp")
+            })
+        
+        # Add AIGx ledger entries
+        for entry in aigx_ledger[-5:]:
+            recent_activity.append({
+                "type": "aigx",
+                "basis": entry.get("basis", "activity"),
+                "description": entry.get("reason", "AIGx earned"),
+                "amount": entry.get("amount", 0),
+                "currency": "AIGx",
+                "timestamp": entry.get("timestamp")
+            })
+        
+        # Add opportunity discoveries
+        for opp in opportunities[-3:]:
+            recent_activity.append({
+                "type": "opportunity",
+                "basis": "discovery",
+                "description": f"Found: {opp.get('title', 'Opportunity')[:30]}",
+                "amount": 0,
+                "currency": "",
+                "timestamp": opp.get("discovered_at")
+            })
+        
+        # Sort by timestamp
+        recent_activity.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+        
+        # Calculate AIGx by source
+        aigx_by_source = {}
+        for entry in aigx_ledger:
+            source = entry.get("basis", "other")
+            aigx_by_source[source] = aigx_by_source.get(source, 0) + entry.get("amount", 0)
         
         return {
             "ok": True,
             "username": username,
+            
+            # ============================================================
+            # FORMAT EXPECTED BY FRONTEND (aigent0.html)
+            # ============================================================
+            
+            # Tier progression (frontend: data.tier_progression.*)
+            "tier_progression": {
+                "current_tier": early_adopter_tier,
+                "lifetime_revenue": lifetime_revenue,
+                "next_tier": "founder" if early_adopter_tier == "genesis" else "pioneer",
+                "progress_percent": min(100, (lifetime_revenue / 1000) * 100) if lifetime_revenue < 1000 else 100
+            },
+            
+            # Revenue stats (frontend: data.revenue_stats.*)
+            "revenue_stats": {
+                "total": revenue.get("total", 0),
+                "net": revenue.get("total", 0) - revenue.get("platform_fees_paid", 0),
+                "platform_fees_paid": revenue.get("platform_fees_paid", 0),
+                "aigx_by_source": aigx_by_source
+            },
+            
+            # AIGx equity (frontend: data.aigx_equity.*)
+            "aigx_equity": {
+                "aigx_balance": aigx_balance,
+                "aigo_percent": min(0.1, aigx_balance / 1000000) if aigx_balance > 0 else 0,  # Simplified calc
+                "ledger_entries": len(aigx_ledger)
+            },
+            
+            # Recent activity (frontend: data.recent_activity[])
+            "recent_activity": recent_activity[:10],
+            
+            # ============================================================
+            # ADDITIONAL DATA FOR DASHBOARD WIDGETS
+            # ============================================================
+            
             "opportunities": {
                 "total": len(opportunities),
                 "pending": pending_count,
                 "approved": approved_count,
                 "executed": executed_count,
-                "items": opportunities[:20]  # Limit response size
+                "items": opportunities[:20]
             },
             "revenue": {
                 "total": revenue.get("total", 0),
                 "platform_fees_paid": revenue.get("platform_fees_paid", 0),
                 "net": revenue.get("total", 0) - revenue.get("platform_fees_paid", 0),
-                "recent": revenue.get("history", [])[-10:],  # Last 10 transactions
+                "recent": revenue.get("history", [])[-10:],
                 "last_updated": revenue.get("last_updated")
             },
             "aigx": {
                 "balance": aigx_balance,
-                "ledger_entries": len(user.get("ownership", {}).get("ledger", []))
+                "ledger_entries": len(aigx_ledger)
             },
             "deals": {
                 "total": len(deals),
@@ -22503,9 +22586,14 @@ async def get_user_dashboard(username: str):
                 "completed": len([d for d in deals if d.get("status") == "completed"]),
                 "items": deals[:10]
             },
-            "early_adopter": early_adopter,
+            "early_adopter": {
+                "tier": early_adopter_tier,
+                "badge": user.get("earlyAdopterBadge", ""),
+                "multiplier": user.get("aigxMultiplier", 1.0),
+                "user_number": user.get("userNumber", 0)
+            },
             "outcome_score": user.get("outcomeScore", 0),
-            "lifetime_revenue": user.get("lifetimeRevenue", 0),
+            "lifetime_revenue": lifetime_revenue,
             "apex_ultra": {
                 "activated": user.get("apex_ultra_activated", True),
                 "systems_count": user.get("apex_systems_count", 143)
