@@ -29768,5 +29768,163 @@ async def get_actionized_template(template_name: str):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SPAWN NETWORK - Cross-Promotion Between Spawns
+# All spawns help each other reach customers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/spawn/network/stats")
+async def spawn_network_stats():
+    """Get network-wide stats for cross-promotion"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    dashboard = engine.get_dashboard()
+    
+    return {
+        "ok": True,
+        "network": dashboard.get("network", {}),
+        "ecosystem": dashboard.get("ecosystem", {}),
+        "spawn_to_user_funnel": dashboard.get("spawn_to_user_funnel", {})
+    }
+
+
+@app.get("/spawn/network/promos/{spawn_id}")
+async def get_spawn_promos(spawn_id: str):
+    """Get all cross-promotion opportunities for a specific spawn"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    return engine.get_network_promos_for_spawn(spawn_id)
+
+
+@app.post("/spawn/network/generate-promos")
+async def generate_network_promos():
+    """Generate cross-promotions for all active spawns"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    promos = await engine._generate_network_promos()
+    
+    return {"ok": True, "promos_generated": promos}
+
+
+@app.get("/spawn/network/checkout-upsells/{spawn_id}")
+async def get_checkout_upsells(spawn_id: str):
+    """Get 'You might also like' suggestions for checkout page"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    spawn = engine.spawner.spawned_businesses.get(spawn_id)
+    
+    if not spawn:
+        return {"ok": False, "error": "spawn_not_found"}
+    
+    all_spawns = list(engine.spawner.spawned_businesses.values())
+    upsells = engine.network.generate_checkout_upsells(spawn, all_spawns)
+    
+    return {
+        "ok": True,
+        "spawn_id": spawn_id,
+        "upsells": upsells,
+        "display_text": "You might also like these AI-powered services:"
+    }
+
+
+@app.get("/spawn/network/email-crosssell/{spawn_id}")
+async def get_email_crosssell(spawn_id: str):
+    """Get cross-sell email content for a spawn's customers"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    spawn = engine.spawner.spawned_businesses.get(spawn_id)
+    
+    if not spawn:
+        return {"ok": False, "error": "spawn_not_found"}
+    
+    all_spawns = list(engine.spawner.spawned_businesses.values())
+    email = engine.network.generate_email_cross_sell(spawn, all_spawns)
+    
+    return {"ok": True, "spawn_id": spawn_id, "email": email}
+
+
+@app.post("/spawn/network/create-bundle")
+async def create_bundle(body: dict = Body(...)):
+    """Create a bundle deal across multiple spawns"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    spawn_ids = body.get("spawn_ids", [])
+    
+    if len(spawn_ids) < 2:
+        return {"ok": False, "error": "need at least 2 spawns for a bundle"}
+    
+    spawns = []
+    for sid in spawn_ids:
+        spawn = engine.spawner.spawned_businesses.get(sid)
+        if spawn:
+            spawns.append(spawn)
+    
+    if len(spawns) < 2:
+        return {"ok": False, "error": "not enough valid spawns found"}
+    
+    bundle = engine.network.create_bundle_deal(spawns)
+    
+    return {"ok": True, "bundle": bundle}
+
+
+@app.get("/spawn/network/audience-pool")
+async def get_audience_pool():
+    """Get shared audience pool across all spawns for retargeting"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    all_spawns = list(engine.spawner.spawned_businesses.values())
+    pool = engine.network.get_shared_audience_pool(all_spawns)
+    
+    return {
+        "ok": True,
+        "audience_pool": pool,
+        "retargeting_ready": pool.get("total_audience", 0) > 0,
+        "lookalike_eligible": pool.get("lookalike_seed_size", 0) >= 100
+    }
+
+
+@app.get("/spawn/network/recommendations")
+async def get_network_recommendations(customer_email: str = None):
+    """Get personalized spawn recommendations based on purchase history"""
+    if not AUTO_SPAWN_AVAILABLE:
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    
+    engine = get_spawn_engine()
+    all_spawns = list(engine.spawner.spawned_businesses.values())
+    
+    # In production, would look up customer's purchase history by email
+    # For now, return top spawns by health
+    active = [s for s in all_spawns if s.status in [SpawnStatus.LIVE, SpawnStatus.SCALING]]
+    active.sort(key=lambda x: x.health_score, reverse=True)
+    
+    return {
+        "ok": True,
+        "recommendations": [
+            {
+                "spawn_id": s.spawn_id,
+                "name": s.name,
+                "category": s.category.value,
+                "price": s.current_price,
+                "tagline": s.tagline
+            }
+            for s in active[:5]
+        ]
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 43
 # ═══════════════════════════════════════════════════════════════════════════════
