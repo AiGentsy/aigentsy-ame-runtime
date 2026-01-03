@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy Autonomous Execution Workflow v91 - FULLY WIRED
+# AiGentsy Autonomous Execution Workflow v91 - FULLY WIRED + AUTO-SPAWN
 # January 3, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
@@ -17,8 +17,16 @@
 #   • Quality-checked delivery
 #   • Payment capture on approval
 #   • Full revenue reconciliation
+# - v91 NEW: AUTO-SPAWN ENGINE (12 endpoints)
+#   • Autonomous business spawning
+#   • Trend detection across Reddit/TikTok/Google/Perplexity
+#   • Every spawn is AiGentsy property with referral codes
+#   • Auto-scale winners, auto-kill losers
+#   • Spawns drive signups back to AiGentsy
+#   • Users can adopt successful spawns
+#   • All revenue flows to your Stripe
 #
-# TOTAL: 95 UNIQUE ENDPOINTS
+# TOTAL: 107 UNIQUE ENDPOINTS
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -478,6 +486,66 @@ jobs:
           curl -s "${{ env.BACKEND_URL }}/wade/dashboard" --max-time 30 | jq -c '{ok,wade_balance,pending_approval,active_workflows}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 22: AUTO-SPAWN ENGINE (NEW - AiGentsy Venture Factory)
+      # Autonomous business generation - spawns feed users back to AiGentsy
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏭 Auto-Spawn Engine (12 endpoints)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏭 AUTO-SPAWN ENGINE - AiGentsy Venture Factory"
+          echo "═══════════════════════════════════════════════════════════════"
+          echo ""
+          echo "Every spawn is an AiGentsy property with:"
+          echo "  • Referral codes driving signups"
+          echo "  • 'Powered by AiGentsy' branding"
+          echo "  • Revenue flowing to your Stripe"
+          echo "  • Learnings feeding MetaHive"
+          echo ""
+          
+          echo "1. Detect market trends..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/spawn/detect-trends" --max-time 120 | jq -c '{ok,signals_found}' || true
+          
+          echo "2. Run full spawn cycle (detect → spawn → manage)..."
+          CYCLE=$(curl -s -X POST "${{ env.BACKEND_URL }}/spawn/run-cycle" --max-time 300)
+          echo "$CYCLE" | jq -c '{ok,stats}' || true
+          
+          echo "3. Get spawn dashboard..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/dashboard" | jq -c '{ok,total_spawned,active,ecosystem}' || true
+          
+          echo "4. List active spawned businesses..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/businesses?status=live" | jq -c '{ok,count}' || true
+          
+          echo "5. List scaling businesses (winners)..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/businesses?status=scaling" | jq -c '{ok,count}' || true
+          
+          echo "6. Run lifecycle check (launch/scale/hibernate/kill)..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/spawn/lifecycle-check" --max-time 60 | jq -c '{ok,launched,scaled,killed}' || true
+          
+          echo "7. Get adoptable businesses (profitable spawns for sale)..."
+          ADOPTABLE=$(curl -s "${{ env.BACKEND_URL }}/spawn/adoptable")
+          echo "$ADOPTABLE" | jq -c '{ok,count: (.businesses | length)}' || true
+          
+          echo "8. List available templates..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/templates" | jq -c '{ok,template_count,categories}' || true
+          
+          echo "9. Get ecosystem stats (referrals, conversions)..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/dashboard" | jq -c '{ecosystem}' || true
+          
+          echo "10. Check spawn-to-user funnel..."
+          curl -s "${{ env.BACKEND_URL }}/spawn/dashboard" | jq -c '{spawn_to_user_funnel}' || true
+          
+          echo ""
+          echo "SPAWN ECOSYSTEM SUMMARY:"
+          curl -s "${{ env.BACKEND_URL }}/spawn/dashboard" | jq '{
+            active_spawns: .active,
+            total_revenue: .total_revenue,
+            referral_signups: .ecosystem.total_referral_signups,
+            aigentsy_conversions: .ecosystem.total_aigentsy_conversions,
+            adoptable_count: (.adoptable | length)
+          }' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📝 Summary
@@ -485,17 +553,17 @@ jobs:
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY v91 FULLY WIRED"
+          echo "📝 AIGENTSY v91 FULLY WIRED + AUTO-SPAWN"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo ""
-          echo "TOTAL ENDPOINTS CALLED: 95"
+          echo "TOTAL ENDPOINTS CALLED: 107"
           echo ""
           echo "PHASES:"
           echo "  ✅ Health (7)       ✅ Statistics (4)"
           echo "  ✅ APEX (3)         ✅ Discovery (11)"
-          echo "  ✅ Wade (2)         ✅ Client Deals (7) 🆕"
+          echo "  ✅ Wade (2)         ✅ Client Deals (7)"
           echo "  ✅ AI Gen (5)       ✅ Arbitrage (3)"
           echo "  ✅ Financial (7)    ✅ User (3)"
           echo "  ✅ Business (3)     ✅ Marketing (8)"
@@ -504,8 +572,9 @@ jobs:
           echo "  ✅ Special (7)      ✅ Orchestration (3)"
           echo "  ✅ Learning (6)     ✅ Analytics (2)"
           echo "  ✅ Reconciliation (4)"
+          echo "  ✅ Auto-Spawn (12) 🆕"
           echo ""
-          echo "v91 NEW SYSTEMS:"
+          echo "v91 SYSTEMS:"
           echo "  🤝 Client Deals - Accept/Deliver/Pay flow"
           echo "  🧠 Yield Memory - Pattern learning"
           echo "  🌐 MetaHive - Cross-user learning"
@@ -514,11 +583,28 @@ jobs:
           echo "  📱 Social Live - Auto-posting"
           echo "  🎯 Master Orchestrator - Runs everything"
           echo ""
+          echo "🆕 AUTO-SPAWN ENGINE:"
+          echo "  🏭 Autonomous business spawning"
+          echo "  🔍 Trend detection (Reddit/TikTok/Google/Perplexity)"
+          echo "  📈 Auto-scale winners, kill losers"
+          echo "  🔗 Every spawn has referral code → AiGentsy signups"
+          echo "  💰 Revenue flows to your Stripe"
+          echo "  🤝 Users can adopt successful spawns"
+          echo ""
+          echo "SPAWN → USER FUNNEL:"
+          echo "  1. Spawn goes live with AiGentsy branding"
+          echo "  2. Customer buys from spawn"
+          echo "  3. Customer sees 'Powered by AiGentsy' + CTA"
+          echo "  4. Customer clicks → lands on AiGentsy signup"
+          echo "  5. New AiGentsy user with referral attribution"
+          echo ""
           echo "MONEY FLOW:"
           echo "  1. Discovery finds opportunity"
-          echo "  2. Deal created with accept link"
+          echo "  2. Deal/Spawn created"
           echo "  3. Client accepts → payment AUTHORIZED"
           echo "  4. Wade works → delivers"
           echo "  5. Client approves → payment CAPTURED"
+          echo "  6. Spawn revenue → Your Stripe"
+          echo "  7. Spawn referral → New AiGentsy user"
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
