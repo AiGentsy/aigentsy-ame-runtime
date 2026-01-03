@@ -20211,6 +20211,227 @@ async def conductor_policy(username: str, policy: Dict[str, Any]):
 async def conductor_dashboard(username: str, device_id: str):
     return get_device_dashboard(username, device_id)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONDUCTOR ENHANCED ENDPOINTS (Multi-AI Routing + Full Automation)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/conductor/scan-all-devices")
+async def conductor_scan_all_devices():
+    """Scan all registered devices for opportunities"""
+    try:
+        from aigentsy_conductor import _DEVICE_REGISTRY, scan_opportunities
+        
+        all_opportunities = []
+        for device_key, device in _DEVICE_REGISTRY.items():
+            username = device["username"]
+            device_id = device["device_id"]
+            
+            result = await scan_opportunities(username, device_id)
+            if result.get("ok"):
+                for opp in result.get("opportunities", []):
+                    opp["source_device"] = device_key
+                    all_opportunities.append(opp)
+        
+        return {
+            "ok": True,
+            "devices_scanned": len(_DEVICE_REGISTRY),
+            "opportunities_found": len(all_opportunities),
+            "opportunities": all_opportunities[:20],  # Top 20
+            "by_type": {}
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/conductor/create-plans")
+async def conductor_create_plans():
+    """Create execution plans from all opportunities"""
+    try:
+        from aigentsy_conductor import _DEVICE_REGISTRY, create_execution_plan, _EXECUTION_QUEUE
+        
+        plans_created = []
+        for device_key, device in _DEVICE_REGISTRY.items():
+            username = device["username"]
+            device_id = device["device_id"]
+            
+            result = await create_execution_plan(username, device_id)
+            if result.get("ok"):
+                plans_created.append({
+                    "plan_id": result["plan_id"],
+                    "device": device_key,
+                    "auto_approved": result["summary"]["auto_approved"],
+                    "needs_approval": result["summary"]["needs_approval"],
+                    "estimated_value": result["summary"]["total_estimated_value"]
+                })
+        
+        return {
+            "ok": True,
+            "plans_created": len(plans_created),
+            "plans": plans_created,
+            "total_estimated_value": sum(p["estimated_value"] for p in plans_created)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/conductor/execute-approved")
+async def conductor_execute_approved():
+    """Execute all auto-approved plans"""
+    try:
+        from aigentsy_conductor import _EXECUTION_QUEUE, execute_plan
+        
+        executed = []
+        total_revenue = 0
+        
+        for plan in _EXECUTION_QUEUE:
+            if plan.get("status") == "READY_TO_EXECUTE":
+                result = await execute_plan(plan["id"])
+                if result.get("ok"):
+                    executed.append({
+                        "plan_id": plan["id"],
+                        "revenue": result.get("total_revenue", 0)
+                    })
+                    total_revenue += result.get("total_revenue", 0)
+        
+        return {
+            "ok": True,
+            "executed": len(executed),
+            "total_revenue": total_revenue,
+            "plans": executed
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/conductor/dashboard-all")
+async def conductor_dashboard_all():
+    """Get dashboard for all registered devices"""
+    try:
+        from aigentsy_conductor import _DEVICE_REGISTRY, _EXECUTION_HISTORY
+        
+        total_revenue = 0
+        total_actions = 0
+        
+        devices = []
+        for device_key, device in _DEVICE_REGISTRY.items():
+            devices.append({
+                "device_key": device_key,
+                "username": device["username"],
+                "apps": [app.get("type") for app in device.get("connected_apps", [])],
+                "status": device.get("status", "UNKNOWN"),
+                "revenue": device["stats"]["revenue_generated"],
+                "actions": device["stats"]["actions_executed"]
+            })
+            total_revenue += device["stats"]["revenue_generated"]
+            total_actions += device["stats"]["actions_executed"]
+        
+        return {
+            "ok": True,
+            "devices": len(devices),
+            "device_list": devices,
+            "revenue_generated": total_revenue,
+            "actions_executed": total_actions,
+            "executions_in_history": len(_EXECUTION_HISTORY)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/conductor/route-tasks")
+async def conductor_route_tasks():
+    """Route pending tasks to appropriate AI models"""
+    try:
+        from aigentsy_conductor import MultiAIRouter, _EXECUTION_QUEUE
+        
+        router = MultiAIRouter()
+        routed_tasks = []
+        
+        for plan in _EXECUTION_QUEUE:
+            if plan.get("status") == "PENDING_USER_REVIEW":
+                for action in plan.get("actions_needing_approval", []):
+                    task_type = action.get("type", "unknown").lower()
+                    
+                    # Map action types to task types
+                    type_map = {
+                        "jv_partnership": "consulting",
+                        "price_discount": "analysis",
+                        "content_post": "content",
+                        "email_campaign": "content"
+                    }
+                    
+                    mapped_type = type_map.get(task_type, "content")
+                    routing = router.route_task(mapped_type, action)
+                    
+                    routed_tasks.append({
+                        "action_id": action.get("id"),
+                        "type": task_type,
+                        "routed_to": routing["primary_model"],
+                        "fallback": routing["fallback_model"],
+                        "reasoning": routing["reasoning"]
+                    })
+        
+        return {
+            "ok": True,
+            "routed": len(routed_tasks),
+            "tasks": routed_tasks,
+            "model_availability": {
+                "claude": router.claude_available,
+                "gpt4": router.gpt4_available,
+                "gemini": router.gemini_available
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/conductor/connect-spawn")
+async def conductor_connect_spawn(spawn_id: str):
+    """Connect a spawned business to Conductor for autonomous operation"""
+    try:
+        # Get spawn from Auto-Spawn Engine
+        if AUTO_SPAWN_AVAILABLE:
+            engine = get_spawn_engine()
+            spawn = engine.spawner.spawned_businesses.get(spawn_id)
+            
+            if not spawn:
+                return {"ok": False, "error": "spawn_not_found"}
+            
+            # Register spawn as a "device" in Conductor
+            from aigentsy_conductor import register_device
+            
+            # Map spawn category to connected apps
+            app_mapping = {
+                "ai_art": [{"type": "stability_ai"}, {"type": "stripe"}],
+                "content": [{"type": "claude"}, {"type": "stripe"}],
+                "design": [{"type": "stability_ai"}, {"type": "stripe"}],
+                "voice": [{"type": "elevenlabs"}, {"type": "stripe"}],
+                "video": [{"type": "runway"}, {"type": "stripe"}],
+                "automation": [{"type": "claude"}, {"type": "zapier"}, {"type": "stripe"}],
+            }
+            
+            connected_apps = app_mapping.get(spawn.category.value, [{"type": "stripe"}])
+            
+            result = await register_device(
+                username=f"spawn_{spawn_id}",
+                device_id=spawn.spawn_id,
+                connected_apps=connected_apps,
+                capabilities=["fulfillment", "pricing", "email", "social"]
+            )
+            
+            return {
+                "ok": True,
+                "spawn_id": spawn_id,
+                "spawn_name": spawn.name,
+                "conductor_device_key": result.get("device_key"),
+                "message": "Spawn connected to Conductor for autonomous operation"
+            }
+        
+        return {"ok": False, "error": "auto_spawn_engine not available"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 from device_oauth_connector import (
     initiate_oauth,
     complete_oauth,
