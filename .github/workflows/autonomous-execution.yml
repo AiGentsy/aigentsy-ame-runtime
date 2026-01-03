@@ -1,108 +1,33 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy Autonomous Execution Workflow v4 - POST 77-FILE AUDIT
-# Updated: January 2, 2026
-# Based on COMPLETE surgical audit of 77 files (~95,000 lines)
+# AiGentsy Autonomous Execution Workflow v5 - RESILIENT
+# Updated: January 3, 2026
+# Based on v4 (77-file audit) + resilient error handling
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# CHANGES FROM v3:
-# - Updated file count: 77 files (was 26)
-# - Added 15 NEW systems discovered in audit
-# - Added new endpoints for full coverage
-# - Added arbitrage execution pipeline
-# - Added AIGx protocol integration
-# - Added deal graph relationship tracking
-# - Added real-world proof verification
-# - Graceful degradation for missing endpoints
+# CHANGES FROM v4:
+# - All steps use continue-on-error: true (won't fail workflow)
+# - Better JSON parsing with fallbacks
+# - Single job structure (more reliable than parallel jobs)
+# - Always returns success even if endpoints are down
+# - Cleaner error messages
 #
-# COMPLETE SYSTEMS ORCHESTRATED (143+ subsystems):
-# ═══════════════════════════════════════════════════════════════════════════════
-# 
-# DISCOVERY LAYER:
-#   1. ultimate_discovery_engine - 27+ platforms (Upwork, Fiverr, GitHub, Reddit, HN, Twitter, etc.)
-#   2. advanced_discovery_dimensions - 7 dimensions (predictive, network, creation, emergent)
-#   3. real_signal_ingestion - Funding, launches, regulatory, tech deprecations
-#   4. opportunity_filters - P95 outlier detection, staleness, skip logic
-#
-# ROUTING & SCORING:
-#   5. csuite_orchestrator - C-Suite business intelligence
-#   6. opportunity_scoring - Score calculation across dimensions
-#   7. opportunity_approval - User approval workflow
-#   8. execution_routes - Route to user queue or AiGentsy fulfillment
-#
-# BIDDING & OUTREACH:
-#   9. auto_bidding_orchestrator - Multi-platform bid submission
-#   10. opportunity_engagement - Platform-specific outreach templates
-#   11. ame_pitches - AME pitch generation
-#   12. social_autoposting_engine - Cross-platform social posting
-#
-# FULFILLMENT:
-#   13. graphics_fulfillment_engine - Stable Diffusion, DALL-E 3
-#   14. video_engine - Runway ML, Synthesia, HeyGen
-#   15. audio_engine - ElevenLabs, Murf, Play.ht
-#   16. claude_code_fulfillment - Code generation
-#   17. openrouter_agent_helper - Multi-AI coordination
-#
-# VERIFICATION:
-#   18. deliverable_verification_engine - 5-dimension semantic QA
-#   19. proof_pipe - Real-world outcome proofs (Square, Calendly webhooks)
-#
-# PAYMENT & REVENUE:
-#   20. escrow_lite - Stripe payment intents
-#   21. revenue_flows - Multi-channel revenue tracking
-#   22. batch_payments - Bulk agent payments
-#   23. agent_factoring - Immediate advances
-#   24. pwp_engine - Pay-with-performance financing
-#
-# FINANCIAL:
-#   25. ocl_engine - Operating Credit Line (P2P)
-#   26. ipvault - IP royalty automation
-#   27. franchise_engine - Template licensing
-#   28. sponsor_pools - External capital subsidies
-#
-# LEARNING:
-#   29. yield_memory - Cross-AI learning
-#   30. metahive_brain - Collective intelligence
-#   31. autonomous_deal_graph - Relationship tracking
-#   32. client_success_predictor - Churn prediction
-#
-# PROTOCOL:
-#   33. aigx_protocol - AI-to-AI economic protocol
-#   34. open_metahive_api - External system integration
-#   35. slo_tiers - Service level guarantees
-#
-# ARBITRAGE:
-#   36. flow_arbitrage_detector - Price/temporal/supply arbitrage detection
-#   37. arbitrage_execution_pipeline - Auto-purchase → fulfill → list → settle
-#
-# ═══════════════════════════════════════════════════════════════════════════════
-#
-# VERIFIED ENDPOINTS (from main.py audit):
-# ✅ POST /mint - User signup with auto-discovery
-# ✅ GET /opportunities/{username} - Get scored opportunities
-# ✅ POST /social/process-queue - Process social posts
-# ✅ POST /autonomous/full-cycle - Full arbitrage + signals + intros
-# ✅ POST /webhook/stripe - Stripe webhook handler
-# ✅ GET /execution/health/detail - Detailed health
-# ✅ POST /wade/discover-and-queue - Discovery + queue
-#
-# ENDPOINTS TO BE ADDED (see main.py gap analysis):
-# ⚠️ POST /autonomous/discover-and-execute - Full discovery + execution
-# ⚠️ GET /autonomous/stats - Queue statistics
-# ⚠️ GET /autonomous/approval-queue - Pending approvals
-# ⚠️ GET /execution/stats - Execution statistics
-# ⚠️ GET /execution/health - Simple health check
-# ⚠️ POST /execution/discover-and-route - Route opportunities
+# SYSTEMS ORCHESTRATED (143+ subsystems across 77 files):
+# - Discovery: 27+ platforms, signal ingestion, opportunity filters
+# - Routing: C-Suite orchestrator, scoring, approval workflows  
+# - Outreach: Auto-bidding, AME pitches, social posting
+# - Fulfillment: Graphics, video, audio, code generation
+# - Payment: Escrow, revenue flows, batch payments
+# - Learning: Yield memory, MetaHive, deal graph
+# - Protocol: AIGx, SLO tiers, arbitrage pipeline
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy Autonomous Execution v4
+name: AiGentsy Autonomous Execution v5
 
 on:
-  # Run every hour at minute 0
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 * * * *'  # Every hour
   
-  # Manual trigger with full options
   workflow_dispatch:
     inputs:
       mode:
@@ -111,14 +36,12 @@ on:
         default: 'full'
         type: choice
         options:
-          - full              # All systems
-          - discovery_only    # Just discovery + routing
-          - social_only       # Just social posting
-          - health_only       # Just health checks
-          - queue_review      # Show all queues
-          - ame_pitches       # Process AME pitch queue
-          - arbitrage_only    # Just arbitrage execution
-          - signals_only      # Just signal ingestion
+          - full
+          - discovery_only
+          - social_only
+          - health_only
+          - ame_pitches
+          - arbitrage_only
       auto_approve_user:
         description: 'Auto-approve user opportunities (>60% win prob)'
         required: false
@@ -127,582 +50,247 @@ on:
         options:
           - 'true'
           - 'false'
-      auto_approve_aigentsy:
-        description: 'Auto-approve AiGentsy opportunities (>80% win prob)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
       max_executions:
         description: 'Max opportunities to execute per run'
         required: false
         default: '10'
-      min_win_probability:
-        description: 'Minimum win probability for autonomous (0.0-1.0)'
-        required: false
-        default: '0.7'
-      run_arbitrage:
-        description: 'Run arbitrage detection and execution'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 env:
   BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://aigentsy-ame-runtime.onrender.com' }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 1: DISCOVERY & EXECUTION
-  # Scan 27+ platforms, route opportunities, execute approved ones
+  # SINGLE RESILIENT JOB - All steps continue on error
   # ═══════════════════════════════════════════════════════════════════════════════
-  discovery:
-    name: 🔍 Discovery & Execution
+  autonomous:
+    name: 🤖 Autonomous Execution
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode != 'social_only' && github.event.inputs.mode != 'health_only' && github.event.inputs.mode != 'queue_review' && github.event.inputs.mode != 'arbitrage_only' && github.event.inputs.mode != 'signals_only' }}
-    outputs:
-      total_discovered: ${{ steps.discover.outputs.total_discovered }}
-      total_executed: ${{ steps.discover.outputs.total_executed }}
-      total_value: ${{ steps.discover.outputs.total_value }}
-      user_routed: ${{ steps.discover.outputs.user_routed }}
-      aigentsy_routed: ${{ steps.discover.outputs.aigentsy_routed }}
     
     steps:
-      - name: 🚀 Run Autonomous Discovery & Execution
-        id: discover
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 1: Health Check
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 🏥 Health Check
+        id: health
+        continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔍 AUTONOMOUS DISCOVERY ENGINE v4 - 27+ PLATFORMS"
-          echo "   Based on 77-file audit (~95,000 lines of code)"
+          echo "🏥 SYSTEM HEALTH CHECK"
+          echo "   Backend: ${{ env.BACKEND_URL }}"
+          echo "═══════════════════════════════════════════════════════════════"
+          echo ""
+          
+          # Simple health check first
+          RESPONSE=$(curl -s --max-time 30 "${{ env.BACKEND_URL }}/health" 2>&1 || echo '{"status": "unreachable"}')
+          
+          # Check if response is valid JSON
+          if echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
+            STATUS=$(echo "$RESPONSE" | jq -r '.status // "unknown"')
+            echo "✅ Backend Status: $STATUS"
+          else
+            echo "⚠️ Backend returned non-JSON response (may be starting up)"
+            echo "   Response preview: ${RESPONSE:0:100}"
+          fi
+          
+          # Try detailed health
+          DETAIL=$(curl -s --max-time 30 "${{ env.BACKEND_URL }}/execution/health/detail" 2>&1 || echo '{}')
+          if echo "$DETAIL" | jq -e '.ok' >/dev/null 2>&1; then
+            WORKING=$(echo "$DETAIL" | jq -r '.working // 0')
+            echo "   Working systems: $WORKING"
+          fi
+          echo ""
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 2: Discovery & Execution
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 🔍 Discovery & Execution
+        id: discovery
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode != 'social_only' && github.event.inputs.mode != 'health_only' }}
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔍 AUTONOMOUS DISCOVERY ENGINE"
+          echo "   Scanning 27+ platforms for opportunities"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "⚙️  Configuration:"
-          echo "   Backend: ${{ env.BACKEND_URL }}"
-          echo "   Auto-approve user: ${{ github.event.inputs.auto_approve_user || 'true' }}"
-          echo "   Auto-approve AiGentsy: ${{ github.event.inputs.auto_approve_aigentsy || 'false' }}"
+          echo "   Auto-approve: ${{ github.event.inputs.auto_approve_user || 'true' }}"
           echo "   Max executions: ${{ github.event.inputs.max_executions || '10' }}"
-          echo "   Min win probability: ${{ github.event.inputs.min_win_probability || '0.7' }}"
           echo ""
           
-          # Build request body
-          REQUEST_BODY=$(cat <<EOF
-          {
-            "auto_approve_user": ${{ github.event.inputs.auto_approve_user || 'true' }},
-            "auto_approve_aigentsy": ${{ github.event.inputs.auto_approve_aigentsy || 'false' }},
-            "max_executions": ${{ github.event.inputs.max_executions || '10' }},
-            "min_win_probability": ${{ github.event.inputs.min_win_probability || '0.7' }}
-          }
-          EOF
-          )
+          # Build request
+          REQUEST='{"auto_approve_user": ${{ github.event.inputs.auto_approve_user || true }}, "max_executions": ${{ github.event.inputs.max_executions || 10 }}}'
           
-          # Try the new endpoint first, fall back to existing
+          # Try discover-and-execute
           echo "📡 Calling /autonomous/discover-and-execute..."
           RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/discover-and-execute" \
             -H "Content-Type: application/json" \
-            -d "$REQUEST_BODY" \
-            --max-time 180 2>/dev/null || echo '{"ok": false, "error": "endpoint_not_found"}')
+            -d "$REQUEST" \
+            --max-time 180 2>&1 || echo '{"ok": false, "error": "request_failed"}')
           
-          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
-          
-          # Fallback to /autonomous/full-cycle if new endpoint doesn't exist
-          if [ "$OK" = "false" ]; then
-            echo "⚠️  New endpoint not available, falling back to /autonomous/full-cycle..."
+          # Check if valid JSON
+          if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
+            echo "⚠️ Non-JSON response, trying fallback..."
             RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/full-cycle" \
               -H "Content-Type: application/json" \
-              --max-time 180 || echo '{"ok": false, "error": "Request timeout or failed"}')
-            OK=$(echo "$RESPONSE" | jq -r '.ok // false')
+              --max-time 180 2>&1 || echo '{"ok": false}')
           fi
           
-          if [ "$OK" = "true" ]; then
-            # Extract metrics - handle both response formats
-            TOTAL_DISCOVERED=$(echo "$RESPONSE" | jq -r '.discovery.total_opportunities // .results.signals.opportunities_found // 0')
-            TOTAL_EXECUTED=$(echo "$RESPONSE" | jq -r '.executions.count // .results.arbitrage.completed // 0')
-            TOTAL_VALUE=$(echo "$RESPONSE" | jq -r '.discovery.total_value // 0')
+          # Parse response
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            DISCOVERED=$(echo "$RESPONSE" | jq -r '.discovery.total_opportunities // 0')
+            EXECUTED=$(echo "$RESPONSE" | jq -r '.executions.count // 0')
+            VALUE=$(echo "$RESPONSE" | jq -r '.discovery.total_value // 0')
             MESSAGE=$(echo "$RESPONSE" | jq -r '.message // "Complete"')
             
-            # Routing breakdown
-            USER_COUNT=$(echo "$RESPONSE" | jq -r '.discovery.routing.user_routed.count // 0')
-            USER_VALUE=$(echo "$RESPONSE" | jq -r '.discovery.routing.user_routed.value // 0')
-            AIGENTSY_COUNT=$(echo "$RESPONSE" | jq -r '.discovery.routing.aigentsy_routed.count // 0')
-            AIGENTSY_VALUE=$(echo "$RESPONSE" | jq -r '.discovery.routing.aigentsy_routed.value // 0')
-            AIGENTSY_PROFIT=$(echo "$RESPONSE" | jq -r '.discovery.routing.aigentsy_routed.estimated_profit // .results.arbitrage.total_profit // 0')
-            
             echo ""
-            echo "═══════════════════════════════════════════════════════════════"
             echo "✅ DISCOVERY COMPLETE"
-            echo "═══════════════════════════════════════════════════════════════"
-            echo ""
-            echo "📊 DISCOVERY RESULTS:"
-            echo "   Total Opportunities: $TOTAL_DISCOVERED"
-            echo "   Total Value: \$$TOTAL_VALUE"
-            echo "   Executed This Run: $TOTAL_EXECUTED"
-            echo ""
-            echo "📌 ROUTING BREAKDOWN:"
-            echo "   👤 User Opportunities: $USER_COUNT (\$$USER_VALUE)"
-            echo "   🤖 AiGentsy Opportunities: $AIGENTSY_COUNT (\$$AIGENTSY_VALUE)"
-            echo "   💰 Est. AiGentsy Profit: \$$AIGENTSY_PROFIT"
-            echo ""
-            echo "💬 $MESSAGE"
-            echo ""
-            
-            # Set outputs for downstream jobs
-            echo "total_discovered=$TOTAL_DISCOVERED" >> $GITHUB_OUTPUT
-            echo "total_executed=$TOTAL_EXECUTED" >> $GITHUB_OUTPUT
-            echo "total_value=$TOTAL_VALUE" >> $GITHUB_OUTPUT
-            echo "user_routed=$USER_COUNT" >> $GITHUB_OUTPUT
-            echo "aigentsy_routed=$AIGENTSY_COUNT" >> $GITHUB_OUTPUT
+            echo "   Opportunities Found: $DISCOVERED"
+            echo "   Total Value: \$$VALUE"
+            echo "   Executed: $EXECUTED"
+            echo "   Message: $MESSAGE"
           else
-            echo ""
-            echo "⚠️ Discovery did not complete successfully"
-            ERROR=$(echo "$RESPONSE" | jq -r '.error // "Unknown error"')
-            echo "Error: $ERROR"
-            echo ""
-            
-            # Set zero outputs
-            echo "total_discovered=0" >> $GITHUB_OUTPUT
-            echo "total_executed=0" >> $GITHUB_OUTPUT
-            echo "total_value=0" >> $GITHUB_OUTPUT
-            echo "user_routed=0" >> $GITHUB_OUTPUT
-            echo "aigentsy_routed=0" >> $GITHUB_OUTPUT
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "Unknown error"' 2>/dev/null || echo "Parse error")
+            echo "⚠️ Discovery returned: $ERROR"
           fi
+          echo ""
 
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 2: ARBITRAGE EXECUTION (NEW in v4)
-  # Detect arbitrage → Auto-purchase → Fulfill → List → Collect spread
-  # ═══════════════════════════════════════════════════════════════════════════════
-  arbitrage:
-    name: 💵 Arbitrage Execution
-    runs-on: ubuntu-latest
-    if: ${{ (github.event.inputs.mode == 'full' || github.event.inputs.mode == 'arbitrage_only') && github.event.inputs.run_arbitrage != 'false' }}
-    
-    steps:
-      - name: 💵 Run Arbitrage Pipeline
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 3: AME Pitch Processing
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📧 AME Pitches
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'ame_pitches' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "💵 ARBITRAGE EXECUTION PIPELINE"
-          echo "   Detect → Purchase → Fulfill → List → Settle"
+          echo "📧 AME PITCH PROCESSING"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           
-          # Run full arbitrage cycle
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/arbitrage/execute" \
+          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/ame/process-queue" \
             -H "Content-Type: application/json" \
-            -d '{"max_opportunities": 5, "min_margin": 0.20}' \
-            --max-time 120 || echo '{"ok": false}')
+            --max-time 60 2>&1 || echo '{"ok": false}')
           
-          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            TOTAL=$(echo "$RESPONSE" | jq -r '.total // 0')
-            COMPLETED=$(echo "$RESPONSE" | jq -r '.completed // 0')
-            PROFIT=$(echo "$RESPONSE" | jq -r '.total_profit // 0')
-            
-            echo "✅ ARBITRAGE RESULTS:"
-            echo "   Opportunities Found: $TOTAL"
-            echo "   Successfully Executed: $COMPLETED"
-            echo "   Total Profit: \$$PROFIT"
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            PROCESSED=$(echo "$RESPONSE" | jq -r '.processed // 0')
+            SENT=$(echo "$RESPONSE" | jq -r '.sent // 0')
+            echo "✅ AME Results:"
+            echo "   Processed: $PROCESSED"
+            echo "   Sent: $SENT"
           else
-            echo "⚠️ Arbitrage endpoint not available or no opportunities"
-            
-            # Fallback: Try the full-cycle which includes arbitrage
-            echo "   Trying /autonomous/full-cycle (includes arbitrage)..."
-            FALLBACK=$(curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/full-cycle" \
-              --max-time 120 || echo '{}')
-            ARB_PROFIT=$(echo "$FALLBACK" | jq -r '.results.arbitrage.total_profit // 0')
-            echo "   Arbitrage profit from full-cycle: \$$ARB_PROFIT"
+            echo "⚠️ AME queue empty or unavailable"
           fi
           echo ""
 
-      - name: 📊 Arbitrage Statistics
-        run: |
-          echo "📊 ARBITRAGE STATS:"
-          STATS=$(curl -s -X GET "${{ env.BACKEND_URL }}/arbitrage/stats" --max-time 15 || echo '{}')
-          
-          TOTAL=$(echo "$STATS" | jq -r '.stats.total_executions // 0')
-          COMPLETED=$(echo "$STATS" | jq -r '.stats.completed // 0')
-          PROFIT=$(echo "$STATS" | jq -r '.stats.total_profit // 0')
-          AVG_ROI=$(echo "$STATS" | jq -r '.stats.avg_roi // 0')
-          
-          echo "   Total Executions: $TOTAL"
-          echo "   Completed: $COMPLETED"
-          echo "   Total Profit: \$$PROFIT"
-          echo "   Avg ROI: ${AVG_ROI}%"
-          echo ""
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 3: SIGNAL INGESTION (NEW in v4)
-  # Ingest real-world signals for predictive opportunities
-  # ═══════════════════════════════════════════════════════════════════════════════
-  signals:
-    name: 📡 Signal Ingestion
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'signals_only' }}
-    
-    steps:
-      - name: 📡 Ingest Real-World Signals
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 4: Social Posting
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📱 Social Posting
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'social_only' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📡 REAL-WORLD SIGNAL INGESTION"
-          echo "   Funding events, launches, regulatory, tech deprecations"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          
-          # This calls the signal ingestion via full-cycle
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/full-cycle" \
-            -H "Content-Type: application/json" \
-            --max-time 120 || echo '{"ok": false}')
-          
-          SIGNALS=$(echo "$RESPONSE" | jq -r '.results.signals // {}')
-          
-          if [ "$SIGNALS" != "{}" ] && [ "$SIGNALS" != "null" ]; then
-            FUNDING=$(echo "$SIGNALS" | jq -r '.by_source.funding // 0')
-            LAUNCHES=$(echo "$SIGNALS" | jq -r '.by_source.launches // 0')
-            REGULATORY=$(echo "$SIGNALS" | jq -r '.by_source.regulatory // 0')
-            TECH=$(echo "$SIGNALS" | jq -r '.by_source.tech // 0')
-            
-            echo "✅ SIGNALS INGESTED:"
-            echo "   💰 Funding events: $FUNDING"
-            echo "   🚀 Product launches: $LAUNCHES"
-            echo "   ⚖️  Regulatory changes: $REGULATORY"
-            echo "   🔧 Tech deprecations: $TECH"
-          else
-            echo "⚠️ Signal ingestion not available or no signals found"
-          fi
-          echo ""
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 4: SOCIAL POSTING
-  # Process scheduled social posts across platforms
-  # ═══════════════════════════════════════════════════════════════════════════════
-  social:
-    name: 📱 Social Posting
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'social_only' }}
-    
-    steps:
-      - name: 📱 Process Social Queue
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📱 SOCIAL AUTO-POSTING ENGINE"
+          echo "📱 SOCIAL AUTO-POSTING"
           echo "   Platforms: TikTok, Instagram, YouTube, Twitter, LinkedIn"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           
           RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/social/process-queue" \
             -H "Content-Type: application/json" \
-            --max-time 60 || echo '{"ok": false}')
+            --max-time 60 2>&1 || echo '{"ok": false}')
           
-          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
             PROCESSED=$(echo "$RESPONSE" | jq -r '.processed // 0')
             echo "✅ Social posts processed: $PROCESSED"
-            
-            # Show results by platform if available
-            echo "$RESPONSE" | jq -r '.results[]? | "   \(.platform // "unknown"): \(.status // "unknown")"' 2>/dev/null || true
           else
-            echo "⚠️ Social queue processing failed or empty"
+            echo "⚠️ Social queue empty or unavailable"
           fi
           echo ""
 
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 5: HEALTH & MONITORING
-  # Check all system health and statistics
-  # ═══════════════════════════════════════════════════════════════════════════════
-  health:
-    name: 🏥 Health Check
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'health_only' }}
-    
-    steps:
-      - name: 🏥 System Health Check
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 5: Arbitrage Execution
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 💵 Arbitrage
+        continue-on-error: true
+        if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'arbitrage_only' }}
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🏥 AIGENTSY SYSTEM HEALTH CHECK"
-          echo "   Checking 143+ subsystems across 77 files"
+          echo "💵 ARBITRAGE EXECUTION"
+          echo "   Detect → Purchase → Fulfill → List → Settle"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           
-          # Try detailed health first
-          HEALTH=$(curl -s -X GET "${{ env.BACKEND_URL }}/execution/health/detail" \
-            --max-time 30 || echo '{"ok": false}')
+          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/arbitrage/execute" \
+            -H "Content-Type: application/json" \
+            -d '{"max_opportunities": 5}' \
+            --max-time 120 2>&1 || echo '{"ok": false}')
           
-          OK=$(echo "$HEALTH" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            WORKING=$(echo "$HEALTH" | jq -r '.working // 0')
-            STUBS=$(echo "$HEALTH" | jq -r '.stubs // 0')
-            BROKEN=$(echo "$HEALTH" | jq -r '.broken // 0')
-            
-            echo "✅ SYSTEM STATUS:"
-            echo "   Working: $WORKING"
-            echo "   Stubs: $STUBS"
-            echo "   Broken: $BROKEN"
-            echo ""
-            
-            # Show broken systems if any
-            if [ "$BROKEN" != "0" ]; then
-              echo "⚠️ BROKEN SYSTEMS:"
-              echo "$HEALTH" | jq -r '.broken_list[]? | "   - \(.)"' 2>/dev/null || true
-            fi
-          else
-            # Fallback to simple health
-            SIMPLE=$(curl -s -X GET "${{ env.BACKEND_URL }}/health" --max-time 10 || echo '{}')
-            STATUS=$(echo "$SIMPLE" | jq -r '.status // "unknown"')
-            echo "Basic health check: $STATUS"
-          fi
-          echo ""
-
-      - name: 📊 Execution Statistics
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📊 EXECUTION STATISTICS"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          
-          # Try new stats endpoint
-          STATS=$(curl -s -X GET "${{ env.BACKEND_URL }}/execution/stats" \
-            --max-time 15 2>/dev/null || echo '{"ok": false}')
-          
-          OK=$(echo "$STATS" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            USER_PENDING=$(echo "$STATS" | jq -r '.pending.user_approvals // 0')
-            WADE_PENDING=$(echo "$STATS" | jq -r '.pending.wade_approvals // 0')
-            IN_PROGRESS=$(echo "$STATS" | jq -r '.in_progress // 0')
-            COMPLETED=$(echo "$STATS" | jq -r '.completed // 0')
-            
-            echo "📌 APPROVAL QUEUES:"
-            echo "   User approvals pending: $USER_PENDING"
-            echo "   Wade approvals pending: $WADE_PENDING"
-            echo ""
-            echo "⚡ EXECUTION STATUS:"
-            echo "   In progress: $IN_PROGRESS"
+          if echo "$RESPONSE" | jq -e '.ok == true' >/dev/null 2>&1; then
+            PROFIT=$(echo "$RESPONSE" | jq -r '.total_profit // 0')
+            COMPLETED=$(echo "$RESPONSE" | jq -r '.completed // 0')
+            echo "✅ Arbitrage Results:"
             echo "   Completed: $COMPLETED"
+            echo "   Profit: \$$PROFIT"
           else
-            echo "⚠️ Execution stats endpoint not available"
-            echo "   (Add GET /execution/stats to main.py)"
+            echo "⚠️ Arbitrage unavailable or no opportunities"
           fi
           echo ""
 
-      - name: 📊 Autonomous Statistics
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 6: Statistics
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📊 Statistics
+        continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📊 AUTONOMOUS EXECUTION STATISTICS"
+          echo "📊 SYSTEM STATISTICS"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           
-          # Get autonomous stats
-          STATS=$(curl -s -X GET "${{ env.BACKEND_URL }}/autonomous/stats" \
-            --max-time 30 2>/dev/null || echo '{"ok": false}')
-          
-          OK=$(echo "$STATS" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            PENDING=$(echo "$STATS" | jq -r '.pending_count // .autonomous_queue.pending_approval // 0')
-            QUEUED_VALUE=$(echo "$STATS" | jq -r '.queued_value // 0')
-            
-            echo "🤖 AUTONOMOUS QUEUE:"
-            echo "   Pending: $PENDING"
-            echo "   Queued Value: \$$QUEUED_VALUE"
-          else
-            echo "⚠️ Autonomous stats endpoint not available"
-            echo "   (Add GET /autonomous/stats to main.py)"
+          # Autonomous stats
+          STATS=$(curl -s --max-time 15 "${{ env.BACKEND_URL }}/autonomous/stats" 2>&1 || echo '{}')
+          if echo "$STATS" | jq -e '.ok' >/dev/null 2>&1; then
+            PENDING=$(echo "$STATS" | jq -r '.pending_count // 0')
+            echo "🤖 Autonomous Queue:"
+            echo "   Pending approvals: $PENDING"
           fi
-          echo ""
-
-      - name: 🎯 APEX Upgrades Dashboard
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🎯 APEX UPGRADES DASHBOARD"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          
-          DASHBOARD=$(curl -s -X GET "${{ env.BACKEND_URL }}/apex/upgrades/dashboard" \
-            --max-time 30 2>/dev/null || echo '{"ok": false}')
-          
-          OK=$(echo "$DASHBOARD" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            echo "✅ APEX Systems Status:"
-            
-            VERIFIED=$(echo "$DASHBOARD" | jq -r '.systems.verification.total_verified // 0')
-            echo "   📋 Verification: $VERIFIED verified"
-            
-            BIDS=$(echo "$DASHBOARD" | jq -r '.systems.pricing.total_bids // 0')
-            echo "   💰 Pricing: $BIDS bids"
-            
-            PREDICTIONS=$(echo "$DASHBOARD" | jq -r '.systems.success_prediction.total_predictions // 0')
-            echo "   🎯 Success: $PREDICTIONS predictions"
-            
-            REVENUE=$(echo "$DASHBOARD" | jq -r '.systems.reconciliation.total_revenue // 0')
-            echo "   💵 Revenue: \$$REVENUE tracked"
-          else
-            echo "⚠️ APEX dashboard not available"
-          fi
-          echo ""
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 6: QUEUE REVIEW (Manual trigger only)
-  # Show current state of all queues
-  # ═══════════════════════════════════════════════════════════════════════════════
-  queue_review:
-    name: 📋 Queue Review
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'queue_review' }}
-    
-    steps:
-      - name: 📋 Review All Queues
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📋 QUEUE REVIEW - ALL PENDING ITEMS"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
           
           # Execution stats
-          echo "📌 EXECUTION QUEUES:"
-          EXEC_STATS=$(curl -s -X GET "${{ env.BACKEND_URL }}/execution/stats" --max-time 15 2>/dev/null || echo '{}')
-          USER_PENDING=$(echo "$EXEC_STATS" | jq -r '.pending.user_approvals // "N/A"')
-          WADE_PENDING=$(echo "$EXEC_STATS" | jq -r '.pending.wade_approvals // "N/A"')
-          echo "   User approvals: $USER_PENDING"
-          echo "   Wade approvals: $WADE_PENDING"
-          echo ""
+          EXEC=$(curl -s --max-time 15 "${{ env.BACKEND_URL }}/execution/stats" 2>&1 || echo '{}')
+          if echo "$EXEC" | jq -e '.ok' >/dev/null 2>&1; then
+            COMPLETED=$(echo "$EXEC" | jq -r '.completed // 0')
+            echo "⚡ Executions:"
+            echo "   Completed: $COMPLETED"
+          fi
           
-          # Autonomous queue
-          echo "🤖 AUTONOMOUS QUEUE:"
-          AUTO_QUEUE=$(curl -s -X GET "${{ env.BACKEND_URL }}/autonomous/approval-queue" --max-time 15 2>/dev/null || echo '{}')
-          AUTO_COUNT=$(echo "$AUTO_QUEUE" | jq -r '.count // "N/A"')
-          echo "   Pending approval: $AUTO_COUNT"
-          echo ""
-          
-          # Wade fulfillment queue
-          echo "👤 WADE FULFILLMENT QUEUE:"
-          WADE_QUEUE=$(curl -s -X GET "${{ env.BACKEND_URL }}/wade/fulfillment-queue" --max-time 15 2>/dev/null || echo '{}')
-          WADE_COUNT=$(echo "$WADE_QUEUE" | jq -r '.count // length // "N/A"')
-          echo "   Items: $WADE_COUNT"
-          echo ""
-          
-          # Social queue
-          echo "📱 SOCIAL QUEUE:"
-          # Social queue would need a GET endpoint
-          echo "   (GET /social/queue not implemented)"
-          echo ""
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 7: AME PITCH PROCESSING
-  # Process queued AME pitches
-  # ═══════════════════════════════════════════════════════════════════════════════
-  ame_pitches:
-    name: 📧 AME Pitches
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'full' || github.event.inputs.mode == 'ame_pitches' }}
-    
-    steps:
-      - name: 📧 Process AME Pitch Queue
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "📧 AME PITCH PROCESSING"
-          echo "   Autonomous Marketing Engine outreach"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          
-          # Process AME queue
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/ame/process-queue" \
-            -H "Content-Type: application/json" \
-            --max-time 60 2>/dev/null || echo '{"ok": false}')
-          
-          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
-          
-          if [ "$OK" = "true" ]; then
-            PROCESSED=$(echo "$RESPONSE" | jq -r '.processed // 0')
-            SENT=$(echo "$RESPONSE" | jq -r '.sent // 0')
-            echo "✅ AME Pitches:"
-            echo "   Processed: $PROCESSED"
-            echo "   Sent: $SENT"
-          else
-            echo "⚠️ AME pitch queue processing not available"
+          # APEX dashboard
+          APEX=$(curl -s --max-time 15 "${{ env.BACKEND_URL }}/apex/upgrades/dashboard" 2>&1 || echo '{}')
+          if echo "$APEX" | jq -e '.ok' >/dev/null 2>&1; then
+            REVENUE=$(echo "$APEX" | jq -r '.systems.reconciliation.total_revenue // 0')
+            echo "💵 Revenue Tracked: \$$REVENUE"
           fi
           echo ""
 
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 8: DEAL GRAPH UPDATE (NEW in v4)
-  # Update relationship graph with new intros
-  # ═══════════════════════════════════════════════════════════════════════════════
-  deal_graph:
-    name: 🔗 Deal Graph
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.mode == 'full' }}
-    
-    steps:
-      - name: 🔗 Find Intro Opportunities
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🔗 DEAL GRAPH - RELATIONSHIP INTELLIGENCE"
-          echo "═══════════════════════════════════════════════════════════════"
-          echo ""
-          
-          # This is included in /autonomous/full-cycle
-          RESPONSE=$(curl -s -X POST "${{ env.BACKEND_URL }}/autonomous/full-cycle" \
-            -H "Content-Type: application/json" \
-            --max-time 120 || echo '{"ok": false}')
-          
-          INTROS=$(echo "$RESPONSE" | jq -r '.results.intros // {}')
-          
-          if [ "$INTROS" != "{}" ] && [ "$INTROS" != "null" ]; then
-            COUNT=$(echo "$INTROS" | jq -r '.count // 0')
-            echo "✅ INTRO OPPORTUNITIES: $COUNT"
-            
-            # Show top intros if available
-            echo "$INTROS" | jq -r '.opportunities[:3][]? | "   - \(.connector // "unknown") → \(.target // "unknown") (\(.intro_type // "intro"))"' 2>/dev/null || true
-          else
-            echo "⚠️ Deal graph not available in this run"
-          fi
-          echo ""
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # JOB 9: SUMMARY
-  # Post-run summary of all actions
-  # ═══════════════════════════════════════════════════════════════════════════════
-  summary:
-    name: 📝 Run Summary
-    runs-on: ubuntu-latest
-    needs: [discovery, arbitrage, signals, social, health, ame_pitches, deal_graph]
-    if: always()
-    
-    steps:
-      - name: 📝 Generate Run Summary
+      # ─────────────────────────────────────────────────────────────────────────
+      # STEP 7: Summary (Always runs)
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📝 Run Summary
+        if: always()
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY AUTONOMOUS RUN SUMMARY v4"
+          echo "📝 AIGENTSY AUTONOMOUS RUN SUMMARY v5"
           echo "   77 files | 143+ systems | ~95,000 lines"
           echo "═══════════════════════════════════════════════════════════════"
           echo ""
           echo "🕐 Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "🔧 Mode: ${{ github.event.inputs.mode || 'full' }}"
-          echo ""
-          echo "📊 DISCOVERY RESULTS:"
-          echo "   Opportunities: ${{ needs.discovery.outputs.total_discovered || '0' }}"
-          echo "   Total Value: \$${{ needs.discovery.outputs.total_value || '0' }}"
-          echo "   Executed: ${{ needs.discovery.outputs.total_executed || '0' }}"
-          echo "   User Routed: ${{ needs.discovery.outputs.user_routed || '0' }}"
-          echo "   AiGentsy Routed: ${{ needs.discovery.outputs.aigentsy_routed || '0' }}"
-          echo ""
-          echo "✅ JOB STATUS:"
-          echo "   Discovery: ${{ needs.discovery.result || 'skipped' }}"
-          echo "   Arbitrage: ${{ needs.arbitrage.result || 'skipped' }}"
-          echo "   Signals: ${{ needs.signals.result || 'skipped' }}"
-          echo "   Social: ${{ needs.social.result || 'skipped' }}"
-          echo "   Health: ${{ needs.health.result || 'skipped' }}"
-          echo "   AME Pitches: ${{ needs.ame_pitches.result || 'skipped' }}"
-          echo "   Deal Graph: ${{ needs.deal_graph.result || 'skipped' }}"
-          echo ""
           echo "🔗 Backend: ${{ env.BACKEND_URL }}"
           echo ""
+          echo "📋 STEP RESULTS:"
+          echo "   Health Check: ${{ steps.health.outcome || 'skipped' }}"
+          echo "   Discovery: ${{ steps.discovery.outcome || 'skipped' }}"
+          echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "              AIGENTSY v4 RUN COMPLETE"
+          echo "              ✅ AIGENTSY v5 RUN COMPLETE"
           echo "═══════════════════════════════════════════════════════════════"
