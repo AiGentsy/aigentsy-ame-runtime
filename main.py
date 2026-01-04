@@ -30207,7 +30207,7 @@ async def test_everything():
     # ═══════════════════════════════════════════════════════════════════════
     
     try:
-        add_result("1_api_keys", "anthropic", bool(os.getenv("ANTHROPIC_API_KEY")), "Claude API")
+        add_result("1_api_keys", "openrouter", bool(os.getenv("OPENROUTER_API_KEY")), "Claude/GPT via OpenRouter")
         add_result("1_api_keys", "stripe", bool(os.getenv("STRIPE_SECRET_KEY")), "Payments")
         add_result("1_api_keys", "resend", bool(os.getenv("RESEND_API_KEY")), "Email")
         add_result("1_api_keys", "perplexity", bool(os.getenv("PERPLEXITY_API_KEY")), "AI Search")
