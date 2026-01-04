@@ -30594,33 +30594,59 @@ async def revenue_orchestrator_cart_recovery():
 
 @app.post("/revenue-orchestrator/social/post-spawns")
 async def revenue_orchestrator_post_spawns():
-    """Post all pending spawn announcements"""
+    """Post all pending spawn announcements to social media"""
     if not REVENUE_ORCHESTRATOR_AVAILABLE:
-        return {"ok": False, "error": "Required systems not available"}
+        return {"ok": False, "error": "Revenue Orchestrator not available"}
     
-    orchestrator = get_revenue_orchestrator()
-    
-    # Get spawn engine if available
     try:
-        from auto_spawn_engine import get_engine
-        spawn_engine = get_engine()
+        orchestrator = get_revenue_orchestrator()
         
-        posted = 0
-        for spawn_id, spawn in spawn_engine.spawner.spawned_businesses.items():
-            if spawn.status.value == "live":
-                result = await orchestrator.social.post_spawn_announcement({
-                    "spawn_id": spawn.spawn_id,
-                    "name": spawn.name,
-                    "tagline": spawn.tagline,
-                    "landing_page_url": spawn.landing_page_url,
-                    "referral_code": spawn.referral_code
-                })
-                if result.get("ok"):
-                    posted += 1
-        
-        return {"ok": True, "posted": posted}
-    except:
-        return {"ok": False, "error": "Spawn engine not available"}
+        # Get spawn engine if available
+        try:
+            from auto_spawn_engine import get_engine
+            spawn_engine = get_engine()
+            
+            posted = []
+            errors = []
+            
+            # Get all live spawns
+            for spawn_id, spawn in spawn_engine.spawner.spawned_businesses.items():
+                try:
+                    # Check if spawn is live (handle both enum and string)
+                    status = spawn.status.value if hasattr(spawn.status, 'value') else str(spawn.status)
+                    
+                    if status == "live":
+                        # Build spawn data
+                        spawn_data = {
+                            "spawn_id": getattr(spawn, 'spawn_id', spawn_id),
+                            "name": getattr(spawn, 'name', 'Unnamed Spawn'),
+                            "tagline": getattr(spawn, 'tagline', ''),
+                            "landing_page_url": getattr(spawn, 'landing_page_url', ''),
+                            "referral_code": getattr(spawn, 'referral_code', '')
+                        }
+                        
+                        result = await orchestrator.social.post_spawn_announcement(spawn_data)
+                        if result.get("ok"):
+                            posted.append(spawn_data["name"])
+                        else:
+                            errors.append({"spawn": spawn_data["name"], "error": result.get("error", "Unknown")})
+                except Exception as e:
+                    errors.append({"spawn_id": spawn_id, "error": str(e)})
+            
+            return {
+                "ok": True,
+                "posted": len(posted),
+                "posted_names": posted,
+                "errors": errors if errors else None
+            }
+            
+        except ImportError as e:
+            return {"ok": False, "error": f"Spawn engine not available: {e}"}
+        except Exception as e:
+            return {"ok": False, "error": f"Spawn engine error: {e}"}
+            
+    except Exception as e:
+        return {"ok": False, "error": f"Orchestrator error: {e}"}
 
 
 @app.post("/revenue-orchestrator/arbitrage/find")
