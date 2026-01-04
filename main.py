@@ -29081,7 +29081,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
     - Social Posting (TikTok, Instagram, Twitter)
     
     FULL SEQUENCE:
-    1. Discovery - Find opportunities across all sources
+    1. Discovery - Alpha Discovery (7 dimensions, multi-AI)
     2. Routing - Route to users or Wade
     3. AMG Cycle - Optimize monetization
     4. AME Processing - Send approved pitches
@@ -29090,7 +29090,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
     7. Wade Execution - Fulfill Wade workflows
     8. Learning - Store patterns, contribute to hive
     9. Reconciliation - Track all revenue
-    10. NEW: Universal Revenue Orchestrator (Spawn, Fiverr, Cart Recovery, etc.)
+    10. Universal Revenue Orchestrator (Spawn, Fiverr, Cart Recovery, etc.)
     """
     
     cycle_id = f"cycle_{datetime.utcnow().timestamp()}"
@@ -29101,19 +29101,32 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
     }
     
     try:
-        # STEP 1: Discovery
-        print(f"🔍 Step 1: Discovery...")
-        discovery_result = await mega_discover({})
-        results["steps"]["discovery"] = {
-            "opportunities_found": discovery_result.get("total", 0)
-        }
+        # STEP 1: Discovery - Use Alpha Discovery (real implementation)
+        print(f"🔍 Step 1: Alpha Discovery (7 dimensions, multi-AI)...")
+        try:
+            # Try Alpha Discovery first (real multi-AI implementation)
+            from alpha_discovery_engine import AlphaDiscoveryEngine
+            alpha_engine = AlphaDiscoveryEngine()
+            discovery_result = await alpha_engine.discover_all()
+            results["steps"]["discovery"] = {
+                "engine": "alpha_discovery",
+                "opportunities_found": len(discovery_result.get("opportunities", [])),
+                "ai_models_used": discovery_result.get("ai_models_used", [])
+            }
+        except ImportError:
+            # Fallback to mega_discover
+            discovery_result = await mega_discover({})
+            results["steps"]["discovery"] = {
+                "engine": "mega_discover_fallback",
+                "opportunities_found": discovery_result.get("total", 0)
+            }
         
         # STEP 2: Route to Wade
         print(f"🎯 Step 2: Routing to Wade...")
         if WADE_WORKFLOW_AVAILABLE:
             wade_opps = [
                 o for o in discovery_result.get("opportunities", [])
-                if o.get("fulfillability", {}).get("can_wade_fulfill")
+                if o.get("fulfillability", {}).get("can_wade_fulfill") or o.get("can_fulfill", True)
             ]
             wade_result = await wade_process_discoveries({"opportunities": wade_opps})
             results["steps"]["wade_routing"] = {
@@ -29164,7 +29177,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
             "fees_collected": reconciliation_state["fees_collected"]
         }
         
-        # STEP 9: NEW - Universal Revenue Orchestrator
+        # STEP 9: Universal Revenue Orchestrator (Spawn, Fiverr, Cart, etc.)
         print(f"💰 Step 9: Universal Revenue Orchestrator...")
         if REVENUE_ORCHESTRATOR_AVAILABLE:
             try:
