@@ -26929,12 +26929,18 @@ async def discovery_alpha():
     try:
         from alpha_discovery_engine import AlphaDiscoveryEngine
         engine = AlphaDiscoveryEngine()
-        results = await engine.discover_all()
+        # Correct method: discover_and_route
+        results = await engine.discover_and_route(
+            dimensions=[1, 2, 3, 4, 5, 6, 7],
+            score_opportunities=True,
+            auto_execute=False
+        )
         return {
             "ok": True,
-            "opportunities": results.get("opportunities", []),
-            "total": len(results.get("opportunities", [])),
-            "ai_models_used": results.get("ai_models_used", [])
+            "total_opportunities": results.get("total_opportunities", 0),
+            "wade_opportunities": results.get("wade_opportunities", []),
+            "user_opportunities": results.get("user_opportunities", []),
+            "dimensions_used": results.get("dimensions_used", 7)
         }
     except ImportError:
         # Use Perplexity as fallback
@@ -29107,18 +29113,35 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
             # Try Alpha Discovery first (real multi-AI implementation)
             from alpha_discovery_engine import AlphaDiscoveryEngine
             alpha_engine = AlphaDiscoveryEngine()
-            discovery_result = await alpha_engine.discover_all()
+            # Correct method: discover_and_route (not discover_all)
+            discovery_result = await alpha_engine.discover_and_route(
+                dimensions=[1, 2, 3, 4, 5, 6, 7],  # All 7 dimensions
+                score_opportunities=True,
+                auto_execute=False  # We'll handle execution separately
+            )
             results["steps"]["discovery"] = {
                 "engine": "alpha_discovery",
-                "opportunities_found": len(discovery_result.get("opportunities", [])),
-                "ai_models_used": discovery_result.get("ai_models_used", [])
+                "opportunities_found": discovery_result.get("total_opportunities", 0),
+                "dimensions_used": discovery_result.get("dimensions_used", 7),
+                "wade_opportunities": len(discovery_result.get("wade_opportunities", [])),
+                "user_opportunities": len(discovery_result.get("user_opportunities", []))
             }
-        except ImportError:
+        except ImportError as e:
+            print(f"   ⚠️ Alpha Discovery not available: {e}")
             # Fallback to mega_discover
             discovery_result = await mega_discover({})
             results["steps"]["discovery"] = {
                 "engine": "mega_discover_fallback",
                 "opportunities_found": discovery_result.get("total", 0)
+            }
+        except Exception as e:
+            print(f"   ⚠️ Alpha Discovery error: {e}")
+            # Fallback to mega_discover
+            discovery_result = await mega_discover({})
+            results["steps"]["discovery"] = {
+                "engine": "mega_discover_fallback",
+                "opportunities_found": discovery_result.get("total", 0),
+                "alpha_error": str(e)
             }
         
         # STEP 2: Route to Wade
