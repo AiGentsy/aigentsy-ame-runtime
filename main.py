@@ -31236,6 +31236,26 @@ try:
 except ImportError:
     print("⚠️ apex_upgrades_overlay.py not found - skipping")
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# V94 INTERNET DOMINATION - Wire in overlay modules
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Apex Upgrades (12 revenue optimization modules)
+try:
+    from apex_upgrades_overlay import include_overlay
+    include_overlay(app)
+    print("✅ Apex Upgrades loaded")
+except ImportError as e:
+    print(f"⚠️ apex_upgrades_overlay not found: {e}")
+
+# Internet Domination Engine (15 monetization systems)
+try:
+    from internet_domination_engine import include_domination_engine
+    include_domination_engine(app)
+    print("🌐 Internet Domination Engine loaded")
+except ImportError as e:
+    print(f"⚠️ internet_domination_engine not found: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 44B
