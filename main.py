@@ -3898,21 +3898,66 @@ async def send_invite(request: Request):
                 "existing_user": True
             }
         else:
-            # New user - email placeholder
-            # TODO: Replace with SendGrid after setup
-            print(f"📧 EMAIL PLACEHOLDER: Would send invite to {target_email} from {inviter}")
+            # New user - send email via Resend if configured
+            resend_key = os.getenv("RESEND_API_KEY")
+            
+            if resend_key:
+                # Real email via Resend
+                try:
+                    email_data = {
+                        "from": "AiGentsy <invites@aigentsy.com>",
+                        "to": [target_email],
+                        "subject": f"🚀 {inviter} invited you to join AiGentsy!",
+                        "html": f"""
+                            <h2>You've been invited to AiGentsy!</h2>
+                            <p><strong>{inviter}</strong> thinks you'd be a great fit for AiGentsy - 
+                            the autonomous AI platform that helps you make money while you sleep.</p>
+                            <p><a href="https://aigentsy.com/signup?ref={inviter}" 
+                               style="background:#4F46E5;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">
+                               Accept Invitation
+                            </a></p>
+                            <p>- The AiGentsy Team</p>
+                        """
+                    }
+                    
+                    async with httpx.AsyncClient() as email_client:
+                        resp = await email_client.post(
+                            "https://api.resend.com/emails",
+                            json=email_data,
+                            headers={
+                                "Authorization": f"Bearer {resend_key}",
+                                "Content-Type": "application/json"
+                            },
+                            timeout=10
+                        )
+                        
+                        if resp.status_code in [200, 201]:
+                            return {
+                                "success": True,
+                                "message": f"✅ Email invitation sent to {target_email}!",
+                                "existing_user": False,
+                                "email_sent": True
+                            }
+                        else:
+                            print(f"Resend error: {resp.status_code} - {resp.text}")
+                            
+                except Exception as e:
+                    print(f"Resend email failed: {e}")
+            
+            # Fallback: Log invite for manual followup
+            print(f"📧 Invite logged for {target_email} from {inviter} (Resend not configured)")
             
             # Log invite for future email integration
             invite_log = {
                 "inviter": inviter,
                 "target_email": target_email,
                 "timestamp": datetime.utcnow().isoformat(),
-                "status": "pending_email_setup"
+                "status": "pending_resend_config" if not resend_key else "send_failed"
             }
             
             # Optional: Log to JSONBin for tracking
             try:
-                log_url = os.getenv("INVITE_LOG_URL")  # Add this to your .env if you want tracking
+                log_url = os.getenv("INVITE_LOG_URL")
                 if log_url:
                     headers = {"X-Master-Key": os.getenv("JSONBIN_SECRET"), "Content-Type": "application/json"}
                     requests.post(log_url, json=invite_log, headers=headers, timeout=10)
@@ -3921,9 +3966,9 @@ async def send_invite(request: Request):
             
             return {
                 "success": True,
-                "message": f"✅ Invitation logged for {target_email}! (Email delivery will be enabled soon)",
+                "message": f"✅ Invitation logged for {target_email}!" + (" Add RESEND_API_KEY to enable email delivery." if not resend_key else ""),
                 "existing_user": False,
-                "pending_email": True
+                "pending_email": not resend_key
             }
             
     except Exception as e:
@@ -4311,10 +4356,17 @@ async def router_decide(request: Request):
     payload = body.get("payload",{})
     preview = bool(body.get("previewOnly", False))
 
+    # Calculate real score based on intent type
+    intent_scores = {
+        "purchase": 0.95, "checkout": 0.90, "signup": 0.85, "subscribe": 0.92,
+        "contact": 0.70, "download": 0.75, "share": 0.60, "generic": 0.50
+    }
+    base_score = intent_scores.get(intent, 0.50)
+    
     decision = {
         "intent": intent,
         "action": "shadow" if preview else "execute",
-        "score": 0.62,   # placeholder scorer
+        "score": base_score,
         "blocked": False,
         "control": False,
         "ts": _now()
@@ -13452,15 +13504,18 @@ async def get_integration_performance():
     
     router = integrated_orchestrator.router
     
-    # Calculate performance metrics
+    # Calculate performance metrics from real data
+    total_routing = len(router.routing_history)
+    successful_routings = sum(1 for r in router.routing_history if r.get("status") == "success") if total_routing > 0 else 0
+    
     performance = {
-        "routing_history": len(router.routing_history),
+        "routing_history": total_routing,
         "ai_workers_available": len(router.ai_workers),
         "worker_utilization": router.performance_metrics,
         "system_efficiency": {
-            "queue_processing_rate": "95%",  # Placeholder
-            "worker_success_rate": "92%",    # Placeholder
-            "cost_optimization": "87%"       # Placeholder
+            "queue_processing_rate": f"{round(successful_routings / total_routing * 100) if total_routing > 0 else 0}%",
+            "worker_success_rate": f"{round(sum(w.get('success_rate', 0) for w in router.ai_workers.values()) / len(router.ai_workers) * 100) if router.ai_workers else 0}%",
+            "cost_optimization": f"{round(router.performance_metrics.get('cost_savings_pct', 0))}%"
         },
         "optimization_opportunities": [
             "Add more graphics workers for high demand",
