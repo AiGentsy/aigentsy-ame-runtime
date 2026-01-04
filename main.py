@@ -29147,13 +29147,64 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
         # STEP 2: Route to Wade
         print(f"🎯 Step 2: Routing to Wade...")
         if WADE_WORKFLOW_AVAILABLE:
-            wade_opps = [
-                o for o in discovery_result.get("opportunities", [])
-                if o.get("fulfillability", {}).get("can_wade_fulfill") or o.get("can_fulfill", True)
-            ]
-            wade_result = await wade_process_discoveries({"opportunities": wade_opps})
-            results["steps"]["wade_routing"] = {
-                "queued": wade_result.get("queued", 0)
+            # AlphaDiscoveryEngine returns: routing.aigentsy_routed.opportunities (for Wade)
+            # and routing.user_routed.opportunities (for users)
+            routing = discovery_result.get("routing", {})
+            
+            # Get Wade opportunities (aigentsy_routed = Wade fulfills)
+            aigentsy_routing = routing.get("aigentsy_routed", {})
+            wade_opps = aigentsy_routing.get("opportunities", [])
+            
+            # Also check legacy field names
+            if not wade_opps:
+                wade_opps = discovery_result.get("wade_opportunities", [])
+            
+            # Final fallback: filter all opportunities
+            if not wade_opps:
+                all_opps = discovery_result.get("opportunities", [])
+                wade_opps = [
+                    o for o in all_opps
+                    if o.get("fulfillability", {}).get("can_wade_fulfill") or 
+                       o.get("can_aigentsy_fulfill") or
+                       o.get("can_fulfill", False)
+                ]
+            
+            print(f"   📋 Found {len(wade_opps)} opportunities for Wade to fulfill")
+            
+            if wade_opps:
+                # Ensure opportunities have required fields for wade_process_discoveries
+                for opp in wade_opps:
+                    if "fulfillability" not in opp:
+                        opp["fulfillability"] = {"can_wade_fulfill": True}
+                    elif not opp["fulfillability"].get("can_wade_fulfill"):
+                        opp["fulfillability"]["can_wade_fulfill"] = True
+                
+                wade_result = await wade_process_discoveries({"opportunities": wade_opps})
+                results["steps"]["wade_routing"] = {
+                    "queued": wade_result.get("queued", 0),
+                    "total_found": len(wade_opps),
+                    "estimated_value": aigentsy_routing.get("value", 0),
+                    "estimated_profit": aigentsy_routing.get("estimated_profit", 0)
+                }
+            else:
+                results["steps"]["wade_routing"] = {
+                    "queued": 0,
+                    "total_found": 0,
+                    "note": "No Wade-fulfillable opportunities in this cycle"
+                }
+        
+        # Track user opportunities (these go to user dashboards)
+        user_routing = discovery_result.get("routing", {}).get("user_routed", {})
+        user_opps = user_routing.get("opportunities", [])
+        if not user_opps:
+            user_opps = discovery_result.get("user_opportunities", [])
+        
+        if user_opps:
+            results["steps"]["user_opportunities"] = {
+                "count": len(user_opps),
+                "value": user_routing.get("value", 0),
+                "aigentsy_revenue": user_routing.get("aigentsy_revenue", 0),
+                "note": "Routed to user dashboards (AiGentsy takes 2.8% + 28¢)"
             }
         
         # STEP 3: AMG Cycle
