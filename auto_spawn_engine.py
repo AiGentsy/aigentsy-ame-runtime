@@ -720,60 +720,435 @@ CATEGORY_AFFINITY = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TREND DETECTOR - Finds opportunities
+# TREND DETECTOR - REAL API CALLS TO REAL PLATFORMS
+# NO MOCK DATA - ALL LIVE SCRAPING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+import httpx
+
+# Keywords that map to business categories
+CATEGORY_KEYWORDS = {
+    NicheCategory.AI_ART: ["ai art", "ai portrait", "ai image", "midjourney", "dalle", "stable diffusion", "ai photo", "ai headshot", "pet portrait"],
+    NicheCategory.CONTENT: ["content", "blog", "article", "copywriting", "seo", "ghostwriting", "writing"],
+    NicheCategory.DESIGN: ["design", "thumbnail", "logo", "graphic", "ui", "ux", "figma", "canva", "branding"],
+    NicheCategory.RESEARCH: ["research", "data", "analysis", "report", "market research"],
+    NicheCategory.VOICE: ["voice", "voiceover", "podcast", "audio", "narration", "text to speech"],
+    NicheCategory.VIDEO: ["video", "edit", "tiktok", "youtube", "reels", "shorts", "animation"],
+    NicheCategory.AUTOMATION: ["automation", "bot", "script", "workflow", "zapier", "n8n"],
+    NicheCategory.ECOMMERCE: ["ecommerce", "shopify", "amazon", "dropship", "product listing"],
+    NicheCategory.SAAS_MICRO: ["saas", "app", "tool", "software", "chrome extension", "api"]
+}
+
+
+def _categorize_opportunity(title: str, body: str = "") -> NicheCategory:
+    """Determine category based on keywords in title/body"""
+    text = (title + " " + body).lower()
+    
+    best_match = NicheCategory.CONTENT  # Default
+    best_score = 0
+    
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in text)
+        if score > best_score:
+            best_score = score
+            best_match = category
+    
+    return best_match
+
+
+def _calculate_scores(post: Dict[str, Any], source: str) -> Dict[str, float]:
+    """Calculate demand, competition, monetization scores from post data"""
+    
+    # Reddit scoring
+    if source == "reddit":
+        score = post.get("score", 0)
+        num_comments = post.get("num_comments", 0)
+        
+        demand = min(95, 50 + score * 2 + num_comments * 3)
+        competition = 40 if num_comments < 5 else 60 if num_comments < 20 else 80
+        monetization = 85 if "[hiring]" in post.get("title", "").lower() else 70
+        urgency = 90 if num_comments < 3 else 60
+        viral = min(95, 30 + score * 3)
+        
+    # GitHub scoring
+    elif source == "github":
+        stars = post.get("stargazers_count", 0)
+        
+        demand = min(95, 60 + stars // 10)
+        competition = 30 if "good first issue" in str(post.get("labels", [])).lower() else 50
+        monetization = 75
+        urgency = 80 if post.get("state") == "open" else 40
+        viral = min(90, 40 + stars // 5)
+        
+    # HackerNews scoring
+    elif source == "hackernews":
+        hn_score = post.get("score", 0)
+        descendants = post.get("descendants", 0)
+        
+        demand = min(95, 50 + hn_score // 2)
+        competition = 50
+        monetization = 70
+        urgency = 85
+        viral = min(95, 40 + hn_score)
+        
+    # Upwork/Freelancer scoring
+    elif source in ["upwork", "freelancer", "fiverr"]:
+        demand = 85
+        competition = 65
+        monetization = 90
+        urgency = 95
+        viral = 30
+        
+    else:
+        demand = 70
+        competition = 50
+        monetization = 70
+        urgency = 70
+        viral = 50
+    
+    return {
+        "demand": demand,
+        "competition": competition,
+        "monetization": monetization,
+        "urgency": urgency,
+        "viral": viral
+    }
+
+
 class TrendDetector:
+    """REAL trend detection - scrapes actual platforms via HTTP"""
+    
     def __init__(self):
         self.signals: List[TrendSignal] = []
         self.last_scan = None
+        self.scan_errors: List[str] = []
     
     async def scan_all_sources(self) -> List[TrendSignal]:
-        tasks = [self._scan_reddit(), self._scan_tiktok(), self._scan_google(), 
-                 self._scan_perplexity(), self._scan_fiverr()]
+        """Scan ALL real platforms concurrently"""
+        self.scan_errors = []
+        
+        tasks = [
+            self._scan_reddit(),
+            self._scan_github(),
+            self._scan_hackernews(),
+            self._scan_upwork_rss(),
+            self._scan_remotejobs()
+        ]
+        
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         signals = []
-        for r in results:
-            if isinstance(r, list):
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                self.scan_errors.append(f"Task {i} failed: {str(r)}")
+            elif isinstance(r, list):
                 signals.extend(r)
         
+        # Sort by opportunity score
         signals.sort(key=lambda s: s.opportunity_score, reverse=True)
         self.signals = signals
         self.last_scan = datetime.now(timezone.utc).isoformat()
+        
+        print(f"🔍 TREND SCAN COMPLETE: {len(signals)} real opportunities found")
+        if self.scan_errors:
+            print(f"⚠️ Scan errors: {self.scan_errors}")
+        
         return signals
     
     async def _scan_reddit(self) -> List[TrendSignal]:
-        return [
-            TrendSignal("reddit_1", "reddit", "Need AI pet portraits for Etsy", NicheCategory.AI_ART, 88, 35, 92, 80, 60, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("reddit_2", "reddit", "YouTube thumbnails designer needed", NicheCategory.DESIGN, 90, 50, 85, 75, 55, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("reddit_3", "reddit", "TikTok editor for viral content", NicheCategory.VIDEO, 95, 45, 88, 85, 85, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("reddit_4", "reddit", "AI voiceover for podcast", NicheCategory.VOICE, 75, 40, 80, 60, 45, detected_at=datetime.now(timezone.utc).isoformat()),
-        ]
+        """REAL Reddit scraping via public JSON API"""
+        signals = []
+        subreddits = ["forhire", "freelance", "slavelabour", "DesignJobs", "gameDevClassifieds"]
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                for subreddit in subreddits:
+                    try:
+                        response = await client.get(
+                            f"https://www.reddit.com/r/{subreddit}/new.json",
+                            headers={"User-Agent": "AiGentsy-TrendDetector/1.0"},
+                            params={"limit": 25}
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            for post in data.get("data", {}).get("children", []):
+                                post_data = post.get("data", {})
+                                title = post_data.get("title", "")
+                                body = post_data.get("selftext", "")
+                                
+                                # Filter for hiring/opportunity posts
+                                if any(kw in title.lower() for kw in ["[hiring]", "looking for", "need", "want", "seeking", "help wanted"]):
+                                    category = _categorize_opportunity(title, body)
+                                    scores = _calculate_scores(post_data, "reddit")
+                                    
+                                    signal = TrendSignal(
+                                        signal_id=f"reddit_{post_data.get('id', secrets.token_hex(4))}",
+                                        source="reddit",
+                                        query=title[:200],
+                                        category=category,
+                                        demand_score=scores["demand"],
+                                        competition_score=scores["competition"],
+                                        monetization_potential=scores["monetization"],
+                                        urgency=scores["urgency"],
+                                        viral_potential=scores["viral"],
+                                        raw_data={
+                                            "url": f"https://reddit.com{post_data.get('permalink')}",
+                                            "subreddit": subreddit,
+                                            "score": post_data.get("score"),
+                                            "num_comments": post_data.get("num_comments")
+                                        },
+                                        detected_at=datetime.now(timezone.utc).isoformat()
+                                    )
+                                    signals.append(signal)
+                        
+                        await asyncio.sleep(0.5)  # Rate limiting
+                        
+                    except Exception as e:
+                        self.scan_errors.append(f"Reddit r/{subreddit}: {str(e)}")
+                        
+        except Exception as e:
+            self.scan_errors.append(f"Reddit scan failed: {str(e)}")
+        
+        print(f"📡 Reddit: {len(signals)} opportunities found")
+        return signals
     
-    async def _scan_tiktok(self) -> List[TrendSignal]:
-        return [
-            TrendSignal("tiktok_1", "tiktok", "#AIart trending", NicheCategory.AI_ART, 92, 40, 85, 70, 90, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("tiktok_2", "tiktok", "#sidehustle viral", NicheCategory.SAAS_MICRO, 88, 50, 80, 65, 88, detected_at=datetime.now(timezone.utc).isoformat()),
-        ]
+    async def _scan_github(self) -> List[TrendSignal]:
+        """REAL GitHub Issues scraping - finds bounties and help wanted"""
+        signals = []
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Search for issues with bounties or "help wanted"
+                queries = [
+                    "label:bounty state:open",
+                    'label:"help wanted" state:open',
+                    'label:"good first issue" state:open language:python',
+                    'label:"good first issue" state:open language:javascript'
+                ]
+                
+                headers = {"Accept": "application/vnd.github.v3+json"}
+                token = os.getenv("GITHUB_TOKEN")
+                if token:
+                    headers["Authorization"] = f"token {token}"
+                
+                for query in queries:
+                    try:
+                        response = await client.get(
+                            "https://api.github.com/search/issues",
+                            headers=headers,
+                            params={"q": query, "sort": "created", "order": "desc", "per_page": 20}
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            for item in data.get("items", []):
+                                title = item.get("title", "")
+                                body = item.get("body", "") or ""
+                                
+                                category = _categorize_opportunity(title, body)
+                                scores = _calculate_scores(item, "github")
+                                
+                                signal = TrendSignal(
+                                    signal_id=f"github_{item.get('id', secrets.token_hex(4))}",
+                                    source="github",
+                                    query=title[:200],
+                                    category=category,
+                                    demand_score=scores["demand"],
+                                    competition_score=scores["competition"],
+                                    monetization_potential=scores["monetization"],
+                                    urgency=scores["urgency"],
+                                    viral_potential=scores["viral"],
+                                    raw_data={
+                                        "url": item.get("html_url"),
+                                        "repo": item.get("repository_url", "").split("/")[-1],
+                                        "labels": [l.get("name") for l in item.get("labels", [])],
+                                        "state": item.get("state")
+                                    },
+                                    detected_at=datetime.now(timezone.utc).isoformat()
+                                )
+                                signals.append(signal)
+                        
+                        await asyncio.sleep(1)  # GitHub rate limiting
+                        
+                    except Exception as e:
+                        self.scan_errors.append(f"GitHub query '{query[:30]}': {str(e)}")
+                        
+        except Exception as e:
+            self.scan_errors.append(f"GitHub scan failed: {str(e)}")
+        
+        print(f"📡 GitHub: {len(signals)} opportunities found")
+        return signals
     
-    async def _scan_google(self) -> List[TrendSignal]:
-        return [
-            TrendSignal("google_1", "google_trends", "ai headshot generator +1200%", NicheCategory.AI_ART, 95, 45, 90, 75, 70, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("google_2", "google_trends", "ai thumbnail maker +700%", NicheCategory.DESIGN, 85, 50, 85, 70, 65, detected_at=datetime.now(timezone.utc).isoformat()),
-        ]
+    async def _scan_hackernews(self) -> List[TrendSignal]:
+        """REAL HackerNews scraping - finds hiring threads and trending topics"""
+        signals = []
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Get top stories
+                response = await client.get("https://hacker-news.firebaseio.com/v0/topstories.json")
+                
+                if response.status_code == 200:
+                    story_ids = response.json()[:50]  # Top 50 stories
+                    
+                    for story_id in story_ids[:30]:
+                        try:
+                            story_response = await client.get(
+                                f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
+                            )
+                            
+                            if story_response.status_code == 200:
+                                story = story_response.json()
+                                if not story:
+                                    continue
+                                    
+                                title = story.get("title", "")
+                                
+                                # Filter for relevant opportunities
+                                if any(kw in title.lower() for kw in ["hiring", "freelance", "looking for", "ai", "startup", "saas", "launch"]):
+                                    category = _categorize_opportunity(title)
+                                    scores = _calculate_scores(story, "hackernews")
+                                    
+                                    signal = TrendSignal(
+                                        signal_id=f"hn_{story_id}",
+                                        source="hackernews",
+                                        query=title[:200],
+                                        category=category,
+                                        demand_score=scores["demand"],
+                                        competition_score=scores["competition"],
+                                        monetization_potential=scores["monetization"],
+                                        urgency=scores["urgency"],
+                                        viral_potential=scores["viral"],
+                                        raw_data={
+                                            "url": story.get("url") or f"https://news.ycombinator.com/item?id={story_id}",
+                                            "score": story.get("score"),
+                                            "descendants": story.get("descendants", 0)
+                                        },
+                                        detected_at=datetime.now(timezone.utc).isoformat()
+                                    )
+                                    signals.append(signal)
+                                    
+                        except Exception as e:
+                            pass  # Skip individual story errors
+                            
+        except Exception as e:
+            self.scan_errors.append(f"HackerNews scan failed: {str(e)}")
+        
+        print(f"📡 HackerNews: {len(signals)} opportunities found")
+        return signals
     
-    async def _scan_perplexity(self) -> List[TrendSignal]:
-        return [
-            TrendSignal("perplexity_1", "perplexity", "affordable ai portraits under $20", NicheCategory.AI_ART, 88, 30, 92, 75, 55, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("perplexity_2", "perplexity", "same-day thumbnail service gap", NicheCategory.DESIGN, 85, 25, 90, 80, 60, detected_at=datetime.now(timezone.utc).isoformat()),
+    async def _scan_upwork_rss(self) -> List[TrendSignal]:
+        """REAL Upwork RSS feed scraping"""
+        signals = []
+        
+        # Upwork RSS feeds for different categories
+        feeds = [
+            "https://www.upwork.com/ab/feed/jobs/rss?q=ai&sort=recency",
+            "https://www.upwork.com/ab/feed/jobs/rss?q=python&sort=recency",
+            "https://www.upwork.com/ab/feed/jobs/rss?q=design&sort=recency",
+            "https://www.upwork.com/ab/feed/jobs/rss?q=content+writing&sort=recency"
         ]
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                for feed_url in feeds:
+                    try:
+                        response = await client.get(
+                            feed_url,
+                            headers={"User-Agent": "AiGentsy-TrendDetector/1.0"}
+                        )
+                        
+                        if response.status_code == 200:
+                            # Parse RSS with feedparser (sync, but fast)
+                            import feedparser
+                            feed = feedparser.parse(response.text)
+                            
+                            for entry in feed.entries[:10]:
+                                title = entry.get("title", "")
+                                summary = entry.get("summary", "")
+                                
+                                category = _categorize_opportunity(title, summary)
+                                scores = _calculate_scores({}, "upwork")
+                                
+                                signal = TrendSignal(
+                                    signal_id=f"upwork_{secrets.token_hex(4)}",
+                                    source="upwork",
+                                    query=title[:200],
+                                    category=category,
+                                    demand_score=scores["demand"],
+                                    competition_score=scores["competition"],
+                                    monetization_potential=scores["monetization"],
+                                    urgency=scores["urgency"],
+                                    viral_potential=scores["viral"],
+                                    raw_data={
+                                        "url": entry.get("link"),
+                                        "published": entry.get("published")
+                                    },
+                                    detected_at=datetime.now(timezone.utc).isoformat()
+                                )
+                                signals.append(signal)
+                                
+                    except Exception as e:
+                        self.scan_errors.append(f"Upwork RSS: {str(e)}")
+                        
+        except Exception as e:
+            self.scan_errors.append(f"Upwork scan failed: {str(e)}")
+        
+        print(f"📡 Upwork: {len(signals)} opportunities found")
+        return signals
     
-    async def _scan_fiverr(self) -> List[TrendSignal]:
-        return [
-            TrendSignal("fiverr_1", "fiverr", "AI pet portrait 5000 orders/mo", NicheCategory.AI_ART, 90, 65, 80, 50, 50, detected_at=datetime.now(timezone.utc).isoformat()),
-            TrendSignal("fiverr_2", "fiverr", "YouTube thumbnail 8000 orders/mo", NicheCategory.DESIGN, 92, 65, 78, 50, 55, detected_at=datetime.now(timezone.utc).isoformat()),
-        ]
+    async def _scan_remotejobs(self) -> List[TrendSignal]:
+        """REAL RemoteOK API scraping"""
+        signals = []
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    "https://remoteok.com/api",
+                    headers={"User-Agent": "AiGentsy-TrendDetector/1.0"}
+                )
+                
+                if response.status_code == 200:
+                    jobs = response.json()
+                    
+                    # Filter for relevant jobs (skip the first item which is metadata)
+                    for job in jobs[1:30]:
+                        if isinstance(job, dict):
+                            title = job.get("position", "")
+                            company = job.get("company", "")
+                            tags = job.get("tags", [])
+                            
+                            # Filter for freelance-friendly or AI-related
+                            if any(tag in ["ai", "python", "javascript", "design", "content", "remote"] for tag in tags):
+                                category = _categorize_opportunity(title, " ".join(tags))
+                                
+                                signal = TrendSignal(
+                                    signal_id=f"remoteok_{job.get('id', secrets.token_hex(4))}",
+                                    source="remoteok",
+                                    query=f"{title} at {company}"[:200],
+                                    category=category,
+                                    demand_score=80,
+                                    competition_score=60,
+                                    monetization_potential=85,
+                                    urgency=75,
+                                    viral_potential=40,
+                                    raw_data={
+                                        "url": job.get("url"),
+                                        "company": company,
+                                        "tags": tags,
+                                        "salary_min": job.get("salary_min"),
+                                        "salary_max": job.get("salary_max")
+                                    },
+                                    detected_at=datetime.now(timezone.utc).isoformat()
+                                )
+                                signals.append(signal)
+                                
+        except Exception as e:
+            self.scan_errors.append(f"RemoteOK scan failed: {str(e)}")
+        
+        print(f"📡 RemoteOK: {len(signals)} opportunities found")
+        return signals
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
