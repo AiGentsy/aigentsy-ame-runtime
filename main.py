@@ -29173,11 +29173,21 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
             
             if wade_opps:
                 # Ensure opportunities have required fields for wade_process_discoveries
-                for opp in wade_opps:
+                import uuid
+                for i, opp in enumerate(wade_opps):
+                    # Ensure each opportunity has an ID
+                    if "id" not in opp or not opp["id"]:
+                        opp["id"] = f"opp_{uuid.uuid4().hex[:12]}"
+                    
+                    # Ensure fulfillability field exists
                     if "fulfillability" not in opp:
                         opp["fulfillability"] = {"can_wade_fulfill": True}
                     elif not opp["fulfillability"].get("can_wade_fulfill"):
                         opp["fulfillability"]["can_wade_fulfill"] = True
+                    
+                    # Ensure title exists
+                    if "title" not in opp:
+                        opp["title"] = opp.get("name", opp.get("description", f"Opportunity {i+1}")[:50])
                 
                 wade_result = await wade_process_discoveries({"opportunities": wade_opps})
                 results["steps"]["wade_routing"] = {
