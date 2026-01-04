@@ -1,20 +1,28 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy Autonomous Execution Workflow v92 - FULLY WIRED + UNIVERSAL REVENUE ORCHESTRATOR
+# AiGentsy Autonomous Execution Workflow v93 - APEX UPGRADES + WADE AUTO-APPROVE
 # January 4, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# INCLUDES ALL ENDPOINTS FROM v91 PLUS:
-# - v92 NEW: UNIVERSAL REVENUE ORCHESTRATOR (10 endpoints)
-#   • Fuses ALL monetization systems into ONE unified cycle
-#   • Discovery + Spawn + Social + Fiverr + Cart Recovery + Subscriptions + Arbitrage
-#   • Video, Audio, Graphics, Content fulfillment via AI
-#   • Unified revenue tracking across ALL channels
+# INCLUDES ALL ENDPOINTS FROM v92 PLUS:
+# - v93 NEW: APEX UPGRADES (12 Revenue Optimization Modules)
+#   • Intent Value Router - Bid where ROI > 1
+#   • CAC-Aware Pricing - Include true costs in bids  
+#   • Upsell/Cross-Sell - Turn single orders into bundles
+#   • Abandon Recovery - Recover carts with proof
+#   • LTV Forecaster - Prioritize high-rebuy clients
+#   • Portfolio Rebalancing - Auto-tune offer mix
+#   • Churn Sentinel - Save MRR with targeted offers
+#   • Proof Badges - Auto-generate social proof
 #
-# TOTAL: 135 UNIQUE ENDPOINTS
+# - v93 NEW: WADE AUTO-APPROVE
+#   • /wade/approve-all - One-click approve 1000+ items
+#   • /wade/execution-status - See what's running
+#
+# TOTAL: 152 UNIQUE ENDPOINTS
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v92 Fully Wired
+name: AiGentsy v93 Apex Upgrades
 
 on:
   schedule:
@@ -38,7 +46,7 @@ env:
 
 jobs:
   complete-automation:
-    name: 🚀 v92 Fully Wired (135 endpoints)
+    name: 🚀 v93 Apex Upgrades (152 endpoints)
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -334,6 +342,64 @@ jobs:
           curl -s "${{ env.BACKEND_URL }}/spawn/network/recommendations" | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 14: APEX UPGRADES (12 Revenue Optimization Modules)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🚀 Apex Upgrades (12 endpoints)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🚀 APEX UPGRADES - REVENUE OPTIMIZATION"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          echo "════ UPSELL / RECOVERY ════"
+          curl -s -X POST "${{ env.BACKEND_URL }}/upsell/recommend" -H "Content-Type: application/json" -d '{"order_id":"seed","sku":"logo-basic"}' --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/upsell/deploy" -H "Content-Type: application/json" -d '{"order_id":"seed"}' --max-time 30 | jq -c '{ok}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/recovery/compose" -H "Content-Type: application/json" -d '{"order_ref":"seed","cart_value":150}' --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/recovery/send" -H "Content-Type: application/json" -d '{"order_ref":"seed"}' --max-time 30 | jq -c '{ok}' || true
+          
+          echo "════ ROUTER / CAC PRICING ════"
+          curl -s -X POST "${{ env.BACKEND_URL }}/router/score-intent" -H "Content-Type: application/json" -d '{"intent_id":"hourly_scan","signal":{"budget":300,"deadline_days":3,"niche":"graphics","channel":"fiverr"}}' --max-time 30 | jq -c '{ok,ev_usd,win_p,route_recommendation}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/router/route" -H "Content-Type: application/json" -d '{"min_ev_usd":50}' --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/pricing/cac-aware" -H "Content-Type: application/json" -d '{"base_price":250,"llm_tokens":1800000,"image_jobs":6,"margin_target":0.55}' --max-time 30 | jq -c '{ok,bid}' || true
+          
+          echo "════ LTV / PORTFOLIO ════"
+          curl -s -X POST "${{ env.BACKEND_URL }}/ltv/predict" -H "Content-Type: application/json" -d '{"client_id":"scan","niche":"agency"}' --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s "${{ env.BACKEND_URL }}/portfolio/performance" --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/portfolio/rebalance" -H "Content-Type: application/json" -d '{"auto":true}' --max-time 30 | jq -c '{ok,metrics}' || true
+          
+          echo "════ CHURN / PROOF ════"
+          curl -s -X POST "${{ env.BACKEND_URL }}/subscriptions/churn-risk" -H "Content-Type: application/json" -d '{"sub_id":"scan","days_since_login":7}' --max-time 30 | jq -c '{ok,metrics}' || true
+          curl -s -X POST "${{ env.BACKEND_URL }}/proof/badge/mint" -H "Content-Type: application/json" -d '{"deal_id":"scan"}' --max-time 30 | jq -c '{ok,metrics}' || true
+          
+          echo "════ CIRCUIT BREAKERS ════"
+          curl -s "${{ env.BACKEND_URL }}/orchestrator/circuits" --max-time 30 | jq -c '{ok,metrics}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 15: WADE WORKFLOWS
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🤖 Wade Workflows (5 endpoints)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🤖 WADE WORKFLOWS - AUTO APPROVE & EXECUTE"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          echo "1. Get Wade Dashboard..."
+          curl -s "${{ env.BACKEND_URL }}/wade/dashboard" --max-time 30 | jq -c '{ok,pending_approval,active_workflows}' || true
+          
+          echo "2. Get Execution Status..."
+          curl -s "${{ env.BACKEND_URL }}/wade/execution-status" --max-time 30 | jq -c '{ok,total_workflows,stage_counts}' || true
+          
+          echo "3. Auto-Approve All Pending..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/wade/approve-all" -H "Content-Type: application/json" --max-time 60 | jq -c '{ok,approved_count}' || true
+          
+          echo "4. Execute Approved Workflows..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/wade/execute-approved" -H "Content-Type: application/json" --max-time 120 | jq -c '{ok}' || true
+          
+          echo "5. Process Discoveries..."
+          curl -s -X POST "${{ env.BACKEND_URL }}/wade/process-discoveries" -H "Content-Type: application/json" -d '{"opportunities":[]}' --max-time 60 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # SUMMARY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📝 Summary
@@ -341,17 +407,23 @@ jobs:
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📝 AIGENTSY v92 - UNIVERSAL REVENUE ORCHESTRATOR"
+          echo "📝 AIGENTSY v93 - APEX UPGRADES + WADE AUTO-APPROVE"
           echo "═══════════════════════════════════════════════════════════════"
           echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo ""
-          echo "🆕 v92: UNIVERSAL REVENUE ORCHESTRATOR"
-          echo "  💰 /revenue-orchestrator/run-cycle"
-          echo "  📊 /revenue-orchestrator/dashboard"
-          echo "  🛍️ /revenue-orchestrator/fiverr/process-orders"
-          echo "  🛒 /revenue-orchestrator/cart-recovery"
-          echo "  📱 /revenue-orchestrator/social/post-spawns"
-          echo "  💹 /revenue-orchestrator/arbitrage/find"
+          echo "🆕 v93: APEX UPGRADES (12 modules)"
+          echo "  📈 /router/score-intent - EV-based routing"
+          echo "  💰 /pricing/cac-aware - Margin-safe bidding"
+          echo "  🛒 /upsell/recommend - Bundle optimization"
+          echo "  🔄 /recovery/compose - Cart recovery"
+          echo "  📊 /ltv/predict - Client prioritization"
+          echo "  ⚖️ /portfolio/rebalance - Offer mix tuning"
+          echo "  🛡️ /subscriptions/churn-risk - MRR protection"
+          echo "  🏆 /proof/badge/mint - Social proof"
           echo ""
-          echo "FUSED: spawn + video + audio + fiverr + social + subscriptions"
+          echo "🆕 v93: WADE AUTO-APPROVE"
+          echo "  ✅ /wade/approve-all - Bulk approve"
+          echo "  📋 /wade/execution-status - Live status"
+          echo ""
+          echo "TOTAL: 152 endpoints across 15 phases"
           echo "═══════════════════════════════════════════════════════════════"
