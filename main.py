@@ -30315,6 +30315,194 @@ async def get_network_recommendations(customer_email: str = None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# UNIVERSAL REVENUE ORCHESTRATOR - MASTER COORDINATION
+# Fuses ALL monetization systems into one unified cycle
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Import Universal Revenue Orchestrator
+try:
+    from universal_revenue_orchestrator import (
+        get_orchestrator as get_revenue_orchestrator,
+        UniversalRevenueOrchestrator,
+        get_revenue_summary,
+        record_revenue,
+        RevenueEvent,
+        RevenueChannel
+    )
+    REVENUE_ORCHESTRATOR_AVAILABLE = True
+    print("✅ universal_revenue_orchestrator loaded")
+except ImportError as e:
+    REVENUE_ORCHESTRATOR_AVAILABLE = False
+    print(f"⚠️ universal_revenue_orchestrator not available: {e}")
+
+
+@app.post("/revenue-orchestrator/run-cycle")
+async def revenue_orchestrator_run_cycle():
+    """
+    UNIVERSAL REVENUE ORCHESTRATOR - Complete money-making cycle
+    
+    PHASE 1: DISCOVERY & SPAWN - Scan 27+ platforms + AI
+    PHASE 2: SOCIAL PROMOTION - Auto-post to TikTok, Instagram, Twitter
+    PHASE 3: FIVERR ORDERS - Process and fulfill via AI
+    PHASE 4: CART RECOVERY - Shopify abandoned carts
+    PHASE 5: SUBSCRIPTIONS - Process MRR renewals
+    PHASE 6: ARBITRAGE - Cross-platform profit opportunities
+    PHASE 7: REVENUE TRACKING - Unified reconciliation
+    """
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Universal Revenue Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    results = await orchestrator.run_full_cycle()
+    return {"ok": True, **results}
+
+
+@app.get("/revenue-orchestrator/dashboard")
+async def revenue_orchestrator_dashboard():
+    """Get unified dashboard across ALL monetization systems"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Universal Revenue Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    return {"ok": True, **orchestrator.get_dashboard()}
+
+
+@app.get("/revenue-orchestrator/revenue-summary")
+async def revenue_orchestrator_revenue_summary(hours: int = 24):
+    """Get revenue summary across all channels"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    summary = get_revenue_summary(since=since)
+    return {"ok": True, "hours": hours, **summary}
+
+
+@app.get("/revenue-orchestrator/systems")
+async def revenue_orchestrator_systems():
+    """Get status of all integrated systems"""
+    return {
+        "ok": True,
+        "orchestrator_available": REVENUE_ORCHESTRATOR_AVAILABLE,
+        "systems": {
+            "spawn_engine": AUTO_SPAWN_AVAILABLE if 'AUTO_SPAWN_AVAILABLE' in dir() else False,
+            "social_autoposting": SOCIAL_ENGINE_AVAILABLE,
+            "third_party_monetization": THIRD_PARTY_MONETIZATION_AVAILABLE,
+            "yield_memory": YIELD_MEMORY_AVAILABLE,
+            "metahive": METAHIVE_AVAILABLE,
+            "amg": AMG_AVAILABLE,
+            "ame_pitches": AME_PITCHES_AVAILABLE,
+            "wade_workflow": WADE_WORKFLOW_AVAILABLE,
+        }
+    }
+
+
+@app.post("/revenue-orchestrator/fiverr/process-orders")
+async def revenue_orchestrator_fiverr_process():
+    """Process Fiverr orders via orchestrator"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    orders = await orchestrator.fiverr.check_orders()
+    processed = []
+    for order in orders[:5]:
+        result = await orchestrator.fiverr.process_order(order.get("id"))
+        if result.get("ok"):
+            processed.append(order.get("id"))
+    
+    return {"ok": True, "pending": len(orders), "processed": len(processed)}
+
+
+@app.post("/revenue-orchestrator/cart-recovery")
+async def revenue_orchestrator_cart_recovery():
+    """Run cart recovery cycle"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    results = await orchestrator.cart_nudge.run_recovery_cycle()
+    return {"ok": True, **results}
+
+
+@app.post("/revenue-orchestrator/social/post-spawns")
+async def revenue_orchestrator_post_spawns():
+    """Post all pending spawn announcements"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Required systems not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    
+    # Get spawn engine if available
+    try:
+        from auto_spawn_engine import get_engine
+        spawn_engine = get_engine()
+        
+        posted = 0
+        for spawn_id, spawn in spawn_engine.spawner.spawned_businesses.items():
+            if spawn.status.value == "live":
+                result = await orchestrator.social.post_spawn_announcement({
+                    "spawn_id": spawn.spawn_id,
+                    "name": spawn.name,
+                    "tagline": spawn.tagline,
+                    "landing_page_url": spawn.landing_page_url,
+                    "referral_code": spawn.referral_code
+                })
+                if result.get("ok"):
+                    posted += 1
+        
+        return {"ok": True, "posted": posted}
+    except:
+        return {"ok": False, "error": "Spawn engine not available"}
+
+
+@app.post("/revenue-orchestrator/arbitrage/find")
+async def revenue_orchestrator_arbitrage_find():
+    """Find arbitrage opportunities"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    opportunities = await orchestrator.arbitrage.find_opportunities()
+    return {
+        "ok": True,
+        "count": len(opportunities),
+        "total_potential_profit": sum(o.get("profit", 0) for o in opportunities),
+        "opportunities": opportunities
+    }
+
+
+@app.get("/revenue-orchestrator/subscriptions/mrr")
+async def revenue_orchestrator_mrr():
+    """Get MRR stats"""
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    mrr = await orchestrator.subscriptions.get_mrr()
+    return {"ok": True, **mrr}
+
+
+@app.post("/revenue-orchestrator/fulfill")
+async def revenue_orchestrator_fulfill(body: Dict = Body(...)):
+    """
+    Fulfill work via AI (video, audio, graphics, content)
+    
+    Body: {"work_type": "video"|"audio"|"graphics"|"content", "spec": {...}}
+    """
+    if not REVENUE_ORCHESTRATOR_AVAILABLE:
+        return {"ok": False, "error": "Orchestrator not available"}
+    
+    orchestrator = get_revenue_orchestrator()
+    work_type = body.get("work_type", "content")
+    spec = body.get("spec", {})
+    
+    result = await orchestrator.fulfillment.fulfill(work_type, spec)
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 44: TEST EVERYTHING - ULTRA SAFE VERSION
 # ═══════════════════════════════════════════════════════════════════════════════
 
