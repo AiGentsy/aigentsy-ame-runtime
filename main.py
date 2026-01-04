@@ -28226,6 +28226,120 @@ async def approve_wade_workflow(workflow_id: str):
     return {"ok": True, "workflow_id": workflow_id, "stage": "wade_approved"}
 
 
+@app.post("/wade/approve-all")
+async def approve_all_wade_workflows():
+    """Approve ALL pending workflows in one click"""
+    
+    pending = [
+        wf_id for wf_id, wf in reconciliation_state["wade_workflows"].items()
+        if wf.get("stage") == "pending_wade_approval"
+    ]
+    
+    approved = []
+    failed = []
+    
+    for wf_id in pending:
+        try:
+            workflow = reconciliation_state["wade_workflows"][wf_id]
+            workflow["stage"] = "wade_approved"
+            workflow["approved_at"] = datetime.utcnow().isoformat()
+            
+            if "history" not in workflow:
+                workflow["history"] = []
+            
+            workflow["history"].append({
+                "stage": "wade_approved",
+                "timestamp": datetime.utcnow().isoformat(),
+                "action": "Bulk approved via approve-all"
+            })
+            
+            approved.append(wf_id)
+        except Exception as e:
+            failed.append({"id": wf_id, "error": str(e)})
+    
+    return {
+        "ok": True,
+        "approved_count": len(approved),
+        "failed_count": len(failed),
+        "approved": approved[:10],  # First 10 for reference
+        "failed": failed
+    }
+
+
+@app.get("/wade/execution-status")
+async def get_wade_execution_status():
+    """See exactly what automations are running/executing right now"""
+    
+    workflows = reconciliation_state["wade_workflows"]
+    
+    # Group by stage
+    by_stage = {}
+    for wf_id, wf in workflows.items():
+        stage = wf.get("stage", "unknown")
+        if stage not in by_stage:
+            by_stage[stage] = []
+        by_stage[stage].append({
+            "id": wf_id,
+            "title": wf.get("title", wf.get("opportunity", {}).get("title", "Unknown")),
+            "platform": wf.get("platform", wf.get("opportunity", {}).get("platform", "Unknown")),
+            "value": wf.get("estimated_value", 0),
+            "created": wf.get("created_at"),
+            "approved": wf.get("approved_at")
+        })
+    
+    # Get active automations
+    active_automations = {
+        "discovery": {
+            "status": "idle",
+            "last_run": None,
+            "opportunities_found": 0
+        },
+        "spawn_engine": {
+            "status": "active" if SPAWN_ENGINE_AVAILABLE else "unavailable",
+            "active_spawns": 0,
+            "last_spawn": None
+        },
+        "social_posting": {
+            "status": "idle",
+            "platforms": {"twitter": False, "instagram": False, "tiktok": False},
+            "posts_today": 0
+        },
+        "fiverr_orders": {
+            "status": "idle",
+            "pending": 0,
+            "processing": 0
+        },
+        "cart_recovery": {
+            "status": "idle",
+            "abandoned_detected": 0,
+            "emails_sent": 0
+        },
+        "arbitrage": {
+            "status": "idle",
+            "opportunities": 0
+        }
+    }
+    
+    # Try to get real spawn stats
+    if SPAWN_ENGINE_AVAILABLE:
+        try:
+            from auto_spawn_engine import get_engine
+            engine = get_engine()
+            stats = engine.get_dashboard()
+            active_automations["spawn_engine"]["active_spawns"] = stats.get("active", 0)
+        except:
+            pass
+    
+    return {
+        "ok": True,
+        "workflows_by_stage": by_stage,
+        "stage_counts": {stage: len(wfs) for stage, wfs in by_stage.items()},
+        "total_workflows": len(workflows),
+        "active_automations": active_automations,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
 @app.post("/wade/workflow/{workflow_id}/reject")
 async def reject_wade_workflow(workflow_id: str, reason: str = None):
     """Wade rejects a workflow"""
