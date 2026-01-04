@@ -39,6 +39,7 @@ from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDepl
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
 from investor_ready_micro_upgrades import register_investor_routes
 from apex_upgrades_api import create_apex_upgrade_routes
+from apex_upgrades_overlay import include_overlay
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
@@ -904,6 +905,7 @@ except Exception as e:
 app = FastAPI()
 
 register_investor_routes(app)
+include_overlay(app)
 create_apex_upgrade_routes(app)
 integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
 # Register opportunity endpoints
@@ -31226,6 +31228,13 @@ async def test_full():
     ]
     
     return results
+
+# Wire in Apex Upgrades (12 revenue optimization modules)
+try:
+    from apex_upgrades_overlay import include_overlay
+    include_overlay(app)
+except ImportError:
+    print("⚠️ apex_upgrades_overlay.py not found - skipping")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
