@@ -17525,7 +17525,7 @@ async def protocol_fees():
     - Protocol settlement: 0.5%
     - P2P facilitation: 2-2.5%
     """
-    from aigx_protocol_complete import FEES
+    from aigx_protocol import FEES
     return {"ok": True, "fees": FEES}
 
 
