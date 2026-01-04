@@ -31256,6 +31256,34 @@ try:
 except ImportError as e:
     print(f"⚠️ internet_domination_engine not found: {e}")
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# V97 APEX DOMINATOR - Wire in all engines
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Apex Upgrades (12 revenue optimization modules)
+try:
+    from apex_upgrades_overlay import include_overlay
+    include_overlay(app)
+    print("✅ Apex Upgrades loaded")
+except ImportError as e:
+    print(f"⚠️ apex_upgrades_overlay not found: {e}")
+
+# Internet Domination Engine (15 monetization systems)
+try:
+    from internet_domination_engine import include_domination_engine
+    include_domination_engine(app)
+    print("🌐 Internet Domination Engine loaded")
+except ImportError as e:
+    print(f"⚠️ internet_domination_engine not found: {e}")
+
+# Apex Dominator v97 (7 NEW systems)
+try:
+    from apex_dominator_engine import include_apex_dominator
+    include_apex_dominator(app)
+    print("🏆 Apex Dominator v97 loaded")
+except ImportError as e:
+    print(f"⚠️ apex_dominator_engine not found: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 44B
