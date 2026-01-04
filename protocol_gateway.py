@@ -23,19 +23,29 @@ from uuid import uuid4
 # Import protocol components
 from aigx_protocol import (
     get_protocol,
-    AIGxProtocol,
     PROTOCOL_VERSION,
-    PROTOCOL_FEE_PERCENT
+    FEES
 )
+
+# Define constants
+PROTOCOL_FEE_PERCENT = FEES.get("protocol_settlement", {}).get("percent", 0.005)
 
 from agent_registry import (
     get_registry,
-    AgentRegistry,
     Capability,
     AgentType,
     ReputationTier,
-    TIER_BADGES
 )
+
+# Define missing constant if needed
+TIER_BADGES = {
+    "unverified": "🔘",
+    "bronze": "🥉",
+    "silver": "🥈",
+    "gold": "🥇",
+    "platinum": "💎",
+    "diamond": "👑"
+}
 
 
 # ============================================================
