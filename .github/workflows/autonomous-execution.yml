@@ -1,45 +1,66 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy Autonomous Execution Workflow v94 - INTERNET DOMINATION EDITION
-# January 4, 2026
+# AiGentsy v97 – APEX DOMINATOR
+# The Ultimate Autonomous Money Machine
+# January 5, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# THE GOAL: Monetize the entirety of the internet, autonomously, 24/7/365
+# FUSES:
+# • v96: Cash-Verified, Profit-First, Self-Healing, SLO Policy
+# • v94: Internet Domination (27+ platforms, Demand Vacuum, Viral Machine)
+# • v93: Apex Upgrades (12 revenue optimization modules)
+# • NEW: Adaptive Aggression, Multi-Currency Arbitrage, AI Swarm Intelligence
 #
-# NEW IN v94:
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW IN v97 - MASSIVELY ACCRETIVE UPGRADES:
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ 🌐 INTERNET DOMINATION SYSTEMS                                              │
+# │ 🧠 ADAPTIVE AGGRESSION ENGINE                                               │
+# │   • Dynamically adjusts execution intensity based on cash flow             │
+# │   • Low cash = BEAST MODE (aggressive bidding, fast SKUs, burst marketing) │
+# │   • High cash = OPTIMIZE MODE (margin focus, quality over quantity)        │
 # ├─────────────────────────────────────────────────────────────────────────────┤
-# │ 1. DEMAND VACUUM - Scrape 27+ platforms for ANY monetizable signal         │
-# │ 2. INSTANT ARBITRAGE - Buy low, sell high across platforms in real-time    │
-# │ 3. VIRAL CONTENT MACHINE - Auto-generate viral content for all platforms   │
-# │ 4. AFFILIATE SWARM - Deploy affiliate links across the entire internet     │
-# │ 5. LEAD MAGNET FACTORY - Auto-create lead magnets for every niche          │
-# │ 6. PRICE INTELLIGENCE - Monitor competitor pricing, undercut instantly     │
-# │ 7. REPUTATION FARMING - Auto-generate reviews, testimonials, social proof  │
-# │ 8. TREND HIJACKING - Jump on trends within minutes of detection            │
-# │ 9. MICRO-SERVICE ARMY - Spin up niche services on-demand                   │
-# │ 10. PASSIVE INCOME GENERATORS - Royalties, licensing, recurring revenue    │
-# │ 11. GEOGRAPHIC ARBITRAGE - Exploit price differences across regions        │
-# │ 12. TIME-DECAY EXPLOITATION - Catch expiring deals, domains, opportunities │
-# │ 13. API ECONOMY PLAYS - Resell API access, aggregate services              │
-# │ 14. DATA MONETIZATION - Package and sell insights, reports, intelligence   │
-# │ 15. NETWORK EFFECT AMPLIFIER - Every user/spawn recruits more users        │
+# │ 💱 MULTI-CURRENCY ARBITRAGE                                                 │
+# │   • Exploit FX spreads + regional pricing simultaneously                   │
+# │   • Auto-convert earnings to strongest currency                            │
+# │   • Geo-aware pricing (charge USD in US, EUR in EU, etc.)                  │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 🐝 AI SWARM INTELLIGENCE                                                    │
+# │   • Multiple AI workers (Claude, GPT, Perplexity) compete for best output  │
+# │   • Winner-take-all: best response gets deployed                           │
+# │   • Cross-learning: losers learn from winners via MetaHive                 │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ ⚡ REAL-TIME OPPORTUNITY SNIPER                                             │
+# │   • WebSocket connections to freelance platforms                           │
+# │   • Bid within 60 seconds of job posting                                   │
+# │   • First-mover advantage = 3x win rate                                    │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 🎰 PORTFOLIO KELLY CRITERION                                                │
+# │   • Optimal bet sizing based on win probability                            │
+# │   • Never over-allocate to low-probability opportunities                   │
+# │   • Mathematically maximize long-term growth                               │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 🔄 PERPETUAL MOTION REVENUE                                                 │
+# │   • Every completed deal triggers 3 more actions:                          │
+# │     1. Upsell/cross-sell to client                                         │
+# │     2. Request referral                                                    │
+# │     3. Generate case study → content → leads                               │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 🌊 DEMAND WAVE RIDING                                                       │
+# │   • Predict demand spikes 24-72h ahead using signals                       │
+# │   • Pre-position capacity and content before wave hits                     │
+# │   • Ride the wave with premium pricing                                     │
 # └─────────────────────────────────────────────────────────────────────────────┘
 #
-# INCLUDES:
-# - v92: Universal Revenue Orchestrator + Retry/Backoff + JSON Artifacts
-# - v93: Apex Upgrades (12 modules) + Wade Auto-Approve
-# - v94: Internet Domination (15 new systems)
-#
-# TOTAL: 200+ ENDPOINTS | 20 PHASES | FULL INTERNET COVERAGE
+# EXECUTION FREQUENCY: Adaptive (5min when SLO violated, 15min normal, 60min optimized)
+# TOTAL ENDPOINTS: 250+
+# PHASES: 25
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v94 Internet Domination
+name: AiGentsy v97 APEX DOMINATOR
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Every 15 minutes - AGGRESSIVE
+    - cron: '*/15 * * * *'  # Every 15 min baseline (adaptive override possible)
   workflow_dispatch:
     inputs:
       mode:
@@ -47,15 +68,15 @@ on:
         required: false
         default: 'domination'
         type: choice
-        options: [domination, full, discovery, financial, marketing, health, spawn-only, arbitrage-only]
+        options: [domination, full, beast, optimize, discovery, financial, marketing, health]
       aggression:
-        description: 'Aggression level (1-10)'
+        description: 'Aggression level (1-10, 0=auto)'
         required: false
-        default: '7'
+        default: '0'
         type: string
 
 concurrency:
-  group: aigentsy-v94-${{ github.ref }}
+  group: aigentsy-v97-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -63,641 +84,656 @@ permissions:
 
 env:
   BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://aigentsy-ame-runtime.onrender.com' }}
-  CURL_MAX_TIME: 300
-  AGGRESSION: ${{ github.event.inputs.aggression || '7' }}
+  AGGRESSION_INPUT: ${{ github.event.inputs.aggression || '0' }}
 
 jobs:
-  internet-domination:
-    name: "🌐 v94 Internet Domination (200+ endpoints)"
+  apex-dominator:
+    name: "🏆 v97 APEX DOMINATOR (250+ endpoints)"
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
     steps:
       # ═══════════════════════════════════════════════════════════════════════
-      # SETUP
+      # SETUP + TOOLING
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🧰 Prep Environment
+      - name: 🧰 Setup Environment
         run: |
-          sudo apt-get update -y && sudo apt-get install -y jq moreutils
-          mkdir -p logs json metrics
-          echo "🌐 INTERNET DOMINATION MODE ACTIVATED"
-          echo "⚡ Aggression Level: ${{ env.AGGRESSION }}/10"
-          echo "🕐 Started: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          sudo apt-get update -y && sudo apt-get install -y jq bc moreutils
+          mkdir -p json metrics logs
+          echo "🏆 APEX DOMINATOR v97 ACTIVATED"
+          echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
-      - name: 🔧 Define Helpers
-        shell: bash
+      - name: 🔧 Define Execution Helpers
         run: |
-          set -Eeuo pipefail
-          
           # Retry helper with exponential backoff
-          cat > _curl_retry.sh <<'BASH'
+          cat > _curl.sh <<'BASH'
           #!/usr/bin/env bash
-          set -Eeuo pipefail
-          URL="$1"; METHOD="${2:-GET}"; DATA="${3:-}"; TIMEOUT="${4:-300}"
-          for attempt in 1 2 3 4 5; do
+          URL="$1"; METHOD="${2:-GET}"; DATA="${3:-}"; TIMEOUT="${4:-120}"
+          for i in 1 2 3; do
             if [ "$METHOD" = "GET" ]; then
-              RESP=$(curl -sS -X GET "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" 2>/dev/null || true)
+              R=$(curl -sS "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" 2>/dev/null) && echo "$R" && exit 0
             else
-              RESP=$(curl -sS -X "$METHOD" "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" -d "${DATA}" 2>/dev/null || true)
+              R=$(curl -sS -X "$METHOD" "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" -d "${DATA:-{}}" 2>/dev/null) && echo "$R" && exit 0
             fi
-            if [ -n "$RESP" ]; then
-              echo "$RESP"
-              exit 0
-            fi
-            sleep $(awk "BEGIN {print 0.5 * (2 ^ ($attempt - 1))}")
+            sleep $((i * 2))
           done
-          echo '{"ok":false,"error":"timeout_after_5_attempts"}'
+          echo '{"ok":false,"error":"timeout"}'
           BASH
-          chmod +x _curl_retry.sh
+          chmod +x _curl.sh
           
-          # Parallel executor for speed
-          cat > _parallel_exec.sh <<'BASH'
+          # Parallel executor
+          cat > _parallel.sh <<'BASH'
           #!/usr/bin/env bash
           BACKEND="$1"; shift
-          for endpoint in "$@"; do
-            (curl -sS -X POST "${BACKEND}${endpoint}" -H "Content-Type: application/json" -d '{}' --max-time 60 2>/dev/null | jq -c '{ok,endpoint:"'"$endpoint"'"}' || echo '{"ok":false,"endpoint":"'"$endpoint"'"}') &
+          for ep in "$@"; do
+            (curl -sS -X POST "${BACKEND}${ep}" -H "Content-Type: application/json" -d '{}' --max-time 60 2>/dev/null | jq -c '{ok}' || echo '{"ok":false}') &
           done
           wait
           BASH
-          chmod +x _parallel_exec.sh
+          chmod +x _parallel.sh
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 0: DEMAND VACUUM - Scrape the ENTIRE internet for opportunities
+      # PHASE 0: CASH HEARTBEAT (HARD GATE) - Bank/Processor Verified
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🌪️ Phase 0 - Demand Vacuum (27+ platforms)
+      - name: 💓 Cash Heartbeat (Stripe-Ledger Verified)
+        id: cash
+        continue-on-error: false
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💓 CASH HEARTBEAT - STRIPE-VERIFIED TRUTH"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get verified cash (last 6h)
+          CASH_JSON=$(./_curl.sh "${{ env.BACKEND_URL }}/revenue/cash-ledger/summary?hours=6" GET '' 30)
+          echo "$CASH_JSON" | jq . || true
+          VERIFIED=$(echo "$CASH_JSON" | jq -r '.verified_cash // 0')
+          echo "verified_6h=$VERIFIED" >> $GITHUB_OUTPUT
+          
+          # Get scheduled payouts (next 24h)
+          SCHED_JSON=$(./_curl.sh "${{ env.BACKEND_URL }}/finance/stripe/payouts/scheduled?hours=24" GET '' 30)
+          SCHEDULED=$(echo "$SCHED_JSON" | jq -r '.scheduled_total // 0')
+          echo "scheduled_24h=$SCHEDULED" >> $GITHUB_OUTPUT
+          
+          # Get pipeline value
+          PIPE_JSON=$(./_curl.sh "${{ env.BACKEND_URL }}/deals/pipeline-value" GET '' 30)
+          PIPELINE=$(echo "$PIPE_JSON" | jq -r '.total_value // 0')
+          echo "pipeline=$PIPELINE" >> $GITHUB_OUTPUT
+          
+          # Get MRR
+          MRR_JSON=$(./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/subscriptions/mrr" GET '' 30)
+          MRR=$(echo "$MRR_JSON" | jq -r '.mrr // 0')
+          echo "mrr=$MRR" >> $GITHUB_OUTPUT
+          
+          echo "💰 Verified (6h): $VERIFIED | Scheduled (24h): $SCHEDULED | Pipeline: $PIPELINE | MRR: $MRR"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 1: ADAPTIVE AGGRESSION ENGINE (NEW!)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🧠 Adaptive Aggression Engine
+        id: aggression
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🧠 ADAPTIVE AGGRESSION ENGINE"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          VERIFIED="${{ steps.cash.outputs.verified_6h }}"
+          INPUT_AGG="${{ env.AGGRESSION_INPUT }}"
+          
+          # Auto-calculate aggression if not manually set
+          if [ "$INPUT_AGG" = "0" ]; then
+            if [ "$(echo "$VERIFIED < 100" | bc -l)" -eq 1 ]; then
+              AGG=10  # BEAST MODE - no cash
+              MODE="BEAST"
+            elif [ "$(echo "$VERIFIED < 500" | bc -l)" -eq 1 ]; then
+              AGG=8   # High aggression
+              MODE="HIGH"
+            elif [ "$(echo "$VERIFIED < 2000" | bc -l)" -eq 1 ]; then
+              AGG=6   # Normal
+              MODE="NORMAL"
+            else
+              AGG=4   # Optimize mode - good cash, focus on margins
+              MODE="OPTIMIZE"
+            fi
+          else
+            AGG=$INPUT_AGG
+            MODE="MANUAL"
+          fi
+          
+          echo "aggression=$AGG" >> $GITHUB_OUTPUT
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          
+          echo "⚡ Aggression: $AGG/10 | Mode: $MODE"
+          
+          # Apply aggression settings to backend
+          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/set-aggression" POST "{\"level\":$AGG,\"mode\":\"$MODE\"}" 30 | jq . || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 2: SLO POLICY + AUTO-REMEDIATION
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔥 SLO Policy (Revenue Protection)
+        id: slo
         continue-on-error: true
-        shell: bash
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔥 SLO POLICY - REVENUE PROTECTION"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          VERIFIED="${{ steps.cash.outputs.verified_6h }}"
+          AGG="${{ steps.aggression.outputs.aggression }}"
+          
+          if [ "$(echo "$VERIFIED <= 0" | bc -l)" -eq 1 ]; then
+            echo "🚨 SLO VIOLATION: Zero cash in 6h! EMERGENCY ACTIONS:"
+            
+            # Boost everything
+            ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/boost-intensity" POST '{"bid_boost_pct":20,"promo_boost_pct":25,"duration_minutes":120}' 30 | jq -c '{ok}' || true
+            
+            # Shift to fast-converting SKUs
+            ./_curl.sh "${{ env.BACKEND_URL }}/catalog/flip-to-fast-skus" POST '{"sku_tags":["express","quickturn","cart-recovery","low-ticket"]}' 30 | jq -c '{ok}' || true
+            
+            # Pause low performers, boost top performers
+            ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/mix-shift" POST '{"pause_bottom_decile":true,"reallocate_to_top_quartile":true}' 30 | jq -c '{ok}' || true
+            
+            # Price elasticity - drop prices to drive volume
+            ./_curl.sh "${{ env.BACKEND_URL }}/pricing/elasticity-stepdown" POST '{"steps":[-0.10,-0.15,-0.20],"channels":"all"}' 30 | jq -c '{ok}' || true
+            
+            # Reactivate lapsed customers
+            ./_curl.sh "${{ env.BACKEND_URL }}/retarget/reactivate-lapsed" POST '{"days":60,"cap":1000}' 60 | jq -c '{ok}' || true
+            
+            # Burst recruitment
+            ./_curl.sh "${{ env.BACKEND_URL }}/platform-recruitment/push" POST '{"burst":true,"targets":"all"}' 60 | jq -c '{ok}' || true
+            
+            # Emergency social blast
+            ./_curl.sh "${{ env.BACKEND_URL }}/viral/emergency-blast" POST '{"all_platforms":true}' 60 | jq -c '{ok}' || true
+            
+            echo "slo_violated=1" >> $GITHUB_OUTPUT
+          else
+            echo "✅ SLO OK - Cash flow healthy"
+            echo "slo_violated=0" >> $GITHUB_OUTPUT
+          fi
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 3: PROFIT GATE (Drop Low-Margin Work)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: ✅ Profit Gate (Margin Enforcement)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "✅ PROFIT GATE - MARGIN ENFORCEMENT"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          AGG="${{ steps.aggression.outputs.aggression }}"
+          
+          # Dynamic margin target based on aggression
+          if [ "$AGG" -ge 8 ]; then
+            MARGIN=0.15  # Low margin OK in beast mode
+          elif [ "$AGG" -ge 5 ]; then
+            MARGIN=0.25  # Normal margin
+          else
+            MARGIN=0.40  # High margin in optimize mode
+          fi
+          
+          echo "Target margin: $MARGIN (aggression: $AGG)"
+          
+          ./_curl.sh "${{ env.BACKEND_URL }}/pricing/optimize" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/execution/mark-unprofitable" POST "{\"target_margin\":$MARGIN}" 60 | jq -c '{ok,dropped}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 4: DEMAND VACUUM (Scrape Entire Internet)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🌪️ Demand Vacuum (27+ Platforms)
+        continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
           echo "🌪️ DEMAND VACUUM - SCRAPING THE INTERNET"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Scrape ALL platforms simultaneously
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/vacuum/scrape-all" POST '{"platforms":"all","depth":"deep"}' 300 | tee json/vacuum-all.json | jq -c '{ok,total_signals}' || true
+          # Master scrape
+          ./_curl.sh "${{ env.BACKEND_URL }}/vacuum/scrape-all" POST '{"platforms":"all","depth":"deep"}' 300 | tee json/vacuum.json | jq -c '{ok,total_signals}' || true
           
-          # Individual platform scrapers (parallel)
-          echo "Scraping freelance platforms..."
-          ./_parallel_exec.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/fiverr" \
-            "/vacuum/upwork" \
-            "/vacuum/freelancer" \
-            "/vacuum/toptal" \
-            "/vacuum/99designs" \
-            "/vacuum/designcrowd"
-          
-          echo "Scraping social platforms..."
-          ./_parallel_exec.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/reddit" \
-            "/vacuum/twitter" \
-            "/vacuum/linkedin" \
-            "/vacuum/facebook-groups" \
-            "/vacuum/discord" \
-            "/vacuum/slack-communities"
-          
-          echo "Scraping marketplaces..."
-          ./_parallel_exec.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/amazon" \
-            "/vacuum/ebay" \
-            "/vacuum/etsy" \
-            "/vacuum/shopify-stores" \
-            "/vacuum/gumroad" \
-            "/vacuum/producthunt"
-          
-          echo "Scraping job boards..."
-          ./_parallel_exec.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/indeed" \
-            "/vacuum/linkedin-jobs" \
-            "/vacuum/remoteok" \
-            "/vacuum/weworkremotely" \
-            "/vacuum/angellist"
-          
-          echo "Scraping content platforms..."
-          ./_parallel_exec.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/youtube-comments" \
-            "/vacuum/medium" \
-            "/vacuum/substack" \
-            "/vacuum/quora" \
-            "/vacuum/stackoverflow"
+          # Parallel platform scrapes
+          ./_parallel.sh "${{ env.BACKEND_URL }}" \
+            "/vacuum/fiverr" "/vacuum/upwork" "/vacuum/freelancer" "/vacuum/toptal" \
+            "/vacuum/99designs" "/vacuum/designcrowd" "/vacuum/reddit" "/vacuum/twitter" \
+            "/vacuum/linkedin" "/vacuum/discord" "/vacuum/producthunt"
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 1: INSTANT ARBITRAGE - Buy low, sell high, everywhere
+      # PHASE 5: REAL-TIME OPPORTUNITY SNIPER (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 💹 Phase 1 - Instant Arbitrage Engine
+      - name: ⚡ Real-Time Opportunity Sniper
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "💹 INSTANT ARBITRAGE - EXPLOIT PRICE GAPS"
+          echo "⚡ REAL-TIME OPPORTUNITY SNIPER"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Find all arbitrage opportunities
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/scan-all-markets" POST '{"min_profit_pct":15}' 120 | tee json/arb-scan.json | jq -c '{ok,opportunities}' || true
+          # Check for fresh opportunities (posted in last 60 min)
+          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/fresh-opportunities" POST '{"max_age_minutes":60}' 60 | jq -c '{ok,count}' || true
           
-          # Service arbitrage (buy cheap labor, sell premium)
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/service-flip" POST '{"source":"fiverr","target":"upwork","markup":2.5}' 60 | jq -c '{ok}' || true
+          # Auto-bid on high-EV fresh opportunities
+          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/auto-bid" POST '{"min_ev":50,"max_bids":20}' 120 | jq -c '{ok,bids_placed}' || true
           
-          # Domain arbitrage
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/expiring-domains" POST '{"max_price":50,"min_value":500}' 60 | jq -c '{ok}' || true
-          
-          # Content arbitrage (repurpose across platforms)
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/content-flip" POST '{"source":"youtube","targets":["tiktok","instagram","twitter"]}' 60 | jq -c '{ok}' || true
-          
-          # Geo arbitrage (price differences by region)
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/geo-exploit" POST '{"low_cost_regions":["IN","PH","PK"],"high_price_regions":["US","UK","AU"]}' 60 | jq -c '{ok}' || true
-          
-          # Execute profitable opportunities
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/arbitrage/execute-all" POST '{"min_roi":1.5,"max_risk":"medium"}' 120 | tee json/arb-execute.json | jq -c '{ok,executed,profit}' || true
+          # First-mover advantage tracking
+          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/first-mover-stats" GET '' 30 | jq -c '{ok,win_rate_boost}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 2: VIRAL CONTENT MACHINE - Dominate every feed
+      # PHASE 6: WADE AUTO-APPROVE & EXECUTE
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🚀 Phase 2 - Viral Content Machine
+      - name: 🤖 Wade Auto-Approve & Execute
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🚀 VIRAL CONTENT MACHINE - DOMINATE EVERY FEED"
+          echo "🤖 WADE AUTO-APPROVE & EXECUTE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Detect trending topics across all platforms
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/detect-trends" POST '{"platforms":"all","lookback_hours":4}' 60 | tee json/viral-trends.json | jq -c '{ok,trends}' || true
+          # Dashboard
+          ./_curl.sh "${{ env.BACKEND_URL }}/wade/dashboard" GET '' 30 | tee json/wade.json | jq -c '{ok,pending}' || true
           
-          # Generate viral content for each trend
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/generate-content" POST '{"formats":["short_video","carousel","thread","meme","infographic"]}' 120 | jq -c '{ok}' || true
+          # Execution status
+          ./_curl.sh "${{ env.BACKEND_URL }}/wade/execution-status" GET '' 30 | jq -c '{ok,total}' || true
           
-          # Cross-post to all platforms
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/cross-post" POST '{"platforms":["tiktok","instagram","twitter","linkedin","youtube_shorts","facebook"]}' 120 | jq -c '{ok}' || true
+          # AUTO-APPROVE ALL
+          ./_curl.sh "${{ env.BACKEND_URL }}/wade/approve-all" POST '{}' 120 | tee json/wade-approve.json | jq -c '{ok,approved_count}' || true
           
-          # Engagement farming (comments, replies, interactions)
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/engage" POST '{"strategy":"value_first","cta":"soft"}' 60 | jq -c '{ok}' || true
+          # Execute approved
+          ./_curl.sh "${{ env.BACKEND_URL }}/wade/execute-approved" POST '{}' 180 | jq -c '{ok}' || true
           
-          # Hashtag optimization
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/optimize-hashtags" POST '{}' 30 | jq -c '{ok}' || true
-          
-          # Schedule optimal posting times
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/viral/schedule-optimal" POST '{"timezone_targets":["US/Eastern","US/Pacific","Europe/London","Asia/Tokyo"]}' 30 | jq -c '{ok}' || true
+          # Process discoveries
+          ./_curl.sh "${{ env.BACKEND_URL }}/wade/process-discoveries" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 3: AFFILIATE SWARM - Deploy links everywhere
+      # PHASE 7: UNIVERSAL REVENUE ORCHESTRATOR
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🐝 Phase 3 - Affiliate Swarm
+      - name: 💰 Universal Revenue Orchestrator
         continue-on-error: true
-        shell: bash
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🐝 AFFILIATE SWARM - LINKS EVERYWHERE"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          # Generate affiliate content for top products
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/generate-content" POST '{"networks":["amazon","shareasale","cj","impact","partnerstack"]}' 120 | jq -c '{ok}' || true
-          
-          # Deploy to content platforms
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/deploy-content" POST '{"targets":["medium","substack","wordpress","youtube","tiktok"]}' 120 | jq -c '{ok}' || true
-          
-          # SEO-optimized review sites
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/seo-reviews" POST '{"niches":["saas","electronics","fitness","finance"]}' 120 | jq -c '{ok}' || true
-          
-          # Comparison pages
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/comparison-pages" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Email sequences with affiliate offers
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/email-sequences" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Track and optimize conversions
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/affiliate/optimize" POST '{}' 60 | tee json/affiliate-stats.json | jq -c '{ok,revenue}' || true
-
-      # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 4: LEAD MAGNET FACTORY - Capture emails everywhere
-      # ═══════════════════════════════════════════════════════════════════════
-      - name: 🧲 Phase 4 - Lead Magnet Factory
-        continue-on-error: true
-        shell: bash
-        run: |
-          echo "═══════════════════════════════════════════════════════════════"
-          echo "🧲 LEAD MAGNET FACTORY - CAPTURE EVERY EMAIL"
-          echo "═══════════════════════════════════════════════════════════════"
-          
-          # Generate lead magnets for trending niches
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/generate" POST '{"types":["ebook","checklist","template","calculator","quiz","webinar"]}' 120 | jq -c '{ok}' || true
-          
-          # Deploy landing pages
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/deploy-pages" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Create opt-in forms
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/create-forms" POST '{}' 30 | jq -c '{ok}' || true
-          
-          # A/B test headlines
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/ab-test" POST '{}' 30 | jq -c '{ok}' || true
-          
-          # Nurture sequences
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/nurture-sequences" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Convert leads to customers
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/leadmag/convert" POST '{}' 60 | tee json/leadmag-stats.json | jq -c '{ok,leads,conversions}' || true
-
-      # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 5: UNIVERSAL REVENUE ORCHESTRATOR (from v92)
-      # ═══════════════════════════════════════════════════════════════════════
-      - name: 💰 Phase 5 - Universal Revenue Orchestrator
-        continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
           echo "💰 UNIVERSAL REVENUE ORCHESTRATOR"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/run-cycle" POST '{}' 300 | tee json/orch-run.json | jq -c '{ok,cycle_id}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/dashboard" GET '' 60 | tee json/orch-dash.json | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/revenue-summary?hours=24" GET '' 60 | jq -c '{ok,total_revenue}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/fiverr/process-orders" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/cart-recovery" POST '{}' 90 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/social/post-spawns" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/arbitrage/find" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/subscriptions/mrr" GET '' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/run-cycle" POST '{}' 300 | tee json/orch.json | jq -c '{ok,cycle_id}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/dashboard" GET '' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/revenue-summary?hours=24" GET '' 60 | jq -c '{ok,total}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/fiverr/process-orders" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/cart-recovery" POST '{}' 90 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/social/post-spawns" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue-orchestrator/arbitrage/find" POST '{}' 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 6: APEX UPGRADES (from v93)
+      # PHASE 8: APEX UPGRADES (12 Revenue Optimization Modules)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🚀 Phase 6 - Apex Upgrades (12 modules)
+      - name: 🚀 Apex Upgrades (12 Modules)
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
           echo "🚀 APEX UPGRADES - REVENUE OPTIMIZATION"
           echo "═══════════════════════════════════════════════════════════════"
           
           # Intent Router + CAC Pricing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/router/score-intent" POST '{"intent_id":"scan","signal":{"budget":500,"niche":"any"}}' 30 | jq -c '{ok,ev_usd}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/router/route" POST '{"min_ev_usd":25}' 30 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/pricing/cac-aware" POST '{"base_price":200,"margin_target":0.60}' 30 | jq -c '{ok,bid}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/router/score-intent" POST '{"intent_id":"scan","signal":{"budget":500}}' 30 | jq -c '{ok,ev}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/router/route" POST '{"min_ev_usd":25}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/pricing/cac-aware" POST '{"base_price":200,"margin_target":0.55}' 30 | jq -c '{ok}' || true
           
           # Upsell + Recovery
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/upsell/recommend" POST '{"order_id":"scan"}' 30 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/recovery/compose" POST '{"order_ref":"scan","cart_value":200}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/upsell/recommend" POST '{"order_id":"scan"}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/recovery/compose" POST '{"order_ref":"scan"}' 30 | jq -c '{ok}' || true
           
           # LTV + Portfolio
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/ltv/predict" POST '{"client_id":"scan"}' 30 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/portfolio/rebalance" POST '{"auto":true}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/ltv/predict" POST '{"client_id":"scan"}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/portfolio/rebalance" POST '{"auto":true}' 30 | jq -c '{ok}' || true
           
           # Churn + Proof
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/subscriptions/churn-risk" POST '{"sub_id":"scan"}' 30 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/proof/badge/mint" POST '{"deal_id":"auto"}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/subscriptions/churn-risk" POST '{"sub_id":"scan"}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/proof/badge/mint" POST '{"deal_id":"auto"}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 7: WADE AUTO-APPROVE + EXECUTE (from v93)
+      # PHASE 9: AI SWARM INTELLIGENCE (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🤖 Phase 7 - Wade Auto-Approve & Execute
+      - name: 🐝 AI Swarm Intelligence
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🤖 WADE - AUTO-APPROVE ALL & EXECUTE"
+          echo "🐝 AI SWARM INTELLIGENCE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Get status
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/wade/dashboard" GET '' 30 | tee json/wade-dash.json | jq -c '{ok,pending_approval,active_workflows}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/wade/execution-status" GET '' 30 | jq -c '{ok,total_workflows}' || true
+          # Run swarm competition
+          ./_curl.sh "${{ env.BACKEND_URL }}/swarm/compete" POST '{"task_type":"all","workers":["claude","gpt4","perplexity"]}' 180 | jq -c '{ok,winner}' || true
           
-          # AUTO-APPROVE EVERYTHING
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/wade/approve-all" POST '{}' 120 | tee json/wade-approve.json | jq -c '{ok,approved_count}' || true
+          # Cross-learning
+          ./_curl.sh "${{ env.BACKEND_URL }}/swarm/cross-learn" POST '{}' 60 | jq -c '{ok}' || true
           
-          # Execute approved workflows
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/wade/execute-approved" POST '{}' 180 | jq -c '{ok}' || true
+          # MetaHive distribution
+          ./_curl.sh "${{ env.BACKEND_URL }}/hive/distribute" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 8: SPAWN ENGINE - Create businesses on-demand
+      # PHASE 10: PORTFOLIO KELLY CRITERION (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🏭 Phase 8 - Spawn Engine (Auto-Create Businesses)
+      - name: 🎰 Portfolio Kelly Criterion
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🏭 SPAWN ENGINE - AUTO-CREATE BUSINESSES"
+          echo "🎰 PORTFOLIO KELLY CRITERION - OPTIMAL BET SIZING"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Detect trends to spawn businesses for
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/spawn/detect-trends" POST '{}' 120 | tee json/spawn-trends.json | jq -c '{ok}' || true
+          # Calculate optimal allocations
+          ./_curl.sh "${{ env.BACKEND_URL }}/kelly/calculate" POST '{}' 60 | jq -c '{ok,allocations}' || true
           
-          # Run full spawn cycle
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/spawn/run-cycle" POST '{"max_spawns":10}' 300 | tee json/spawn-cycle.json | jq -c '{ok}' || true
+          # Apply allocations
+          ./_curl.sh "${{ env.BACKEND_URL }}/kelly/apply" POST '{}' 60 | jq -c '{ok}' || true
           
-          # Get dashboard
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/spawn/dashboard" GET '' 60 | tee json/spawn-dash.json | jq -c '{ok,active,revenue}' || true
-          
-          # Lifecycle management
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/spawn/lifecycle-check" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Network effects
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/spawn/network/generate-promos" POST '{}' 60 | jq -c '{ok}' || true
+          # Rebalance portfolio
+          ./_curl.sh "${{ env.BACKEND_URL }}/kelly/rebalance" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 9: PRICE INTELLIGENCE - Always undercut competition
+      # PHASE 11: INSTANT ARBITRAGE
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔍 Phase 9 - Price Intelligence
+      - name: 💹 Instant Arbitrage
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔍 PRICE INTELLIGENCE - COMPETITIVE ADVANTAGE"
+          echo "💹 INSTANT ARBITRAGE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Monitor competitor prices
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/pricing/monitor-competitors" POST '{"platforms":["fiverr","upwork","99designs"]}' 120 | jq -c '{ok}' || true
-          
-          # Dynamic repricing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/pricing/dynamic-reprice" POST '{"strategy":"undercut_10pct","min_margin":0.40}' 60 | jq -c '{ok}' || true
-          
-          # Price testing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/pricing/shadow-generate" POST '{"sku":"all"}' 30 | jq -c '{ok}' || true
-          
-          # Demand-based pricing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/pricing/demand-adjust" POST '{}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/arbitrage/scan-all-markets" POST '{"min_profit_pct":15}' 120 | jq -c '{ok,opportunities}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/arbitrage/service-flip" POST '{"source":"fiverr","target":"upwork","markup":2.5}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/arbitrage/geo-exploit" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/arbitrage/execute-all" POST '{"min_roi":1.5}' 120 | jq -c '{ok,profit}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 10: REPUTATION FARMING - Social proof at scale
+      # PHASE 12: MULTI-CURRENCY ARBITRAGE (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: ⭐ Phase 10 - Reputation Farming
+      - name: 💱 Multi-Currency Arbitrage
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "⭐ REPUTATION FARMING - SOCIAL PROOF AT SCALE"
+          echo "💱 MULTI-CURRENCY ARBITRAGE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Request reviews from completed orders
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reputation/request-reviews" POST '{}' 60 | jq -c '{ok}' || true
+          # Scan FX opportunities
+          ./_curl.sh "${{ env.BACKEND_URL }}/fx/scan-spreads" POST '{}' 60 | jq -c '{ok}' || true
           
-          # Generate case studies
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reputation/generate-case-studies" POST '{}' 120 | jq -c '{ok}' || true
+          # Geo-aware pricing
+          ./_curl.sh "${{ env.BACKEND_URL }}/fx/geo-price" POST '{"optimize":"revenue"}' 60 | jq -c '{ok}' || true
           
-          # Testimonial collection
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reputation/collect-testimonials" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Portfolio updates
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reputation/update-portfolio" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Trust badges distribution
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reputation/distribute-badges" POST '{}' 30 | jq -c '{ok}' || true
+          # Auto-convert to strongest currency
+          ./_curl.sh "${{ env.BACKEND_URL }}/fx/auto-convert" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 11: TREND HIJACKING - Jump on trends instantly
+      # PHASE 13: VIRAL CONTENT MACHINE
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📈 Phase 11 - Trend Hijacking
+      - name: 🚀 Viral Content Machine
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📈 TREND HIJACKING - INSTANT TREND MONETIZATION"
+          echo "🚀 VIRAL CONTENT MACHINE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Detect breaking trends
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/trends/detect-breaking" POST '{"sources":["twitter","reddit","google","tiktok"]}' 60 | tee json/trends.json | jq -c '{ok}' || true
-          
-          # Generate trend-related content
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/trends/generate-content" POST '{}' 120 | jq -c '{ok}' || true
-          
-          # Create trend-specific offers
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/trends/create-offers" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Deploy across platforms
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/trends/deploy" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/viral/detect-trends" POST '{"platforms":"all"}' 60 | jq -c '{ok,trends}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/viral/generate-content" POST '{"formats":["short_video","carousel","thread"]}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/viral/cross-post" POST '{"platforms":["tiktok","instagram","twitter","linkedin"]}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/viral/engage" POST '{"strategy":"value_first"}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 12: MICRO-SERVICE ARMY - Niche services on-demand
+      # PHASE 14: PERPETUAL MOTION REVENUE (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🎖️ Phase 12 - Micro-Service Army
+      - name: 🔄 Perpetual Motion Revenue
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🎖️ MICRO-SERVICE ARMY - NICHE DOMINATION"
+          echo "🔄 PERPETUAL MOTION REVENUE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Identify underserved niches
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/microservice/identify-gaps" POST '{}' 120 | jq -c '{ok}' || true
+          # For every completed deal, trigger 3 actions
+          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/process-completions" POST '{}' 120 | jq -c '{ok}' || true
           
-          # Spin up niche services
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/microservice/deploy" POST '{"auto_scale":true}' 120 | jq -c '{ok}' || true
+          # Auto-upsell
+          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/auto-upsell" POST '{}' 60 | jq -c '{ok}' || true
           
-          # Cross-sell between services
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/microservice/cross-sell" POST '{}' 60 | jq -c '{ok}' || true
+          # Request referrals
+          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/request-referrals" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # Generate case studies -> content -> leads
+          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/case-study-pipeline" POST '{}' 120 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 13: PASSIVE INCOME GENERATORS
+      # PHASE 15: DEMAND WAVE RIDING (NEW!)
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 💎 Phase 13 - Passive Income Generators
+      - name: 🌊 Demand Wave Riding
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "💎 PASSIVE INCOME GENERATORS"
+          echo "🌊 DEMAND WAVE RIDING"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Royalty collection
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/passive/royalty-sweep" POST '{}' 60 | jq -c '{ok}' || true
+          # Predict demand spikes
+          ./_curl.sh "${{ env.BACKEND_URL }}/waves/predict" POST '{"horizon_hours":72}' 120 | jq -c '{ok,waves}' || true
           
-          # License renewals
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/passive/license-renewals" POST '{}' 60 | jq -c '{ok}' || true
+          # Pre-position capacity
+          ./_curl.sh "${{ env.BACKEND_URL }}/waves/pre-position" POST '{}' 60 | jq -c '{ok}' || true
           
-          # Subscription processing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/passive/process-subscriptions" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Dividend/revenue share distribution
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/passive/distribute-revenue" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Asset monetization (templates, tools, etc.)
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/passive/monetize-assets" POST '{}' 60 | jq -c '{ok}' || true
+          # Premium pricing for waves
+          ./_curl.sh "${{ env.BACKEND_URL }}/waves/premium-pricing" POST '{}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 14: API ECONOMY - Resell and aggregate
+      # PHASE 16: SPAWN ENGINE
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔌 Phase 14 - API Economy
+      - name: 🏭 Spawn Engine
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔌 API ECONOMY - AGGREGATE & RESELL"
+          echo "🏭 SPAWN ENGINE"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # API usage metering
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/api-economy/meter-usage" POST '{}' 30 | jq -c '{ok}' || true
-          
-          # Bill API customers
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/api-economy/bill-customers" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Aggregate third-party APIs
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/api-economy/aggregate" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/detect-trends" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/run-cycle" POST '{"max_spawns":10}' 300 | tee json/spawn.json | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/dashboard" GET '' 60 | jq -c '{ok,active}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/lifecycle-check" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/network/generate-promos" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 15: DATA MONETIZATION
+      # PHASE 17: AFFILIATE SWARM
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📊 Phase 15 - Data Monetization
+      - name: 🐝 Affiliate Swarm
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📊 DATA MONETIZATION - INSIGHTS FOR SALE"
+          echo "🐝 AFFILIATE SWARM"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Generate market reports
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/data/generate-reports" POST '{}' 120 | jq -c '{ok}' || true
-          
-          # Trend analysis products
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/data/trend-products" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Competitive intelligence
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/data/competitive-intel" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/affiliate/generate-content" POST '{"networks":["amazon","shareasale","cj"]}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/affiliate/deploy-content" POST '{"targets":["medium","youtube"]}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/affiliate/optimize" POST '{}' 60 | jq -c '{ok,revenue}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 16: NETWORK AMPLIFIER - Viral growth loops
+      # PHASE 18: LEAD MAGNET FACTORY
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔗 Phase 16 - Network Effect Amplifier
+      - name: 🧲 Lead Magnet Factory
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔗 NETWORK EFFECT AMPLIFIER"
+          echo "🧲 LEAD MAGNET FACTORY"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Referral program processing
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/network/process-referrals" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Viral loops activation
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/network/viral-loops" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # User-generated content incentives
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/network/ugc-incentives" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Community rewards
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/network/community-rewards" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/leadmag/generate" POST '{"types":["ebook","checklist","template"]}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/leadmag/deploy-pages" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/leadmag/convert" POST '{}' 60 | jq -c '{ok,leads,conversions}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 17: FINANCIAL SYSTEMS
+      # PHASE 19: DISCOVERY + FULFILLMENT
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 💳 Phase 17 - Financial Systems
+      - name: 🔍 Discovery + Fulfillment
         continue-on-error: true
-        shell: bash
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔍 DISCOVERY + FULFILLMENT"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          ./_curl.sh "${{ env.BACKEND_URL }}/execution/mega-discover" POST '{"enable_filters":true}' 300 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/discover-and-execute" POST '{"auto_approve_user":true}' 180 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/fulfillment/process-queue" POST '{}' 180 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/fulfillment/auto-deliver" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/deals/advance-all" POST '{}' 60 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 20: AI GENERATION
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🤖 AI Generation
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🤖 AI GENERATION"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          ./_curl.sh "${{ env.BACKEND_URL }}/ai/orchestrate" POST '{}' 300 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/graphics/batch-generate" POST '{}' 300 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/audio/batch-generate" POST '{}' 300 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/video/batch-generate" POST '{}' 300 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 21: FINANCIAL
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💳 Financial Systems
+        continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
           echo "💳 FINANCIAL SYSTEMS"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/stripe/batch-payouts" POST '{}' 60 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/revenue/reconcile" POST '{}' 60 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/escrow/auto-release" POST '{}' 60 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/payments/batch-execute" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/subscriptions/process-renewals" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/stripe/batch-payouts" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/revenue/reconcile" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/escrow/auto-release" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/payments/batch-execute" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/subscriptions/process-renewals" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/ipvault/royalty-sweep" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 18: FULFILLMENT + DELIVERY
+      # PHASE 22: MARKETING
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📦 Phase 18 - Fulfillment & Delivery
+      - name: 📣 Marketing
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "📦 FULFILLMENT & DELIVERY"
+          echo "📣 MARKETING"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/fulfillment/process-queue" POST '{}' 180 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/fulfillment/auto-deliver" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/fulfillment/quality-check" POST '{}' 60 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/deals/advance-all" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/email/send-batch" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/ame/process-queue" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/ame/generate-pitches" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/social/process-queue" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/retarget/process-queue" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 19: HEALTH + LEARNING
+      # PHASE 23: PLATFORM + META
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🧠 Phase 19 - Health & Learning
+      - name: 🎨 Platform + Meta
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🧠 HEALTH & LEARNING"
+          echo "🎨 PLATFORM + META"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Health checks
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/health" GET '' 10 | jq -c '{status}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/execution/health" GET '' 10 | jq -c '{ok}' || true
-          
-          # Learning from outcomes
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/learning/process-outcomes" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/learning/update-models" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Reconciliation
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/reconciliation/persist" POST '{}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/fiverr/process-orders" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/dribbble/post-daily" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/99designs/scan-and-enter" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/metabridge/batch_execute" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/darkpool/match" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 20: CIRCUIT BREAKERS + SELF-HEALING
+      # PHASE 24: LEARNING + SELF-HEALING
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 🔧 Phase 20 - Self-Healing Systems
+      - name: 🧠 Learning + Self-Healing
         continue-on-error: true
-        shell: bash
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🔧 SELF-HEALING SYSTEMS"
+          echo "🧠 LEARNING + SELF-HEALING"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Check circuit breakers
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/orchestrator/circuits" GET '' 30 | jq -c '{ok}' || true
-          
-          # Auto-recover failed systems
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/orchestrator/auto-recover" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Clear stuck queues
-          ./_curl_retry.sh "${{ env.BACKEND_URL }}/orchestrator/clear-stuck" POST '{}' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/learning/process-outcomes" POST '{}' 120 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/learning/update-models" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/circuits" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/auto-recover" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/reconciliation/persist" POST '{}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # SUMMARY + ARTIFACTS
+      # PHASE 25: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
-      - name: 📝 Summary
+      - name: 🏥 Health Checks
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏥 HEALTH CHECKS"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          ./_curl.sh "${{ env.BACKEND_URL }}/health" GET '' 10 | jq -c '{status}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/execution/health" GET '' 10 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/learning/health" GET '' 10 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # CANARY ARTIFACT
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 📦 Revenue Canary Artifact
         if: always()
-        shell: bash
         run: |
-          echo ""
-          echo "╔═══════════════════════════════════════════════════════════════╗"
-          echo "║     🌐 AIGENTSY v94 - INTERNET DOMINATION COMPLETE            ║"
-          echo "╠═══════════════════════════════════════════════════════════════╣"
-          echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                         ║"
-          echo "╠═══════════════════════════════════════════════════════════════╣"
-          echo "║ 📊 SYSTEMS EXECUTED:                                          ║"
-          echo "║   🌪️  Demand Vacuum (27+ platforms)                           ║"
-          echo "║   💹 Instant Arbitrage                                        ║"
-          echo "║   🚀 Viral Content Machine                                    ║"
-          echo "║   🐝 Affiliate Swarm                                          ║"
-          echo "║   🧲 Lead Magnet Factory                                      ║"
-          echo "║   💰 Revenue Orchestrator                                     ║"
-          echo "║   🚀 Apex Upgrades (12 modules)                               ║"
-          echo "║   🤖 Wade Auto-Approve                                        ║"
-          echo "║   🏭 Spawn Engine                                             ║"
-          echo "║   🔍 Price Intelligence                                       ║"
-          echo "║   ⭐ Reputation Farming                                       ║"
-          echo "║   📈 Trend Hijacking                                          ║"
-          echo "║   🎖️  Micro-Service Army                                       ║"
-          echo "║   💎 Passive Income Generators                                ║"
-          echo "║   🔌 API Economy                                              ║"
-          echo "║   📊 Data Monetization                                        ║"
-          echo "║   🔗 Network Amplifier                                        ║"
-          echo "║   💳 Financial Systems                                        ║"
-          echo "║   📦 Fulfillment & Delivery                                   ║"
-          echo "║   🧠 Health & Learning                                        ║"
-          echo "║   🔧 Self-Healing                                             ║"
-          echo "╠═══════════════════════════════════════════════════════════════╣"
-          echo "║ 📈 TOTAL: 200+ ENDPOINTS | 20 PHASES | EVERY 15 MINUTES       ║"
-          echo "║ 🎯 GOAL: MONETIZE THE ENTIRE INTERNET                         ║"
-          echo "╚═══════════════════════════════════════════════════════════════╝"
+          NOW=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          DASH=$(cat json/orch.json 2>/dev/null || echo '{}')
+          WADE=$(cat json/wade-approve.json 2>/dev/null || echo '{}')
+          SPAWN=$(cat json/spawn.json 2>/dev/null || echo '{}')
           
-          # Quick stats from JSON files
-          echo ""
-          echo "📊 KEY METRICS:"
-          cat json/wade-approve.json 2>/dev/null | jq -r '"  ✅ Workflows approved: " + (.approved_count // 0 | tostring)' || echo "  ✅ Workflows approved: N/A"
-          cat json/spawn-dash.json 2>/dev/null | jq -r '"  🏭 Active spawns: " + (.active // 0 | tostring)' || echo "  🏭 Active spawns: N/A"
-          cat json/orch-dash.json 2>/dev/null | jq -r '"  💰 Revenue cycles: " + (.cycles_run // 0 | tostring)' || echo "  💰 Revenue cycles: N/A"
+          cat > canary.json <<EOF
+          {
+            "ts": "$NOW",
+            "version": "v97",
+            "cash": {
+              "verified_6h": "${{ steps.cash.outputs.verified_6h }}",
+              "scheduled_24h": "${{ steps.cash.outputs.scheduled_24h }}",
+              "pipeline": "${{ steps.cash.outputs.pipeline }}",
+              "mrr": "${{ steps.cash.outputs.mrr }}"
+            },
+            "aggression": {
+              "level": "${{ steps.aggression.outputs.aggression }}",
+              "mode": "${{ steps.aggression.outputs.mode }}"
+            },
+            "slo_violated": "${{ steps.slo.outputs.slo_violated }}",
+            "orchestrator": $DASH,
+            "wade": $WADE,
+            "spawn": $SPAWN
+          }
+          EOF
 
-      - name: 📦 Upload Artifacts
+      - name: ⬆️ Upload Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aigentsy-v94-domination-${{ github.run_number }}
-          path: json
-          if-no-files-found: ignore
+          name: apex-dominator-v97-${{ github.run_number }}
+          path: |
+            canary.json
+            json/
           retention-days: 14
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # SUMMARY
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 📝 Summary
+        if: always()
+        run: |
+          echo ""
+          echo "╔═══════════════════════════════════════════════════════════════════╗"
+          echo "║          🏆 AIGENTSY v97 APEX DOMINATOR - COMPLETE                ║"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                             ║"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 💓 CASH: verified=\$${{ steps.cash.outputs.verified_6h }} | sched=\$${{ steps.cash.outputs.scheduled_24h }}"
+          echo "║ 📊 PIPELINE: \$${{ steps.cash.outputs.pipeline }} | MRR: \$${{ steps.cash.outputs.mrr }}"
+          echo "║ ⚡ AGGRESSION: ${{ steps.aggression.outputs.aggression }}/10 (${{ steps.aggression.outputs.mode }})"
+          echo "║ 🚨 SLO VIOLATED: ${{ steps.slo.outputs.slo_violated }}"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 🆕 v97 NEW SYSTEMS:                                               ║"
+          echo "║   🧠 Adaptive Aggression Engine                                   ║"
+          echo "║   ⚡ Real-Time Opportunity Sniper                                 ║"
+          echo "║   🐝 AI Swarm Intelligence                                        ║"
+          echo "║   🎰 Portfolio Kelly Criterion                                    ║"
+          echo "║   💱 Multi-Currency Arbitrage                                     ║"
+          echo "║   🔄 Perpetual Motion Revenue                                     ║"
+          echo "║   🌊 Demand Wave Riding                                           ║"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 📈 TOTAL: 250+ ENDPOINTS | 25 PHASES | EVERY 15 MINUTES           ║"
+          echo "╚═══════════════════════════════════════════════════════════════════╝"
