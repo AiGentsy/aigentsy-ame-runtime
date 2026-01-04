@@ -28197,16 +28197,31 @@ async def approve_wade_workflow(workflow_id: str):
     """Wade approves a workflow - triggers auto-bid"""
     
     if workflow_id not in reconciliation_state["wade_workflows"]:
-        return {"ok": False, "error": "Workflow not found"}
+        # Try to find by partial match or ID
+        matching = [k for k in reconciliation_state["wade_workflows"].keys() if workflow_id in k or k in workflow_id]
+        if matching:
+            workflow_id = matching[0]
+        else:
+            return {"ok": False, "error": f"Workflow not found: {workflow_id}"}
     
     workflow = reconciliation_state["wade_workflows"][workflow_id]
     workflow["stage"] = "wade_approved"
     workflow["approved_at"] = datetime.utcnow().isoformat()
+    
+    # Ensure history exists
+    if "history" not in workflow:
+        workflow["history"] = []
+    
     workflow["history"].append({
         "stage": "wade_approved",
         "timestamp": datetime.utcnow().isoformat(),
         "action": "Wade approved - ready for bidding"
     })
+    
+    # Also update in integrated_workflow if it exists there
+    if WADE_WORKFLOW_AVAILABLE and hasattr(integrated_workflow, 'workflows'):
+        if workflow_id in integrated_workflow.workflows:
+            integrated_workflow.workflows[workflow_id]["stage"] = "wade_approved"
     
     return {"ok": True, "workflow_id": workflow_id, "stage": "wade_approved"}
 
@@ -28216,12 +28231,22 @@ async def reject_wade_workflow(workflow_id: str, reason: str = None):
     """Wade rejects a workflow"""
     
     if workflow_id not in reconciliation_state["wade_workflows"]:
-        return {"ok": False, "error": "Workflow not found"}
+        # Try to find by partial match
+        matching = [k for k in reconciliation_state["wade_workflows"].keys() if workflow_id in k or k in workflow_id]
+        if matching:
+            workflow_id = matching[0]
+        else:
+            return {"ok": False, "error": f"Workflow not found: {workflow_id}"}
     
     workflow = reconciliation_state["wade_workflows"][workflow_id]
     workflow["stage"] = "rejected"
     workflow["rejected_at"] = datetime.utcnow().isoformat()
     workflow["rejection_reason"] = reason
+    
+    # Ensure history exists
+    if "history" not in workflow:
+        workflow["history"] = []
+    
     workflow["history"].append({
         "stage": "rejected",
         "timestamp": datetime.utcnow().isoformat(),
@@ -28998,12 +29023,23 @@ async def wade_process_discoveries(body: Dict = Body(default={})):
             if result.get("workflow_id"):
                 queued.append(result)
                 
-                # Also add to reconciliation
-                reconciliation_state["wade_workflows"][result["workflow_id"]] = {
-                    "id": result["workflow_id"],
+                # Also add to reconciliation with all required fields
+                workflow_id = result["workflow_id"]
+                reconciliation_state["wade_workflows"][workflow_id] = {
+                    "id": workflow_id,
+                    "workflow_id": workflow_id,  # Duplicate for compatibility
                     "opportunity": opp,
+                    "opportunity_id": opp.get("id"),
+                    "title": opp.get("title", opp.get("name", "Opportunity")),
+                    "platform": opp.get("platform", opp.get("source", "Unknown")),
+                    "estimated_value": opp.get("estimated_value", opp.get("value", 0)),
                     "stage": "pending_wade_approval",
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.utcnow().isoformat(),
+                    "history": [{
+                        "stage": "pending_wade_approval",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "action": "Added to Wade approval queue"
+                    }]
                 }
         else:
             skipped.append(opp.get("id"))
