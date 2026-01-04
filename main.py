@@ -29073,6 +29073,14 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
     """
     MASTER ORCHESTRATOR - Runs the complete AiGentsy autonomous cycle
     
+    Now includes Universal Revenue Orchestrator for:
+    - Spawn Engine (autonomous business creation)
+    - Fiverr Orders (process & fulfill)
+    - Cart Recovery (Shopify abandoned carts)
+    - Subscriptions (MRR)
+    - Social Posting (TikTok, Instagram, Twitter)
+    
+    FULL SEQUENCE:
     1. Discovery - Find opportunities across all sources
     2. Routing - Route to users or Wade
     3. AMG Cycle - Optimize monetization
@@ -29082,6 +29090,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
     7. Wade Execution - Fulfill Wade workflows
     8. Learning - Store patterns, contribute to hive
     9. Reconciliation - Track all revenue
+    10. NEW: Universal Revenue Orchestrator (Spawn, Fiverr, Cart Recovery, etc.)
     """
     
     cycle_id = f"cycle_{datetime.utcnow().timestamp()}"
@@ -29155,8 +29164,32 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
             "fees_collected": reconciliation_state["fees_collected"]
         }
         
+        # STEP 9: NEW - Universal Revenue Orchestrator
+        print(f"💰 Step 9: Universal Revenue Orchestrator...")
+        if REVENUE_ORCHESTRATOR_AVAILABLE:
+            try:
+                orchestrator = get_revenue_orchestrator()
+                uro_result = await orchestrator.run_full_cycle()
+                results["steps"]["revenue_orchestrator"] = {
+                    "ok": True,
+                    "spawn": uro_result.get("phases", {}).get("spawn", {}),
+                    "social": uro_result.get("phases", {}).get("social", {}),
+                    "fiverr": uro_result.get("phases", {}).get("fiverr", {}),
+                    "cart_recovery": uro_result.get("phases", {}).get("cart_recovery", {}),
+                    "subscriptions": uro_result.get("phases", {}).get("subscriptions", {}),
+                    "arbitrage": uro_result.get("phases", {}).get("arbitrage", {}),
+                    "revenue": uro_result.get("phases", {}).get("revenue", {})
+                }
+                print(f"   ✅ Revenue Orchestrator completed")
+            except Exception as e:
+                results["steps"]["revenue_orchestrator"] = {"ok": False, "error": str(e)}
+                print(f"   ⚠️ Revenue Orchestrator error: {e}")
+        else:
+            results["steps"]["revenue_orchestrator"] = {"ok": False, "error": "Not available"}
+        
         results["completed_at"] = datetime.utcnow().isoformat()
         results["ok"] = True
+        results["phases_completed"] = len([s for s in results["steps"].values() if s])
         
         return results
     
