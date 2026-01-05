@@ -1,14 +1,15 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy v97 – APEX DOMINATOR
-# The Ultimate Autonomous Money Machine
+# AiGentsy v98 – PROFIT ENGINE
+# The Ultimate Autonomous Money Machine + Financial Discipline
 # January 5, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # FUSES:
+# • v97: APEX DOMINATOR (Adaptive Aggression, Swarm, Kelly, Waves)
 # • v96: Cash-Verified, Profit-First, Self-Healing, SLO Policy
 # • v94: Internet Domination (27+ platforms, Demand Vacuum, Viral Machine)
 # • v93: Apex Upgrades (12 revenue optimization modules)
-# • NEW: Adaptive Aggression, Multi-Currency Arbitrage, AI Swarm Intelligence
+# • NEW v98: PROFIT ENGINE - ROI Gates, Ownership, Backpressure, Pricing Bandit
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 # NEW IN v97 - MASSIVELY ACCRETIVE UPGRADES:
@@ -56,7 +57,7 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v97 APEX DOMINATOR
+name: AiGentsy v98 PROFIT ENGINE
 
 on:
   schedule:
@@ -76,7 +77,7 @@ on:
         type: string
 
 concurrency:
-  group: aigentsy-v97-${{ github.ref }}
+  group: aigentsy-v98-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -88,7 +89,7 @@ env:
 
 jobs:
   apex-dominator:
-    name: "🏆 v97 APEX DOMINATOR (250+ endpoints)"
+    name: "🏦 v98 PROFIT ENGINE (280+ endpoints)"
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -672,7 +673,81 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/reconciliation/persist" POST '{}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 25: HEALTH CHECKS
+      # PHASE 25: 🏦 PROFIT ENGINE - ROI Kill Switch
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 Profit Engine - ROI Kill Switch
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 PROFIT ENGINE - ROI KILL SWITCH"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get active campaigns and check ROI
+          ./_curl.sh "${{ env.BACKEND_URL }}/r3/campaigns/active" GET '' 30 | jq -c '{ok,active_count,killed_count}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 26: 🏦 PROFIT ENGINE - Recovery Cadence
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 Profit Engine - Recovery Cadence
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 PROFIT ENGINE - RECOVERY CADENCE (T+15m/T+23h/T+3d)"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Process recovery queue
+          ./_curl.sh "${{ env.BACKEND_URL }}/recovery/process" POST '{}' 60 | jq -c '{ok,touches_sent,pending}' 2>/dev/null || true
+          
+          # Get recovery stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/recovery/stats" GET '' 30 | jq -c '{ok,recovery_rate,meets_gate}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 27: 🏦 PROFIT ENGINE - Pricing Bandit
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 Profit Engine - Pricing Bandit
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 PROFIT ENGINE - PRICING BANDIT (Thompson Sampling)"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get leaderboard for each segment
+          ./_curl.sh "${{ env.BACKEND_URL }}/pricing/bandit/leaderboard?segment=default" GET '' 30 | jq -c '{ok,leaderboard}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 28: 🏦 PROFIT ENGINE - Experiment Factory
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 Profit Engine - Experiment Factory
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 PROFIT ENGINE - EXPERIMENT FACTORY (10/segment/day)"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Auto-create experiments for default segment
+          ./_curl.sh "${{ env.BACKEND_URL }}/experiments/auto-create" POST '{"segment":"default","count":10}' 60 | jq -c '{ok,created,total_running}' 2>/dev/null || true
+          
+          # Evaluate and retire/scale experiments
+          ./_curl.sh "${{ env.BACKEND_URL }}/experiments/evaluate" POST '{}' 60 | jq -c '{ok,winners,losers}' 2>/dev/null || true
+          
+          # Get dashboard
+          ./_curl.sh "${{ env.BACKEND_URL }}/experiments/dashboard" GET '' 30 | jq -c '{ok,win_rate,meets_gate}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 29: 🏦 PROFIT ENGINE - Backpressure Status
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 Profit Engine - Backpressure
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 PROFIT ENGINE - BACKPRESSURE STATUS"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check slot utilization
+          ./_curl.sh "${{ env.BACKEND_URL }}/backpressure/status" GET '' 30 | jq -c '{ok,slots}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 30: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🏥 Health Checks
         continue-on-error: true
@@ -699,7 +774,7 @@ jobs:
           cat > canary.json <<EOF
           {
             "ts": "$NOW",
-            "version": "v97",
+            "version": "v98",
             "cash": {
               "verified_6h": "${{ steps.cash.outputs.verified_6h }}",
               "scheduled_24h": "${{ steps.cash.outputs.scheduled_24h }}",
@@ -721,7 +796,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: apex-dominator-v97-${{ github.run_number }}
+          name: profit-engine-v98-${{ github.run_number }}
           path: |
             canary.json
             json/
@@ -735,7 +810,7 @@ jobs:
         run: |
           echo ""
           echo "╔═══════════════════════════════════════════════════════════════════╗"
-          echo "║          🏆 AIGENTSY v97 APEX DOMINATOR - COMPLETE                ║"
+          echo "║          🏦 AIGENTSY v98 PROFIT ENGINE - COMPLETE                 ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                             ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
@@ -744,14 +819,14 @@ jobs:
           echo "║ ⚡ AGGRESSION: ${{ steps.aggression.outputs.aggression }}/10 (${{ steps.aggression.outputs.mode }})"
           echo "║ 🚨 SLO VIOLATED: ${{ steps.slo.outputs.slo_violated }}"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 🆕 v97 NEW SYSTEMS:                                               ║"
-          echo "║   🧠 Adaptive Aggression Engine                                   ║"
-          echo "║   ⚡ Real-Time Opportunity Sniper                                 ║"
-          echo "║   🐝 AI Swarm Intelligence                                        ║"
-          echo "║   🎰 Portfolio Kelly Criterion                                    ║"
-          echo "║   💱 Multi-Currency Arbitrage                                     ║"
-          echo "║   🔄 Perpetual Motion Revenue                                     ║"
-          echo "║   🌊 Demand Wave Riding                                           ║"
+          echo "║ 🏦 v98 PROFIT ENGINE SYSTEMS:                                     ║"
+          echo "║   💀 ROI Kill Switch (gate=1.6x, kill=1.2x)                       ║"
+          echo "║   🔑 Unified Idempotency (dedupe across pipeline)                 ║"
+          echo "║   👤 Strict Ownership (deterministic assignment)                  ║"
+          echo "║   🚦 Backpressure + Priorities (reserved slots)                   ║"
+          echo "║   🎰 Pricing Bandit (Thompson sampling)                           ║"
+          echo "║   📧 Recovery Cadence (T+15m/T+23h/T+3d)                          ║"
+          echo "║   🧪 Experiment Factory (10/segment/day)                          ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 📈 TOTAL: 250+ ENDPOINTS | 25 PHASES | EVERY 15 MINUTES           ║"
+          echo "║ 📈 TOTAL: 280+ ENDPOINTS | 30 PHASES | EVERY 15 MINUTES           ║"
           echo "╚═══════════════════════════════════════════════════════════════════╝"
