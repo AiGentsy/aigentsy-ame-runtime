@@ -39,6 +39,7 @@ from business_in_a_box_accelerator import MarketIntelligenceEngine, BusinessDepl
 from research_engine import ResearchEngine, ResearchAnalyzer, UniversalIntelligenceMesh, PredictiveMarketEngine
 from investor_ready_micro_upgrades import register_investor_routes
 from apex_upgrades_api import create_apex_upgrade_routes
+from v97_cash_endpoints import include_v97_cash_endpoints
 from apex_upgrades_overlay import include_overlay
 from opportunity_filters import (
     filter_opportunities,
@@ -905,6 +906,7 @@ except Exception as e:
 app = FastAPI()
 
 register_investor_routes(app)
+include_v97_cash_endpoints(app)
 include_overlay(app)
 create_apex_upgrade_routes(app)
 integrated_workflow = IntegratedFulfillmentWorkflow(use_existing_systems=True)
