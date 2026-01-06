@@ -45,10 +45,12 @@ try:
     OUTCOME_AVAILABLE = True
 except:
     try:
-        from outcome_oracle_max import on_event
+        from outcome_oracle_max import OutcomeOracle
         OUTCOME_AVAILABLE = True
     except:
         OUTCOME_AVAILABLE = False
+        class OutcomeOracle:  # Stub class
+            def __init__(self): pass
 
 try:
     from execution_scorer import ExecutionScorer
