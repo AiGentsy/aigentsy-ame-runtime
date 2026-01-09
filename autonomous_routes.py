@@ -100,7 +100,7 @@ async def discover_and_execute(
     
     # STEP 1: Discover opportunities
     discovery_engine = AlphaDiscoveryEngine()
-    discovery_results = await discovery_engine.discover_all()
+    discovery_results = await discovery_engine.discover_and_route(score_opportunities=True)
     
     # STEP 2: Execute approved opportunities
     executor = get_executor()
