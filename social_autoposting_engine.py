@@ -1568,6 +1568,234 @@ async def social_strategy(username: str, platforms: str = "tiktok,instagram"):
     strategy = await engine.get_optimal_posting_strategy(username, platform_list)
     return {"ok": True, **strategy}
 '''
+async def post_to_twitter_direct(text: str) -> dict:
+    """
+    Post directly to Twitter/X using OAuth 1.0a with env var credentials.
+    Uses the 4 keys: API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET
+    """
+    
+    api_key = os.getenv("TWITTER_API_KEY")
+    api_secret = os.getenv("TWITTER_API_SECRET")
+    access_token = os.getenv("TWITTER_ACCESS_TOKEN")
+    access_secret = os.getenv("TWITTER_ACCESS_SECRET")
+    
+    if not all([api_key, api_secret, access_token, access_secret]):
+        return {"success": False, "error": "Missing Twitter credentials in env"}
+    
+    # Twitter API v2 endpoint
+    url = "https://api.twitter.com/2/tweets"
+    
+    # OAuth 1.0a signature generation
+    oauth_params = {
+        "oauth_consumer_key": api_key,
+        "oauth_token": access_token,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(int(time.time())),
+        "oauth_nonce": hashlib.md5(str(time.time()).encode()).hexdigest(),
+        "oauth_version": "1.0"
+    }
+    
+    # Create signature base string
+    method = "POST"
+    params_string = "&".join([f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}" 
+                              for k, v in sorted(oauth_params.items())])
+    base_string = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(params_string, safe='')}"
+    
+    # Create signing key
+    signing_key = f"{urllib.parse.quote(api_secret, safe='')}&{urllib.parse.quote(access_secret, safe='')}"
+    
+    # Generate signature
+    signature = base64.b64encode(
+        hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
+    ).decode()
+    
+    oauth_params["oauth_signature"] = signature
+    
+    # Build Authorization header
+    auth_header = "OAuth " + ", ".join([f'{k}="{urllib.parse.quote(v, safe="")}"' 
+                                         for k, v in sorted(oauth_params.items())])
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": auth_header,
+                    "Content-Type": "application/json"
+                },
+                json={"text": text[:280]}  # Twitter limit
+            )
+            
+            if response.status_code in [200, 201]:
+                data = response.json()
+                return {
+                    "success": True,
+                    "platform": "twitter",
+                    "tweet_id": data.get("data", {}).get("id"),
+                    "text": text[:280]
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.text,
+                    "status_code": response.status_code
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
+async def post_to_instagram_direct(caption: str, image_url: str = None) -> dict:
+    """
+    Post to Instagram using Graph API with env var credentials.
+    Note: Instagram requires a media URL for posts (can't do text-only)
+    """
+    
+    access_token = os.getenv("INSTAGRAM_ACCESS_TOKEN")
+    business_id = os.getenv("INSTAGRAM_BUSINESS_ID")
+    
+    if not access_token or not business_id:
+        return {"success": False, "error": "Missing Instagram credentials in env"}
+    
+    if not image_url:
+        return {"success": False, "error": "Instagram requires an image_url for posts"}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # Step 1: Create media container
+            container_response = await client.post(
+                f"https://graph.facebook.com/v18.0/{business_id}/media",
+                params={
+                    "image_url": image_url,
+                    "caption": caption,
+                    "access_token": access_token
+                }
+            )
+            
+            if container_response.status_code != 200:
+                return {"success": False, "error": container_response.text}
+            
+            container_id = container_response.json().get("id")
+            
+            # Step 2: Publish the container
+            publish_response = await client.post(
+                f"https://graph.facebook.com/v18.0/{business_id}/media_publish",
+                params={
+                    "creation_id": container_id,
+                    "access_token": access_token
+                }
+            )
+            
+            if publish_response.status_code == 200:
+                return {
+                    "success": True,
+                    "platform": "instagram",
+                    "post_id": publish_response.json().get("id")
+                }
+            else:
+                return {"success": False, "error": publish_response.text}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
+async def post_to_linkedin_direct(text: str) -> dict:
+    """
+    Post to LinkedIn using env var access token.
+    """
+    
+    access_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+    
+    if not access_token:
+        return {"success": False, "error": "Missing LinkedIn credentials in env"}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # Get user URN first
+            profile_response = await client.get(
+                "https://api.linkedin.com/v2/me",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if profile_response.status_code != 200:
+                return {"success": False, "error": f"Failed to get profile: {profile_response.text}"}
+            
+            user_urn = f"urn:li:person:{profile_response.json().get('id')}"
+            
+            # Create post
+            post_data = {
+                "author": user_urn,
+                "lifecycleState": "PUBLISHED",
+                "specificContent": {
+                    "com.linkedin.ugc.ShareContent": {
+                        "shareCommentary": {"text": text},
+                        "shareMediaCategory": "NONE"
+                    }
+                },
+                "visibility": {
+                    "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+                }
+            }
+            
+            response = await client.post(
+                "https://api.linkedin.com/v2/ugcPosts",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0"
+                },
+                json=post_data
+            )
+            
+            if response.status_code in [200, 201]:
+                return {
+                    "success": True,
+                    "platform": "linkedin",
+                    "post_id": response.headers.get("x-restli-id")
+                }
+            else:
+                return {"success": False, "error": response.text}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
+async def send_sms_direct(to: str, message: str) -> dict:
+    """
+    Send SMS using Twilio env var credentials.
+    """
+    
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_PHONE_NUMBER")
+    
+    if not all([account_sid, auth_token, from_number]):
+        return {"success": False, "error": "Missing Twilio credentials in env"}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+                auth=(account_sid, auth_token),
+                data={
+                    "To": to,
+                    "From": from_number,
+                    "Body": message
+                }
+            )
+            
+            if response.status_code in [200, 201]:
+                data = response.json()
+                return {
+                    "success": True,
+                    "platform": "twilio",
+                    "message_sid": data.get("sid"),
+                    "to": to
+                }
+            else:
+                return {"success": False, "error": response.text}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     print("=" * 70)
