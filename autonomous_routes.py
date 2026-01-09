@@ -123,8 +123,7 @@ async def discover_and_execute(
                     execution_id=result.get('execution_id'),
                     platform=opportunity.get('platform'),
                     value=opportunity.get('value', 0),
-                    user=opp_data.get('routed_to'),
-                    status='pending'
+                    user=opp_data.get('routed_to')
                 )
     
     # Execute AiGentsy opportunities (if Wade approves)
@@ -144,8 +143,7 @@ async def discover_and_execute(
                     execution_id=result.get('execution_id'),
                     platform=opportunity.get('platform'),
                     value=opportunity.get('value', 0),
-                    user=None,  # AiGentsy opportunity
-                    status='pending'
+                    user=None  # AiGentsy opportunity
                 )
     
     return {
