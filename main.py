@@ -16970,6 +16970,89 @@ async def protocol_register(body: Dict = Body(...)):
     )
 
 
+@app.post("/direct/twitter")
+async def direct_twitter_post(body: Dict = Body(...)):
+    """Post directly to AiGentsy's Twitter using env var keys"""
+    text = body.get("text", body.get("content", ""))
+    if not text:
+        return {"ok": False, "error": "text required"}
+    
+    from social_autoposting_engine import post_to_twitter_direct
+    result = await post_to_twitter_direct(text)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/direct/instagram")
+async def direct_instagram_post(body: Dict = Body(...)):
+    """Post directly to AiGentsy's Instagram using env var keys"""
+    caption = body.get("caption", body.get("text", ""))
+    image_url = body.get("image_url")
+    
+    if not caption:
+        return {"ok": False, "error": "caption required"}
+    if not image_url:
+        return {"ok": False, "error": "image_url required for Instagram"}
+    
+    from social_autoposting_engine import post_to_instagram_direct
+    result = await post_to_instagram_direct(caption, image_url)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/direct/linkedin")
+async def direct_linkedin_post(body: Dict = Body(...)):
+    """Post directly to AiGentsy's LinkedIn using env var keys"""
+    text = body.get("text", body.get("content", ""))
+    if not text:
+        return {"ok": False, "error": "text required"}
+    
+    from social_autoposting_engine import post_to_linkedin_direct
+    result = await post_to_linkedin_direct(text)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/direct/sms")
+async def direct_sms(body: Dict = Body(...)):
+    """Send SMS using AiGentsy's Twilio account"""
+    to = body.get("to")
+    message = body.get("message", body.get("text", ""))
+    
+    if not to or not message:
+        return {"ok": False, "error": "to and message required"}
+    
+    from social_autoposting_engine import send_sms_direct
+    result = await send_sms_direct(to, message)
+    return {"ok": result.get("success", False), **result}
+
+
+@app.post("/direct/all")
+async def direct_post_all(body: Dict = Body(...)):
+    """Post to all AiGentsy's social accounts at once"""
+    text = body.get("text", body.get("content", ""))
+    platforms = body.get("platforms", ["twitter", "linkedin"])
+    
+    if not text:
+        return {"ok": False, "error": "text required"}
+    
+    from social_autoposting_engine import post_to_twitter_direct, post_to_linkedin_direct
+    
+    results = {}
+    
+    if "twitter" in platforms:
+        results["twitter"] = await post_to_twitter_direct(text)
+    
+    if "linkedin" in platforms:
+        results["linkedin"] = await post_to_linkedin_direct(text)
+    
+    successes = sum(1 for r in results.values() if r.get("success"))
+    
+    return {
+        "ok": successes > 0,
+        "posted_to": successes,
+        "total_platforms": len(results),
+        "results": results
+    }
+
+
 # ==================== SETTLEMENT ====================
 
 @app.post("/protocol/settle")
