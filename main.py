@@ -10,7 +10,7 @@ import time as _time
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
 # ============================
-import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64
+import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from mint_generator import get_mint_generator
