@@ -1149,6 +1149,172 @@ def get_monetization_engine() -> MonetizationEngine:
 # CONVENIENCE FUNCTIONS (for API endpoints)
 # ============================================================
 
+def generate_frontend_scripts(strategy: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Generate frontend JavaScript snippets from a monetization strategy.
+    Wrapper for compatibility with ame_amg_endpoints.py
+    
+    Args:
+        strategy: The strategy dict returned by generate_monetization_strategy
+        
+    Returns:
+        Dict of script names to JavaScript code
+    """
+    # If strategy already has scripts, return them
+    if 'scripts' in strategy:
+        return strategy['scripts']
+    
+    # Otherwise generate from tactics
+    tactics = strategy.get('tactics', [])
+    config = strategy.get('config', {})
+    
+    scripts = {}
+    
+    for tactic_data in tactics:
+        tactic = tactic_data.get('tactic')
+        if hasattr(tactic, 'value'):
+            tactic = tactic.value
+        
+        if tactic == 'aigx_bonus':
+            scripts['aigx_banner'] = f"""
+// AIGx Bonus Banner
+(function() {{
+    const banner = document.createElement('div');
+    banner.id = 'aigx-bonus-banner';
+    banner.innerHTML = '<div style="background: linear-gradient(90deg, #8B5CF6 0%, #EC4899 100%); color: white; padding: 12px; text-align: center; font-weight: bold;">{tactic_data.get('message', 'Earn AIGx with your purchase!')}</div>';
+    document.body.prepend(banner);
+}})();
+"""
+        
+        elif tactic == 'exit_intent':
+            scripts['exit_intent'] = f"""
+// Exit Intent Popup
+document.addEventListener('mouseout', function(e) {{
+    if (e.clientY < 10 && !window.exitShown) {{
+        window.exitShown = true;
+        showModal({{
+            title: '{tactic_data.get('message', 'Wait! Special offer before you go!')}',
+            discount: {tactic_data.get('discount_pct', 20)}
+        }});
+    }}
+}});
+"""
+        
+        elif tactic == 'scarcity':
+            scripts['scarcity'] = f"""
+// Scarcity Indicator
+document.querySelectorAll('.inventory-count').forEach(el => {{
+    el.innerHTML = '<span class="text-red-600 animate-pulse">{tactic_data.get('message', 'Limited stock!')}</span>';
+}});
+"""
+        
+        elif tactic == 'time_sensitive':
+            scripts['countdown'] = f"""
+// Countdown Timer
+(function() {{
+    let minutes = {tactic_data.get('expires_minutes', 30)};
+    const timer = setInterval(() => {{
+        minutes--;
+        document.getElementById('offer-countdown').innerText = minutes + ' minutes left';
+        if (minutes <= 0) clearInterval(timer);
+    }}, 60000);
+}})();
+"""
+        
+        elif tactic == 'social_proof':
+            scripts['social_proof'] = f"""
+// Social Proof Notifications
+setInterval(() => {{
+    showToast('{tactic_data.get('message', 'Someone just purchased!')}', 'info');
+}}, 45000);
+"""
+        
+        elif tactic == 'first_discount':
+            scripts['first_discount'] = f"""
+// First Time Visitor Discount
+setTimeout(() => {{
+    showModal({{
+        title: '{tactic_data.get('message', 'Welcome! Get 15% off your first order')}',
+        code: '{tactic_data.get('code', 'FIRST15')}',
+        discount: {tactic_data.get('discount_pct', 15)}
+    }});
+}}, 5000);
+"""
+    
+    # Tracking script always included
+    scripts['tracking'] = """
+// Conversion Tracking
+window.trackEvent = function(event, data) {
+    fetch('/traffic/event', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({event: event, data: data, ts: Date.now()})
+    });
+};
+"""
+    
+    return scripts
+
+
+def optimize_tactics(conversions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Analyze conversions to optimize tactic selection per platform.
+    Used by AMG for continuous improvement.
+    
+    Args:
+        conversions: List of conversion records
+        
+    Returns:
+        Optimization insights per traffic source
+    """
+    if not conversions:
+        return {'ok': True, 'message': 'No conversions to analyze', 'optimizations': {}}
+    
+    # Group by source
+    by_source = {}
+    for conv in conversions:
+        source = conv.get('source', 'unknown')
+        if hasattr(source, 'value'):
+            source = source.value
+        if source not in by_source:
+            by_source[source] = []
+        by_source[source].append(conv)
+    
+    # Analyze each source
+    optimizations = {}
+    for source, source_convs in by_source.items():
+        tactic_counts = {}
+        tactic_revenue = {}
+        
+        for conv in source_convs:
+            tactic = conv.get('primary_tactic', 'none')
+            if hasattr(tactic, 'value'):
+                tactic = tactic.value
+            amount = float(conv.get('purchase_amount', 0) or conv.get('total', 0) or 0)
+            
+            tactic_counts[tactic] = tactic_counts.get(tactic, 0) + 1
+            tactic_revenue[tactic] = tactic_revenue.get(tactic, 0) + amount
+        
+        best_tactic = max(tactic_revenue.keys(), key=lambda t: tactic_revenue[t]) if tactic_revenue else None
+        total_revenue = sum(tactic_revenue.values())
+        
+        optimizations[source] = {
+            'total_conversions': len(source_convs),
+            'total_revenue': round(total_revenue, 2),
+            'tactic_counts': tactic_counts,
+            'tactic_revenue': {k: round(v, 2) for k, v in tactic_revenue.items()},
+            'best_tactic': best_tactic,
+            'avg_order_value': round(total_revenue / len(source_convs), 2) if source_convs else 0
+        }
+    
+    return {
+        'ok': True,
+        'optimizations': optimizations,
+        'total_sources_analyzed': len(by_source),
+        'analyzed_at': datetime.now(timezone.utc).isoformat()
+    }
+
+
 async def parse_and_track_visitor(
     url: str,
     referrer: str = "",
