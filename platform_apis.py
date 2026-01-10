@@ -832,6 +832,15 @@ class RedditExecutor:
         title = opportunity.get('title', '')
         description = opportunity.get('description', '')[:200]
         source_data = opportunity.get('source_data', {})
+        url = opportunity.get('url', '')
+        
+        # Extract post_id from URL if not in source_data
+        post_id = source_data.get('post_id')
+        if not post_id and url:
+            import re
+            match = re.search(r'/comments/([a-zA-Z0-9]+)/', url)
+            if match:
+                post_id = match.group(1)
         
         # Generate helpful, non-spammy response
         comment_text = f"""I might be able to help with this!
@@ -843,7 +852,7 @@ Feel free to DM me if you'd like to discuss further. No pressure - happy to shar
         
         return {
             'comment_text': comment_text,
-            'post_id': source_data.get('post_id') or opportunity.get('id'),
+            'post_id': post_id,
             'subreddit': source_data.get('subreddit', 'unknown'),
             'opportunity_id': opportunity.get('id')
         }
