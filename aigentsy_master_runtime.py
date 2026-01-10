@@ -694,6 +694,114 @@ except ImportError as e:
     SYSTEMS['template_variations'] = False
     print(f"❌ template_variations: {e}")
 
+# ----- INTERNET DOMINATION ENGINE -----
+try:
+    from internet_domination_engine import router as internet_domination_router
+    SYSTEMS['internet_domination'] = True
+    print("✅ internet_domination_engine (27+ platforms)")
+except ImportError as e:
+    SYSTEMS['internet_domination'] = False
+    print(f"❌ internet_domination_engine: {e}")
+
+# ----- AUTO-SPAWN ENGINE -----
+try:
+    from auto_spawn_engine import SpawnEngine, detect_opportunities, spawn_business
+    SYSTEMS['auto_spawn'] = True
+    print("✅ auto_spawn_engine (AI Venture Factory)")
+except ImportError as e:
+    SYSTEMS['auto_spawn'] = False
+    print(f"❌ auto_spawn_engine: {e}")
+
+# ----- DRIBBBLE PORTFOLIO -----
+try:
+    from dribbble_portfolio_automation import DribbbleAutomation, TrendAnalyzer
+    SYSTEMS['dribbble_automation'] = True
+    print("✅ dribbble_portfolio_automation")
+except ImportError as e:
+    SYSTEMS['dribbble_automation'] = False
+    print(f"❌ dribbble_portfolio_automation: {e}")
+
+# ----- ESCROW LITE -----
+try:
+    from escrow_lite import create_payment_intent, capture_payment, cancel_payment, auto_capture_on_delivered
+    SYSTEMS['escrow_lite'] = True
+    print("✅ escrow_lite (Auth→Capture)")
+except ImportError as e:
+    SYSTEMS['escrow_lite'] = False
+    print(f"❌ escrow_lite: {e}")
+
+# ----- OPENAI AGENT DEPLOYER -----
+try:
+    from openai_agent_deployer import deploy_ai_agents, AGENT_CONFIGS
+    SYSTEMS['openai_agent_deployer'] = True
+    print("✅ openai_agent_deployer (4 agents per user)")
+except ImportError as e:
+    SYSTEMS['openai_agent_deployer'] = False
+    print(f"❌ openai_agent_deployer: {e}")
+
+# ----- CURRENCY ENGINE -----
+try:
+    from currency_engine import convert_currency, credit_currency, debit_currency, transfer_with_conversion
+    SYSTEMS['currency_engine'] = True
+    print("✅ currency_engine (AIGx, USD, EUR, GBP)")
+except ImportError as e:
+    SYSTEMS['currency_engine'] = False
+    print(f"❌ currency_engine: {e}")
+
+# ----- SPONSOR POOLS -----
+try:
+    from sponsor_pools import create_sponsor_pool, apply_sponsor_discount, get_active_pools
+    SYSTEMS['sponsor_pools'] = True
+    print("✅ sponsor_pools (Co-Op Outcome Pools)")
+except ImportError as e:
+    SYSTEMS['sponsor_pools'] = False
+    print(f"❌ sponsor_pools: {e}")
+
+# ----- 99DESIGNS AUTOMATION -----
+try:
+    from ninety_nine_designs_automation import ContestDiscovery, DesignContestEngine
+    SYSTEMS['99designs_automation'] = True
+    print("✅ ninety_nine_designs_automation")
+except ImportError as e:
+    SYSTEMS['99designs_automation'] = False
+    print(f"❌ ninety_nine_designs_automation: {e}")
+
+# ----- DEVICE OAUTH CONNECTOR -----
+try:
+    from device_oauth_connector import initiate_oauth, complete_oauth, get_user_tokens
+    SYSTEMS['device_oauth'] = True
+    print("✅ device_oauth_connector")
+except ImportError as e:
+    SYSTEMS['device_oauth'] = False
+    print(f"❌ device_oauth_connector: {e}")
+
+# ----- DARK POOL AUCTIONS -----
+try:
+    from dark_pool import create_auction, submit_anonymous_bid, reveal_winner
+    SYSTEMS['dark_pool'] = True
+    print("✅ dark_pool (Anonymous auctions)")
+except ImportError as e:
+    SYSTEMS['dark_pool'] = False
+    print(f"❌ dark_pool: {e}")
+
+# ----- OPPORTUNITY ENGAGEMENT -----
+try:
+    from opportunity_engagement import OpportunityEngagement
+    SYSTEMS['opportunity_engagement'] = True
+    print("✅ opportunity_engagement")
+except ImportError as e:
+    SYSTEMS['opportunity_engagement'] = False
+    print(f"❌ opportunity_engagement: {e}")
+
+# ----- MINT GENERATOR -----
+try:
+    from mint_generator import MintGenerator, get_mint_generator
+    SYSTEMS['mint_generator'] = True
+    print("✅ mint_generator")
+except ImportError as e:
+    SYSTEMS['mint_generator'] = False
+    print(f"❌ mint_generator: {e}")
+
 # ----- INTEGRATION -----
 try:
     from universal_integration_layer import RevenueIntelligenceMesh, UniversalAIRouter
