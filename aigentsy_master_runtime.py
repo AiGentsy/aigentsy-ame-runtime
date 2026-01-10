@@ -129,7 +129,7 @@ SYSTEMS = {}
 
 # ----- DISCOVERY -----
 try:
-    from alpha_discovery_engine import discover_all_opportunities, AlphaDiscoveryEngine
+    from alpha_discovery_engine import AlphaDiscoveryEngine
     SYSTEMS['alpha_discovery'] = True
     print("✅ alpha_discovery_engine")
 except ImportError as e:
@@ -145,12 +145,7 @@ except ImportError as e:
     print(f"❌ ultimate_discovery_engine: {e}")
 
 try:
-    from advanced_discovery_dimensions import (
-        PredictiveIntelligenceEngine,
-        NetworkAmplificationEngine,
-        OpportunityCreationEngine,
-        EmergentPatternEngine
-    )
+    from advanced_discovery_dimensions import PredictiveIntelligenceEngine
     SYSTEMS['advanced_discovery'] = True
     print("✅ advanced_discovery_dimensions (Dims 4-7)")
 except ImportError as e:
@@ -166,7 +161,7 @@ except ImportError as e:
     print(f"❌ discovery_to_queue_connector: {e}")
 
 try:
-    from real_signal_ingestion import get_signal_engine, ingest_all_signals
+    from real_signal_ingestion import get_signal_engine
     SYSTEMS['signal_ingestion'] = True
     print("✅ real_signal_ingestion")
 except ImportError as e:
@@ -174,7 +169,7 @@ except ImportError as e:
     print(f"❌ real_signal_ingestion: {e}")
 
 try:
-    from pain_point_detector import detect_pain_points
+    from pain_point_detector import PainPointDetector
     SYSTEMS['pain_detector'] = True
     print("✅ pain_point_detector")
 except ImportError as e:
@@ -227,7 +222,7 @@ except ImportError as e:
     print(f"❌ platform_apis: {e}")
 
 try:
-    from aigentsy_conductor import AigentsyConductor, get_conductor
+    from aigentsy_conductor import MultiAIRouter
     SYSTEMS['conductor'] = True
     print("✅ aigentsy_conductor")
 except ImportError as e:
@@ -277,7 +272,7 @@ except ImportError as e:
     print(f"❌ amg_orchestrator: {e}")
 
 try:
-    from r3_autopilot import execute_autopilot_spend, get_autopilot_status
+    from r3_autopilot import execute_autopilot_spend
     SYSTEMS['r3'] = True
     print("✅ r3_autopilot")
 except ImportError as e:
@@ -360,12 +355,12 @@ except ImportError as e:
 
 # ----- FINANCIAL -----
 try:
-    from ocl_p2p_lending import request_loan, get_available_stakes
+    from ocl_engine import calculate_ocl_limit, spend_ocl
     SYSTEMS['ocl'] = True
-    print("✅ ocl_p2p_lending")
+    print("✅ ocl_engine")
 except ImportError as e:
     SYSTEMS['ocl'] = False
-    print(f"❌ ocl_p2p_lending: {e}")
+    print(f"❌ ocl_engine: {e}")
 
 try:
     from agent_factoring import request_factoring_advance
@@ -376,7 +371,7 @@ except ImportError as e:
     print(f"❌ agent_factoring: {e}")
 
 try:
-    from aigx_engine import get_aigx_balance, credit_aigx as aigx_credit
+    from aigx_engine import create_activity_endpoints
     SYSTEMS['aigx'] = True
     print("✅ aigx_engine")
 except ImportError as e:
@@ -393,7 +388,7 @@ except ImportError as e:
     print(f"❌ jv_mesh: {e}")
 
 try:
-    from value_chain_engine import discover_value_chain, execute_value_chain
+    from value_chain_engine import discover_value_chain
     SYSTEMS['value_chain'] = True
     print("✅ value_chain_engine")
 except ImportError as e:
@@ -402,7 +397,7 @@ except ImportError as e:
 
 # ----- MONETIZATION -----
 try:
-    from third_party_monetization import ThirdPartyMonetizationEngine, process_traffic_event
+    from third_party_monetization import get_monetization_engine
     SYSTEMS['third_party_monetization'] = True
     print("✅ third_party_monetization")
 except ImportError as e:
@@ -410,7 +405,7 @@ except ImportError as e:
     print(f"❌ third_party_monetization: {e}")
 
 try:
-    from revenue_reconciliation_engine import RevenueReconciliationEngine, reconcile_entries
+    from revenue_reconciliation_engine import get_reconciliation_engine
     SYSTEMS['revenue_reconciliation'] = True
     print("✅ revenue_reconciliation_engine")
 except ImportError as e:
@@ -470,7 +465,7 @@ except ImportError as e:
 
 # ----- GROWTH & BOOSTERS -----
 try:
-    from booster_engine import apply_booster, get_active_boosters, calculate_total_multiplier
+    from booster_engine import get_active_boosters
     SYSTEMS['booster_engine'] = True
     print("✅ booster_engine")
 except ImportError as e:
@@ -478,7 +473,7 @@ except ImportError as e:
     print(f"❌ booster_engine: {e}")
 
 try:
-    from platform_recruitment_engine import PlatformRecruitmentEngine, generate_recruitment_cta
+    from platform_recruitment_engine import get_recruitment_engine
     SYSTEMS['recruitment_engine'] = True
     print("✅ platform_recruitment_engine")
 except ImportError as e:
@@ -487,7 +482,7 @@ except ImportError as e:
 
 # ----- ARBITRAGE -----
 try:
-    from arbitrage_execution_pipeline import ArbitrageExecutor, execute_arbitrage
+    from arbitrage_execution_pipeline import get_arbitrage_pipeline
     SYSTEMS['arbitrage_pipeline'] = True
     print("✅ arbitrage_execution_pipeline")
 except ImportError as e:
@@ -496,7 +491,7 @@ except ImportError as e:
 
 # ----- FRANCHISE & BUSINESS -----
 try:
-    from franchise_engine import create_franchise_license, get_franchise_stats
+    from franchise_engine import LICENSE_TYPES
     SYSTEMS['franchise_engine'] = True
     print("✅ franchise_engine")
 except ImportError as e:
@@ -521,7 +516,7 @@ except ImportError as e:
 
 # ----- PROTOCOL & REGISTRY -----
 try:
-    from aigx_protocol import AIGxProtocol, get_protocol
+    from aigx_protocol import get_protocol
     SYSTEMS['aigx_protocol'] = True
     print("✅ aigx_protocol")
 except ImportError as e:
@@ -538,7 +533,7 @@ except ImportError as e:
 
 # ----- RECONCILIATION -----
 try:
-    from autonomous_reconciliation_engine import AutonomousReconciliationEngine, get_reconciliation_summary
+    from autonomous_reconciliation_engine import ReconciliationEngine
     SYSTEMS['autonomous_reconciliation'] = True
     print("✅ autonomous_reconciliation_engine")
 except ImportError as e:
@@ -547,7 +542,7 @@ except ImportError as e:
 
 # ----- PRICING & PROFIT -----
 try:
-    from intelligent_pricing_autopilot import PricingAutopilot, optimize_bid_price
+    from intelligent_pricing_autopilot import get_pricing_autopilot
     SYSTEMS['pricing_autopilot'] = True
     print("✅ intelligent_pricing_autopilot")
 except ImportError as e:
@@ -555,7 +550,7 @@ except ImportError as e:
     print(f"❌ intelligent_pricing_autopilot: {e}")
 
 try:
-    from profit_engine_v98 import ProfitGates, check_roi_gate
+    from profit_engine_v98 import include_profit_engine
     SYSTEMS['profit_engine'] = True
     print("✅ profit_engine_v98")
 except ImportError as e:
@@ -564,7 +559,7 @@ except ImportError as e:
 
 # ----- METAHIVE PUBLIC API -----
 try:
-    from open_metahive_api import OpenMetaHiveAPI, contribute_pattern, get_patterns
+    from open_metahive_api import get_metahive_api
     SYSTEMS['open_metahive_api'] = True
     print("✅ open_metahive_api (External AI contributions)")
 except ImportError as e:
@@ -573,7 +568,7 @@ except ImportError as e:
 
 # ----- INDUSTRY & KNOWLEDGE -----
 try:
-    from industry_knowledge import INDUSTRY_TEMPLATES, get_industry_config
+    from industry_knowledge import INDUSTRY_TEMPLATES
     SYSTEMS['industry_knowledge'] = True
     print("✅ industry_knowledge (50+ industries)")
 except ImportError as e:
@@ -591,7 +586,7 @@ except ImportError as e:
 
 # ----- DIAGNOSTICS -----
 try:
-    from diagnostic_tracer import check_environment, trace_full_cycle
+    from diagnostic_tracer import include_diagnostic_tracer
     SYSTEMS['diagnostic_tracer'] = True
     print("✅ diagnostic_tracer")
 except ImportError as e:
@@ -609,7 +604,7 @@ except ImportError as e:
 
 # ----- AME/AMG ENDPOINTS -----
 try:
-    from ame_amg_endpoints import track_visit_handler, track_conversion_handler, amg_optimize_handler
+    from ame_amg_endpoints import router as ame_amg_router
     SYSTEMS['ame_amg_endpoints'] = True
     print("✅ ame_amg_endpoints")
 except ImportError as e:
@@ -618,7 +613,7 @@ except ImportError as e:
 
 # ----- SYNDICATION & CROSS-NETWORK -----
 try:
-    from syndication import syndicate_intent, create_royalty_trail, PARTNER_NETWORKS
+    from syndication import Syndication
     SYSTEMS['syndication'] = True
     print("✅ syndication (Cross-network routing)")
 except ImportError as e:
@@ -627,7 +622,7 @@ except ImportError as e:
 
 # ----- STATE MONEY (ESCROW) -----
 try:
-    from state_money import transition_deal_state, create_escrow_hold, release_escrow, STATE_TRANSITIONS
+    from state_money import StateMachine
     SYSTEMS['state_money'] = True
     print("✅ state_money (State-driven escrow)")
 except ImportError as e:
@@ -645,7 +640,7 @@ except ImportError as e:
 
 # ----- METABRIDGE (TEAM FORMATION) -----
 try:
-    from metabridge import analyze_intent_complexity, find_complementary_agents, form_team
+    from metabridge import analyze_intent_complexity, find_complementary_agents
     SYSTEMS['metabridge'] = True
     print("✅ metabridge (Team formation)")
 except ImportError as e:
@@ -662,16 +657,16 @@ except ImportError as e:
 
 # ----- WADE BIDDING SYSTEM -----
 try:
-    from wade_bidding_system import generate_bid_proposal, submit_bid, monitor_bids, OpportunityStatus
+    from auto_bidding_orchestrator import auto_bid_on_opportunity
     SYSTEMS['wade_bidding'] = True
-    print("✅ wade_bidding_system")
+    print("✅ auto_bidding_orchestrator")
 except ImportError as e:
     SYSTEMS['wade_bidding'] = False
-    print(f"❌ wade_bidding_system: {e}")
+    print(f"❌ auto_bidding_orchestrator: {e}")
 
 # ----- TEMPLATE SYSTEMS -----
 try:
-    from template_library import LEGAL_TEMPLATES, SAAS_TEMPLATES, MARKETING_TEMPLATES, get_template
+    from template_library import KIT_SUMMARY
     SYSTEMS['template_library'] = True
     print("✅ template_library")
 except ImportError as e:
@@ -705,7 +700,7 @@ except ImportError as e:
 
 # ----- AUTO-SPAWN ENGINE -----
 try:
-    from auto_spawn_engine import SpawnEngine, detect_opportunities, spawn_business
+    from auto_spawn_engine import get_engine as get_spawn_engine
     SYSTEMS['auto_spawn'] = True
     print("✅ auto_spawn_engine (AI Venture Factory)")
 except ImportError as e:
@@ -750,7 +745,7 @@ except ImportError as e:
 
 # ----- SPONSOR POOLS -----
 try:
-    from sponsor_pools import create_sponsor_pool, apply_sponsor_discount, get_active_pools
+    from sponsor_pools import create_sponsor_pool, get_active_pools
     SYSTEMS['sponsor_pools'] = True
     print("✅ sponsor_pools (Co-Op Outcome Pools)")
 except ImportError as e:
@@ -759,7 +754,7 @@ except ImportError as e:
 
 # ----- 99DESIGNS AUTOMATION -----
 try:
-    from ninety_nine_designs_automation import ContestDiscovery, DesignContestEngine
+    from ninety_nine_designs_automation import DesignContestAutomation
     SYSTEMS['99designs_automation'] = True
     print("✅ ninety_nine_designs_automation")
 except ImportError as e:
@@ -768,7 +763,7 @@ except ImportError as e:
 
 # ----- DEVICE OAUTH CONNECTOR -----
 try:
-    from device_oauth_connector import initiate_oauth, complete_oauth, get_user_tokens
+    from device_oauth_connector import initiate_oauth, complete_oauth
     SYSTEMS['device_oauth'] = True
     print("✅ device_oauth_connector")
 except ImportError as e:
@@ -777,7 +772,7 @@ except ImportError as e:
 
 # ----- DARK POOL AUCTIONS -----
 try:
-    from dark_pool import create_auction, submit_anonymous_bid, reveal_winner
+    from dark_pool import create_dark_pool_auction, submit_dark_pool_bid
     SYSTEMS['dark_pool'] = True
     print("✅ dark_pool (Anonymous auctions)")
 except ImportError as e:
@@ -804,7 +799,7 @@ except ImportError as e:
 
 # ----- DEALGRAPH (Core State Machine) -----
 try:
-    from dealgraph import create_deal, transition_deal, calculate_revenue_split, DealState
+    from dealgraph import create_deal, DealState
     SYSTEMS['dealgraph'] = True
     print("✅ dealgraph (Unified state machine)")
 except ImportError as e:
@@ -840,7 +835,7 @@ except ImportError as e:
 
 # ----- APEX ULTRA (Master Integration) -----
 try:
-    from aigentsy_apex_ultra import ApexUltra, run_apex_cycle
+    from aigentsy_apex_ultra import activate_apex_ultra
     SYSTEMS['apex_ultra'] = True
     print("✅ aigentsy_apex_ultra (50+ systems integrated)")
 except ImportError as e:
