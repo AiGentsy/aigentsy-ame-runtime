@@ -604,7 +604,11 @@ except ImportError as e:
 
 # ----- AME/AMG ENDPOINTS -----
 try:
-    from ame_amg_endpoints import include_ame_amg_routes
+    from ame_amg_endpoints import (
+        track_visit_handler,
+        track_conversion_handler,
+        amg_optimize_handler
+    )
     SYSTEMS['ame_amg_endpoints'] = True
     print("✅ ame_amg_endpoints")
 except ImportError as e:
@@ -613,7 +617,12 @@ except ImportError as e:
 
 # ----- SYNDICATION & CROSS-NETWORK -----
 try:
-    from syndication import router as syndication_router
+    from syndication import (
+        create_syndication_route,
+        find_best_network,
+        PARTNER_NETWORKS,
+        SYNDICATION_REASONS
+    )
     SYSTEMS['syndication'] = True
     print("✅ syndication (Cross-network routing)")
 except ImportError as e:
