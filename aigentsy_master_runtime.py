@@ -533,7 +533,7 @@ except ImportError as e:
 
 # ----- RECONCILIATION -----
 try:
-    from autonomous_reconciliation_engine import ReconciliationEngine
+    from autonomous_reconciliation_engine import AutonomousReconciliationEngine
     SYSTEMS['autonomous_reconciliation'] = True
     print("✅ autonomous_reconciliation_engine")
 except ImportError as e:
@@ -604,7 +604,7 @@ except ImportError as e:
 
 # ----- AME/AMG ENDPOINTS -----
 try:
-    from ame_amg_endpoints import router as ame_amg_router
+    from ame_amg_endpoints import include_ame_amg_routes
     SYSTEMS['ame_amg_endpoints'] = True
     print("✅ ame_amg_endpoints")
 except ImportError as e:
@@ -613,7 +613,7 @@ except ImportError as e:
 
 # ----- SYNDICATION & CROSS-NETWORK -----
 try:
-    from syndication import Syndication
+    from syndication import router as syndication_router
     SYSTEMS['syndication'] = True
     print("✅ syndication (Cross-network routing)")
 except ImportError as e:
@@ -622,7 +622,7 @@ except ImportError as e:
 
 # ----- STATE MONEY (ESCROW) -----
 try:
-    from state_money import StateMachine
+    from state_money import STATE_TRANSITIONS
     SYSTEMS['state_money'] = True
     print("✅ state_money (State-driven escrow)")
 except ImportError as e:
@@ -745,7 +745,7 @@ except ImportError as e:
 
 # ----- SPONSOR POOLS -----
 try:
-    from sponsor_pools import create_sponsor_pool, get_active_pools
+    from sponsor_pools import create_sponsor_pool
     SYSTEMS['sponsor_pools'] = True
     print("✅ sponsor_pools (Co-Op Outcome Pools)")
 except ImportError as e:
