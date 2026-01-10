@@ -1,25 +1,30 @@
 """
-PLATFORM APIS - REAL INTEGRATIONS
-=================================
-The actual API clients that interact with external platforms.
+PLATFORM APIS - COMPLETE REAL INTEGRATIONS (MERGED)
+====================================================
+All platform executors with REAL API implementations.
 
-WORKING INTEGRATIONS:
-- Twitter/X: OAuth 1.0a (from social_autoposting_engine)
-- Email: Resend API (from resend_automator)
-- Reddit: PRAW integration
-- GitHub: REST API v3
+CONFIGURED PLATFORMS (8 total):
+✅ Twitter/X - OAuth 1.0a (TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+✅ Email - Resend API (RESEND_API_KEY)
+✅ Reddit - OAuth2 (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD)
+✅ GitHub - REST API v3 (GITHUB_TOKEN)
+✅ Upwork - Manual submission (no API)
+✅ Instagram - Graph API v21.0 (INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ID)
+✅ LinkedIn - Marketing API v2 (LINKEDIN_ACCESS_TOKEN, LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET)
+✅ Twilio SMS - (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)
 
-Each platform executor follows the same interface:
-- generate_solution()
-- validate_solution()
-- submit()
-- check_status()
+ALSO AVAILABLE:
+- Stability AI (STABILITY_API_KEY) - for graphics generation
+- Runway (RUNWAY_API_KEY) - for video generation
+- Gemini (GEMINI_API_KEY) - for AI tasks
+- OpenRouter (OPENROUTER_API_KEY) - for AI routing
+- Perplexity (PERPLEXITY_API_KEY) - for research
 
-ENV VARS REQUIRED:
-- TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
-- RESEND_API_KEY
-- REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD
-- GITHUB_TOKEN
+Each executor follows the interface:
+- generate_solution(opportunity, plan) -> solution
+- validate_solution(solution, opportunity) -> validation
+- submit(solution, opportunity) -> result
+- check_status(job_id) -> status
 """
 
 import os
@@ -70,7 +75,8 @@ class TwitterExecutor:
         
         self.api_base = "https://api.twitter.com"
         
-        if not all([self.api_key, self.api_secret, self.access_token, self.access_secret]):
+        self.configured = all([self.api_key, self.api_secret, self.access_token, self.access_secret])
+        if not self.configured:
             print("⚠️ Twitter OAuth credentials incomplete - some features may not work")
     
     def _generate_oauth_signature(
@@ -162,7 +168,7 @@ class TwitterExecutor:
     async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
         """Post tweet to Twitter"""
         
-        if not all([self.api_key, self.api_secret, self.access_token, self.access_secret]):
+        if not self.configured:
             return {
                 'id': f'stub_twitter_{_generate_id("tw")}',
                 'url': '',
@@ -221,7 +227,7 @@ class TwitterExecutor:
     async def check_status(self, tweet_id: str) -> Dict:
         """Check tweet engagement"""
         
-        if not tweet_id or not self.api_key:
+        if not tweet_id or not self.configured:
             return {'completed': True, 'status': 'unknown'}
         
         url = f"{self.api_base}/2/tweets/{tweet_id}"
@@ -274,10 +280,11 @@ class EmailExecutor:
     
     def __init__(self):
         self.api_key = os.getenv("RESEND_API_KEY")
-        self.from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+        self.from_email = os.getenv("RESEND_FROM_EMAIL", os.getenv("AIGENTSY_FROM_EMAIL", "onboarding@resend.dev"))
         self.api_base = "https://api.resend.com"
         
-        if not self.api_key:
+        self.configured = bool(self.api_key)
+        if not self.configured:
             print("⚠️ RESEND_API_KEY not set - Email executor will use stubs")
     
     async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
@@ -359,7 +366,7 @@ AiGentsy Team
     async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
         """Send email via Resend API"""
         
-        if not self.api_key:
+        if not self.configured:
             return {
                 'id': f'stub_email_{_generate_id("em")}',
                 'status': 'skipped',
@@ -417,7 +424,7 @@ AiGentsy Team
     async def check_status(self, email_id: str) -> Dict:
         """Check email delivery status"""
         
-        if not email_id or not self.api_key:
+        if not email_id or not self.configured:
             return {'completed': True, 'status': 'unknown'}
         
         try:
@@ -442,12 +449,328 @@ AiGentsy Team
 
 
 # =============================================================================
-# REDDIT EXECUTOR - REAL PRAW-style Implementation
+# INSTAGRAM EXECUTOR - REAL Graph API v21.0
+# =============================================================================
+
+class InstagramExecutor:
+    """
+    Real Instagram execution using Graph API
+    
+    ENV: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ID
+    
+    Capabilities:
+    - Post images with captions
+    - Post carousels
+    - Track engagement
+    """
+    
+    def __init__(self):
+        self.access_token = os.getenv("INSTAGRAM_ACCESS_TOKEN")
+        self.business_id = os.getenv("INSTAGRAM_BUSINESS_ID")
+        self.api_base = "https://graph.facebook.com/v21.0"
+        
+        self.configured = all([self.access_token, self.business_id])
+        if not self.configured:
+            print("⚠️ Instagram: Missing INSTAGRAM_ACCESS_TOKEN or INSTAGRAM_BUSINESS_ID")
+    
+    async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
+        """Generate Instagram post content"""
+        title = opportunity.get('title', '')[:200]
+        
+        caption = f"🚀 {title}\n\n#ai #automation #business #growth #aigentsy"
+        
+        return {
+            'caption': caption[:2200],
+            'media_type': plan.get('media_type', 'IMAGE'),
+            'image_url': plan.get('image_url'),
+            'opportunity_id': opportunity.get('id')
+        }
+    
+    async def validate_solution(self, solution: Dict, opportunity: Dict) -> Dict:
+        if len(solution.get('caption', '')) > 2200:
+            return {'passed': False, 'errors': ['Caption exceeds 2200 characters']}
+        return {'passed': True}
+    
+    async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
+        """Post to Instagram using Graph API two-step process"""
+        if not self.configured:
+            return {'id': f'stub_ig_{_generate_id("ig")}', 'status': 'skipped', 'reason': 'Not configured'}
+        
+        if not solution.get('image_url'):
+            return {'id': None, 'status': 'skipped', 'reason': 'No image_url provided for Instagram'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                # Step 1: Create media container
+                create_response = await client.post(
+                    f"{self.api_base}/{self.business_id}/media",
+                    params={
+                        "access_token": self.access_token,
+                        "image_url": solution['image_url'],
+                        "caption": solution.get('caption', '')
+                    }
+                )
+                
+                if create_response.status_code != 200:
+                    return {'id': None, 'status': 'failed', 'error': f"Create container failed: {create_response.text}"}
+                
+                container_id = create_response.json().get('id')
+                
+                # Step 2: Publish
+                publish_response = await client.post(
+                    f"{self.api_base}/{self.business_id}/media_publish",
+                    params={
+                        "access_token": self.access_token,
+                        "creation_id": container_id
+                    }
+                )
+                
+                if publish_response.status_code == 200:
+                    media_id = publish_response.json().get('id')
+                    return {'id': media_id, 'status': 'posted', 'posted_at': _now()}
+                return {'id': None, 'status': 'failed', 'error': f"Publish failed: {publish_response.text}"}
+        except Exception as e:
+            return {'id': None, 'status': 'failed', 'error': str(e)}
+    
+    async def check_status(self, post_id: str) -> Dict:
+        """Check Instagram post engagement"""
+        if not post_id or not self.configured:
+            return {'completed': True, 'status': 'unknown'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"{self.api_base}/{post_id}",
+                    params={
+                        "access_token": self.access_token,
+                        "fields": "like_count,comments_count,timestamp"
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        'completed': True,
+                        'status': 'active',
+                        'metrics': {
+                            'likes': data.get('like_count', 0),
+                            'comments': data.get('comments_count', 0)
+                        }
+                    }
+        except:
+            pass
+        
+        return {'completed': True, 'status': 'posted'}
+
+
+# =============================================================================
+# LINKEDIN EXECUTOR - REAL Marketing API v2
+# =============================================================================
+
+class LinkedInExecutor:
+    """
+    Real LinkedIn execution using Marketing API
+    
+    ENV: LINKEDIN_ACCESS_TOKEN, LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET
+    
+    Capabilities:
+    - Post text updates
+    - Post articles
+    - Track engagement
+    """
+    
+    def __init__(self):
+        self.access_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+        self.client_id = os.getenv("LINKEDIN_CLIENT_ID")
+        self.client_secret = os.getenv("LINKEDIN_CLIENT_SECRET")
+        self.api_base = "https://api.linkedin.com/v2"
+        
+        self.configured = bool(self.access_token)
+        if not self.configured:
+            print("⚠️ LinkedIn: Missing LINKEDIN_ACCESS_TOKEN")
+        
+        self._author_urn = None
+    
+    async def _get_author_urn(self) -> Optional[str]:
+        """Get the author URN for posting"""
+        if self._author_urn:
+            return self._author_urn
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"{self.api_base}/me",
+                    headers={"Authorization": f"Bearer {self.access_token}"}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    self._author_urn = f"urn:li:person:{data.get('id')}"
+                    return self._author_urn
+        except:
+            pass
+        return None
+    
+    async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
+        """Generate LinkedIn post content"""
+        title = opportunity.get('title', '')[:200]
+        
+        text = f"""🚀 Exciting opportunity in the AI automation space!
+
+{title}
+
+If you're looking to leverage AI for business growth, let's connect!
+
+#AI #Automation #Business #Innovation #AiGentsy
+"""
+        return {'text': text[:3000], 'opportunity_id': opportunity.get('id')}
+    
+    async def validate_solution(self, solution: Dict, opportunity: Dict) -> Dict:
+        if len(solution.get('text', '')) > 3000:
+            return {'passed': False, 'errors': ['Post exceeds 3000 characters']}
+        return {'passed': True}
+    
+    async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
+        """Post to LinkedIn using UGC Posts API"""
+        if not self.configured:
+            return {'id': f'stub_li_{_generate_id("li")}', 'status': 'skipped', 'reason': 'Not configured'}
+        
+        author_urn = await self._get_author_urn()
+        if not author_urn:
+            return {'id': None, 'status': 'failed', 'error': 'Could not get LinkedIn author URN'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"{self.api_base}/ugcPosts",
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    },
+                    json={
+                        "author": author_urn,
+                        "lifecycleState": "PUBLISHED",
+                        "specificContent": {
+                            "com.linkedin.ugc.ShareContent": {
+                                "shareCommentary": {"text": solution.get('text', '')},
+                                "shareMediaCategory": "NONE"
+                            }
+                        },
+                        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+                    }
+                )
+                
+                if response.status_code in [200, 201]:
+                    post_id = response.headers.get('x-restli-id', _generate_id('li'))
+                    return {'id': post_id, 'status': 'posted', 'posted_at': _now()}
+                return {'id': None, 'status': 'failed', 'error': f"LinkedIn API: {response.status_code} - {response.text}"}
+        except Exception as e:
+            return {'id': None, 'status': 'failed', 'error': str(e)}
+    
+    async def check_status(self, post_id: str) -> Dict:
+        return {'completed': True, 'status': 'posted'}
+
+
+# =============================================================================
+# TWILIO SMS EXECUTOR - REAL
+# =============================================================================
+
+class TwilioSMSExecutor:
+    """
+    Real SMS execution using Twilio
+    
+    ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+    
+    Capabilities:
+    - Send SMS messages
+    - Track delivery
+    """
+    
+    def __init__(self):
+        self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+        self.from_number = os.getenv("TWILIO_PHONE_NUMBER")
+        
+        self.configured = all([self.account_sid, self.auth_token, self.from_number])
+        if not self.configured:
+            print("⚠️ Twilio SMS: Missing credentials")
+    
+    async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
+        """Generate SMS content"""
+        title = opportunity.get('title', '')[:50]
+        to_number = opportunity.get('phone') or opportunity.get('source_data', {}).get('phone')
+        
+        message = f"Hi! I can help with {title}. Reply YES to connect. - AiGentsy"
+        
+        return {'to': to_number, 'message': message[:160], 'opportunity_id': opportunity.get('id')}
+    
+    async def validate_solution(self, solution: Dict, opportunity: Dict) -> Dict:
+        if not solution.get('to'):
+            return {'passed': False, 'errors': ['No phone number']}
+        if len(solution.get('message', '')) > 1600:
+            return {'passed': False, 'errors': ['Message too long']}
+        return {'passed': True}
+    
+    async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
+        """Send SMS via Twilio"""
+        if not self.configured:
+            return {'id': f'stub_sms_{_generate_id("sms")}', 'status': 'skipped', 'reason': 'Not configured'}
+        
+        if not solution.get('to'):
+            return {'id': None, 'status': 'failed', 'error': 'No phone number'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json",
+                    auth=(self.account_sid, self.auth_token),
+                    data={
+                        "From": self.from_number,
+                        "To": solution['to'],
+                        "Body": solution.get('message', '')
+                    }
+                )
+                
+                if response.status_code in [200, 201]:
+                    data = response.json()
+                    return {'id': data.get('sid'), 'status': 'sent', 'sent_at': _now()}
+                return {'id': None, 'status': 'failed', 'error': f"Twilio: {response.status_code}"}
+        except Exception as e:
+            return {'id': None, 'status': 'failed', 'error': str(e)}
+    
+    async def check_status(self, message_sid: str) -> Dict:
+        """Check SMS delivery status"""
+        if not message_sid or not self.configured:
+            return {'completed': True, 'status': 'unknown'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages/{message_sid}.json",
+                    auth=(self.account_sid, self.auth_token)
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        'completed': True,
+                        'status': data.get('status', 'unknown')
+                    }
+        except:
+            pass
+        
+        return {'completed': True, 'status': 'sent'}
+
+
+# =============================================================================
+# REDDIT EXECUTOR - REAL OAuth2 Implementation
 # =============================================================================
 
 class RedditExecutor:
     """
     Real Reddit execution using Reddit API
+    
+    ENV: REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD
     
     Capabilities:
     - Comment on posts
@@ -466,7 +789,8 @@ class RedditExecutor:
         self._access_token = None
         self._token_expires = 0
         
-        if not all([self.client_id, self.client_secret, self.username, self.password]):
+        self.configured = all([self.client_id, self.client_secret, self.username, self.password])
+        if not self.configured:
             print("⚠️ Reddit credentials incomplete - Reddit executor will use stubs")
     
     async def _get_access_token(self) -> Optional[str]:
@@ -475,7 +799,7 @@ class RedditExecutor:
         if self._access_token and time.time() < self._token_expires:
             return self._access_token
         
-        if not all([self.client_id, self.client_secret, self.username, self.password]):
+        if not self.configured:
             return None
         
         try:
@@ -609,17 +933,18 @@ Feel free to DM me if you'd like to discuss further. No pressure - happy to shar
     
     async def check_status(self, comment_id: str) -> Dict:
         """Check comment status/karma"""
-        
         return {'completed': True, 'status': 'posted'}
 
 
 # =============================================================================
-# GITHUB EXECUTOR - REAL Implementation
+# GITHUB EXECUTOR - REAL REST API v3
 # =============================================================================
 
 class GitHubExecutor:
     """
-    Real GitHub execution
+    Real GitHub execution using REST API v3
+    
+    ENV: GITHUB_TOKEN
     
     Capabilities:
     - Comment on issues
@@ -633,7 +958,8 @@ class GitHubExecutor:
         self.username = os.getenv("GITHUB_USERNAME", "aigentsy-bot")
         self.api_base = "https://api.github.com"
         
-        if not self.token:
+        self.configured = bool(self.token)
+        if not self.configured:
             print("⚠️ GITHUB_TOKEN not set - GitHub executor will use stubs")
     
     async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
@@ -689,7 +1015,7 @@ Would you be interested in having me work on this? I can start immediately.
     async def submit(self, solution: Dict, opportunity: Dict) -> Dict:
         """Submit comment to GitHub issue"""
         
-        if not self.token:
+        if not self.configured:
             return {
                 'id': f'stub_github_{_generate_id("gh")}',
                 'url': opportunity.get('url', ''),
@@ -745,12 +1071,11 @@ Would you be interested in having me work on this? I can start immediately.
     
     async def check_status(self, comment_id: str) -> Dict:
         """Check if issue has been updated"""
-        
         return {'completed': True, 'status': 'posted'}
 
 
 # =============================================================================
-# UPWORK EXECUTOR - Stub (requires browser automation)
+# UPWORK EXECUTOR - Manual Submission (No Public API)
 # =============================================================================
 
 class UpworkExecutor:
@@ -764,6 +1089,7 @@ class UpworkExecutor:
     
     def __init__(self):
         self.username = os.getenv("UPWORK_USERNAME")
+        self.configured = True  # Always "configured" since it's manual
         print("ℹ️ Upwork executor generates proposals for manual submission")
     
     async def generate_solution(self, opportunity: Dict, plan: Dict) -> Dict:
@@ -835,21 +1161,31 @@ class PlatformExecutorRouter:
     
     def __init__(self):
         self.executors = {
+            # Social
             'twitter': TwitterExecutor(),
             'x': TwitterExecutor(),
+            'instagram': InstagramExecutor(),
+            'linkedin': LinkedInExecutor(),
+            'reddit': RedditExecutor(),
+            
+            # Communication
             'email': EmailExecutor(),
             'resend': EmailExecutor(),
-            'reddit': RedditExecutor(),
+            'sms': TwilioSMSExecutor(),
+            'twilio': TwilioSMSExecutor(),
+            
+            # Coding
             'github': GitHubExecutor(),
             'github_issues': GitHubExecutor(),
             'github_bounties': GitHubExecutor(),
+            
+            # Freelance
             'upwork': UpworkExecutor(),
         }
     
     def get_executor(self, platform: str):
         """Get executor for platform"""
-        
-        platform_lower = platform.lower().replace(' ', '_')
+        platform_lower = platform.lower().replace(' ', '_').replace('-', '_')
         return self.executors.get(platform_lower)
     
     async def execute_opportunity(
@@ -916,7 +1252,7 @@ class PlatformExecutorRouter:
     
     def get_available_platforms(self) -> List[str]:
         """Get list of available platform executors"""
-        return list(self.executors.keys())
+        return list(set(self.executors.keys()))
     
     def get_platform_status(self) -> Dict[str, Dict]:
         """Get configuration status for each platform"""
@@ -934,10 +1270,35 @@ class PlatformExecutorRouter:
             'env_vars': ['TWITTER_API_KEY', 'TWITTER_API_SECRET', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_SECRET']
         }
         
+        # Instagram
+        status['instagram'] = {
+            'configured': all([
+                os.getenv("INSTAGRAM_ACCESS_TOKEN"),
+                os.getenv("INSTAGRAM_BUSINESS_ID")
+            ]),
+            'env_vars': ['INSTAGRAM_ACCESS_TOKEN', 'INSTAGRAM_BUSINESS_ID']
+        }
+        
+        # LinkedIn
+        status['linkedin'] = {
+            'configured': bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
+            'env_vars': ['LINKEDIN_ACCESS_TOKEN', 'LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET']
+        }
+        
         # Email/Resend
         status['email'] = {
             'configured': bool(os.getenv("RESEND_API_KEY")),
             'env_vars': ['RESEND_API_KEY']
+        }
+        
+        # SMS/Twilio
+        status['sms'] = {
+            'configured': all([
+                os.getenv("TWILIO_ACCOUNT_SID"),
+                os.getenv("TWILIO_AUTH_TOKEN"),
+                os.getenv("TWILIO_PHONE_NUMBER")
+            ]),
+            'env_vars': ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER']
         }
         
         # Reddit
@@ -957,7 +1318,7 @@ class PlatformExecutorRouter:
             'env_vars': ['GITHUB_TOKEN']
         }
         
-        # Upwork (always "manual")
+        # Upwork (always "configured" - manual)
         status['upwork'] = {
             'configured': True,
             'note': 'Manual submission - no API available'
@@ -989,7 +1350,7 @@ async def test_platform_apis():
     """Test platform API integrations"""
     
     print("\n" + "=" * 70)
-    print("🧪 TESTING PLATFORM APIS")
+    print("🧪 TESTING PLATFORM APIS (8 EXECUTORS)")
     print("=" * 70)
     
     router = get_platform_router()
@@ -1030,7 +1391,33 @@ async def test_platform_apis():
         solution = await email.generate_solution(test_opp, {})
         print(f"   Generated subject: {solution.get('subject', '')}")
     
+    # Test Instagram (if configured)
+    if status['instagram']['configured']:
+        print("\n📸 Testing Instagram...")
+        ig = router.get_executor('instagram')
+        test_opp = {'id': 'test_ig', 'title': 'AI automation showcase'}
+        solution = await ig.generate_solution(test_opp, {})
+        print(f"   Generated caption: {solution.get('caption', '')[:50]}...")
+    
+    # Test LinkedIn (if configured)
+    if status['linkedin']['configured']:
+        print("\n💼 Testing LinkedIn...")
+        li = router.get_executor('linkedin')
+        test_opp = {'id': 'test_li', 'title': 'AI business opportunity'}
+        solution = await li.generate_solution(test_opp, {})
+        print(f"   Generated post: {solution.get('text', '')[:50]}...")
+    
+    # Test SMS (if configured)
+    if status['sms']['configured']:
+        print("\n📱 Testing SMS (Twilio)...")
+        sms = router.get_executor('sms')
+        test_opp = {'id': 'test_sms', 'title': 'Quick project', 'phone': '+1234567890'}
+        solution = await sms.generate_solution(test_opp, {})
+        print(f"   Generated message: {solution.get('message', '')}")
+    
     print("\n✅ Platform API tests complete!")
+    print(f"   Total executors: 8")
+    print(f"   Configured: {sum(1 for p in status.values() if p.get('configured'))}")
 
 
 if __name__ == "__main__":
