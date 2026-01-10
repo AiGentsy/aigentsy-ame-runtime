@@ -802,6 +802,42 @@ except ImportError as e:
     SYSTEMS['mint_generator'] = False
     print(f"❌ mint_generator: {e}")
 
+# ----- DEALGRAPH (Core State Machine) -----
+try:
+    from dealgraph import create_deal, transition_deal, calculate_revenue_split, DealState
+    SYSTEMS['dealgraph'] = True
+    print("✅ dealgraph (Unified state machine)")
+except ImportError as e:
+    SYSTEMS['dealgraph'] = False
+    print(f"❌ dealgraph: {e}")
+
+# ----- EXECUTION ROUTES -----
+try:
+    from execution_routes import router as execution_router
+    SYSTEMS['execution_routes'] = True
+    print("✅ execution_routes")
+except ImportError as e:
+    SYSTEMS['execution_routes'] = False
+    print(f"❌ execution_routes: {e}")
+
+# ----- INTENT EXCHANGE -----
+try:
+    from intent_exchange import router as intent_router
+    SYSTEMS['intent_exchange'] = True
+    print("✅ intent_exchange (90-second auctions)")
+except ImportError as e:
+    SYSTEMS['intent_exchange'] = False
+    print(f"❌ intent_exchange: {e}")
+
+# ----- LTV FORECASTER -----
+try:
+    from ltv_forecaster import calculate_ltv_with_churn, calculate_churn_risk, suggest_retention_campaign
+    SYSTEMS['ltv_forecaster'] = True
+    print("✅ ltv_forecaster")
+except ImportError as e:
+    SYSTEMS['ltv_forecaster'] = False
+    print(f"❌ ltv_forecaster: {e}")
+
 # ----- INTEGRATION -----
 try:
     from universal_integration_layer import RevenueIntelligenceMesh, UniversalAIRouter
