@@ -847,6 +847,78 @@ except ImportError as e:
     SYSTEMS['apex_ultra'] = False
     print(f"❌ aigentsy_apex_ultra: {e}")
 
+# ----- SUPABASE PROVISIONER -----
+try:
+    from supabase_provisioner import provision_database, delete_database, DATABASE_SCHEMAS
+    SYSTEMS['supabase_provisioner'] = True
+    print("✅ supabase_provisioner")
+except ImportError as e:
+    SYSTEMS['supabase_provisioner'] = False
+    print(f"❌ supabase_provisioner: {e}")
+
+# ----- AGENT SPENDING -----
+try:
+    from agent_spending import check_spending_capacity, execute_agent_spend, agent_to_agent_payment, get_spending_summary, AL_LIMITS
+    SYSTEMS['agent_spending'] = True
+    print("✅ agent_spending (AL0-AL5 budgets)")
+except ImportError as e:
+    SYSTEMS['agent_spending'] = False
+    print(f"❌ agent_spending: {e}")
+
+# ----- AAM STRIPE WEBHOOKS -----
+try:
+    from aam_stripe import process_stripe_webhook, verify_stripe_signature
+    SYSTEMS['aam_stripe'] = True
+    print("✅ aam_stripe (webhook handlers)")
+except ImportError as e:
+    SYSTEMS['aam_stripe'] = False
+    print(f"❌ aam_stripe: {e}")
+
+# ----- IPVAULT (Auto-Royalties) -----
+try:
+    from ipvault import create_ip_asset, license_ip_asset, record_asset_usage, calculate_royalty_payment, ASSET_TYPES
+    SYSTEMS['ipvault'] = True
+    print("✅ ipvault (playbook royalties)")
+except ImportError as e:
+    SYSTEMS['ipvault'] = False
+    print(f"❌ ipvault: {e}")
+
+# ----- DASHBOARD CONNECTOR -----
+try:
+    from dashboard_connector import DashboardConnector
+    SYSTEMS['dashboard_connector'] = True
+    print("✅ dashboard_connector")
+except ImportError as e:
+    SYSTEMS['dashboard_connector'] = False
+    print(f"❌ dashboard_connector: {e}")
+
+# ----- DASHBOARD API -----
+try:
+    from dashboard_api import get_dashboard_data, create_dashboard_endpoints, get_discovery_stats
+    SYSTEMS['dashboard_api'] = True
+    print("✅ dashboard_api")
+except ImportError as e:
+    SYSTEMS['dashboard_api'] = False
+    print(f"❌ dashboard_api: {e}")
+
+# ----- AUTONOMOUS DEAL GRAPH -----
+try:
+    from autonomous_deal_graph import get_deal_graph, RelationshipType, RELATIONSHIP_WEIGHTS
+    SYSTEMS['autonomous_deal_graph'] = True
+    print("✅ autonomous_deal_graph (relationship memory)")
+except ImportError as e:
+    SYSTEMS['autonomous_deal_graph'] = False
+    print(f"❌ autonomous_deal_graph: {e}")
+
+# ----- UNIVERSAL PLATFORM ADAPTER -----
+try:
+    from universal_platform_adapter import get_platform_registry, PlatformConfig, PlatformCategory, IntentType, MonetizationMethod
+    SYSTEMS['universal_platform_adapter'] = True
+    print("✅ universal_platform_adapter (unlimited platforms)")
+except ImportError as e:
+    SYSTEMS['universal_platform_adapter'] = False
+    print(f"❌ universal_platform_adapter: {e}")
+
 # ----- AIGENTSY PAYMENTS -----
 try:
     from aigentsy_payments import (
