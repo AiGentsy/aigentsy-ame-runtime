@@ -838,6 +838,31 @@ except ImportError as e:
     SYSTEMS['ltv_forecaster'] = False
     print(f"❌ ltv_forecaster: {e}")
 
+# ----- APEX ULTRA (Master Integration) -----
+try:
+    from aigentsy_apex_ultra import ApexUltra, run_apex_cycle
+    SYSTEMS['apex_ultra'] = True
+    print("✅ aigentsy_apex_ultra (50+ systems integrated)")
+except ImportError as e:
+    SYSTEMS['apex_ultra'] = False
+    print(f"❌ aigentsy_apex_ultra: {e}")
+
+# ----- AIGENTSY PAYMENTS -----
+try:
+    from aigentsy_payments import (
+        create_wade_payment_link, 
+        create_wade_invoice,
+        create_user_payment_with_fee,
+        get_aigentsy_balance,
+        get_revenue_by_path,
+        initiate_payout
+    )
+    SYSTEMS['aigentsy_payments'] = True
+    print("✅ aigentsy_payments (Path A + Path B)")
+except ImportError as e:
+    SYSTEMS['aigentsy_payments'] = False
+    print(f"❌ aigentsy_payments: {e}")
+
 # ----- INTEGRATION -----
 try:
     from universal_integration_layer import RevenueIntelligenceMesh, UniversalAIRouter
