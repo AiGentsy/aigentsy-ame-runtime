@@ -147,6 +147,35 @@ except ImportError as e:
     THIRD_PARTY_MONETIZATION_AVAILABLE = False
     print(f"⚠️ third_party_monetization not available: {e}")
 
+# Master Runtime - 85 Systems Orchestrator
+try:
+    from aigentsy_master_runtime import get_master_runtime
+    MASTER_RUNTIME_AVAILABLE = True
+    print("✅ aigentsy_master_runtime loaded (85 systems)")
+except ImportError as e:
+    MASTER_RUNTIME_AVAILABLE = False
+    print(f"⚠️ aigentsy_master_runtime not available: {e}")
+
+# AiGentsy LLC Payments
+try:
+    from aigentsy_payments import (
+        create_wade_payment_link, create_wade_invoice,
+        get_aigentsy_balance, get_recent_payments,
+        get_revenue_by_path, initiate_payout
+    )
+    AIGENTSY_PAYMENTS_AVAILABLE = True
+    print("✅ aigentsy_payments loaded")
+except ImportError as e:
+    AIGENTSY_PAYMENTS_AVAILABLE = False
+
+# OpenAI Agent Deployer
+try:
+    from openai_agent_deployer import deploy_ai_agents, AGENT_CONFIGS
+    AGENT_DEPLOYER_AVAILABLE = True
+    print("✅ openai_agent_deployer loaded")
+except ImportError as e:
+    AGENT_DEPLOYER_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -30198,6 +30227,275 @@ async def in_progress_deals_endpoint():
 async def awaiting_approval_deals_endpoint():
     """Get delivered deals awaiting client approval"""
     return {"ok": True, "deals": get_awaiting_approval_deals()}
+
+@app.post("/runtime/cycle")
+async def runtime_full_cycle():
+    """
+    🚀 THE BIG ONE - Run complete 15-phase autonomous cycle
+    
+    Phases:
+    1. Discovery (27 platforms, 7 dimensions)
+    2. Execution (smart filtering, prioritization)
+    3. Social (content posting)
+    4. AMG (10-stage revenue optimization)
+    5. R3 (revenue reinvestment)
+    6. Learning (MetaHive pattern sync)
+    7. JV Matching (partner discovery)
+    8. Value Chain (multi-device chains)
+    9. Reconciliation (cross-platform tracking)
+    10. Arbitrage (cross-platform opportunities)
+    11. Success Prediction (churn prevention)
+    12. Boosters (referral, streak, milestone)
+    13. Proof Verification (POS, bookings, invoices)
+    14. Team Formation (MetaBridge)
+    15. Syndication (partner network routing)
+    """
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_full_cycle()
+
+
+@app.get("/runtime/status")
+async def runtime_status():
+    """Get status of all 85 wired systems"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return runtime.get_system_status()
+
+
+@app.post("/runtime/discovery")
+async def runtime_discovery():
+    """Run discovery phase only (27 platforms, 7 dimensions)"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_discovery()
+
+
+@app.post("/runtime/execution")
+async def runtime_execution():
+    """Run execution phase only (smart filtering, auto-execute high confidence)"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_execution()
+
+
+@app.post("/runtime/social")
+async def runtime_social():
+    """Run social posting phase only"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_social()
+
+
+@app.post("/runtime/amg")
+async def runtime_amg():
+    """Run AMG 10-stage revenue optimization cycle"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_amg()
+
+
+@app.post("/runtime/arbitrage")
+async def runtime_arbitrage():
+    """Run cross-platform arbitrage scan"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_arbitrage_scan()
+
+
+@app.post("/runtime/proofs")
+async def runtime_proofs():
+    """Run proof verification (POS receipts, bookings, invoices)"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_proof_verification()
+
+
+@app.post("/runtime/teams")
+async def runtime_teams():
+    """Run MetaBridge team formation for complex jobs"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_team_formation()
+
+
+@app.post("/runtime/syndication")
+async def runtime_syndication():
+    """Run cross-network syndication (overflow to partner networks)"""
+    if not MASTER_RUNTIME_AVAILABLE:
+        return {"ok": False, "error": "master_runtime_not_available"}
+    
+    runtime = get_master_runtime()
+    return await runtime.run_syndication()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AIGENTSY LLC PAYMENTS - Path A (fees) + Path B (Wade direct)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/admin/balance")
+async def admin_balance():
+    """Get AiGentsy LLC Stripe balance (available + pending)"""
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    return await get_aigentsy_balance()
+
+
+@app.get("/admin/revenue")
+async def admin_revenue(days: int = 30):
+    """
+    Get revenue breakdown by path
+    
+    Path A: Platform fees (2.8% + 28¢) from user transactions
+    Path B: Wade direct fulfillment (100% to AiGentsy)
+    """
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    return await get_revenue_by_path(days)
+
+
+@app.get("/admin/payments")
+async def admin_payments(limit: int = 10):
+    """Get recent payments to AiGentsy"""
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    return await get_recent_payments(limit)
+
+
+@app.post("/admin/payout")
+async def admin_payout(body: Dict = Body(default={})):
+    """
+    Initiate payout from Stripe to your bank account
+    
+    Body: {"amount": 500.00}  # Or omit for full balance
+    """
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    amount = body.get("amount")  # None = full balance
+    return await initiate_payout(amount)
+
+
+@app.post("/wade/payment-link")
+async def wade_payment_link_endpoint(body: Dict = Body(...)):
+    """
+    Create Stripe Payment Link for Wade fulfillment (Path B)
+    
+    100% of payment goes to AiGentsy LLC
+    
+    Body: {
+        "amount": 500.00,
+        "description": "Logo design for TechCorp",
+        "workflow_id": "wf_abc123",
+        "client_email": "client@example.com"  # optional
+    }
+    """
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    return await create_wade_payment_link(
+        amount=body["amount"],
+        description=body["description"],
+        workflow_id=body["workflow_id"],
+        client_email=body.get("client_email")
+    )
+
+
+@app.post("/wade/invoice")
+async def wade_invoice_endpoint(body: Dict = Body(...)):
+    """
+    Create Stripe Invoice for Wade fulfillment (Path B)
+    
+    More formal than payment link - good for larger amounts
+    
+    Body: {
+        "amount": 2500.00,
+        "client_email": "client@example.com",
+        "description": "Website redesign project",
+        "workflow_id": "wf_abc123",
+        "due_days": 7  # optional, default 7
+    }
+    """
+    if not AIGENTSY_PAYMENTS_AVAILABLE:
+        return {"ok": False, "error": "aigentsy_payments_not_available"}
+    
+    return await create_wade_invoice(
+        amount=body["amount"],
+        client_email=body["client_email"],
+        description=body["description"],
+        workflow_id=body["workflow_id"],
+        due_days=body.get("due_days", 7)
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPENAI AGENT DEPLOYER - 4 AI Agents Per User
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/agents/deploy")
+async def deploy_agents_endpoint(body: Dict = Body(...)):
+    """
+    Deploy 4 AI agents for user's business
+    
+    Agents deployed based on template_type:
+    - saas: Sales Agent, Developer Support, Developer Relations, Finance
+    - marketing: Lead Qualification, Campaign Manager, Content Marketing, Finance
+    - social: Content Strategist, Engagement Manager, Growth Specialist, Finance
+    
+    Body: {
+        "username": "wade4802",
+        "template_type": "saas",  # or "marketing" or "social"
+        "website_url": "https://wade4802.aigentsy.com",
+        "config": {},  # optional
+        "database_credentials": {},  # optional
+        "user_data": {}  # optional
+    }
+    """
+    if not AGENT_DEPLOYER_AVAILABLE:
+        return {"ok": False, "error": "openai_agent_deployer_not_available"}
+    
+    return await deploy_ai_agents(
+        username=body["username"],
+        template_type=body["template_type"],
+        config=body.get("config", {}),
+        website_url=body["website_url"],
+        database_credentials=body.get("database_credentials", {}),
+        user_data=body.get("user_data", {})
+    )
+
+
+@app.get("/agents/configs")
+async def get_agent_configs():
+    """Get available agent configurations by template type"""
+    if not AGENT_DEPLOYER_AVAILABLE:
+        return {"ok": False, "error": "openai_agent_deployer_not_available"}
+    
+    return {
+        "ok": True,
+        "configs": AGENT_CONFIGS,
+        "template_types": list(AGENT_CONFIGS.keys())
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
