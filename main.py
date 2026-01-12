@@ -960,6 +960,29 @@ except Exception as e:
     
 app = FastAPI()
 
+# Add this near the top of main.py, after the app = FastAPI() line
+cat >> debug_endpoint.txt << 'EOF'
+@app.get("/debug/imports")
+def debug_imports():
+    results = {}
+    try:
+        import aiohttp
+        results["aiohttp"] = f"OK {aiohttp.__version__}"
+    except Exception as e:
+        results["aiohttp"] = f"FAIL {e}"
+    try:
+        from internet_discovery_expansion import InternetDiscoveryExpansion
+        results["internet_discovery"] = "OK"
+    except Exception as e:
+        results["internet_discovery"] = f"FAIL {e}"
+    try:
+        from direct_outreach_engine import DirectOutreachEngine
+        results["direct_outreach"] = "OK"
+    except Exception as e:
+        results["direct_outreach"] = f"FAIL {e}"
+    return results
+EOF
+
 register_investor_routes(app)
 include_diagnostic_tracer(app)
 include_profit_engine(app)
