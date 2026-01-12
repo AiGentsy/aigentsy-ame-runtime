@@ -184,6 +184,33 @@ except ImportError as e:
     SYSTEMS['research_engine'] = False
     print(f"❌ research_engine: {e}")
 
+try:
+    from internet_discovery_expansion import (
+        InternetDiscoveryExpansion,
+        expand_discovery_dimensions,
+        SearchEngineScanner,
+        ContactExtractor
+    )
+    SYSTEMS['internet_discovery'] = True
+    print("✅ internet_discovery_expansion (search engines + contact extraction)")
+except ImportError as e:
+    SYSTEMS['internet_discovery'] = False
+    print(f"❌ internet_discovery_expansion: {e}")
+
+# ----- DIRECT OUTREACH ENGINE -----
+try:
+    from direct_outreach_engine import (
+        DirectOutreachEngine,
+        get_outreach_engine,
+        send_direct_outreach,
+        OutreachChannel
+    )
+    SYSTEMS['direct_outreach'] = True
+    print("✅ direct_outreach_engine (DM/email proposals)")
+except ImportError as e:
+    SYSTEMS['direct_outreach'] = False
+    print(f"❌ direct_outreach_engine: {e}")
+
 # ----- PROOF & VERIFICATION -----
 try:
     from proof_pipe import create_proof, verify_proof, create_outcome_from_proof, process_square_webhook, process_calendly_webhook
@@ -1004,6 +1031,83 @@ class AiGentsyMasterRuntime:
             'last_amg': self.last_amg,
             'running': self._running
         }
+
+    async def run_internet_discovery(self) -> Dict[str, Any]:
+    """
+    Run internet-wide discovery scan.
+    Expands beyond 27 platforms to search engines, RSS, forums.
+    """
+    
+    if not SYSTEMS.get('internet_discovery'):
+        return {'status': 'skipped', 'reason': 'Internet discovery not available'}
+    
+    print("\n🌐 Running internet-wide discovery...")
+    
+    try:
+        expansion = InternetDiscoveryExpansion()
+        opportunities = await expansion.run_full_scan()
+        
+        # Process opportunities through direct outreach
+        if SYSTEMS.get('direct_outreach') and opportunities:
+            outreach = get_outreach_engine()
+            results = await outreach.process_batch([
+                {
+                    'opportunity_id': opp.opportunity_id,
+                    'title': opp.title,
+                    'description': opp.description,
+                    'pain_point': opp.pain_point,
+                    'estimated_value': opp.estimated_value,
+                    'contact': opp.contact
+                }
+                for opp in opportunities
+                if opp.contact and opp.contact.extraction_confidence >= 0.3
+            ])
+            
+            print(f"   📧 Sent {len([r for r in results if r.status.value == 'sent'])} outreach messages")
+        
+        return {
+            'status': 'success',
+            'opportunities_found': len(opportunities),
+            'with_contact': len([o for o in opportunities if o.contact]),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Internet discovery error: {e}")
+        return {'status': 'error', 'error': str(e)}
+
+
+async def run_direct_outreach(self, opportunities: List[Dict]) -> Dict[str, Any]:
+    """
+    Run direct outreach for a batch of opportunities.
+    Sends DMs/emails instead of posting to restricted platforms.
+    """
+    
+    if not SYSTEMS.get('direct_outreach'):
+        return {'status': 'skipped', 'reason': 'Direct outreach not available'}
+    
+    print("\n📧 Running direct outreach...")
+    
+    try:
+        outreach = get_outreach_engine()
+        results = await outreach.process_batch(opportunities)
+        
+        stats = outreach.get_stats()
+        
+        print(f"   Sent: {stats['sent']}")
+        print(f"   Daily count: {stats['daily_count']}/{stats['daily_limit']}")
+        
+        return {
+            'status': 'success',
+            'sent': stats['sent'],
+            'stats': stats,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Direct outreach error: {e}")
+        return {'status': 'error', 'error': str(e)}
+        
     
     # =========================================================================
     # DISCOVERY - ALL 7 DIMENSIONS
