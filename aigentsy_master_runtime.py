@@ -1033,82 +1033,80 @@ class AiGentsyMasterRuntime:
         }
 
     async def run_internet_discovery(self) -> Dict[str, Any]:
-    """
-    Run internet-wide discovery scan.
-    Expands beyond 27 platforms to search engines, RSS, forums.
-    """
-    
-    if not SYSTEMS.get('internet_discovery'):
-        return {'status': 'skipped', 'reason': 'Internet discovery not available'}
-    
-    print("\n🌐 Running internet-wide discovery...")
-    
-    try:
-        expansion = InternetDiscoveryExpansion()
-        opportunities = await expansion.run_full_scan()
+        """
+        Run internet-wide discovery scan.
+        Expands beyond 27 platforms to search engines, RSS, forums.
+        """
         
-        # Process opportunities through direct outreach
-        if SYSTEMS.get('direct_outreach') and opportunities:
-            outreach = get_outreach_engine()
-            results = await outreach.process_batch([
-                {
-                    'opportunity_id': opp.opportunity_id,
-                    'title': opp.title,
-                    'description': opp.description,
-                    'pain_point': opp.pain_point,
-                    'estimated_value': opp.estimated_value,
-                    'contact': opp.contact
-                }
-                for opp in opportunities
-                if opp.contact and opp.contact.extraction_confidence >= 0.3
-            ])
+        if not SYSTEMS.get('internet_discovery'):
+            return {'status': 'skipped', 'reason': 'Internet discovery not available'}
+        
+        print("\n🌐 Running internet-wide discovery...")
+        
+        try:
+            expansion = InternetDiscoveryExpansion()
+            opportunities = await expansion.run_full_scan()
             
-            print(f"   📧 Sent {len([r for r in results if r.status.value == 'sent'])} outreach messages")
-        
-        return {
-            'status': 'success',
-            'opportunities_found': len(opportunities),
-            'with_contact': len([o for o in opportunities if o.contact]),
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-        
-    except Exception as e:
-        print(f"   ❌ Internet discovery error: {e}")
-        return {'status': 'error', 'error': str(e)}
+            # Process opportunities through direct outreach
+            if SYSTEMS.get('direct_outreach') and opportunities:
+                outreach = get_outreach_engine()
+                results = await outreach.process_batch([
+                    {
+                        'opportunity_id': opp.opportunity_id,
+                        'title': opp.title,
+                        'description': opp.description,
+                        'pain_point': opp.pain_point,
+                        'estimated_value': opp.estimated_value,
+                        'contact': opp.contact
+                    }
+                    for opp in opportunities
+                    if opp.contact and opp.contact.extraction_confidence >= 0.3
+                ])
+                
+                print(f"   📧 Sent {len([r for r in results if r.status.value == 'sent'])} outreach messages")
+            
+            return {
+                'status': 'success',
+                'opportunities_found': len(opportunities),
+                'with_contact': len([o for o in opportunities if o.contact]),
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            print(f"   ❌ Internet discovery error: {e}")
+            return {'status': 'error', 'error': str(e)}
 
+    async def run_direct_outreach(self, opportunities: List[Dict]) -> Dict[str, Any]:
+        """
+        Run direct outreach for a batch of opportunities.
+        Sends DMs/emails instead of posting to restricted platforms.
+        """
+        
+        if not SYSTEMS.get('direct_outreach'):
+            return {'status': 'skipped', 'reason': 'Direct outreach not available'}
+        
+        print("\n📧 Running direct outreach...")
+        
+        try:
+            outreach = get_outreach_engine()
+            results = await outreach.process_batch(opportunities)
+            
+            stats = outreach.get_stats()
+            
+            print(f"   Sent: {stats['sent']}")
+            print(f"   Daily count: {stats['daily_count']}/{stats['daily_limit']}")
+            
+            return {
+                'status': 'success',
+                'sent': stats['sent'],
+                'stats': stats,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            print(f"   ❌ Direct outreach error: {e}")
+            return {'status': 'error', 'error': str(e)}
 
-async def run_direct_outreach(self, opportunities: List[Dict]) -> Dict[str, Any]:
-    """
-    Run direct outreach for a batch of opportunities.
-    Sends DMs/emails instead of posting to restricted platforms.
-    """
-    
-    if not SYSTEMS.get('direct_outreach'):
-        return {'status': 'skipped', 'reason': 'Direct outreach not available'}
-    
-    print("\n📧 Running direct outreach...")
-    
-    try:
-        outreach = get_outreach_engine()
-        results = await outreach.process_batch(opportunities)
-        
-        stats = outreach.get_stats()
-        
-        print(f"   Sent: {stats['sent']}")
-        print(f"   Daily count: {stats['daily_count']}/{stats['daily_limit']}")
-        
-        return {
-            'status': 'success',
-            'sent': stats['sent'],
-            'stats': stats,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-        
-    except Exception as e:
-        print(f"   ❌ Direct outreach error: {e}")
-        return {'status': 'error', 'error': str(e)}
-        
-    
     # =========================================================================
     # DISCOVERY - ALL 7 DIMENSIONS
     # =========================================================================
@@ -1858,6 +1856,11 @@ async def run_direct_outreach(self, opportunities: List[Dict]) -> Dict[str, Any]
             synd = await self.run_syndication()
             results['phases']['syndication'] = synd
         
+        # 16. Internet-Wide Discovery (every 30 min) - searches entire internet
+        if self._should_run('internet_discovery', 30):
+            internet = await self.run_internet_discovery()
+            results['phases']['internet_discovery'] = internet
+        
         results['completed_at'] = _now()
         results['stats'] = self.stats
         
@@ -1969,6 +1972,8 @@ async def main():
     parser.add_argument('--social', action='store_true', help='Run social only')
     parser.add_argument('--amg', action='store_true', help='Run AMG only')
     parser.add_argument('--learning', action='store_true', help='Run learning sync only')
+    parser.add_argument('--internet', action='store_true', help='Run internet-wide discovery only')
+    parser.add_argument('--outreach', action='store_true', help='Show outreach stats')
     
     args = parser.parse_args()
     
@@ -1981,6 +1986,30 @@ async def main():
         print(f"\n   Systems:")
         for name, available in status['systems'].items():
             print(f"   {'✅' if available else '❌'} {name}")
+        return
+    
+    if args.internet:
+        result = await runtime.run_internet_discovery()
+        print(f"\n🌐 Internet Discovery Result:")
+        print(f"   Status: {result.get('status')}")
+        print(f"   Opportunities: {result.get('opportunities_found', 0)}")
+        print(f"   With Contact: {result.get('with_contact', 0)}")
+        return
+    
+    if args.outreach:
+        if SYSTEMS.get('direct_outreach'):
+            outreach = get_outreach_engine()
+            stats = outreach.get_stats()
+            print(f"\n📧 OUTREACH STATS")
+            print(f"   Total attempts: {stats['total_attempts']}")
+            print(f"   Sent: {stats['sent']}")
+            print(f"   Reply rate: {stats['reply_rate']:.1%}")
+            print(f"   Daily: {stats['daily_count']}/{stats['daily_limit']}")
+            print(f"\n   Channels:")
+            for channel, configured in stats['channels_configured'].items():
+                print(f"   {'✅' if configured else '❌'} {channel}")
+        else:
+            print("❌ Direct outreach not available")
         return
     
     if args.discovery:
