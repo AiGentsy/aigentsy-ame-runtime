@@ -134,6 +134,30 @@ except ImportError as e:
     AMG_ORCHESTRATOR_AVAILABLE = False
     print(f"⚠️ amg_orchestrator not available: {e}")
 
+try:
+    from internet_discovery_expansion import (
+        InternetDiscoveryExpansion,
+        expand_discovery_dimensions,
+        ContactExtractor
+    )
+    INTERNET_DISCOVERY_AVAILABLE = True
+    print("✅ internet_discovery_expansion")
+except ImportError as e:
+    INTERNET_DISCOVERY_AVAILABLE = False
+    print(f"❌ internet_discovery_expansion: {e}")
+
+try:
+    from direct_outreach_engine import (
+        DirectOutreachEngine,
+        get_outreach_engine,
+        send_direct_outreach
+    )
+    DIRECT_OUTREACH_AVAILABLE = True
+    print("✅ direct_outreach_engine")
+except ImportError as e:
+    DIRECT_OUTREACH_AVAILABLE = False
+    print(f"❌ direct_outreach_engine: {e}")
+
 # Third Party Monetization
 try:
     from third_party_monetization import (
@@ -18156,6 +18180,240 @@ async def webhook_deal_settled(body: Dict = Body(...)):
         service_type=body.get("service_type"),
         status="completed"
     )
+
+@app.post("/autonomous/internet-discovery")
+async def run_internet_discovery():
+    """
+    Run internet-wide discovery scan.
+    Scans search engines, RSS feeds, and extracts contact info.
+    """
+    if not INTERNET_DISCOVERY_AVAILABLE:
+        return {"error": "Internet discovery not available", "status": "unavailable"}
+    
+    try:
+        expansion = InternetDiscoveryExpansion()
+        opportunities = await expansion.run_full_scan()
+        
+        return {
+            "status": "success",
+            "opportunities_found": len(opportunities),
+            "with_contact": len([o for o in opportunities if o.contact and o.contact.extraction_confidence > 0]),
+            "opportunities": [
+                {
+                    "id": o.opportunity_id,
+                    "source": o.source.value,
+                    "title": o.title[:100],
+                    "value": o.estimated_value,
+                    "urgency": o.urgency_score,
+                    "contact": {
+                        "email": o.contact.email if o.contact else None,
+                        "twitter": o.contact.twitter_handle if o.contact else None,
+                        "confidence": o.contact.extraction_confidence if o.contact else 0,
+                        "preferred": o.contact.preferred_outreach if o.contact else None
+                    } if o.contact else None
+                }
+                for o in opportunities[:20]  # Limit response size
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+@app.get("/autonomous/outreach/stats")
+async def get_outreach_stats():
+    """Get direct outreach statistics"""
+    if not DIRECT_OUTREACH_AVAILABLE:
+        return {"error": "Direct outreach not available", "status": "unavailable"}
+    
+    try:
+        outreach = get_outreach_engine()
+        stats = outreach.get_stats()
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+@app.post("/autonomous/outreach/send")
+async def send_outreach_proposal(
+    opportunity_id: str,
+    title: str,
+    pain_point: str = "",
+    estimated_value: float = 1000,
+    contact_email: str = None,
+    contact_twitter: str = None,
+    contact_reddit: str = None,
+    contact_name: str = "there"
+):
+    """
+    Send a direct outreach proposal to a prospect.
+    
+    Provide either:
+    - contact_email for email outreach
+    - contact_twitter for Twitter DM
+    - contact_reddit for Reddit DM
+    """
+    if not DIRECT_OUTREACH_AVAILABLE:
+        return {"error": "Direct outreach not available", "status": "unavailable"}
+    
+    try:
+        outreach = get_outreach_engine()
+        
+        opportunity = {
+            'opportunity_id': opportunity_id,
+            'title': title,
+            'pain_point': pain_point,
+            'estimated_value': estimated_value
+        }
+        
+        contact = {
+            'email': contact_email,
+            'twitter_handle': contact_twitter,
+            'reddit_username': contact_reddit,
+            'name': contact_name,
+            'extraction_confidence': 1.0,  # Manual entry = high confidence
+            'preferred_outreach': 'email' if contact_email else ('twitter_dm' if contact_twitter else 'reddit_dm')
+        }
+        
+        result = await outreach.process_opportunity(opportunity, contact)
+        
+        if result:
+            return {
+                "status": "success",
+                "sent": result.status.value == "sent",
+                "channel": result.channel.value,
+                "proposal_id": result.proposal_id,
+                "error": result.error
+            }
+        else:
+            return {"status": "filtered", "reason": "Did not pass quality checks or rate limits"}
+            
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+@app.post("/autonomous/full-cycle-with-internet")
+async def run_full_cycle_with_internet():
+    """
+    Run complete autonomous cycle including internet-wide discovery.
+    
+    Flow:
+    1. Standard 27-platform discovery
+    2. Internet-wide discovery (search engines, RSS)
+    3. Extract contacts from all opportunities
+    4. Execute high-confidence opportunities
+    5. Send direct outreach for others
+    """
+    results = {
+        "status": "running",
+        "phases": {},
+        "started_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Phase 1: Standard discovery
+    try:
+        # Use existing discovery
+        if SYSTEMS.get('alpha_discovery'):
+            discovery = await alpha_discovery_engine.run_discovery()
+            results["phases"]["standard_discovery"] = {
+                "opportunities": len(discovery.get("opportunities", [])),
+                "status": "success"
+            }
+    except Exception as e:
+        results["phases"]["standard_discovery"] = {"error": str(e), "status": "error"}
+    
+    # Phase 2: Internet-wide discovery
+    if INTERNET_DISCOVERY_AVAILABLE:
+        try:
+            expansion = InternetDiscoveryExpansion()
+            internet_opps = await expansion.run_full_scan()
+            results["phases"]["internet_discovery"] = {
+                "opportunities": len(internet_opps),
+                "with_contact": len([o for o in internet_opps if o.contact]),
+                "status": "success"
+            }
+            
+            # Phase 3: Direct outreach for internet opportunities
+            if DIRECT_OUTREACH_AVAILABLE and internet_opps:
+                outreach = get_outreach_engine()
+                outreach_results = await outreach.process_batch([
+                    {
+                        'opportunity_id': o.opportunity_id,
+                        'title': o.title,
+                        'description': o.description,
+                        'pain_point': o.pain_point,
+                        'estimated_value': o.estimated_value,
+                        'contact': {
+                            'email': o.contact.email if o.contact else None,
+                            'twitter_handle': o.contact.twitter_handle if o.contact else None,
+                            'reddit_username': o.contact.reddit_username if o.contact else None,
+                            'name': o.contact.name if o.contact else 'there',
+                            'extraction_confidence': o.contact.extraction_confidence if o.contact else 0,
+                            'preferred_outreach': o.contact.preferred_outreach if o.contact else None
+                        }
+                    }
+                    for o in internet_opps
+                    if o.contact and o.contact.extraction_confidence >= 0.3
+                ])
+                
+                sent_count = len([r for r in outreach_results if r.status.value == 'sent'])
+                results["phases"]["direct_outreach"] = {
+                    "processed": len(outreach_results),
+                    "sent": sent_count,
+                    "status": "success"
+                }
+                
+        except Exception as e:
+            results["phases"]["internet_discovery"] = {"error": str(e), "status": "error"}
+    else:
+        results["phases"]["internet_discovery"] = {"status": "unavailable"}
+    
+    results["status"] = "completed"
+    results["completed_at"] = datetime.now(timezone.utc).isoformat()
+    
+    return results
+
+
+# =============================================================================
+# QUICK TEST ENDPOINT
+# =============================================================================
+
+@app.get("/autonomous/internet-discovery/test")
+async def test_internet_discovery():
+    """Quick test of internet discovery components"""
+    
+    results = {
+        "internet_discovery_available": INTERNET_DISCOVERY_AVAILABLE if 'INTERNET_DISCOVERY_AVAILABLE' in dir() else False,
+        "direct_outreach_available": DIRECT_OUTREACH_AVAILABLE if 'DIRECT_OUTREACH_AVAILABLE' in dir() else False,
+    }
+    
+    # Test contact extraction
+    if results["internet_discovery_available"]:
+        try:
+            extractor = ContactExtractor()
+            test_contact = await extractor.extract_from_text(
+                "Contact me at test@example.com or @testuser on Twitter"
+            )
+            results["contact_extraction"] = {
+                "working": True,
+                "sample": {
+                    "email": test_contact.email,
+                    "twitter": test_contact.twitter_handle,
+                    "confidence": test_contact.extraction_confidence
+                }
+            }
+        except Exception as e:
+            results["contact_extraction"] = {"working": False, "error": str(e)}
+    
+    # Check outreach channels
+    if results["direct_outreach_available"]:
+        try:
+            outreach = get_outreach_engine()
+            stats = outreach.get_stats()
+            results["outreach_channels"] = stats["channels_configured"]
+        except Exception as e:
+            results["outreach_channels"] = {"error": str(e)}
+    
+    return results
 
 
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
