@@ -1,17 +1,29 @@
 """
-PLATFORM APIS - COMPLETE REAL INTEGRATIONS (MERGED)
-====================================================
+PLATFORM APIS - COMPLETE REAL INTEGRATIONS (MERGED + DM EXPANDED)
+==================================================================
 All platform executors with REAL API implementations.
+NOW WITH DIRECT MESSAGE CAPABILITIES for direct outreach.
 
 CONFIGURED PLATFORMS (8 total):
 ✅ Twitter/X - OAuth 1.0a (TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+   + Twitter DM capability for direct outreach
 ✅ Email - Resend API (RESEND_API_KEY)
+   + Cold outreach and proposal sending
 ✅ Reddit - OAuth2 (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD)
+   + Reddit DM capability for direct outreach
 ✅ GitHub - REST API v3 (GITHUB_TOKEN)
-✅ Upwork - Manual submission (no API)
+✅ Upwork - SCAN ONLY (no API posting - contact clients directly)
+✅ Fiverr - SCAN ONLY (no API posting - contact clients directly)
 ✅ Instagram - Graph API v21.0 (INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ID)
 ✅ LinkedIn - Marketing API v2 (LINKEDIN_ACCESS_TOKEN, LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET)
+   + LinkedIn Message capability for B2B outreach
 ✅ Twilio SMS - (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)
+
+DIRECT OUTREACH PHILOSOPHY:
+- NEVER post to Fiverr/Upwork (violates ToS)
+- SCAN opportunities everywhere
+- CONTACT users directly via DM/email
+- Higher conversion than platform responses
 
 ALSO AVAILABLE:
 - Stability AI (STABILITY_API_KEY) - for graphics generation
@@ -261,6 +273,118 @@ class TwitterExecutor:
             pass
         
         return {'completed': True, 'status': 'unknown'}
+    
+    # =========================================================================
+    # DIRECT MESSAGE CAPABILITIES (for direct outreach)
+    # =========================================================================
+    
+    async def send_dm(self, recipient_handle: str, message: str) -> Dict:
+        """
+        Send a direct message to a Twitter user.
+        Used for direct outreach instead of posting to restricted platforms.
+        
+        Args:
+            recipient_handle: Twitter handle (with or without @)
+            message: DM content (max ~10,000 chars)
+        
+        Returns:
+            {'success': bool, 'dm_id': str, 'error': str}
+        """
+        
+        if not self.configured:
+            return {'success': False, 'error': 'Twitter not configured'}
+        
+        # Clean handle
+        handle = recipient_handle.lstrip('@')
+        
+        # First, get user ID from handle
+        user_id = await self._get_user_id(handle)
+        if not user_id:
+            return {'success': False, 'error': f'User not found: {handle}'}
+        
+        # Send DM via Twitter API v2
+        url = f"{self.api_base}/2/dm_conversations/with/{user_id}/messages"
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                auth_header = self._get_oauth_header("POST", url)
+                
+                response = await client.post(
+                    url,
+                    headers={
+                        "Authorization": auth_header,
+                        "Content-Type": "application/json"
+                    },
+                    json={"text": message[:10000]}  # Twitter DM limit
+                )
+                
+                if response.status_code in [200, 201]:
+                    data = response.json()
+                    dm_id = data.get('data', {}).get('dm_event_id')
+                    return {
+                        'success': True,
+                        'dm_id': dm_id,
+                        'recipient': handle,
+                        'sent_at': _now()
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f"Twitter DM error: {response.status_code} - {response.text}"
+                    }
+                    
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    async def _get_user_id(self, handle: str) -> str:
+        """Get Twitter user ID from handle"""
+        
+        url = f"{self.api_base}/2/users/by/username/{handle}"
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                auth_header = self._get_oauth_header("GET", url)
+                
+                response = await client.get(
+                    url,
+                    headers={"Authorization": auth_header}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get('data', {}).get('id')
+                    
+        except Exception as e:
+            print(f"Error getting user ID for {handle}: {e}")
+        
+        return None
+    
+    async def get_dm_conversations(self) -> List[Dict]:
+        """Get recent DM conversations for tracking responses"""
+        
+        if not self.configured:
+            return []
+        
+        url = f"{self.api_base}/2/dm_events"
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                auth_header = self._get_oauth_header("GET", url)
+                
+                response = await client.get(
+                    url,
+                    headers={"Authorization": auth_header},
+                    params={"dm_event.fields": "id,text,created_at,sender_id"}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get('data', [])
+                    
+        except Exception as e:
+            print(f"Error getting DM conversations: {e}")
+        
+        return []
 
 
 # =============================================================================
@@ -669,6 +793,103 @@ If you're looking to leverage AI for business growth, let's connect!
     
     async def check_status(self, post_id: str) -> Dict:
         return {'completed': True, 'status': 'posted'}
+    
+    # =========================================================================
+    # DIRECT MESSAGE CAPABILITIES (for B2B outreach)
+    # =========================================================================
+    
+    async def send_message(self, recipient_urn: str, subject: str, message: str) -> Dict:
+        """
+        Send a LinkedIn message to a connection.
+        Used for B2B direct outreach.
+        
+        Note: LinkedIn Messaging API requires connections or InMail credits.
+        This uses the Messages API for 1st-degree connections.
+        
+        Args:
+            recipient_urn: LinkedIn URN (urn:li:person:XXX) or profile ID
+            subject: Message subject (for InMail)
+            message: Message body
+        
+        Returns:
+            {'success': bool, 'error': str}
+        """
+        
+        if not self.configured:
+            return {'success': False, 'error': 'LinkedIn not configured'}
+        
+        # Ensure URN format
+        if not recipient_urn.startswith('urn:'):
+            recipient_urn = f"urn:li:person:{recipient_urn}"
+        
+        author_urn = await self._get_author_urn()
+        if not author_urn:
+            return {'success': False, 'error': 'Could not get sender URN'}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Use LinkedIn Messaging API
+                response = await client.post(
+                    f"{self.api_base}/messages",
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    },
+                    json={
+                        "recipients": [recipient_urn],
+                        "subject": subject[:200] if subject else None,
+                        "body": message[:8000]  # LinkedIn limit
+                    }
+                )
+                
+                if response.status_code in [200, 201]:
+                    return {
+                        'success': True,
+                        'recipient': recipient_urn,
+                        'sent_at': _now()
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f"LinkedIn Messaging error: {response.status_code} - {response.text}"
+                    }
+                    
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    async def get_profile_by_url(self, profile_url: str) -> Optional[Dict]:
+        """
+        Get LinkedIn profile info from URL.
+        Useful for extracting URN for messaging.
+        """
+        
+        if not self.configured:
+            return None
+        
+        # Extract vanity name from URL
+        import re
+        match = re.search(r'linkedin\.com/in/([^/]+)', profile_url)
+        if not match:
+            return None
+        
+        vanity_name = match.group(1)
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Note: This requires specific LinkedIn API permissions
+                response = await client.get(
+                    f"{self.api_base}/people/(vanityName:{vanity_name})",
+                    headers={"Authorization": f"Bearer {self.access_token}"}
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                    
+        except Exception as e:
+            print(f"Error getting LinkedIn profile: {e}")
+        
+        return None
 
 
 # =============================================================================
@@ -943,6 +1164,98 @@ Feel free to DM me if you'd like to discuss further. No pressure - happy to shar
     async def check_status(self, comment_id: str) -> Dict:
         """Check comment status/karma"""
         return {'completed': True, 'status': 'posted'}
+    
+    # =========================================================================
+    # DIRECT MESSAGE CAPABILITIES (for direct outreach)
+    # =========================================================================
+    
+    async def send_dm(self, recipient_username: str, subject: str, message: str) -> Dict:
+        """
+        Send a direct message to a Reddit user.
+        Used for direct outreach instead of posting to restricted platforms.
+        
+        Args:
+            recipient_username: Reddit username (with or without u/)
+            subject: DM subject line
+            message: DM body
+        
+        Returns:
+            {'success': bool, 'error': str}
+        """
+        
+        token = await self._get_access_token()
+        
+        if not token:
+            return {'success': False, 'error': 'Reddit not configured'}
+        
+        # Clean username
+        username = recipient_username.lstrip('u/').lstrip('/u/')
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://oauth.reddit.com/api/compose",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "User-Agent": self.user_agent
+                    },
+                    data={
+                        "to": username,
+                        "subject": subject[:100],  # Reddit limit
+                        "text": message[:10000]  # Reddit limit
+                    }
+                )
+                
+                if response.status_code == 200:
+                    return {
+                        'success': True,
+                        'recipient': username,
+                        'sent_at': _now()
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f"Reddit DM error: {response.status_code} - {response.text}"
+                    }
+                    
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    async def get_unread_messages(self) -> List[Dict]:
+        """Get unread DMs for tracking responses"""
+        
+        token = await self._get_access_token()
+        if not token:
+            return []
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    "https://oauth.reddit.com/message/unread",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "User-Agent": self.user_agent
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    messages = []
+                    for child in data.get('data', {}).get('children', []):
+                        msg = child.get('data', {})
+                        messages.append({
+                            'id': msg.get('id'),
+                            'author': msg.get('author'),
+                            'subject': msg.get('subject'),
+                            'body': msg.get('body'),
+                            'created': msg.get('created_utc')
+                        })
+                    return messages
+                    
+        except Exception as e:
+            print(f"Error getting Reddit messages: {e}")
+        
+        return []
 
 
 # =============================================================================
