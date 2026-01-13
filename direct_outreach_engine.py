@@ -112,14 +112,15 @@ class ProposalGenerator:
             OutreachChannel.GITHUB_DISCUSSION: self._github_template,
         }
         
-        # Value propositions by category
+        # Value propositions by category - AiGentsy: Your fully staffed autonomous company
         self.value_props = {
-            'development': "I can build exactly what you need in half the time",
-            'automation': "Let me automate this and save you hours every week",
-            'design': "I'll create something that converts visitors into customers",
-            'content': "High-quality content delivered fast, no revisions needed",
-            'data': "Turn your data into actionable insights automatically",
-            'default': "I can solve this problem quickly and affordably"
+            'development': "AiGentsy becomes your fully staffed dev team — from spec to shipped, handled",
+            'automation': "AiGentsy is your automation department — we build it, deploy it, maintain it",
+            'design': "AiGentsy is your creative studio — best-in-class design, delivered instantly",
+            'content': "AiGentsy is your content team — highest quality, end-to-end production",
+            'data': "AiGentsy is your analytics department — raw data to actionable insights, handled",
+            'marketing': "AiGentsy is your marketing team — strategy to execution, fully autonomous",
+            'default': "AiGentsy is your fully staffed team for this — end-to-end, handled"
         }
     
     async def generate_proposal(
@@ -206,106 +207,110 @@ class ProposalGenerator:
     # Template methods
     
     def _email_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate email proposal"""
-        subject = f"Quick solution for: {title[:50]}"
+        """Generate email proposal - AiGentsy: Your fully staffed autonomous company"""
+        subject = f"Re: {title[:50]}"
         
         body = f"""Hi {name},
 
-I came across your need for help with "{title}" and I can deliver exactly what you're looking for.
+Saw your post about "{title}" — this is exactly what we built AiGentsy for.
 
-{value_prop}.
+We're the first fully autonomous fulfillment company. Think of us as your on-demand {pain_point[:40]} team — a complete staff working for you, from brief to delivery.
 
-Here's what I'll deliver:
-• Complete solution to {pain_point[:100]}
-• Delivered in 3-5 days
-• 100% satisfaction guaranteed
+No freelancers. No waiting. No back-and-forth.
 
-I've helped dozens of clients with similar challenges and have a track record of delivering on time.
+Here's how it works:
 
-Investment: ${int(estimated_value * 0.7)} (flexible based on scope)
+→ You tell us what you need
+→ Your AiGentsy team delivers (usually within minutes)
+→ You review, request changes, we iterate until it's right
+→ You only pay when you approve
 
-Would you like to discuss the details? Just reply to this email or book a quick call.
+We've handled thousands of projects like this. Best-in-class quality, first-of-its-kind speed.
 
-Best,
-The AiGentsy Team
+Investment: ${int(estimated_value * 0.7)} — and you don't pay a cent until you're happy with the result.
 
-P.S. If timing isn't right, no worries - just let me know and I'll check back in a few weeks.
+Want to see it in action? Just reply and I'll get your project queued up.
+
+— The AiGentsy Team
+
+P.S. If timing isn't right, no worries. We'll be here.
 """
         
         return subject, body
     
     def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate Twitter DM (280 char limit for initial)"""
+        """Generate Twitter DM - Confident, effortless"""
         subject = ""  # No subject for DMs
         
-        body = f"""Hey {name}! 👋
+        body = f"""Hey {name} 👋
 
-Saw you're looking for help with {title[:30]}...
+Saw you need help with {title[:25]}...
 
-{value_prop}. Can deliver in 3-5 days.
+AiGentsy is basically a fully staffed company that works for you — end-to-end delivery in minutes.
 
-Want me to send details?"""
+First of its kind. Want me to show you?"""
         
         return subject, body
     
     def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate LinkedIn message"""
+        """Generate LinkedIn message - Professional, confident"""
         subject = f"Re: {title[:40]}"
         
         body = f"""Hi {name},
 
-I noticed your post about needing help with {title}.
+Came across your post about {title} — wanted to introduce you to something we've built.
 
-{value_prop}.
+AiGentsy is the first fully autonomous fulfillment company. We're essentially your on-demand {pain_point[:50]} team — a complete staff working for you, end-to-end.
 
-I specialize in exactly this type of work and have delivered similar solutions for clients in your industry.
+What makes us different:
 
-Key benefits:
-• Fast turnaround (3-5 days)
-• Quality guaranteed
-• Competitive pricing
+• Delivery in minutes, not days or weeks
+• Iterate with your team until it's exactly right
+• Pay only when you approve the final result
 
-Would you be open to a quick chat to discuss the specifics?
+We've handled thousands of similar projects with best-in-class results.
 
-Best regards,
-AiGentsy Team"""
+Would you be open to a quick demo? No pitch — just want to show you what's possible now.
+
+— AiGentsy Team"""
         
         return subject, body
     
     def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate Reddit DM"""
+        """Generate Reddit DM - Casual but confident"""
         subject = f"Re: {title[:50]}"
         
         body = f"""Hey u/{name},
 
-Saw your post about {title}. I can definitely help with this.
+Saw your post about {title}. 
 
-{value_prop}.
+We built AiGentsy for exactly this — it's basically a fully staffed company that works for you. You describe what you need, your team delivers it (usually in minutes), you iterate until it's perfect, then you pay.
 
-I've done similar work before and can deliver in about a week. Happy to share examples.
+First of its kind. No freelancers, no waiting around.
 
-Let me know if you'd like to discuss - no pressure either way.
+Happy to show you how it works if you're curious. No pressure either way.
 
 Cheers"""
         
         return subject, body
     
     def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate GitHub discussion/issue comment"""
+        """Generate GitHub discussion/issue comment - Dev-friendly, confident"""
         subject = f"Can help with: {title[:50]}"
         
         body = f"""Hi @{name},
 
-I noticed this issue and {value_prop.lower()}.
+Noticed this issue — this is actually what we built AiGentsy for.
 
-**My approach:**
-- {pain_point[:100]}
-- Estimated timeline: 3-5 days
-- Happy to discuss implementation details
+**AiGentsy** is the first fully autonomous fulfillment company. For {pain_point[:50]}:
 
-I've contributed to similar projects before. Want me to take a crack at this?
+- Your dedicated team delivers in minutes
+- You review, iterate, approve when ready
+- Pay only after you're satisfied
 
-Let me know if you have questions."""
+We've shipped thousands of similar projects. Best-in-class quality, first-of-its-kind speed.
+
+Want me to queue this up? No obligation — takes about 2 minutes to get started."""
         
         return subject, body
 
@@ -773,7 +778,7 @@ class DirectOutreachEngine:
             return False
         
         # Check for spam indicators
-        spam_words = ['guaranteed', 'limited time', 'act now', 'click here']
+        spam_words = ['limited time', 'act now', 'click here', 'buy now', 'free money']
         body_lower = proposal.body.lower()
         if any(word in body_lower for word in spam_words):
             return False
