@@ -18382,8 +18382,8 @@ async def test_internet_discovery():
     """Quick test of internet discovery components"""
     
     results = {
-        "internet_discovery_available": INTERNET_DISCOVERY_AVAILABLE if 'INTERNET_DISCOVERY_AVAILABLE' in dir() else False,
-        "direct_outreach_available": DIRECT_OUTREACH_AVAILABLE if 'DIRECT_OUTREACH_AVAILABLE' in dir() else False,
+        "internet_discovery_available": INTERNET_DISCOVERY_AVAILABLE,
+        "direct_outreach_available": DIRECT_OUTREACH_AVAILABLE,
     }
     
     # Test contact extraction
