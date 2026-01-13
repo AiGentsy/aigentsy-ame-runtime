@@ -207,110 +207,102 @@ class ProposalGenerator:
     # Template methods
     
     def _email_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate email proposal - AiGentsy: Your fully staffed autonomous company"""
+        """Generate email proposal - Reference their actual need, convert to engagement"""
         subject = f"Re: {title[:50]}"
         
         body = f"""Hi {name},
 
-Saw your post about "{title}" — this is exactly what we built AiGentsy for.
+Just came across your post about {title} — sounds like you need {pain_point[:60]}.
 
-We're the first fully autonomous fulfillment company. Think of us as your on-demand {pain_point[:40]} team — a complete staff working for you, from brief to delivery.
+We can handle this for you. AiGentsy is the first fully autonomous fulfillment company — think of us as your fully staffed {pain_point[:30]} team, ready to go.
 
-No freelancers. No waiting. No back-and-forth.
+Here's exactly what we'll deliver for you:
 
-Here's how it works:
+→ {pain_point[:80]} — done, end-to-end
+→ Delivered within minutes of your approval
+→ We iterate with you until it's exactly what you need
+→ You only pay when you're 100% satisfied
 
-→ You tell us what you need
-→ Your AiGentsy team delivers (usually within minutes)
-→ You review, request changes, we iterate until it's right
-→ You only pay when you approve
+No freelancers. No waiting. Just your dedicated team shipping exactly what you described.
 
-We've handled thousands of projects like this. Best-in-class quality, first-of-its-kind speed.
+Investment: ${int(estimated_value * 0.7)} — and nothing until you approve the final result.
 
-Investment: ${int(estimated_value * 0.7)} — and you don't pay a cent until you're happy with the result.
-
-Want to see it in action? Just reply and I'll get your project queued up.
+Ready to get this handled? Reply and we'll have your project queued up in about 2 minutes.
 
 — The AiGentsy Team
-
-P.S. If timing isn't right, no worries. We'll be here.
 """
         
         return subject, body
     
     def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate Twitter DM - Confident, effortless"""
+        """Generate Twitter DM - Reference their post, quick conversion"""
         subject = ""  # No subject for DMs
         
         body = f"""Hey {name} 👋
 
-Saw you need help with {title[:25]}...
+Saw your post about {title[:30]} — we can handle that for you.
 
-AiGentsy is basically a fully staffed company that works for you — end-to-end delivery in minutes.
+AiGentsy = your fully staffed team for {pain_point[:25]}. Delivered in minutes, pay only when satisfied.
 
-First of its kind. Want me to show you?"""
+Want us to take care of it?"""
         
         return subject, body
     
     def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate LinkedIn message - Professional, confident"""
+        """Generate LinkedIn message - Reference their post, professional conversion"""
         subject = f"Re: {title[:40]}"
         
         body = f"""Hi {name},
 
-Came across your post about {title} — wanted to introduce you to something we've built.
+Saw your post about {title} — sounds like you need {pain_point[:50]}.
 
-AiGentsy is the first fully autonomous fulfillment company. We're essentially your on-demand {pain_point[:50]} team — a complete staff working for you, end-to-end.
+We can take care of this. AiGentsy is your fully staffed {pain_point[:30]} team — the first fully autonomous fulfillment company.
 
-What makes us different:
+What that means for you:
 
-• Delivery in minutes, not days or weeks
-• Iterate with your team until it's exactly right
-• Pay only when you approve the final result
+• {pain_point[:60]} — handled, end-to-end
+• Delivered in minutes, not days
+• We iterate until it's exactly right
+• You only pay when you approve
 
-We've handled thousands of similar projects with best-in-class results.
-
-Would you be open to a quick demo? No pitch — just want to show you what's possible now.
+Ready to get this off your plate? Just reply and we'll have it queued up.
 
 — AiGentsy Team"""
         
         return subject, body
     
     def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate Reddit DM - Casual but confident"""
+        """Generate Reddit DM - Reference their post, casual conversion"""
         subject = f"Re: {title[:50]}"
         
         body = f"""Hey u/{name},
 
-Saw your post about {title}. 
+Saw your post about {title} — sounds like you need {pain_point[:40]}.
 
-We built AiGentsy for exactly this — it's basically a fully staffed company that works for you. You describe what you need, your team delivers it (usually in minutes), you iterate until it's perfect, then you pay.
+We can handle this for you. AiGentsy is basically your fully staffed team for exactly this — delivered in minutes, you only pay when you're satisfied.
 
-First of its kind. No freelancers, no waiting around.
-
-Happy to show you how it works if you're curious. No pressure either way.
+Want us to take care of it? Just say the word.
 
 Cheers"""
         
         return subject, body
     
     def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate GitHub discussion/issue comment - Dev-friendly, confident"""
-        subject = f"Can help with: {title[:50]}"
+        """Generate GitHub discussion/issue comment - Reference issue, dev conversion"""
+        subject = f"Re: {title[:50]}"
         
         body = f"""Hi @{name},
 
-Noticed this issue — this is actually what we built AiGentsy for.
+Saw this issue — looks like you need {pain_point[:50]}.
 
-**AiGentsy** is the first fully autonomous fulfillment company. For {pain_point[:50]}:
+We can handle this. **AiGentsy** is your fully staffed dev team for exactly this kind of work:
 
-- Your dedicated team delivers in minutes
-- You review, iterate, approve when ready
-- Pay only after you're satisfied
+- {pain_point[:60]} — done, end-to-end
+- Delivered in minutes
+- Iterate until it's exactly right
+- Pay only when you approve
 
-We've shipped thousands of similar projects. Best-in-class quality, first-of-its-kind speed.
-
-Want me to queue this up? No obligation — takes about 2 minutes to get started."""
+Want us to take a crack at it? Just reply and we'll get it queued up."""
         
         return subject, body
 
