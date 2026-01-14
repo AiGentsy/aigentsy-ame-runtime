@@ -260,6 +260,21 @@ except ImportError as e:
     CONVERSATION_ENGINE_AVAILABLE = False
     print(f"❌ conversation_engine: {e}")
 
+# Contract & Payment Engine
+try:
+    from contract_payment_engine import (
+        ContractPaymentEngine,
+        ServiceContract,
+        ContractStatus,
+        PaymentStatus,
+        get_contract_engine
+    )
+    CONTRACT_ENGINE_AVAILABLE = True
+    print("✅ contract_payment_engine loaded")
+except ImportError as e:
+    CONTRACT_ENGINE_AVAILABLE = False
+    print(f"❌ contract_payment_engine: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -19505,6 +19520,291 @@ async def auto_process_conversation_replies():
             "pending_replies": len(pending),
             "processed": processed,
             "responses_generated": responses_generated
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
+# CONTRACT & PAYMENT ENDPOINTS
+# ============================================================
+
+@app.post("/contract/create")
+async def create_contract(
+    conversation_id: str,
+    opportunity_id: str,
+    client_name: str,
+    client_email: str,
+    service_description: str,
+    deliverables: List[str] = [],
+    total_amount: float = 1000,
+    deposit_percentage: float = 0.5,
+    timeline: str = "To be agreed upon",
+    client_company: str = None
+):
+    """Create a new service contract"""
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        
+        contract = await engine.create_contract(
+            conversation_id=conversation_id,
+            opportunity_id=opportunity_id,
+            client_name=client_name,
+            client_email=client_email,
+            service_description=service_description,
+            deliverables=deliverables or ["Service deliverables as discussed"],
+            total_amount=total_amount,
+            deposit_percentage=deposit_percentage,
+            timeline=timeline,
+            client_company=client_company
+        )
+        
+        return {
+            "ok": True,
+            "contract_id": contract.contract_id,
+            "total_amount": contract.total_amount,
+            "deposit_amount": contract.deposit_amount,
+            "status": contract.status.value
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/contract/{contract_id}/create-payment-link")
+async def create_contract_payment_link(contract_id: str):
+    """Create Stripe payment link for contract deposit"""
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        payment_url = await engine.create_payment_link(contract_id)
+        
+        if payment_url:
+            return {
+                "ok": True,
+                "contract_id": contract_id,
+                "payment_link": payment_url
+            }
+        else:
+            return {"error": "Failed to create payment link", "ok": False}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/contract/{contract_id}/send")
+async def send_contract(contract_id: str):
+    """
+    Prepare and send contract with payment link.
+    Returns email content ready to send.
+    """
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        result = await engine.prepare_and_send_contract(contract_id)
+        
+        # If outreach available, actually send the email
+        if result.get('ok') and DIRECT_OUTREACH_AVAILABLE:
+            try:
+                outreach = get_outreach_engine()
+                # Use Resend to send the contract email
+                send_result = await outreach.send_email(
+                    to_email=result['client_email'],
+                    subject=result['subject'],
+                    body=result['body']
+                )
+                result['email_sent'] = send_result.get('ok', False)
+            except Exception as e:
+                result['email_sent'] = False
+                result['email_error'] = str(e)
+        
+        return result
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/contract/{contract_id}")
+async def get_contract(contract_id: str):
+    """Get contract details"""
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        contract = engine.contracts.get(contract_id)
+        
+        if not contract:
+            return {"error": "Contract not found", "ok": False}
+        
+        return {
+            "ok": True,
+            "contract": contract.to_dict(),
+            "html_content": contract.contract_html
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/contracts/pending-payments")
+async def get_pending_payments():
+    """Get contracts awaiting payment"""
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        pending = engine.get_pending_payments()
+        
+        return {
+            "ok": True,
+            "count": len(pending),
+            "contracts": [c.to_dict() for c in pending],
+            "total_pending": sum(c.deposit_amount for c in pending)
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """
+    Stripe webhook for payment confirmations.
+    Handles checkout.session.completed events.
+    """
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        payload = await request.body()
+        signature = request.headers.get("stripe-signature", "")
+        
+        event = await request.json()
+        
+        engine = get_contract_engine()
+        
+        # Verify signature (optional but recommended)
+        # if signature and not engine.stripe_manager.verify_webhook_signature(payload, signature):
+        #     return {"error": "Invalid signature"}, 401
+        
+        # Process payment
+        contract_id = await engine.process_payment_webhook(event)
+        
+        if contract_id:
+            print(f"💰 Stripe webhook: Payment received for {contract_id}")
+            
+            # Update conversation if available
+            if CONVERSATION_ENGINE_AVAILABLE:
+                try:
+                    conv_engine = get_conversation_engine()
+                    contract = engine.contracts.get(contract_id)
+                    if contract and contract.conversation_id:
+                        conv_engine.mark_deal_closed(contract.conversation_id, contract.deposit_amount)
+                except Exception as e:
+                    print(f"⚠️ Error updating conversation: {e}")
+            
+            return {"ok": True, "contract_id": contract_id, "status": "payment_received"}
+        
+        return {"ok": True, "status": "event_processed"}
+        
+    except Exception as e:
+        print(f"⚠️ Stripe webhook error: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.get("/contracts/stats")
+async def get_contract_stats():
+    """Get contract/payment stats"""
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    try:
+        engine = get_contract_engine()
+        stats = engine.get_stats()
+        return {"ok": True, "stats": stats}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/contract/auto-send-for-closing")
+async def auto_send_contracts_for_closing():
+    """
+    Automatically create and send contracts for conversations in CLOSING stage.
+    """
+    if not CONTRACT_ENGINE_AVAILABLE:
+        return {"error": "Contract engine not available"}
+    
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        conv_engine = get_conversation_engine()
+        contract_engine = get_contract_engine()
+        
+        # Get conversations in CLOSING stage
+        closing_convos = conv_engine.get_conversations_by_stage(ConversationStage.CLOSING)
+        
+        contracts_created = 0
+        contracts_sent = 0
+        
+        for convo in closing_convos:
+            # Skip if contract already sent
+            if convo.contract_sent:
+                continue
+            
+            # Skip if no email
+            if not convo.contact_email:
+                continue
+            
+            # Create contract
+            contract = await contract_engine.create_contract(
+                conversation_id=convo.conversation_id,
+                opportunity_id=convo.opportunity_id,
+                client_name=convo.contact_name or "Valued Client",
+                client_email=convo.contact_email,
+                service_description=convo.original_pain_point or convo.original_title,
+                deliverables=["Project deliverables as discussed"],
+                total_amount=convo.final_price or convo.estimated_value,
+                timeline="To be agreed upon"
+            )
+            
+            contracts_created += 1
+            
+            # Send contract
+            result = await contract_engine.prepare_and_send_contract(contract.contract_id)
+            
+            if result.get('ok'):
+                # Mark in conversation
+                conv_engine.mark_contract_sent(convo.conversation_id)
+                contracts_sent += 1
+                
+                # Send email if possible
+                if DIRECT_OUTREACH_AVAILABLE:
+                    try:
+                        outreach = get_outreach_engine()
+                        await outreach.send_email(
+                            to_email=result['client_email'],
+                            subject=result['subject'],
+                            body=result['body']
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Contract email error: {e}")
+        
+        return {
+            "ok": True,
+            "closing_conversations": len(closing_convos),
+            "contracts_created": contracts_created,
+            "contracts_sent": contracts_sent
         }
         
     except Exception as e:
