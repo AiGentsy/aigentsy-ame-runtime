@@ -230,6 +230,21 @@ except ImportError as e:
     REPLY_DETECTION_AVAILABLE = False
     print(f"❌ reply_detection_engine: {e}")
 
+# Platform Response Engine (warm-up comments before DM)
+try:
+    from platform_response_engine import (
+        PlatformResponseEngine,
+        PlatformEngagement,
+        Platform as EngagementPlatform,
+        EngagementStatus,
+        get_platform_response_engine
+    )
+    PLATFORM_RESPONSE_AVAILABLE = True
+    print("✅ platform_response_engine loaded")
+except ImportError as e:
+    PLATFORM_RESPONSE_AVAILABLE = False
+    print(f"❌ platform_response_engine: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -18953,6 +18968,257 @@ async def get_reply_stats():
     
     try:
         engine = get_reply_engine()
+        stats = engine.get_stats()
+        return {"ok": True, "stats": stats}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
+# PLATFORM RESPONSE (WARM-UP ENGAGEMENT) ENDPOINTS
+# ============================================================
+
+@app.post("/engagement/respond-on-platform")
+async def respond_on_platform(
+    opportunity_id: str,
+    source: str,
+    platform_id: str,
+    url: str,
+    title: str,
+    description: str = "",
+    author: str = ""
+):
+    """
+    Post a helpful comment on a platform before sending DM.
+    Flow: Post comment -> Schedule DM for 5-15 min later
+    """
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
+        
+        opportunity = {
+            'id': opportunity_id,
+            'source': source,
+            'platform_id': platform_id,
+            'url': url,
+            'title': title,
+            'description': description,
+            'author': author
+        }
+        
+        engagement = await engine.engage_with_opportunity(opportunity)
+        
+        if engagement:
+            return {
+                "ok": True,
+                "engagement_id": engagement.engagement_id,
+                "status": engagement.status.value,
+                "comment_posted": engagement.status in [EngagementStatus.COMMENTED, EngagementStatus.WAITING],
+                "dm_scheduled_at": engagement.dm_scheduled_at,
+                "error": engagement.error
+            }
+        else:
+            return {"ok": False, "error": "Failed to create engagement"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/engagement/respond-batch")
+async def respond_to_batch(max_comments: int = 10):
+    """Post comments on multiple discovered opportunities"""
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
+        
+        opportunities = []
+        try:
+            from wade_approval_dashboard import fulfillment_queue
+            opps = fulfillment_queue.get('wade', []) + fulfillment_queue.get('system', [])
+            for opp in opps:
+                if opp.get('source', '').lower() in ['reddit', 'twitter', 'github', 'github_bounties', 'linkedin', 'linkedin_jobs']:
+                    if opp.get('author'):
+                        opportunities.append(opp)
+        except:
+            pass
+        
+        if not opportunities:
+            return {"ok": True, "message": "No commentable opportunities found", "processed": 0}
+        
+        results = await engine.engage_batch(opportunities, max_comments=max_comments)
+        return {"ok": True, **results}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/engagement/warm-then-dm")
+async def warm_then_dm(
+    opportunity_id: str,
+    source: str,
+    platform_id: str,
+    url: str,
+    title: str,
+    description: str = "",
+    author: str = "",
+    contact_email: str = None,
+    contact_twitter: str = None,
+    contact_reddit: str = None,
+    contact_name: str = "there",
+    pain_point: str = "",
+    estimated_value: float = 1000
+):
+    """
+    Full warm-up flow: Post comment -> Wait -> Send DM
+    Recommended for higher conversion rates.
+    """
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
+        
+        opportunity = {
+            'id': opportunity_id,
+            'source': source,
+            'platform_id': platform_id,
+            'url': url,
+            'title': title,
+            'description': description,
+            'author': author
+        }
+        
+        engagement = await engine.engage_with_opportunity(opportunity, send_dm_after=True)
+        
+        response = {
+            "ok": True,
+            "phase": "comment_posted" if engagement and engagement.status != EngagementStatus.FAILED else "comment_failed",
+            "engagement_id": engagement.engagement_id if engagement else None,
+            "dm_scheduled_at": engagement.dm_scheduled_at if engagement else None
+        }
+        
+        # If comment failed, send DM immediately as fallback
+        if (not engagement or engagement.status == EngagementStatus.FAILED) and DIRECT_OUTREACH_AVAILABLE:
+            outreach = get_outreach_engine()
+            
+            opp = {
+                'opportunity_id': opportunity_id,
+                'title': title,
+                'pain_point': pain_point or description[:100],
+                'estimated_value': estimated_value
+            }
+            
+            contact = {
+                'email': contact_email,
+                'twitter_handle': contact_twitter or (author if source == 'twitter' else None),
+                'reddit_username': contact_reddit or (author if source == 'reddit' else None),
+                'name': contact_name,
+                'extraction_confidence': 1.0,
+                'preferred_outreach': 'email' if contact_email else ('twitter_dm' if contact_twitter else 'reddit_dm')
+            }
+            
+            result = await outreach.process_opportunity(opp, contact)
+            
+            if result:
+                response['dm_sent'] = result.status.value == 'sent'
+                response['dm_channel'] = result.channel.value
+                response['proposal_id'] = result.proposal_id
+        
+        return response
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/engagement/pending-dms")
+async def get_pending_dms():
+    """Get engagements waiting for DM (comment posted, delay not passed)"""
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
+        ready = engine.get_ready_for_dm()
+        
+        return {
+            "ok": True,
+            "ready_for_dm": len(ready),
+            "engagements": [e.to_dict() for e in ready]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/engagement/process-pending-dms")
+async def process_pending_dms():
+    """Process engagements where delay has passed - send DMs"""
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
+        ready = engine.get_ready_for_dm()
+        
+        sent = 0
+        failed = 0
+        
+        if DIRECT_OUTREACH_AVAILABLE:
+            outreach = get_outreach_engine()
+            
+            for engagement in ready:
+                contact = {
+                    'name': engagement.author_username,
+                    'extraction_confidence': 0.9,
+                }
+                
+                if engagement.platform.value == 'reddit':
+                    contact['reddit_username'] = engagement.author_username
+                    contact['preferred_outreach'] = 'reddit_dm'
+                elif engagement.platform.value == 'twitter':
+                    contact['twitter_handle'] = engagement.author_username
+                    contact['preferred_outreach'] = 'twitter_dm'
+                elif engagement.platform.value == 'github':
+                    contact['github_username'] = engagement.author_username
+                    contact['preferred_outreach'] = 'github_comment'
+                
+                opp = {
+                    'opportunity_id': engagement.opportunity_id,
+                    'title': engagement.post_title,
+                    'pain_point': engagement.post_title,
+                    'estimated_value': 1000
+                }
+                
+                try:
+                    result = await outreach.process_opportunity(opp, contact)
+                    if result and result.status.value == 'sent':
+                        sent += 1
+                        engagement.status = EngagementStatus.DM_SENT
+                        engagement.dm_sent_at = datetime.now(timezone.utc).isoformat()
+                    else:
+                        failed += 1
+                except Exception as e:
+                    print(f"⚠️ DM send error: {e}")
+                    failed += 1
+        
+        return {"ok": True, "ready": len(ready), "sent": sent, "failed": failed}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/engagement/stats")
+async def get_engagement_stats():
+    """Get platform engagement stats"""
+    if not PLATFORM_RESPONSE_AVAILABLE:
+        return {"error": "Platform response engine not available"}
+    
+    try:
+        engine = get_platform_response_engine()
         stats = engine.get_stats()
         return {"ok": True, "stats": stats}
     except Exception as e:
