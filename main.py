@@ -19938,90 +19938,251 @@ async def full_matrix_audit():
     }
     
     # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 1: DISCOVERY & LEAD GEN
+    # CATEGORY 1: DISCOVERY & LEAD GEN (Check ACTUAL live engines)
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["discovery"] = {
-        "mega_discovery": MEGA_DISCOVERY_AVAILABLE if 'MEGA_DISCOVERY_AVAILABLE' in dir() else False,
-        "internet_discovery": INTERNET_DISCOVERY_AVAILABLE if 'INTERNET_DISCOVERY_AVAILABLE' in dir() else False,
-        "amg_orchestrator": AMG_ORCHESTRATOR_AVAILABLE if 'AMG_ORCHESTRATOR_AVAILABLE' in dir() else False,
-        "ame_pitches": AME_PITCHES_AVAILABLE if 'AME_PITCHES_AVAILABLE' in dir() else False,
-        "universal_contact_extraction": UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE if 'UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE' in dir() else False,
-    }
+    discovery_checks = {}
+    
+    # Ultimate Discovery - Direct import at top
+    try:
+        from ultimate_discovery_engine import discover_all_opportunities
+        discovery_checks["ultimate_discovery"] = True
+    except:
+        discovery_checks["ultimate_discovery"] = False
+    
+    # Alpha Discovery
+    try:
+        from alpha_discovery_engine import AlphaDiscoveryEngine
+        discovery_checks["alpha_discovery"] = True
+    except:
+        discovery_checks["alpha_discovery"] = False
+    
+    # Week2 Master Orchestrator
+    try:
+        from week2_master_orchestrator import Week2MasterOrchestrator
+        discovery_checks["week2_master_orchestrator"] = True
+    except:
+        discovery_checks["week2_master_orchestrator"] = False
+    
+    # CSuite Orchestrator
+    try:
+        from csuite_orchestrator import get_orchestrator
+        discovery_checks["csuite_orchestrator"] = True
+    except:
+        discovery_checks["csuite_orchestrator"] = False
+    
+    # Universal Contact Extraction
+    try:
+        from universal_contact_extraction import get_contact_extractor
+        discovery_checks["universal_contact_extraction"] = True
+    except:
+        discovery_checks["universal_contact_extraction"] = False
+    
+    # AMG Orchestrator
+    try:
+        from amg_orchestrator import get_amg
+        discovery_checks["amg_orchestrator"] = True
+    except:
+        discovery_checks["amg_orchestrator"] = False
+    
+    audit["matrix"]["discovery"] = discovery_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 2: OUTREACH & ENGAGEMENT  
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["outreach"] = {
-        "direct_outreach": DIRECT_OUTREACH_AVAILABLE if 'DIRECT_OUTREACH_AVAILABLE' in dir() else False,
-        "platform_response": PLATFORM_RESPONSE_AVAILABLE if 'PLATFORM_RESPONSE_AVAILABLE' in dir() else False,
-        "reply_detection": REPLY_DETECTION_AVAILABLE if 'REPLY_DETECTION_AVAILABLE' in dir() else False,
-        "resend_email": RESEND_AVAILABLE if 'RESEND_AVAILABLE' in dir() else False,
-    }
+    outreach_checks = {}
+    
+    try:
+        from direct_outreach_engine import get_outreach_engine
+        outreach_checks["direct_outreach"] = True
+    except:
+        outreach_checks["direct_outreach"] = False
+    
+    try:
+        from platform_response_engine import get_platform_response_engine
+        outreach_checks["platform_response"] = True
+    except:
+        outreach_checks["platform_response"] = False
+    
+    try:
+        from reply_detection_engine import get_reply_detection_engine
+        outreach_checks["reply_detection"] = True
+    except:
+        outreach_checks["reply_detection"] = False
+    
+    outreach_checks["resend_configured"] = bool(os.getenv("RESEND_API_KEY"))
+    
+    audit["matrix"]["outreach"] = outreach_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 3: CONVERSATION & CLOSING
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["closing"] = {
-        "conversation_engine": CONVERSATION_ENGINE_AVAILABLE if 'CONVERSATION_ENGINE_AVAILABLE' in dir() else False,
-        "contract_engine": CONTRACT_ENGINE_AVAILABLE if 'CONTRACT_ENGINE_AVAILABLE' in dir() else False,
-        "client_portal": CLIENT_PORTAL_AVAILABLE if 'CLIENT_PORTAL_AVAILABLE' in dir() else False,
-    }
+    closing_checks = {}
+    
+    try:
+        from conversation_engine import get_conversation_engine
+        closing_checks["conversation_engine"] = True
+    except:
+        closing_checks["conversation_engine"] = False
+    
+    try:
+        from contract_payment_engine import get_contract_engine
+        closing_checks["contract_engine"] = True
+    except:
+        closing_checks["contract_engine"] = False
+    
+    try:
+        from dealgraph import get_deal_graph
+        closing_checks["dealgraph"] = True
+    except:
+        try:
+            from autonomous_deal_graph import get_deal_graph
+            closing_checks["dealgraph"] = True
+        except:
+            closing_checks["dealgraph"] = False
+    
+    audit["matrix"]["closing"] = closing_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 4: SOCIAL & CONTENT MONETIZATION
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["social_content"] = {
-        "social_engine": SOCIAL_ENGINE_AVAILABLE if 'SOCIAL_ENGINE_AVAILABLE' in dir() else False,
-        "third_party_monetization": THIRD_PARTY_MONETIZATION_AVAILABLE if 'THIRD_PARTY_MONETIZATION_AVAILABLE' in dir() else False,
-    }
+    social_checks = {}
     
-    # Check social platforms
     try:
+        from social_autoposting_engine import get_social_engine
         social_engine = get_social_engine()
-        audit["matrix"]["social_content"]["connected_platforms"] = list(social_engine.connected_accounts.keys()) if hasattr(social_engine, 'connected_accounts') else []
-        audit["matrix"]["social_content"]["auto_posting_enabled"] = True
+        social_checks["social_engine"] = True
+        social_checks["connected_platforms"] = list(getattr(social_engine, 'connected_accounts', {}).keys())
+    except Exception as e:
+        social_checks["social_engine"] = False
+        social_checks["social_engine_error"] = str(e)
+        social_checks["connected_platforms"] = []
+    
+    try:
+        from third_party_monetization import ThirdPartyMonetization
+        social_checks["third_party_monetization"] = True
     except:
-        audit["matrix"]["social_content"]["auto_posting_enabled"] = False
+        social_checks["third_party_monetization"] = False
+    
+    # Check platform credentials for social
+    social_checks["platform_credentials"] = {
+        "twitter": bool(os.getenv("TWITTER_API_KEY")),
+        "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
+        "tiktok": bool(os.getenv("TIKTOK_ACCESS_TOKEN")),
+        "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
+        "youtube": bool(os.getenv("YOUTUBE_API_KEY")),
+        "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
+    }
+    
+    audit["matrix"]["social_content"] = social_checks
     
     # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 5: PLATFORM AUTOMATION
+    # CATEGORY 5: PLATFORM AUTOMATION (Fiverr, etc)
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["platform_automation"] = {
-        "fiverr": FIVERR_AUTOMATION_AVAILABLE if 'FIVERR_AUTOMATION_AVAILABLE' in dir() else False,
-        "dribbble": DRIBBBLE_AUTOMATION_AVAILABLE if 'DRIBBBLE_AUTOMATION_AVAILABLE' in dir() else False,
-        "99designs": NINETY_NINE_AUTOMATION_AVAILABLE if 'NINETY_NINE_AUTOMATION_AVAILABLE' in dir() else False,
-    }
+    platform_checks = {}
+    
+    try:
+        from fiverr_automation_engine import FiverrAutomation
+        platform_checks["fiverr"] = True
+    except:
+        platform_checks["fiverr"] = False
+    
+    try:
+        from dribbble_automation_engine import DribbbleAutomation
+        platform_checks["dribbble"] = True
+    except:
+        platform_checks["dribbble"] = False
+    
+    try:
+        from ninety_nine_designs_engine import NinetyNineDesigns
+        platform_checks["99designs"] = True
+    except:
+        platform_checks["99designs"] = False
+    
+    audit["matrix"]["platform_automation"] = platform_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 6: AI & INTELLIGENCE
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["ai_intelligence"] = {
-        "metahive_brain": METAHIVE_BRAIN_AVAILABLE if 'METAHIVE_BRAIN_AVAILABLE' in dir() else False,
-        "metahive": METAHIVE_AVAILABLE if 'METAHIVE_AVAILABLE' in dir() else False,
-        "yield_memory": YIELD_MEMORY_AVAILABLE if 'YIELD_MEMORY_AVAILABLE' in dir() else False,
-    }
+    ai_checks = {}
+    
+    try:
+        from metahive_brain import MetaHiveBrain
+        ai_checks["metahive_brain"] = True
+    except:
+        ai_checks["metahive_brain"] = False
+    
+    try:
+        from open_metahive_api import get_metahive_api
+        ai_checks["metahive_api"] = True
+    except:
+        ai_checks["metahive_api"] = False
+    
+    try:
+        from yield_memory import store_pattern, get_patterns
+        ai_checks["yield_memory"] = True
+    except:
+        ai_checks["yield_memory"] = False
+    
+    ai_checks["openrouter"] = bool(os.getenv("OPENROUTER_API_KEY"))
+    ai_checks["openai"] = bool(os.getenv("OPENAI_API_KEY"))
+    
+    audit["matrix"]["ai_intelligence"] = ai_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 7: REVENUE & PAYMENTS
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["revenue"] = {
-        "revenue_orchestrator": REVENUE_ORCHESTRATOR_AVAILABLE if 'REVENUE_ORCHESTRATOR_AVAILABLE' in dir() else False,
-        "aigentsy_payments": AIGENTSY_PAYMENTS_AVAILABLE if 'AIGENTSY_PAYMENTS_AVAILABLE' in dir() else False,
-        "bundle_engine": BUNDLE_ENGINE_AVAILABLE if 'BUNDLE_ENGINE_AVAILABLE' in dir() else False,
-    }
+    revenue_checks = {}
+    
+    try:
+        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
+        revenue_checks["revenue_orchestrator"] = True
+    except:
+        revenue_checks["revenue_orchestrator"] = False
+    
+    try:
+        from aigentsy_payments import AigentsyPayments
+        revenue_checks["aigentsy_payments"] = True
+    except:
+        revenue_checks["aigentsy_payments"] = False
+    
+    revenue_checks["stripe"] = bool(os.getenv("STRIPE_SECRET_KEY"))
+    revenue_checks["paypal"] = bool(os.getenv("PAYPAL_CLIENT_ID"))
+    
+    audit["matrix"]["revenue"] = revenue_checks
     
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 8: SPAWN & AUTOMATION
     # ═══════════════════════════════════════════════════════════════
-    audit["matrix"]["spawn"] = {
-        "auto_spawn": AUTO_SPAWN_AVAILABLE if 'AUTO_SPAWN_AVAILABLE' in dir() else False,
-        "agent_deployer": AGENT_DEPLOYER_AVAILABLE if 'AGENT_DEPLOYER_AVAILABLE' in dir() else False,
-        "wade_workflow": WADE_WORKFLOW_AVAILABLE if 'WADE_WORKFLOW_AVAILABLE' in dir() else False,
-        "master_runtime": MASTER_RUNTIME_AVAILABLE if 'MASTER_RUNTIME_AVAILABLE' in dir() else False,
-    }
+    spawn_checks = {}
+    
+    try:
+        from spawn_engine import SpawnEngine
+        spawn_checks["spawn_engine"] = True
+    except:
+        spawn_checks["spawn_engine"] = False
+    
+    try:
+        from wade_integrated_workflow import IntegratedFulfillmentWorkflow
+        spawn_checks["wade_workflow"] = True
+    except:
+        spawn_checks["wade_workflow"] = False
+    
+    try:
+        from auto_bidding_orchestrator import auto_bid_on_opportunity
+        spawn_checks["auto_bidding"] = True
+    except:
+        spawn_checks["auto_bidding"] = False
+    
+    try:
+        from fulfillment_coordinator import FulfillmentCoordinator
+        spawn_checks["fulfillment_coordinator"] = True
+    except:
+        spawn_checks["fulfillment_coordinator"] = False
+    
+    audit["matrix"]["spawn"] = spawn_checks
     
     # ═══════════════════════════════════════════════════════════════
-    # CREDENTIALS CHECK
+    # CREDENTIALS CHECK (All)
     # ═══════════════════════════════════════════════════════════════
     audit["credentials"] = {
         # Social Platforms
@@ -20034,6 +20195,8 @@ async def full_matrix_audit():
         # Work Platforms
         "fiverr": bool(os.getenv("FIVERR_API_KEY") or os.getenv("FIVERR_SESSION")),
         "upwork": bool(os.getenv("UPWORK_ACCESS_TOKEN")),
+        "github": bool(os.getenv("GITHUB_TOKEN")),
+        "reddit": bool(os.getenv("REDDIT_CLIENT_ID")),
         # Email/Messaging
         "resend": bool(os.getenv("RESEND_API_KEY")),
         "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
@@ -20045,41 +20208,49 @@ async def full_matrix_audit():
         "openai": bool(os.getenv("OPENAI_API_KEY")),
         # Storage
         "jsonbin": bool(os.getenv("JSONBIN_API_KEY")),
-        # Discovery
-        "reddit": bool(os.getenv("REDDIT_CLIENT_ID")),
-        "github": bool(os.getenv("GITHUB_TOKEN")),
     }
     
     # ═══════════════════════════════════════════════════════════════
-    # WORKFLOW ENDPOINTS CHECK
+    # WORKFLOW ENDPOINTS - What should be firing every 15 min
     # ═══════════════════════════════════════════════════════════════
     audit["workflow_endpoints"] = {
         "discovery": [
-            "/vacuum/scrape-all",
-            "/execution/mega-discover",
+            "/execution/mega-discover → Uses ultimate_discovery_engine",
             "/autonomous/discover-and-execute",
+            "/alpha/discover → Uses alpha_discovery_engine",
         ],
         "outreach": [
             "/autonomous/outreach/send",
-            "/engagement/respond-batch",
-            "/replies/check-all",
+            "/engagement/respond-batch → Platform comments",
+            "/engagement/process-pending-dms",
+            "/replies/check-all → Inbox monitoring",
         ],
         "social_monetization": [
-            "/social/process-queue",
-            "/social/auto-generate",
+            "/social/process-queue → Auto-post to platforms",
+            "/social/auto-generate → Generate content",
             "/viral/generate-content",
-            "/viral/cross-post",
+            "/viral/cross-post → Cross-post viral",
             "/affiliate/generate-content",
             "/affiliate/deploy-content",
+            "/revenue-orchestrator/social/post-spawns",
         ],
-        "cart_recovery": [
+        "cart_nudge_recovery": [
             "/revenue-orchestrator/cart-recovery",
             "/retarget/process-queue",
+            "/recovery/process → T+15m/T+23h/T+3d",
         ],
-        "closing": [
+        "conversation_closing": [
+            "/conversation/auto-process-replies",
             "/conversations/hot-leads",
             "/contract/auto-send-for-closing",
             "/contracts/pending-payments",
+            "/autonomous/full-cycle-v99",
+        ],
+        "financial": [
+            "/stripe/batch-payouts",
+            "/revenue/reconcile",
+            "/escrow/auto-release",
+            "/payments/batch-execute",
         ],
     }
     
@@ -20102,17 +20273,38 @@ async def full_matrix_audit():
         "systems": f"{working_systems}/{total_systems}",
         "credentials": f"{working_creds}/{total_creds}",
         "missing_critical": [],
+        "ready_systems": [],
     }
+    
+    # Identify what's working
+    if audit["matrix"]["discovery"].get("ultimate_discovery"):
+        audit["summary"]["ready_systems"].append("✅ Ultimate Discovery (27 platforms)")
+    if audit["matrix"]["discovery"].get("alpha_discovery"):
+        audit["summary"]["ready_systems"].append("✅ Alpha Discovery")
+    if audit["matrix"]["discovery"].get("csuite_orchestrator"):
+        audit["summary"]["ready_systems"].append("✅ CSuite Orchestrator")
+    if audit["matrix"]["outreach"].get("direct_outreach"):
+        audit["summary"]["ready_systems"].append("✅ Direct Outreach")
+    if audit["matrix"]["closing"].get("conversation_engine"):
+        audit["summary"]["ready_systems"].append("✅ Conversation AI")
+    if audit["matrix"]["closing"].get("contract_engine"):
+        audit["summary"]["ready_systems"].append("✅ Contract Engine")
+    if audit["matrix"]["social_content"].get("social_engine"):
+        audit["summary"]["ready_systems"].append("✅ Social Auto-Posting")
+    if audit["matrix"]["spawn"].get("auto_bidding"):
+        audit["summary"]["ready_systems"].append("✅ Auto-Bidding")
     
     # Check for critical missing items
     if not audit["credentials"]["stripe"]:
-        audit["summary"]["missing_critical"].append("STRIPE_SECRET_KEY - Cannot collect payments")
+        audit["summary"]["missing_critical"].append("❌ STRIPE_SECRET_KEY - Cannot collect payments")
     if not audit["credentials"]["resend"]:
-        audit["summary"]["missing_critical"].append("RESEND_API_KEY - Cannot send emails")
+        audit["summary"]["missing_critical"].append("❌ RESEND_API_KEY - Cannot send emails")
     if not audit["credentials"]["openrouter"]:
-        audit["summary"]["missing_critical"].append("OPENROUTER_API_KEY - AI responses won't work")
+        audit["summary"]["missing_critical"].append("❌ OPENROUTER_API_KEY - AI responses won't work")
     if not audit["matrix"]["social_content"].get("social_engine"):
-        audit["summary"]["missing_critical"].append("Social Engine not loaded - Auto-posting disabled")
+        audit["summary"]["missing_critical"].append("⚠️ Social Engine not loaded - Auto-posting may be limited")
+    if not audit["credentials"]["instagram"] and not audit["credentials"]["tiktok"]:
+        audit["summary"]["missing_critical"].append("⚠️ No Instagram/TikTok credentials - Social monetization limited")
     
     return audit
 
