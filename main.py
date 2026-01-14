@@ -245,6 +245,21 @@ except ImportError as e:
     PLATFORM_RESPONSE_AVAILABLE = False
     print(f"❌ platform_response_engine: {e}")
 
+# Conversation AI Engine
+try:
+    from conversation_engine import (
+        ConversationEngine,
+        Conversation,
+        ConversationStage,
+        ReplyIntent,
+        get_conversation_engine
+    )
+    CONVERSATION_ENGINE_AVAILABLE = True
+    print("✅ conversation_engine loaded")
+except ImportError as e:
+    CONVERSATION_ENGINE_AVAILABLE = False
+    print(f"❌ conversation_engine: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -19221,6 +19236,277 @@ async def get_engagement_stats():
         engine = get_platform_response_engine()
         stats = engine.get_stats()
         return {"ok": True, "stats": stats}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
+# CONVERSATION AI ENDPOINTS
+# ============================================================
+
+@app.post("/conversation/create")
+async def create_conversation(
+    opportunity_id: str,
+    proposal_id: str,
+    contact_email: str = None,
+    contact_name: str = None,
+    contact_handle: str = None,
+    channel: str = "email",
+    title: str = "",
+    pain_point: str = "",
+    estimated_value: float = 1000
+):
+    """Create a new conversation from outreach"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        
+        conversation = engine.create_conversation(
+            opportunity_id=opportunity_id,
+            proposal_id=proposal_id,
+            contact_email=contact_email,
+            contact_name=contact_name,
+            contact_handle=contact_handle,
+            channel=channel,
+            title=title,
+            pain_point=pain_point,
+            estimated_value=estimated_value
+        )
+        
+        return {
+            "ok": True,
+            "conversation_id": conversation.conversation_id,
+            "stage": conversation.stage.value
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/conversation/process-reply")
+async def process_conversation_reply(
+    conversation_id: str = None,
+    email: str = None,
+    handle: str = None,
+    message: str = ""
+):
+    """Process incoming reply and generate AI response"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        
+        conversation, response = await engine.process_reply(
+            conversation_id=conversation_id,
+            email=email,
+            handle=handle,
+            message=message
+        )
+        
+        if not conversation:
+            return {"error": "Conversation not found", "ok": False}
+        
+        return {
+            "ok": True,
+            "conversation_id": conversation.conversation_id,
+            "stage": conversation.stage.value,
+            "qualification_score": conversation.qualification.qualification_score(),
+            "is_qualified": conversation.qualification.is_qualified(),
+            "response": response,
+            "should_send_response": True
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/conversation/{conversation_id}")
+async def get_conversation_detail(conversation_id: str):
+    """Get conversation details"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        conversation = engine.conversations.get(conversation_id)
+        
+        if not conversation:
+            return {"error": "Conversation not found", "ok": False}
+        
+        return {
+            "ok": True,
+            "conversation": conversation.to_dict(),
+            "messages": conversation.messages[-10:]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/conversations/hot-leads")
+async def get_hot_leads():
+    """Get conversations close to closing (HOT LEADS!)"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        hot_leads = engine.get_hot_leads()
+        
+        return {
+            "ok": True,
+            "count": len(hot_leads),
+            "hot_leads": [c.to_dict() for c in hot_leads],
+            "total_potential_value": sum(c.estimated_value for c in hot_leads)
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/conversations/by-stage/{stage}")
+async def get_conversations_by_stage(stage: str):
+    """Get all conversations at a specific stage"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        
+        try:
+            stage_enum = ConversationStage(stage)
+        except ValueError:
+            return {"error": f"Invalid stage. Valid: {[s.value for s in ConversationStage]}"}
+        
+        conversations = engine.get_conversations_by_stage(stage_enum)
+        
+        return {
+            "ok": True,
+            "stage": stage,
+            "count": len(conversations),
+            "conversations": [c.to_dict() for c in conversations]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/conversation/{conversation_id}/mark-proposal-sent")
+async def mark_conversation_proposal_sent(conversation_id: str, price: float):
+    """Mark that a proposal was sent"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        engine.mark_proposal_sent(conversation_id, price)
+        return {"ok": True, "conversation_id": conversation_id, "status": "proposal_sent"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/conversation/{conversation_id}/mark-contract-sent")
+async def mark_conversation_contract_sent(conversation_id: str):
+    """Mark that a contract was sent"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        engine.mark_contract_sent(conversation_id)
+        return {"ok": True, "conversation_id": conversation_id, "status": "contract_sent"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/conversation/{conversation_id}/mark-closed")
+async def mark_conversation_closed(conversation_id: str, amount: float):
+    """Mark deal as closed won"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        engine.mark_deal_closed(conversation_id, amount)
+        return {"ok": True, "conversation_id": conversation_id, "status": "closed_won", "amount": amount}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/conversations/stats")
+async def get_conversation_stats():
+    """Get conversation/sales stats"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    try:
+        engine = get_conversation_engine()
+        stats = engine.get_stats()
+        return {"ok": True, "stats": stats}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/conversation/auto-process-replies")
+async def auto_process_conversation_replies():
+    """Auto-process pending replies and generate responses"""
+    if not CONVERSATION_ENGINE_AVAILABLE:
+        return {"error": "Conversation engine not available"}
+    
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        reply_engine = get_reply_engine()
+        conv_engine = get_conversation_engine()
+        
+        pending = reply_engine.get_pending_replies(limit=20)
+        
+        processed = 0
+        responses_generated = 0
+        
+        for reply in pending:
+            conversation = None
+            
+            if reply.sender_email:
+                conversation = conv_engine.get_conversation_by_email(reply.sender_email)
+            elif reply.sender_handle:
+                conversation = conv_engine.get_conversation_by_handle(reply.sender_handle)
+            
+            if not conversation and reply.original_proposal_id:
+                conversation = conv_engine.create_conversation(
+                    opportunity_id=reply.original_opportunity_id,
+                    proposal_id=reply.original_proposal_id,
+                    contact_email=reply.sender_email,
+                    contact_handle=reply.sender_handle,
+                    contact_name=reply.sender_name,
+                    channel=reply.channel.value
+                )
+            
+            if conversation:
+                _, response = await conv_engine.process_reply(
+                    conversation_id=conversation.conversation_id,
+                    message=reply.body
+                )
+                
+                processed += 1
+                
+                if response:
+                    responses_generated += 1
+                    print(f"📤 Response for {conversation.conversation_id}: {response[:100]}...")
+                
+                reply_engine.mark_reply_processing(reply.reply_id)
+        
+        return {
+            "ok": True,
+            "pending_replies": len(pending),
+            "processed": processed,
+            "responses_generated": responses_generated
+        }
+        
     except Exception as e:
         return {"error": str(e)}
 
