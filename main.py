@@ -18312,10 +18312,15 @@ async def run_full_cycle_with_internet():
     # Phase 1: Standard discovery (27 platforms + social)
     try:
         from ultimate_discovery_engine import discover_all_opportunities
-        discovery = await discover_all_opportunities("system")
-        opps = discovery if isinstance(discovery, list) else discovery.get("opportunities", [])
+        discovery = await discover_all_opportunities(
+            username="system",
+            user_profile={"capabilities": ["development", "design", "content", "marketing", "automation"]},
+            platforms=None  # All platforms
+        )
+        opps = discovery.get("opportunities", []) if isinstance(discovery, dict) else []
         results["phases"]["standard_discovery"] = {
             "opportunities": len(opps),
+            "total_value": discovery.get("total_value", 0) if isinstance(discovery, dict) else 0,
             "platforms": "27+ platforms",
             "status": "success"
         }
