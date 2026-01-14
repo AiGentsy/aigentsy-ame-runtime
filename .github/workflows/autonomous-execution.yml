@@ -1,18 +1,44 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy v98 – PROFIT ENGINE
-# The Ultimate Autonomous Money Machine + Financial Discipline
-# January 5, 2026
+# AiGentsy v99 – AUTONOMOUS CLOSING PIPELINE
+# The Ultimate Autonomous Money Machine + Financial Discipline + AUTO-CLOSING
+# January 14, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # FUSES:
+# • v98: PROFIT ENGINE - ROI Gates, Ownership, Backpressure, Pricing Bandit
 # • v97: APEX DOMINATOR (Adaptive Aggression, Swarm, Kelly, Waves)
 # • v96: Cash-Verified, Profit-First, Self-Healing, SLO Policy
 # • v94: Internet Domination (27+ platforms, Demand Vacuum, Viral Machine)
 # • v93: Apex Upgrades (12 revenue optimization modules)
-# • NEW v98: PROFIT ENGINE - ROI Gates, Ownership, Backpressure, Pricing Bandit
+# • NEW v99: AUTONOMOUS CLOSING - Reply Detection, Platform Engagement, 
+#            Conversation AI, Contract + Deposit Automation
 #
 # ═══════════════════════════════════════════════════════════════════════════════
-# NEW IN v97 - MASSIVELY ACCRETIVE UPGRADES:
+# NEW IN v99 - AUTONOMOUS CLOSING PIPELINE:
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ 📬 REPLY DETECTION ENGINE                                                   │
+# │   • Resend webhook integration (delivered, opened, clicked)                │
+# │   • Twitter DM inbox polling + Reddit inbox polling                        │
+# │   • Intent detection (interested, question, objection, ready_to_buy)       │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 💬 PLATFORM ENGAGEMENT ENGINE                                               │
+# │   • Post helpful comments on Reddit, Twitter, GitHub, LinkedIn             │
+# │   • Warm-up engagement BEFORE sending DMs (5-15 min delay)                 │
+# │   • Real OAuth 1.0a for Twitter, OAuth for Reddit/LinkedIn                 │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 🗣️ CONVERSATION AI ENGINE                                                   │
+# │   • Multi-turn dialogue management                                         │
+# │   • Qualification extraction (budget, timeline, decision maker)            │
+# │   • Objection handling + AI response generation via OpenRouter             │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ 📝 CONTRACT + DEPOSIT AUTOMATION                                            │
+# │   • Auto-generate service agreements (HTML + text)                         │
+# │   • Stripe Payment Links for deposits (50% default)                        │
+# │   • Auto-mark deal as CLOSED_WON when paid                                 │
+# └─────────────────────────────────────────────────────────────────────────────┘
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# v97 FEATURES (unchanged):
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ 🧠 ADAPTIVE AGGRESSION ENGINE                                               │
 # │   • Dynamically adjusts execution intensity based on cash flow             │
@@ -52,12 +78,12 @@
 # └─────────────────────────────────────────────────────────────────────────────┘
 #
 # EXECUTION FREQUENCY: Adaptive (5min when SLO violated, 15min normal, 60min optimized)
-# TOTAL ENDPOINTS: 250+
-# PHASES: 25
+# TOTAL ENDPOINTS: 320+
+# PHASES: 36
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v98 PROFIT ENGINE
+name: AiGentsy v99 AUTONOMOUS CLOSING PIPELINE
 
 on:
   schedule:
@@ -69,7 +95,7 @@ on:
         required: false
         default: 'domination'
         type: choice
-        options: [domination, full, beast, optimize, discovery, financial, marketing, health]
+        options: [domination, full, beast, optimize, discovery, financial, marketing, health, closing]
       aggression:
         description: 'Aggression level (1-10, 0=auto)'
         required: false
@@ -77,7 +103,7 @@ on:
         type: string
 
 concurrency:
-  group: aigentsy-v98-${{ github.ref }}
+  group: aigentsy-v99-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -89,7 +115,7 @@ env:
 
 jobs:
   apex-dominator:
-    name: "🏦 v98 PROFIT ENGINE (280+ endpoints)"
+    name: "🏦 v99 AUTONOMOUS CLOSING (320+ endpoints)"
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -593,6 +619,112 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/deals/advance-all" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19a: V99 SYSTEM CHECK
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔬 V99 System Check
+        id: v99check
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔬 V99 SYSTEM CHECK"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          ./_curl.sh "${{ env.BACKEND_URL }}/v99/system-check" GET '' 30 | tee json/v99-check.json | jq -c '{summary}' 2>/dev/null || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/v99/quick-test" GET '' 30 | jq -c '{ok,steps}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19b: V99 REPLY DETECTION
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 📬 V99 Reply Detection
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📬 V99 REPLY DETECTION - MONITOR ALL CHANNELS"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check all inboxes (Twitter DMs, Reddit inbox)
+          ./_curl.sh "${{ env.BACKEND_URL }}/replies/check-all" POST '{}' 120 | jq -c '{ok,twitter_new,reddit_new}' 2>/dev/null || true
+          
+          # Get pending replies
+          ./_curl.sh "${{ env.BACKEND_URL }}/replies/pending" GET '' 30 | jq -c '{ok,count}' 2>/dev/null || true
+          
+          # Get high-priority (interested) replies - HOT LEADS!
+          ./_curl.sh "${{ env.BACKEND_URL }}/replies/high-priority" GET '' 30 | jq -c '{ok,count}' 2>/dev/null || true
+          
+          # Reply stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/replies/stats" GET '' 30 | tee json/v99-replies.json | jq -c '{ok}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19c: V99 PLATFORM ENGAGEMENT
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💬 V99 Platform Engagement
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💬 V99 PLATFORM ENGAGEMENT - COMMENT BEFORE DM"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Post helpful comments on discovered opportunities (warm-up)
+          ./_curl.sh "${{ env.BACKEND_URL }}/engagement/respond-batch" POST '{"max_comments":10}' 180 | jq -c '{ok,commented,failed}' 2>/dev/null || true
+          
+          # Process pending DMs (where warm-up delay has passed)
+          ./_curl.sh "${{ env.BACKEND_URL }}/engagement/process-pending-dms" POST '{}' 120 | jq -c '{ok,ready,sent}' 2>/dev/null || true
+          
+          # Get engagement stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/engagement/stats" GET '' 30 | tee json/v99-engagement.json | jq -c '{ok}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19d: V99 CONVERSATION AI
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🗣️ V99 Conversation AI
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🗣️ V99 CONVERSATION AI - MULTI-TURN CLOSING"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Auto-process pending replies and generate AI responses
+          ./_curl.sh "${{ env.BACKEND_URL }}/conversation/auto-process-replies" POST '{}' 180 | jq -c '{ok,processed,responses_generated}' 2>/dev/null || true
+          
+          # Get hot leads (conversations close to closing)
+          ./_curl.sh "${{ env.BACKEND_URL }}/conversations/hot-leads" GET '' 30 | jq -c '{ok,count,total_potential_value}' 2>/dev/null || true
+          
+          # Conversation stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/conversations/stats" GET '' 30 | tee json/v99-conversations.json | jq -c '{ok}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19e: V99 CONTRACT & DEPOSIT
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 📝 V99 Contract & Deposit
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📝 V99 CONTRACT & DEPOSIT - AUTO-CLOSE DEALS"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Auto-send contracts to conversations in CLOSING stage
+          ./_curl.sh "${{ env.BACKEND_URL }}/contract/auto-send-for-closing" POST '{}' 180 | jq -c '{ok,contracts_created,contracts_sent}' 2>/dev/null || true
+          
+          # Check pending payments
+          ./_curl.sh "${{ env.BACKEND_URL }}/contracts/pending-payments" GET '' 30 | jq -c '{ok,count,total_pending}' 2>/dev/null || true
+          
+          # Contract stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/contracts/stats" GET '' 30 | tee json/v99-contracts.json | jq -c '{ok}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19f: V99 FULL AUTONOMOUS CYCLE
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔄 V99 Full Autonomous Cycle
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔄 V99 FULL AUTONOMOUS CYCLE"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Run the complete v99 pipeline in one call
+          ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/full-cycle-v99" POST '{}' 300 | tee json/v99-cycle.json | jq -c '{ok,summary}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 20: AI GENERATION
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🤖 AI Generation
@@ -770,11 +902,15 @@ jobs:
           DASH=$(cat json/orch.json 2>/dev/null || echo '{}')
           WADE=$(cat json/wade-approve.json 2>/dev/null || echo '{}')
           SPAWN=$(cat json/spawn.json 2>/dev/null || echo '{}')
+          V99_CHECK=$(cat json/v99-check.json 2>/dev/null || echo '{}')
+          V99_CYCLE=$(cat json/v99-cycle.json 2>/dev/null || echo '{}')
+          V99_REPLIES=$(cat json/v99-replies.json 2>/dev/null || echo '{}')
+          V99_CONTRACTS=$(cat json/v99-contracts.json 2>/dev/null || echo '{}')
           
           cat > canary.json <<EOF
           {
             "ts": "$NOW",
-            "version": "v98",
+            "version": "v99",
             "cash": {
               "verified_6h": "${{ steps.cash.outputs.verified_6h }}",
               "scheduled_24h": "${{ steps.cash.outputs.scheduled_24h }}",
@@ -788,7 +924,13 @@ jobs:
             "slo_violated": "${{ steps.slo.outputs.slo_violated }}",
             "orchestrator": $DASH,
             "wade": $WADE,
-            "spawn": $SPAWN
+            "spawn": $SPAWN,
+            "v99": {
+              "system_check": $V99_CHECK,
+              "cycle": $V99_CYCLE,
+              "replies": $V99_REPLIES,
+              "contracts": $V99_CONTRACTS
+            }
           }
           EOF
 
@@ -796,7 +938,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: profit-engine-v98-${{ github.run_number }}
+          name: autonomous-closing-v99-${{ github.run_number }}
           path: |
             canary.json
             json/
@@ -810,7 +952,7 @@ jobs:
         run: |
           echo ""
           echo "╔═══════════════════════════════════════════════════════════════════╗"
-          echo "║          🏦 AIGENTSY v98 PROFIT ENGINE - COMPLETE                 ║"
+          echo "║       🏦 AIGENTSY v99 AUTONOMOUS CLOSING - COMPLETE               ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                             ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
@@ -818,6 +960,12 @@ jobs:
           echo "║ 📊 PIPELINE: \$${{ steps.cash.outputs.pipeline }} | MRR: \$${{ steps.cash.outputs.mrr }}"
           echo "║ ⚡ AGGRESSION: ${{ steps.aggression.outputs.aggression }}/10 (${{ steps.aggression.outputs.mode }})"
           echo "║ 🚨 SLO VIOLATED: ${{ steps.slo.outputs.slo_violated }}"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 📬 V99 AUTONOMOUS CLOSING PIPELINE:                               ║"
+          echo "║   📬 Reply Detection (Resend webhooks + inbox polling)            ║"
+          echo "║   💬 Platform Engagement (comment before DM)                      ║"
+          echo "║   🗣️ Conversation AI (qualify, objections, close)                 ║"
+          echo "║   📝 Contract + Deposit (Stripe Payment Links)                    ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🏦 v98 PROFIT ENGINE SYSTEMS:                                     ║"
           echo "║   💀 ROI Kill Switch (gate=1.6x, kill=1.2x)                       ║"
@@ -828,5 +976,5 @@ jobs:
           echo "║   📧 Recovery Cadence (T+15m/T+23h/T+3d)                          ║"
           echo "║   🧪 Experiment Factory (10/segment/day)                          ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 📈 TOTAL: 280+ ENDPOINTS | 30 PHASES | EVERY 15 MINUTES           ║"
+          echo "║ 📈 TOTAL: 320+ ENDPOINTS | 36 PHASES | EVERY 15 MINUTES           ║"
           echo "╚═══════════════════════════════════════════════════════════════════╝"
