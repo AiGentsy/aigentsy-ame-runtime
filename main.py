@@ -20009,19 +20009,23 @@ async def comprehensive_matrix_test():
     }
     
     # ═══════════════════════════════════════════════════════════════
-    # 2. DISCOVERY PIPELINE (10 tests)
+    # 2. DISCOVERY PIPELINE (10 tests) - REAL FUNCTIONAL ENDPOINTS
     # ═══════════════════════════════════════════════════════════════
     results["categories"]["02_discovery"] = {
         "wade_dashboard": await test("GET", "/wade/dashboard"),
         "wade_fulfillment_queue": await test("GET", "/wade/fulfillment-queue"),
         "wade_active_workflows": await test("GET", "/wade/active-workflows"),
-        "alpha_discovery": await test("POST", "/alpha-discovery/run", {"max_results": 2, "dry_run": True}),
-        "discovery_alpha": await test("POST", "/discovery/alpha", {"max_results": 2}),
-        "autonomous_discover": await test("POST", "/autonomous/discover-and-queue", {"limit": 2, "dry_run": True}),
-        "vacuum_opportunities": await test("GET", "/vacuum/opportunities"),
-        "execution_queue": await test("GET", "/execution/queue"),
+        # REAL: Alpha Discovery Engine
+        "alpha_discovery_run": await test("POST", "/alpha-discovery/run", {"platforms": ["github"], "dry_run": True}),
+        # REAL: Ultimate Discovery (27 platforms)
+        "ultimate_discovery": await test("POST", "/autonomous/discover-and-execute", {"max_executions": 2, "dry_run": True}),
+        # REAL: Internet-wide discovery
+        "internet_discovery": await test("POST", "/autonomous/internet-discovery", {"limit": 2, "dry_run": True}),
+        # REAL: Discovery with contacts
+        "discover_with_contacts": await test("POST", "/autonomous/discover-with-contacts", {"limit": 2, "dry_run": True}),
         "api_discovery_stats": await test("GET", "/api/discovery/stats/wade"),
         "autonomous_stats": await test("GET", "/autonomous/stats"),
+        "autonomous_approval_queue": await test("GET", "/autonomous/approval-queue"),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20036,8 +20040,8 @@ async def comprehensive_matrix_test():
         "replies_high_priority": await test("GET", "/replies/high-priority"),
         "replies_check_all": await test("POST", "/replies/check-all", {"dry_run": True}),
         "engagement_respond_batch": await test("POST", "/engagement/respond-batch", {"dry_run": True}),
-        "conductor_status": await test("GET", "/conductor/status"),
-        "conductor_queue": await test("GET", "/conductor/queue"),
+        "conductor_scan": await test("POST", "/conductor/scan", {"dry_run": True}),
+        "conductor_plan": await test("POST", "/conductor/plan", {"dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20048,10 +20052,10 @@ async def comprehensive_matrix_test():
         "conversations_hot_leads": await test("GET", "/conversations/hot-leads"),
         "contracts_stats": await test("GET", "/contracts/stats"),
         "contracts_pending": await test("GET", "/contracts/pending-payments"),
-        "dealgraph_stats": await test("GET", "/dealgraph/stats"),
-        "dealgraph_pipeline": await test("GET", "/dealgraph/pipeline"),
+        "dealgraph_config": await test("GET", "/dealgraph/config"),
+        "dealgraph_dashboard": await test("GET", "/dealgraph/dashboard"),
+        "dealgraph_deals_list": await test("GET", "/dealgraph/deals/list"),
         "deals_active": await test("GET", "/deals/active"),
-        "deals_network_stats": await test("GET", "/deals/network-stats"),
         "slo_contracts_active": await test("GET", "/slo/contracts/active"),
         "slo_dashboard": await test("GET", "/slo/dashboard"),
     }
@@ -20066,10 +20070,10 @@ async def comprehensive_matrix_test():
         "social_strategy": await test("GET", "/social/strategy/wade"),
         "social_process_queue": await test("POST", "/social/process-queue", {"dry_run": True}),
         "social_auto_generate": await test("POST", "/social/auto-generate", {"dry_run": True}),
-        "traffic_stats": await test("GET", "/traffic/stats"),
         "traffic_sources": await test("GET", "/traffic/sources"),
-        "viral_trends": await test("GET", "/viral/trends"),
-        "affiliate_stats": await test("GET", "/affiliate/stats"),
+        "traffic_optimize": await test("GET", "/traffic/optimize"),
+        "revenue_orchestrator_social": await test("POST", "/revenue-orchestrator/social/post-spawns", {"dry_run": True}),
+        "viral_generate": await test("POST", "/viral/generate-content", {"dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20082,7 +20086,7 @@ async def comprehensive_matrix_test():
         "dribbble_post_daily": await test("POST", "/dribbble/post-daily", {"dry_run": True}),
         "99designs_scan": await test("POST", "/99designs/scan-and-enter", {"dry_run": True}),
         "recruit_stats": await test("GET", "/recruit/stats"),
-        "recruit_leaderboard": await test("GET", "/recruit/leaderboard"),
+        "recruit_active": await test("GET", "/recruit/active"),
         "arbitrage_stats": await test("GET", "/arbitrage/stats"),
         "arbitrage_run_cycle": await test("POST", "/arbitrage/run-cycle", {"dry_run": True}),
     }
@@ -20111,15 +20115,15 @@ async def comprehensive_matrix_test():
     results["categories"]["08_ai_intelligence"] = {
         "csuite_agents": await test("GET", "/csuite/agents"),
         "metahive_summary": await test("POST", "/metahive/summary", {}),
-        "hive_status": await test("GET", "/hive/status"),
         "hive_stats": await test("GET", "/hive/stats"),
+        "hive_top_patterns": await test("GET", "/hive/top-patterns"),
         "hive_members": await test("GET", "/hive/members"),
-        "memory_stats": await test("GET", "/memory/stats"),
-        "memory_recent": await test("GET", "/memory/recent"),
+        "hive_treasury": await test("GET", "/hive/treasury"),
         "learning_health": await test("GET", "/learning/health"),
         "learning_stats": await test("GET", "/learning/stats"),
         "protocol_stats": await test("GET", "/protocol/stats"),
-        "protocol_health": await test("GET", "/protocol/health"),
+        "protocol_info": await test("GET", "/protocol/info"),
+        "protocol_capabilities": await test("GET", "/protocol/capabilities"),
         "intelligence_collect": await test("POST", "/intelligence/collect", {"dry_run": True}),
     }
     
@@ -20129,17 +20133,17 @@ async def comprehensive_matrix_test():
     results["categories"]["09_revenue"] = {
         "revenue_summary": await test("GET", "/revenue/summary?username=wade"),
         "revenue_by_platform": await test("GET", "/revenue/by_platform?username=wade"),
-        "revenue_top_performers": await test("GET", "/revenue/top_performers"),
+        "revenue_top_performers": await test("GET", "/revenue/top_performers?username=wade"),
         "cash_ledger": await test("GET", "/revenue/cash-ledger/summary?hours=24"),
         "stripe_balance": await test("GET", "/stripe/balance"),
         "treasury_summary": await test("GET", "/treasury/summary"),
-        "escrow_status": await test("GET", "/escrow/status"),
-        "escrow_pending": await test("GET", "/escrow/pending"),
+        "escrow_create": await test("POST", "/escrow/create_intent", {"dry_run": True}),
         "money_dashboard": await test("GET", "/money/dashboard"),
         "money_config": await test("GET", "/money/config"),
         "revenue_orchestrator_dashboard": await test("GET", "/revenue-orchestrator/dashboard"),
         "reconciliation_dashboard": await test("GET", "/reconciliation/dashboard"),
-        "tax_summary": await test("GET", "/tax/summary"),
+        "tax_summary": await test("GET", "/tax/summary?username=wade"),
+        "tax_estimated": await test("GET", "/tax/estimated?username=wade"),
         "analytics_revenue": await test("GET", "/analytics/revenue"),
         "currency_rates": await test("GET", "/currency/rates"),
     }
@@ -20157,9 +20161,9 @@ async def comprehensive_matrix_test():
         "intents_auction": await test("GET", "/intents/list?status=AUCTION"),
         "intent_auto_bid": await test("POST", "/intent/auto_bid", {"dry_run": True}),
         "runtime_status": await test("GET", "/runtime/status"),
-        "runtime_queue": await test("GET", "/runtime/queue"),
+        "runtime_social": await test("POST", "/runtime/social", {"dry_run": True}),
         "aam_process_all": await test("POST", "/aam/process-all", {"dry_run": True}),
-        "execution_mega_discover": await test("POST", "/execution/mega-discover", {"dry_run": True}),
+        "wade_discover_and_queue": await test("POST", "/wade/discover-and-queue", {"limit": 2, "dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20171,13 +20175,13 @@ async def comprehensive_matrix_test():
         "p2p_stats": await test("GET", "/p2p/stats"),
         "p2p_summary": await test("GET", "/p2p/summary/wade"),
         "darkpool_dashboard": await test("GET", "/darkpool/dashboard"),
-        "darkpool_auctions": await test("GET", "/darkpool/auctions"),
-        "ocl_stats": await test("GET", "/ocl/stats"),
+        "darkpool_listings": await test("GET", "/darkpool/listings"),
         "ocl_dashboard": await test("GET", "/ocl/expansion/dashboard/wade"),
+        "ocl_expansion_stats": await test("GET", "/ocl/expansion/stats/wade"),
         "ipvault_dashboard": await test("GET", "/ipvault/dashboard"),
-        "ipvault_assets": await test("GET", "/ipvault/assets"),
-        "sponsors_stats": await test("GET", "/sponsors/stats"),
-        "sponsors_active": await test("GET", "/sponsors/active"),
+        "ipvault_royalties": await test("GET", "/ipvault/royalties"),
+        "sponsors_pool_types": await test("GET", "/sponsors/pool_types"),
+        "protocol_leaderboard": await test("GET", "/protocol/leaderboard"),
     }
     
     # ═══════════════════════════════════════════════════════════════
