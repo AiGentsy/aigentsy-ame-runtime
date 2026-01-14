@@ -1,17 +1,20 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy v99 – AUTONOMOUS CLOSING PIPELINE
+# AiGentsy v100 – AUTONOMOUS CLOSING PIPELINE + FULL MATRIX
 # The Ultimate Autonomous Money Machine + Financial Discipline + AUTO-CLOSING
 # January 14, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # FUSES:
+# • v99: AUTONOMOUS CLOSING - Reply Detection, Platform Engagement, 
+#        Conversation AI, Contract + Deposit Automation
 # • v98: PROFIT ENGINE - ROI Gates, Ownership, Backpressure, Pricing Bandit
 # • v97: APEX DOMINATOR (Adaptive Aggression, Swarm, Kelly, Waves)
 # • v96: Cash-Verified, Profit-First, Self-Healing, SLO Policy
 # • v94: Internet Domination (27+ platforms, Demand Vacuum, Viral Machine)
 # • v93: Apex Upgrades (12 revenue optimization modules)
-# • NEW v99: AUTONOMOUS CLOSING - Reply Detection, Platform Engagement, 
-#            Conversation AI, Contract + Deposit Automation
+# • NEW v100: FULL MATRIX - Protocol Layer (AIGx, P2P, DarkPool, OCL, IPVault),
+#             JV & MetaBridge, Compliance & Safety, Internet-Wide Discovery,
+#             MetaHive Intelligence, Analytics & Reputation, Matrix Self-Test
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 # NEW IN v99 - AUTONOMOUS CLOSING PIPELINE:
@@ -83,7 +86,7 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v99 AUTONOMOUS CLOSING PIPELINE
+name: AiGentsy v100 AUTONOMOUS CLOSING + FULL MATRIX
 
 on:
   schedule:
@@ -103,7 +106,7 @@ on:
         type: string
 
 concurrency:
-  group: aigentsy-v99-${{ github.ref }}
+  group: aigentsy-v100-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -115,7 +118,7 @@ env:
 
 jobs:
   apex-dominator:
-    name: "🏦 v99 AUTONOMOUS CLOSING (320+ endpoints)"
+    name: "🏦 v100 AUTONOMOUS CLOSING + FULL MATRIX (380+ endpoints)"
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -612,7 +615,7 @@ jobs:
           echo "🔍 DISCOVERY + FULFILLMENT"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl.sh "${{ env.BACKEND_URL }}/execution/mega-discover" POST '{"enable_filters":true}' 300 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/discover-and-execute" POST '{"auto_approve_user":true,"max_executions":20}' 300 | jq -c '{ok}' || true
           ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/discover-and-execute" POST '{"auto_approve_user":true}' 180 | jq -c '{ok}' || true
           ./_curl.sh "${{ env.BACKEND_URL }}/fulfillment/process-queue" POST '{}' 180 | jq -c '{ok}' || true
           ./_curl.sh "${{ env.BACKEND_URL }}/fulfillment/auto-deliver" POST '{}' 120 | jq -c '{ok}' || true
@@ -879,7 +882,159 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/backpressure/status" GET '' 30 | jq -c '{ok,slots}' 2>/dev/null || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 30: HEALTH CHECKS
+      # PHASE 30: PROTOCOL LAYER (AIGx, P2P, DarkPool, OCL, IPVault)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🪙 Protocol Layer
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🪙 PROTOCOL LAYER - AIGx, P2P, DarkPool, OCL, IPVault"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # AIGx Token
+          ./_curl.sh "${{ env.BACKEND_URL }}/aigx/stats" GET '' 30 | jq -c '{ok}' || true
+          
+          # P2P Lending
+          ./_curl.sh "${{ env.BACKEND_URL }}/p2p/stats" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/p2p/match-lenders" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # DarkPool
+          ./_curl.sh "${{ env.BACKEND_URL }}/darkpool/dashboard" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/darkpool/match" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # OCL (Working Capital)
+          ./_curl.sh "${{ env.BACKEND_URL }}/ocl/expansion/dashboard/wade" GET '' 30 | jq -c '{ok}' || true
+          
+          # IPVault (Royalties)
+          ./_curl.sh "${{ env.BACKEND_URL }}/ipvault/dashboard" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/ipvault/royalty-sweep" POST '{}' 60 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 31: JV & METABRIDGE ORCHESTRATION
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🤝 JV & MetaBridge
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🤝 JV & METABRIDGE - Multi-Agent Collaboration"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # JV Mesh
+          ./_curl.sh "${{ env.BACKEND_URL }}/jv/active" GET '' 30 | jq -c '{ok,count}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/jv/auto-match" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # MetaBridge Teams
+          ./_curl.sh "${{ env.BACKEND_URL }}/metabridge/dashboard" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/metabridge/batch_execute" POST '{}' 120 | jq -c '{ok}' || true
+          
+          # Chains & Bundles
+          ./_curl.sh "${{ env.BACKEND_URL }}/chains/process" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/bundles/process-sales" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # Syndication
+          ./_curl.sh "${{ env.BACKEND_URL }}/syndication/networks" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/syndication/royalty/process" POST '{}' 60 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 32: COMPLIANCE & SAFETY
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🛡️ Compliance & Safety
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🛡️ COMPLIANCE & SAFETY - Fraud, Disputes, Proofs"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Fraud Detection
+          ./_curl.sh "${{ env.BACKEND_URL }}/fraud/scan" POST '{}' 60 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/fraud/stats" GET '' 30 | jq -c '{ok}' || true
+          
+          # Compliance
+          ./_curl.sh "${{ env.BACKEND_URL }}/compliance/stats" GET '' 30 | jq -c '{ok}' || true
+          
+          # Disputes
+          ./_curl.sh "${{ env.BACKEND_URL }}/disputes/auto-resolve" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # Proofs
+          ./_curl.sh "${{ env.BACKEND_URL }}/proofs/process-pending" POST '{}' 60 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 33: INTERNET-WIDE DISCOVERY (Enhanced v99)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🌐 Internet-Wide Discovery
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🌐 INTERNET-WIDE DISCOVERY - Beyond 27 Platforms"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Vacuum Scraper (internet-wide)
+          ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/internet-discovery" POST '{"limit":50}' 180 | jq -c '{ok,found}' || true
+          
+          # Discovery with Contact Extraction
+          ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/discover-with-contacts" POST '{"limit":30}' 180 | jq -c '{ok,contacts_found}' || true
+          
+          # Alpha Discovery (27 platforms)
+          ./_curl.sh "${{ env.BACKEND_URL }}/alpha-discovery/run" POST '{}' 180 | jq -c '{ok,total}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 34: METAHIVE INTELLIGENCE
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🧠 MetaHive Intelligence
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🧠 METAHIVE INTELLIGENCE - Cross-AI Learning"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Hive Stats & Learning
+          ./_curl.sh "${{ env.BACKEND_URL }}/hive/stats" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/hive/top-patterns" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/hive/distribute" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # Intelligence Collection
+          ./_curl.sh "${{ env.BACKEND_URL }}/intelligence/collect" POST '{}' 120 | jq -c '{ok}' || true
+          
+          # Protocol Stats
+          ./_curl.sh "${{ env.BACKEND_URL }}/protocol/stats" GET '' 30 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 35: ANALYTICS & REPUTATION
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 📊 Analytics & Reputation
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📊 ANALYTICS & REPUTATION"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Analytics
+          ./_curl.sh "${{ env.BACKEND_URL }}/analytics/dashboard" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/analytics/daily-snapshot" POST '{}' 60 | jq -c '{ok}' || true
+          
+          # Reputation
+          ./_curl.sh "${{ env.BACKEND_URL }}/reputation/wade" GET '' 30 | jq -c '{ok}' || true
+          ./_curl.sh "${{ env.BACKEND_URL }}/tiers/leaderboard" GET '' 30 | jq -c '{ok}' || true
+          
+          # Currency Rates
+          ./_curl.sh "${{ env.BACKEND_URL }}/currency/rates" GET '' 30 | jq -c '{ok}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 36: COMPREHENSIVE MATRIX TEST
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔬 Comprehensive Matrix Test
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔬 COMPREHENSIVE MATRIX TEST - 161 Endpoints"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Run full matrix test
+          MATRIX=$(./_curl.sh "${{ env.BACKEND_URL }}/matrix/comprehensive" GET '' 120 2>/dev/null || echo '{}')
+          echo "$MATRIX" | tee json/matrix.json | jq -c '.summary' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 37: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🏥 Health Checks
         continue-on-error: true
@@ -906,11 +1061,12 @@ jobs:
           V99_CYCLE=$(cat json/v99-cycle.json 2>/dev/null || echo '{}')
           V99_REPLIES=$(cat json/v99-replies.json 2>/dev/null || echo '{}')
           V99_CONTRACTS=$(cat json/v99-contracts.json 2>/dev/null || echo '{}')
+          MATRIX=$(cat json/matrix.json 2>/dev/null || echo '{}')
           
           cat > canary.json <<EOF
           {
             "ts": "$NOW",
-            "version": "v99",
+            "version": "v100",
             "cash": {
               "verified_6h": "${{ steps.cash.outputs.verified_6h }}",
               "scheduled_24h": "${{ steps.cash.outputs.scheduled_24h }}",
@@ -930,7 +1086,8 @@ jobs:
               "cycle": $V99_CYCLE,
               "replies": $V99_REPLIES,
               "contracts": $V99_CONTRACTS
-            }
+            },
+            "matrix": $MATRIX
           }
           EOF
 
@@ -938,7 +1095,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: autonomous-closing-v99-${{ github.run_number }}
+          name: autonomous-v100-${{ github.run_number }}
           path: |
             canary.json
             json/
@@ -952,7 +1109,7 @@ jobs:
         run: |
           echo ""
           echo "╔═══════════════════════════════════════════════════════════════════╗"
-          echo "║       🏦 AIGENTSY v99 AUTONOMOUS CLOSING - COMPLETE               ║"
+          echo "║       🏦 AIGENTSY v100 AUTONOMOUS CLOSING + FULL MATRIX           ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                             ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
@@ -967,6 +1124,15 @@ jobs:
           echo "║   🗣️ Conversation AI (qualify, objections, close)                 ║"
           echo "║   📝 Contract + Deposit (Stripe Payment Links)                    ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
+          echo "║ 🆕 V100 FULL MATRIX SYSTEMS:                                      ║"
+          echo "║   🪙 Protocol Layer (AIGx, P2P, DarkPool, OCL, IPVault)           ║"
+          echo "║   🤝 JV & MetaBridge (Multi-Agent Collaboration)                  ║"
+          echo "║   🛡️ Compliance & Safety (Fraud, Disputes, Proofs)                ║"
+          echo "║   🌐 Internet-Wide Discovery (Beyond 27 Platforms)                ║"
+          echo "║   🧠 MetaHive Intelligence (Cross-AI Learning)                    ║"
+          echo "║   📊 Analytics & Reputation (Dashboard, Leaderboard)              ║"
+          echo "║   🔬 Comprehensive Matrix Test (161 Endpoint Self-Check)          ║"
+          echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🏦 v98 PROFIT ENGINE SYSTEMS:                                     ║"
           echo "║   💀 ROI Kill Switch (gate=1.6x, kill=1.2x)                       ║"
           echo "║   🔑 Unified Idempotency (dedupe across pipeline)                 ║"
@@ -976,5 +1142,5 @@ jobs:
           echo "║   📧 Recovery Cadence (T+15m/T+23h/T+3d)                          ║"
           echo "║   🧪 Experiment Factory (10/segment/day)                          ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 📈 TOTAL: 320+ ENDPOINTS | 36 PHASES | EVERY 15 MINUTES           ║"
+          echo "║ 📈 TOTAL: 380+ ENDPOINTS | 37 PHASES | EVERY 15 MINUTES           ║"
           echo "╚═══════════════════════════════════════════════════════════════════╝"
