@@ -19811,6 +19811,117 @@ async def auto_send_contracts_for_closing():
         return {"error": str(e)}
 
 
+# ============================================================
+# V99 SYSTEM CHECK ENDPOINTS
+# ============================================================
+
+@app.get("/v99/system-check")
+async def v99_system_check():
+    """
+    Comprehensive check of all v99 autonomous closing pipeline components.
+    """
+    import os
+    
+    results = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "v99",
+        "systems": {},
+        "credentials": {},
+        "ready_for_production": True,
+        "issues": []
+    }
+    
+    # Check engine availability
+    engines = {
+        "reply_detection": REPLY_DETECTION_AVAILABLE,
+        "platform_response": PLATFORM_RESPONSE_AVAILABLE,
+        "conversation_engine": CONVERSATION_ENGINE_AVAILABLE,
+        "contract_engine": CONTRACT_ENGINE_AVAILABLE,
+        "direct_outreach": DIRECT_OUTREACH_AVAILABLE,
+    }
+    results["systems"]["engines"] = engines
+    
+    for name, available in engines.items():
+        if not available:
+            results["issues"].append(f"Engine not loaded: {name}")
+            results["ready_for_production"] = False
+    
+    # Check credentials
+    creds = {
+        "twitter": bool(os.getenv("TWITTER_API_KEY") and os.getenv("TWITTER_ACCESS_TOKEN")),
+        "github": bool(os.getenv("GITHUB_TOKEN")),
+        "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
+        "reddit": bool(os.getenv("REDDIT_CLIENT_ID") and os.getenv("REDDIT_PASSWORD")),
+        "stripe": bool(os.getenv("STRIPE_SECRET_KEY")),
+        "resend": bool(os.getenv("RESEND_API_KEY")),
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
+    }
+    results["credentials"] = creds
+    
+    # Check platform support
+    if PLATFORM_RESPONSE_AVAILABLE:
+        try:
+            engine = get_platform_response_engine()
+            results["systems"]["platform_support"] = engine.get_supported_platforms()
+            results["systems"]["twitter_oauth_working"] = hasattr(engine, 'twitter_oauth') and engine.twitter_oauth is not None
+        except Exception as e:
+            results["issues"].append(f"Platform engine error: {e}")
+    
+    # Get stats from each engine
+    if REPLY_DETECTION_AVAILABLE:
+        try:
+            results["systems"]["reply_stats"] = get_reply_engine().get_stats()
+        except: pass
+    
+    if CONVERSATION_ENGINE_AVAILABLE:
+        try:
+            results["systems"]["conversation_stats"] = get_conversation_engine().get_stats()
+        except: pass
+    
+    if CONTRACT_ENGINE_AVAILABLE:
+        try:
+            results["systems"]["contract_stats"] = get_contract_engine().get_stats()
+        except: pass
+    
+    # Summary
+    working = sum(1 for v in engines.values() if v)
+    results["summary"] = {
+        "engines": f"{working}/{len(engines)}",
+        "issues": len(results["issues"]),
+        "status": "✅ READY" if results["ready_for_production"] else "⚠️ ISSUES"
+    }
+    
+    return results
+
+
+@app.get("/v99/quick-test")
+async def v99_quick_test():
+    """Quick test of v99 pipeline components"""
+    steps = []
+    ok = True
+    
+    # Test each component
+    steps.append(f"1. Reply Detection: {'✅' if REPLY_DETECTION_AVAILABLE else '❌'}")
+    steps.append(f"2. Platform Response: {'✅' if PLATFORM_RESPONSE_AVAILABLE else '❌'}")
+    steps.append(f"3. Conversation AI: {'✅' if CONVERSATION_ENGINE_AVAILABLE else '❌'}")
+    steps.append(f"4. Contract Engine: {'✅' if CONTRACT_ENGINE_AVAILABLE else '❌'}")
+    steps.append(f"5. Direct Outreach: {'✅' if DIRECT_OUTREACH_AVAILABLE else '❌'}")
+    
+    if PLATFORM_RESPONSE_AVAILABLE:
+        try:
+            engine = get_platform_response_engine()
+            supported = engine.get_supported_platforms()
+            active = [k for k, v in supported.items() if v]
+            steps.append(f"   Platform support: {active}")
+        except Exception as e:
+            steps.append(f"   Platform error: {e}")
+    
+    if not all([REPLY_DETECTION_AVAILABLE, CONTRACT_ENGINE_AVAILABLE]):
+        ok = False
+    
+    return {"ok": ok, "steps": steps}
+
+
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
 @app.get("/dealgraph/config")
