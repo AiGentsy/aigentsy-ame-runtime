@@ -14818,11 +14818,6 @@ async def get_research_engine_status():
             "error": str(e),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-            "performance_optimization": "✅ Autonomous",
-            "intelligence_sharing": "✅ Real-time",
-            "quality_enhancement": "✅ Multi-AI review"
-        }
-    }
 
 
 @app.post("/wade/research/test")
