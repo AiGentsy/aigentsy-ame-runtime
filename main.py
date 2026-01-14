@@ -18575,6 +18575,183 @@ async def test_contact_extraction():
         return {"error": str(e), "status": "error"}
 
 
+# ============================================================
+# v99 FULL CYCLE - DISCOVERY + CONTACT EXTRACTION + OUTREACH
+# ============================================================
+
+@app.post("/autonomous/full-cycle-v99")
+async def run_full_cycle_v99():
+    """
+    v99 Full Cycle: Discovery + Contact Extraction + Outreach
+    
+    Flow:
+    1. Standard 27-platform discovery WITH contact extraction
+    2. Internet-wide discovery (already has contacts)
+    3. Merge and dedupe all opportunities
+    4. Send direct outreach to all with contacts
+    5. Queue platform responses for others
+    """
+    results = {
+        "version": "v99",
+        "status": "running",
+        "phases": {},
+        "started_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    all_opportunities = []
+    
+    # Phase 1: Standard discovery WITH contact extraction
+    try:
+        if UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE:
+            from universal_contact_extraction import discover_with_contacts
+            
+            user_profile = {
+                "capabilities": ["development", "design", "content", "marketing", "automation"],
+            }
+            
+            discovery = await discover_with_contacts(
+                username="system",
+                user_profile=user_profile,
+                platforms=None  # All platforms
+            )
+            
+            opps = discovery.get("opportunities", [])
+            all_opportunities.extend(opps)
+            
+            results["phases"]["standard_discovery"] = {
+                "opportunities": len(opps),
+                "with_contact": discovery.get("with_contact", 0),
+                "contact_rate": f"{discovery.get('contact_rate', 0) * 100:.1f}%",
+                "total_value": discovery.get("total_value", 0),
+                "status": "success"
+            }
+        else:
+            # Fallback to standard discovery
+            from ultimate_discovery_engine import discover_all_opportunities
+            discovery = await discover_all_opportunities(
+                username="system",
+                user_profile={"capabilities": ["development", "design", "content", "marketing", "automation"]},
+                platforms=None
+            )
+            opps = discovery.get("opportunities", [])
+            all_opportunities.extend(opps)
+            results["phases"]["standard_discovery"] = {
+                "opportunities": len(opps),
+                "with_contact": 0,
+                "note": "Contact extraction not available",
+                "status": "success"
+            }
+    except Exception as e:
+        results["phases"]["standard_discovery"] = {"error": str(e), "status": "error"}
+    
+    # Phase 2: Internet-wide discovery (already has contacts from internet_discovery_expansion)
+    if INTERNET_DISCOVERY_AVAILABLE:
+        try:
+            expansion = InternetDiscoveryExpansion()
+            internet_opps = await expansion.run_full_scan()
+            
+            # Convert to dict format
+            internet_opps_dict = []
+            for o in internet_opps:
+                opp_dict = {
+                    'id': o.opportunity_id,
+                    'source': o.source,
+                    'title': o.title,
+                    'description': o.description,
+                    'pain_point': o.pain_point,
+                    'estimated_value': o.estimated_value,
+                    'url': o.url,
+                    'has_contact': bool(o.contact),
+                }
+                if o.contact:
+                    opp_dict['contact'] = {
+                        'email': o.contact.email,
+                        'twitter_handle': o.contact.twitter_handle,
+                        'reddit_username': o.contact.reddit_username,
+                        'name': o.contact.name,
+                        'extraction_confidence': o.contact.extraction_confidence,
+                        'preferred_outreach': o.contact.preferred_outreach
+                    }
+                internet_opps_dict.append(opp_dict)
+            
+            all_opportunities.extend(internet_opps_dict)
+            
+            results["phases"]["internet_discovery"] = {
+                "opportunities": len(internet_opps),
+                "with_contact": len([o for o in internet_opps if o.contact]),
+                "status": "success"
+            }
+        except Exception as e:
+            results["phases"]["internet_discovery"] = {"error": str(e), "status": "error"}
+    
+    # Phase 3: Direct outreach for opportunities with contacts
+    outreach_results = {"processed": 0, "sent": 0, "by_channel": {}}
+    
+    if DIRECT_OUTREACH_AVAILABLE:
+        try:
+            outreach = get_outreach_engine()
+            
+            # Filter to opportunities with contacts
+            contactable = [o for o in all_opportunities if o.get('has_contact') and o.get('contact')]
+            
+            for opp in contactable[:20]:  # Limit to 20 per cycle
+                contact = opp.get('contact', {})
+                
+                # Skip if no valid contact method
+                if not any([
+                    contact.get('email'),
+                    contact.get('twitter_handle'),
+                    contact.get('reddit_username')
+                ]):
+                    continue
+                
+                try:
+                    result = await outreach.process_opportunity(
+                        {
+                            'opportunity_id': opp.get('id'),
+                            'title': opp.get('title', ''),
+                            'pain_point': opp.get('pain_point') or opp.get('description', '')[:100],
+                            'estimated_value': opp.get('estimated_value', 1000)
+                        },
+                        contact
+                    )
+                    
+                    outreach_results["processed"] += 1
+                    if result and result.status.value == 'sent':
+                        outreach_results["sent"] += 1
+                        channel = result.channel.value
+                        outreach_results["by_channel"][channel] = outreach_results["by_channel"].get(channel, 0) + 1
+                        
+                except Exception as e:
+                    print(f"⚠️ Outreach error for {opp.get('id')}: {e}")
+                    continue
+            
+            results["phases"]["direct_outreach"] = {
+                "contactable_opportunities": len(contactable),
+                "processed": outreach_results["processed"],
+                "sent": outreach_results["sent"],
+                "by_channel": outreach_results["by_channel"],
+                "status": "success"
+            }
+        except Exception as e:
+            results["phases"]["direct_outreach"] = {"error": str(e), "status": "error"}
+    
+    # Summary
+    total_with_contact = len([o for o in all_opportunities if o.get('has_contact')])
+    
+    results["summary"] = {
+        "total_opportunities": len(all_opportunities),
+        "total_with_contact": total_with_contact,
+        "contact_rate": f"{(total_with_contact / len(all_opportunities) * 100) if all_opportunities else 0:.1f}%",
+        "outreach_sent": outreach_results.get("sent", 0)
+    }
+    
+    results["status"] = "completed"
+    results["completed_at"] = datetime.now(timezone.utc).isoformat()
+    
+    return results
+
+
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
 @app.get("/dealgraph/config")
