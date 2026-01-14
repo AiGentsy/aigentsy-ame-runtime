@@ -20040,8 +20040,8 @@ async def comprehensive_matrix_test():
         "replies_high_priority": await test("GET", "/replies/high-priority"),
         "replies_check_all": await test("POST", "/replies/check-all", {"dry_run": True}),
         "engagement_respond_batch": await test("POST", "/engagement/respond-batch", {"dry_run": True}),
-        "conductor_scan": await test("POST", "/conductor/scan", {"dry_run": True}),
-        "conductor_plan": await test("POST", "/conductor/plan", {"dry_run": True}),
+        "outreach_send": await test("POST", "/autonomous/outreach/send", {"dry_run": True}),
+        "engagement_warm_then_dm": await test("POST", "/engagement/warm-then-dm", {"dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20073,7 +20073,7 @@ async def comprehensive_matrix_test():
         "traffic_sources": await test("GET", "/traffic/sources"),
         "traffic_optimize": await test("GET", "/traffic/optimize"),
         "revenue_orchestrator_social": await test("POST", "/revenue-orchestrator/social/post-spawns", {"dry_run": True}),
-        "viral_generate": await test("POST", "/viral/generate-content", {"dry_run": True}),
+        "social_post": await test("POST", "/social/post", {"platform": "twitter", "content": "test", "dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20086,7 +20086,7 @@ async def comprehensive_matrix_test():
         "dribbble_post_daily": await test("POST", "/dribbble/post-daily", {"dry_run": True}),
         "99designs_scan": await test("POST", "/99designs/scan-and-enter", {"dry_run": True}),
         "recruit_stats": await test("GET", "/recruit/stats"),
-        "recruit_active": await test("GET", "/recruit/active"),
+        "recruit_pitches": await test("GET", "/recruit/pitches"),
         "arbitrage_stats": await test("GET", "/arbitrage/stats"),
         "arbitrage_run_cycle": await test("POST", "/arbitrage/run-cycle", {"dry_run": True}),
     }
@@ -20175,12 +20175,12 @@ async def comprehensive_matrix_test():
         "p2p_stats": await test("GET", "/p2p/stats"),
         "p2p_summary": await test("GET", "/p2p/summary/wade"),
         "darkpool_dashboard": await test("GET", "/darkpool/dashboard"),
-        "darkpool_listings": await test("GET", "/darkpool/listings"),
+        "darkpool_auction_list": await test("GET", "/darkpool/auction/list"),
+        "darkpool_metrics": await test("GET", "/darkpool/metrics"),
         "ocl_dashboard": await test("GET", "/ocl/expansion/dashboard/wade"),
         "ocl_expansion_stats": await test("GET", "/ocl/expansion/stats/wade"),
         "ipvault_dashboard": await test("GET", "/ipvault/dashboard"),
-        "ipvault_royalties": await test("GET", "/ipvault/royalties"),
-        "sponsors_pool_types": await test("GET", "/sponsors/pool_types"),
+        "ipvault_types": await test("GET", "/ipvault/types"),
         "protocol_leaderboard": await test("GET", "/protocol/leaderboard"),
     }
     
@@ -20196,8 +20196,8 @@ async def comprehensive_matrix_test():
         "amg_run_cycle": await test("POST", "/amg/run-cycle", {"dry_run": True}),
         "ame_queue": await test("GET", "/ame/queue"),
         "ame_process_queue": await test("POST", "/ame/process-queue", {"dry_run": True}),
-        "syndication_status": await test("GET", "/syndication/status"),
-        "syndication_routes": await test("GET", "/syndication/routes"),
+        "syndication_networks": await test("GET", "/syndication/networks"),
+        "syndication_stats": await test("GET", "/syndication/stats"),
         "upgrades_dashboard": await test("GET", "/upgrades/dashboard"),
         "apex_dashboard": await test("GET", "/apex/upgrades/dashboard"),
     }
@@ -20211,11 +20211,11 @@ async def comprehensive_matrix_test():
         "jv_stats": await test("GET", "/jv/stats"),
         "metabridge_stats": await test("GET", "/metabridge/stats"),
         "metabridge_dashboard": await test("GET", "/metabridge/dashboard"),
-        "metabridge_teams": await test("GET", "/metabridge/teams"),
+        "metabridge_config": await test("GET", "/metabridge/config"),
+        "metabridge_proposals_list": await test("GET", "/metabridge/proposals/list"),
         "chains_active": await test("GET", "/chains/active"),
         "chains_stats": await test("GET", "/chains/stats"),
         "bundles_active": await test("GET", "/bundles/active"),
-        "bundles_stats": await test("GET", "/bundles/stats"),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20251,9 +20251,9 @@ async def comprehensive_matrix_test():
         "reputation_wade": await test("GET", "/reputation/wade"),
         "reputation_leaderboard": await test("GET", "/tiers/leaderboard"),
         "analytics_dashboard": await test("GET", "/analytics/dashboard"),
-        "analytics_cohorts": await test("GET", "/analytics/cohorts"),
+        "analytics_revenue": await test("GET", "/analytics/revenue"),
         "analytics_leaderboard": await test("GET", "/analytics/leaderboard"),
-        "analytics_daily_snapshot": await test("GET", "/analytics/daily-snapshot"),
+        "analytics_daily_snapshot": await test("POST", "/analytics/daily-snapshot", {"dry_run": True}),
         "metrics_summary": await test("GET", "/metrics/summary?username=wade"),
         "signals_stats": await test("GET", "/signals/stats"),
     }
