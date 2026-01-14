@@ -18309,15 +18309,16 @@ async def run_full_cycle_with_internet():
         "started_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # Phase 1: Standard discovery
+    # Phase 1: Standard discovery (27 platforms + social)
     try:
-        # Use existing discovery
-        if SYSTEMS.get('alpha_discovery'):
-            discovery = await alpha_discovery_engine.run_discovery()
-            results["phases"]["standard_discovery"] = {
-                "opportunities": len(discovery.get("opportunities", [])),
-                "status": "success"
-            }
+        from ultimate_discovery_engine import discover_all_opportunities
+        discovery = await discover_all_opportunities("system")
+        opps = discovery if isinstance(discovery, list) else discovery.get("opportunities", [])
+        results["phases"]["standard_discovery"] = {
+            "opportunities": len(opps),
+            "platforms": "27+ platforms",
+            "status": "success"
+        }
     except Exception as e:
         results["phases"]["standard_discovery"] = {"error": str(e), "status": "error"}
     
