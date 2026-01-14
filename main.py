@@ -200,6 +200,21 @@ try:
 except ImportError as e:
     AGENT_DEPLOYER_AVAILABLE = False
 
+# Universal Contact Extraction
+try:
+    from universal_contact_extraction import (
+        UniversalContactExtractor,
+        enrich_opportunity_with_contact,
+        enrich_all_opportunities,
+        discover_with_contacts,
+        get_contact_extractor
+    )
+    UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE = True
+    print("✅ universal_contact_extraction loaded")
+except ImportError as e:
+    UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE = False
+    print(f"❌ universal_contact_extraction: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -18421,6 +18436,144 @@ async def test_internet_discovery():
     
     return results
 
+@app.post("/autonomous/discover-with-contacts")
+async def discover_with_contact_extraction(
+    username: str = "system",
+    platforms: str = None  # Comma-separated list or None for all
+):
+    """
+    Run full discovery across all platforms AND extract contacts.
+    Returns opportunities enriched with contact info for outreach.
+    """
+    if not UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE:
+        return {"error": "Universal contact extraction not available", "status": "unavailable"}
+    
+    try:
+        # Parse platforms
+        platform_list = platforms.split(',') if platforms else None
+        
+        # User profile for discovery
+        user_profile = {
+            "capabilities": ["development", "design", "content", "marketing", "automation", "data"],
+            "min_budget": 50,
+            "max_budget": 50000
+        }
+        
+        # Run discovery with contacts
+        results = await discover_with_contacts(
+            username=username,
+            user_profile=user_profile,
+            platforms=platform_list
+        )
+        
+        return {
+            "ok": True,
+            "total_opportunities": len(results.get('opportunities', [])),
+            "with_contact": results.get('with_contact', 0),
+            "contact_rate": f"{results.get('contact_rate', 0) * 100:.1f}%",
+            "total_value": results.get('total_value', 0),
+            "opportunities": results.get('opportunities', [])[:50],  # Limit response size
+            "message": f"Discovered {len(results.get('opportunities', []))} opportunities, {results.get('with_contact', 0)} with contact info"
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+@app.post("/autonomous/enrich-contacts")
+async def enrich_existing_opportunities():
+    """
+    Enrich existing discovered opportunities with contact info.
+    Pulls from approval queue and adds contacts.
+    """
+    if not UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE:
+        return {"error": "Universal contact extraction not available", "status": "unavailable"}
+    
+    try:
+        # Get opportunities from queue
+        from wade_approval_dashboard import fulfillment_queue
+        opportunities = fulfillment_queue.get('wade', []) + fulfillment_queue.get('system', [])
+        
+        # Enrich with contacts
+        enriched = enrich_all_opportunities(opportunities)
+        
+        with_contact = len([o for o in enriched if o.get('has_contact')])
+        
+        return {
+            "ok": True,
+            "total": len(enriched),
+            "with_contact": with_contact,
+            "contact_rate": f"{(with_contact / len(enriched) * 100) if enriched else 0:.1f}%",
+            "status": "success"
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+@app.get("/autonomous/contact-extraction/test")
+async def test_contact_extraction():
+    """Test contact extraction with sample data"""
+    if not UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE:
+        return {"error": "Universal contact extraction not available", "status": "unavailable"}
+    
+    try:
+        extractor = get_contact_extractor()
+        
+        # Test samples
+        test_cases = [
+            {
+                "source": "reddit",
+                "id": "reddit_test1",
+                "platform_id": "test1",
+                "author": "john_developer",
+                "title": "Looking for React developer",
+                "description": "Need help with my startup. Contact me at john@startup.com or @johndev on Twitter"
+            },
+            {
+                "source": "github",
+                "id": "github_test2",
+                "platform_id": "123",
+                "author": "octocat",
+                "title": "Bug fix needed",
+                "description": "Check my LinkedIn: linkedin.com/in/octocat"
+            },
+            {
+                "source": "hackernews",
+                "id": "hn_test3",
+                "platform_id": "456",
+                "by": "pg",
+                "title": "Ask HN: Need technical cofounder",
+                "description": "Building something cool. I'm Paul, reach me at paul@ycombinator.com"
+            }
+        ]
+        
+        results = []
+        for test in test_cases:
+            contact = extractor.extract_from_opportunity(test)
+            results.append({
+                "source": test["source"],
+                "extracted": {
+                    "email": contact.email,
+                    "twitter": contact.twitter_handle,
+                    "reddit": contact.reddit_username,
+                    "github": contact.github_username,
+                    "linkedin": contact.linkedin_url,
+                    "name": contact.name,
+                    "confidence": contact.extraction_confidence,
+                    "preferred_outreach": contact.preferred_outreach
+                }
+            })
+        
+        return {
+            "ok": True,
+            "test_results": results,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
 
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
@@ -18574,6 +18727,7 @@ async def calculate_revenue_split_endpoint(body: Dict = Body(...)):
     result = calculate_revenue_split(job_value, lead_agent, jv_partners, ip_asset_ids, ip_assets_data)
     
     return result
+
 
 @app.post("/dealgraph/deal/accept")
 async def accept_deal(body: Dict = Body(...)):
