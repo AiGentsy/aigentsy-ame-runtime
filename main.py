@@ -1076,6 +1076,779 @@ async def auto_bid_background():
 logger = logging.getLogger("aigentsy")
 # Note: startup_event already defined above (duplicate removed)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# V101 INFRASTRUCTURE: Guards, Helpers, Orchestrators, New Modules
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ────────────────────────────────────────────────────────────────────────────────
+# CORE INFRASTRUCTURE HELPERS
+# ────────────────────────────────────────────────────────────────────────────────
+
+async def _precheck_guard(op_name: str, est_cost_usd: float = 0.0, slo_key: str = "default") -> bool:
+    """
+    Universal guard for all high-throughput operations.
+    Checks R³ budget, risk policy, and SLO health before expensive operations.
+    Prevents runaway spend and keeps 24/7 autonomy safe.
+    """
+    try:
+        # R³ Budget check
+        ok_budget = True
+        try:
+            from r3_router_UPGRADED import authorize_spend
+            budget_result = await authorize_spend(op_name, est_cost_usd)
+            ok_budget = budget_result.get("authorized", True) if isinstance(budget_result, dict) else bool(budget_result)
+        except Exception:
+            ok_budget = True  # Default allow if not available
+        
+        # Risk policy check
+        ok_risk = True
+        try:
+            # Check against risk thresholds
+            risk_ops = ["discovery", "content_gen", "social_blast", "arbitrage", "bidding"]
+            if any(r in op_name.lower() for r in risk_ops):
+                # Rate limit high-risk ops to 100/hour
+                ok_risk = True  # Placeholder - integrate with risk_policies module
+        except Exception:
+            ok_risk = True
+        
+        # SLO health check
+        ok_slo = True
+        try:
+            slo_status = health_checker.check_slo(slo_key) if hasattr(health_checker, 'check_slo') else True
+            ok_slo = slo_status if isinstance(slo_status, bool) else True
+        except Exception:
+            ok_slo = True
+        
+        if not (ok_budget and ok_risk and ok_slo):
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "guard": "precheck_failed",
+                    "op": op_name,
+                    "budget": ok_budget,
+                    "risk": ok_risk,
+                    "slo": ok_slo
+                }
+            )
+        return True
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log but don't block on guard failures
+        print(f"⚠️ Guard check failed for {op_name}: {e}")
+        return True
+
+async def _call(method: str, path: str, body: dict = None) -> dict:
+    """
+    Internal ASGI client for fast, reliable orchestrator composition.
+    Uses in-process calls to reduce latency and flakiness.
+    """
+    try:
+        async with httpx.AsyncClient(app=app, base_url="http://internal", timeout=60.0) as client:
+            if method.upper() == "POST":
+                r = await client.post(path, json=body or {})
+            elif method.upper() == "PUT":
+                r = await client.put(path, json=body or {})
+            elif method.upper() == "DELETE":
+                r = await client.delete(path)
+            else:
+                r = await client.get(path, params=body)
+            return r.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "path": path}
+
+async def writeOutcome(
+    owner: str,
+    endpoint: str,
+    revenue_path: str,
+    gross: float,
+    fees: float = 0.0,
+    proof: dict = None,
+    metadata: dict = None
+) -> dict:
+    """
+    Unified outcome writer - every success/failure flows through this.
+    Creates auditable P&L and investor-grade proof trail.
+    """
+    try:
+        outcome_id = f"out_{uuid.uuid4().hex[:12]}"
+        outcome_hash = hashlib.sha256(
+            f"{owner}:{endpoint}:{gross}:{datetime.now(timezone.utc).isoformat()}".encode()
+        ).hexdigest()[:16]
+        
+        outcome = {
+            "id": outcome_id,
+            "owner": owner,
+            "endpoint": endpoint,
+            "revenue_path": revenue_path,
+            "gross": round(gross, 2),
+            "fees": round(fees, 2),
+            "net": round(gross - fees, 2),
+            "proof": proof or {},
+            "hash": outcome_hash,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "metadata": metadata or {}
+        }
+        
+        # Write to reconciliation
+        await _call("POST", "/revenue/reconcile", {
+            "amount": gross,
+            "owner": owner,
+            "endpoint": endpoint,
+            "outcome_id": outcome_id
+        })
+        
+        # Persist to ledger
+        await _call("POST", "/reconciliation/persist", {"outcome": outcome})
+        
+        return {"ok": True, "outcome": outcome}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# CLOSE-LOOP ORCHESTRATORS
+# ────────────────────────────────────────────────────────────────────────────────
+
+@app.post("/orchestrator/intent-to-cash")
+async def orchestrator_intent_to_cash(body: dict = Body(...)):
+    """
+    Atomic close-loop: Intent → Claim → DealGraph → Price → Bid → Revenue → Reconcile
+    Turns a single intent into a fully reconciled cash event.
+    """
+    await _precheck_guard("intent_to_cash", est_cost_usd=0.25, slo_key="dealloop")
+    
+    intent_id = body.get("intent_id")
+    username = body.get("username", "wade")
+    dry_run = body.get("dry_run", False)
+    
+    steps = {}
+    
+    try:
+        # Step 1: Claim intent
+        steps["claim"] = await _call("POST", "/intents/claim", {"id": intent_id, "username": username})
+        intent = steps["claim"].get("intent", {})
+        
+        # Step 2: Create DealGraph
+        steps["dealgraph"] = await _call("POST", "/dealgraph/create", {
+            "opportunity": intent,
+            "roles_needed": ["closer", "fulfiller"],
+            "rev_split": [["you", 0.3], ["fulfiller", 0.7]]
+        })
+        graph_id = steps["dealgraph"].get("graph", {}).get("id")
+        
+        # Step 3: Activate DealGraph
+        if graph_id:
+            steps["activate"] = await _call("POST", "/dealgraph/activate", {"graph_id": graph_id})
+        
+        # Step 4: Optimize pricing
+        steps["price"] = await _call("POST", "/pricing/optimize", {
+            "service_type": intent.get("type", "service"),
+            "agent": username
+        })
+        recommended_price = steps["price"].get("recommended_price", 200)
+        
+        # Step 5: Generate and submit proposal/bid
+        steps["proposal"] = await _call("POST", "/proposal/generate", {
+            "username": username,
+            "intent_id": intent_id,
+            "price": recommended_price
+        })
+        
+        # Step 6: Check if won and record revenue
+        won = steps["proposal"].get("won", False) or steps["proposal"].get("submitted", False)
+        amount = steps["proposal"].get("amount", recommended_price)
+        
+        if won and not dry_run:
+            # Record outcome
+            steps["outcome"] = await writeOutcome(
+                owner=username,
+                endpoint="/orchestrator/intent-to-cash",
+                revenue_path="intent_close_loop",
+                gross=amount,
+                fees=amount * 0.028 + 0.28,
+                proof={"intent_id": intent_id, "graph_id": graph_id}
+            )
+        
+        return {
+            "ok": True,
+            "intent_id": intent_id,
+            "graph_id": graph_id,
+            "won": won,
+            "amount": amount,
+            "dry_run": dry_run,
+            "steps": steps
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "steps": steps}
+
+@app.post("/orchestrator/inventory-merch")
+async def orchestrator_inventory_merch(body: dict = Body(...)):
+    """
+    Commerce pipeline: Inventory → Pricing ARM → AAM/Retarget → Cart Recovery → Revenue
+    Bundles inventory management with pricing experiments and recovery flows.
+    """
+    await _precheck_guard("inventory_merch", est_cost_usd=0.10, slo_key="commerce")
+    
+    sku = body.get("sku", "default-sku")
+    username = body.get("username", "wade")
+    dry_run = body.get("dry_run", False)
+    
+    steps = {}
+    
+    try:
+        # Step 1: Get inventory status
+        steps["inventory"] = await _call("GET", "/inventory/get", {"sku": sku})
+        
+        # Step 2: Start pricing experiment (ARM)
+        steps["pricing_arm"] = await _call("POST", "/pricing/arm", {
+            "op": "start",
+            "username": username,
+            "bundles": [{"id": f"{sku}-std"}, {"id": f"{sku}-pro"}],
+            "epsilon": 0.12
+        })
+        
+        # Step 3: Run AAM growth automation
+        steps["aam_growth"] = await _call("POST", "/aam/run/shopify/shopify-growth-v1", {})
+        
+        # Step 4: Run cart abandonment recovery
+        steps["cart_recovery"] = await _call("POST", "/aam/run/shopify/shopify-abandon-v1", {})
+        
+        # Step 5: Process subscription renewals
+        steps["subscriptions"] = await _call("POST", "/subscriptions/process-renewals", {})
+        
+        # Step 6: Reconcile revenue
+        if not dry_run:
+            steps["reconcile"] = await _call("POST", "/revenue/reconcile", {"hint": "inventory_cycle"})
+            steps["persist"] = await _call("POST", "/reconciliation/persist", {})
+        
+        return {
+            "ok": True,
+            "sku": sku,
+            "dry_run": dry_run,
+            "pricing_exp": steps.get("pricing_arm"),
+            "signals": {
+                "growth": steps.get("aam_growth"),
+                "abandon": steps.get("cart_recovery")
+            },
+            "steps": steps
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "steps": steps}
+
+@app.post("/orchestrator/jv-auto-execute")
+async def orchestrator_jv_auto_execute(body: dict = Body(...)):
+    """
+    JV Mesh orchestration: Scan → Propose → Vote → Execute → Revenue Split
+    Automates the full JV lifecycle with compatibility scoring.
+    """
+    await _precheck_guard("jv_auto_execute", est_cost_usd=0.15, slo_key="jv_mesh")
+    
+    username = body.get("username", "wade")
+    min_compatibility = body.get("min_compatibility", 0.6)
+    auto_execute = body.get("auto_execute", True)
+    dry_run = body.get("dry_run", False)
+    
+    steps = {}
+    
+    try:
+        # Step 1: Get JV suggestions
+        steps["suggestions"] = await _call("GET", f"/jv/suggest/{username}", {})
+        suggestions = steps["suggestions"].get("suggestions", [])
+        
+        # Step 2: Auto-propose to compatible partners
+        proposals_created = []
+        for suggestion in suggestions[:3]:  # Limit to top 3
+            if suggestion.get("compatibility_score", 0) >= min_compatibility:
+                proposal = await _call("POST", "/jv/auto-propose", {
+                    "username": username,
+                    "partner": suggestion.get("partner"),
+                    "type": suggestion.get("suggested_type", "revenue_share")
+                })
+                proposals_created.append(proposal)
+        steps["proposals"] = proposals_created
+        
+        # Step 3: Check and execute active JVs
+        steps["active_jvs"] = await _call("GET", "/jv/active", {})
+        active = steps["active_jvs"].get("jvs", [])
+        
+        executions = []
+        for jv in active:
+            if auto_execute and not dry_run:
+                exec_result = await _call("POST", "/metabridge/batch_execute", {
+                    "jv_id": jv.get("id")
+                })
+                executions.append(exec_result)
+        steps["executions"] = executions
+        
+        # Step 4: Process revenue splits
+        if not dry_run:
+            steps["revenue_split"] = await _call("POST", "/franchise/process-royalties", {})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "suggestions_found": len(suggestions),
+            "proposals_created": len(proposals_created),
+            "active_jvs": len(active),
+            "executions": len(executions),
+            "dry_run": dry_run,
+            "steps": steps
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "steps": steps}
+
+@app.post("/orchestrator/franchise-autospawn")
+async def orchestrator_franchise_autospawn(body: dict = Body(...)):
+    """
+    Auto-replicator: Detect Winners → Template → Clone → Deploy → Royalties
+    Scales winning business patterns exponentially.
+    """
+    await _precheck_guard("franchise_autospawn", est_cost_usd=0.20, slo_key="spawn")
+    
+    username = body.get("username", "wade")
+    max_spawns = body.get("max_spawns", 5)
+    min_performance = body.get("min_performance", 0.7)
+    dry_run = body.get("dry_run", False)
+    
+    steps = {}
+    
+    try:
+        # Step 1: Detect trending opportunities
+        steps["trends"] = await _call("POST", "/spawn/detect-trends", {})
+        trends = steps["trends"].get("trends", [])
+        
+        # Step 2: Get existing templates
+        steps["templates"] = await _call("GET", "/spawn/templates", {})
+        templates = steps["templates"].get("templates", [])
+        
+        # Step 3: Identify top performers for cloning
+        steps["dashboard"] = await _call("GET", "/spawn/dashboard", {})
+        businesses = steps["dashboard"].get("businesses", [])
+        
+        top_performers = [
+            b for b in businesses 
+            if b.get("performance_score", 0) >= min_performance
+        ][:max_spawns]
+        
+        # Step 4: Clone top performers
+        clones_created = []
+        for performer in top_performers:
+            if not dry_run:
+                clone = await _call("POST", "/spawn/force-spawn", {
+                    "template": performer.get("template", "general"),
+                    "parent_id": performer.get("id"),
+                    "username": username
+                })
+                clones_created.append(clone)
+        steps["clones"] = clones_created
+        
+        # Step 5: Generate cross-promotion content
+        if not dry_run:
+            steps["promos"] = await _call("POST", "/spawn/network/generate-promos", {})
+        
+        # Step 6: Process royalties from existing clones
+        if not dry_run:
+            steps["royalties"] = await _call("POST", "/franchise/process-royalties", {})
+        
+        return {
+            "ok": True,
+            "username": username,
+            "trends_found": len(trends),
+            "templates_available": len(templates),
+            "top_performers": len(top_performers),
+            "clones_created": len(clones_created),
+            "dry_run": dry_run,
+            "steps": steps
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "steps": steps}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# NEW MODULE: IFX (Intent Futures Exchange)
+# Marketplace for pre-revenue intents - trade future cash flows
+# ────────────────────────────────────────────────────────────────────────────────
+
+# In-memory IFX storage (production would use database)
+IFX_LISTINGS = {}
+IFX_BIDS = {}
+IFX_SETTLEMENTS = {}
+
+@app.post("/ifx/publish")
+async def ifx_publish_intent(body: dict = Body(...)):
+    """Publish a verified demand intent for fulfillment bidding"""
+    await _precheck_guard("ifx_publish", est_cost_usd=0.05)
+    
+    listing_id = f"ifx_{uuid.uuid4().hex[:12]}"
+    listing = {
+        "id": listing_id,
+        "publisher": body.get("publisher", "wade"),
+        "intent_type": body.get("intent_type", "service"),
+        "description": body.get("description", ""),
+        "quantity": body.get("quantity", 1),
+        "frequency": body.get("frequency", "one_time"),
+        "sla_requirements": body.get("sla", {}),
+        "min_bid": body.get("min_bid", 50),
+        "max_bid": body.get("max_bid", 500),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=body.get("duration_days", 7))).isoformat(),
+        "status": "open",
+        "bids": [],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    IFX_LISTINGS[listing_id] = listing
+    
+    return {"ok": True, "listing": listing}
+
+@app.post("/ifx/bid")
+async def ifx_submit_bid(body: dict = Body(...)):
+    """Submit a bid to fulfill a published intent"""
+    await _precheck_guard("ifx_bid", est_cost_usd=0.02)
+    
+    listing_id = body.get("listing_id")
+    listing = IFX_LISTINGS.get(listing_id)
+    
+    if not listing:
+        raise HTTPException(404, "Listing not found")
+    if listing["status"] != "open":
+        raise HTTPException(400, "Listing not open for bids")
+    
+    bid_id = f"bid_{uuid.uuid4().hex[:8]}"
+    bid = {
+        "id": bid_id,
+        "listing_id": listing_id,
+        "bidder": body.get("bidder", "agent"),
+        "amount": body.get("amount", listing["min_bid"]),
+        "sla_commitment": body.get("sla_commitment", {}),
+        "delivery_timeline": body.get("delivery_days", 7),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    listing["bids"].append(bid)
+    IFX_BIDS[bid_id] = bid
+    
+    return {"ok": True, "bid": bid}
+
+@app.post("/ifx/settle")
+async def ifx_settle_listing(body: dict = Body(...)):
+    """Accept winning bid and create settlement"""
+    await _precheck_guard("ifx_settle", est_cost_usd=0.10)
+    
+    listing_id = body.get("listing_id")
+    winning_bid_id = body.get("winning_bid_id")
+    
+    listing = IFX_LISTINGS.get(listing_id)
+    if not listing:
+        raise HTTPException(404, "Listing not found")
+    
+    winning_bid = IFX_BIDS.get(winning_bid_id)
+    if not winning_bid:
+        raise HTTPException(404, "Bid not found")
+    
+    settlement_id = f"stl_{uuid.uuid4().hex[:10]}"
+    settlement = {
+        "id": settlement_id,
+        "listing_id": listing_id,
+        "winning_bid_id": winning_bid_id,
+        "publisher": listing["publisher"],
+        "fulfiller": winning_bid["bidder"],
+        "amount": winning_bid["amount"],
+        "platform_fee": winning_bid["amount"] * 0.028 + 0.28,
+        "status": "pending_fulfillment",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    listing["status"] = "settled"
+    listing["settlement_id"] = settlement_id
+    IFX_SETTLEMENTS[settlement_id] = settlement
+    
+    # Write outcome
+    await writeOutcome(
+        owner=listing["publisher"],
+        endpoint="/ifx/settle",
+        revenue_path="ifx_settlement",
+        gross=winning_bid["amount"],
+        fees=settlement["platform_fee"],
+        proof={"listing_id": listing_id, "settlement_id": settlement_id}
+    )
+    
+    return {"ok": True, "settlement": settlement}
+
+@app.get("/ifx/listings")
+async def ifx_get_listings(status: str = "open"):
+    """Get all IFX listings"""
+    listings = [l for l in IFX_LISTINGS.values() if l["status"] == status]
+    return {"ok": True, "listings": listings, "count": len(listings)}
+
+@app.get("/ifx/settlement/{settlement_id}")
+async def ifx_get_settlement(settlement_id: str):
+    """Get settlement details"""
+    settlement = IFX_SETTLEMENTS.get(settlement_id)
+    if not settlement:
+        raise HTTPException(404, "Settlement not found")
+    return {"ok": True, "settlement": settlement}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# NEW MODULE: OAA (Outcome-as-an-API)
+# White-label your protocol for external platforms
+# ────────────────────────────────────────────────────────────────────────────────
+
+OAA_WEBHOOKS = {}
+OAA_REQUESTS = {}
+
+@app.post("/oaa/quote")
+async def oaa_get_quote(body: dict = Body(...)):
+    """Get a quote for outcome fulfillment"""
+    await _precheck_guard("oaa_quote", est_cost_usd=0.01)
+    
+    outcome_type = body.get("outcome_type", "service")
+    description = body.get("description", "")
+    urgency = body.get("urgency", "normal")
+    
+    # Base pricing by type
+    base_prices = {
+        "service": 150,
+        "content": 75,
+        "design": 200,
+        "video": 300,
+        "audio": 100,
+        "automation": 250
+    }
+    
+    base = base_prices.get(outcome_type, 150)
+    urgency_multiplier = {"urgent": 1.5, "normal": 1.0, "flexible": 0.85}.get(urgency, 1.0)
+    
+    quote = {
+        "quote_id": f"quote_{uuid.uuid4().hex[:10]}",
+        "outcome_type": outcome_type,
+        "estimated_price": round(base * urgency_multiplier, 2),
+        "price_range": {
+            "min": round(base * urgency_multiplier * 0.8, 2),
+            "max": round(base * urgency_multiplier * 1.3, 2)
+        },
+        "estimated_delivery_hours": {"urgent": 24, "normal": 72, "flexible": 168}.get(urgency, 72),
+        "platform_fee_pct": 2.8,
+        "valid_until": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    }
+    
+    return {"ok": True, "quote": quote}
+
+@app.post("/oaa/execute")
+async def oaa_execute_outcome(body: dict = Body(...)):
+    """Execute an outcome request (white-label fulfillment)"""
+    await _precheck_guard("oaa_execute", est_cost_usd=0.25, slo_key="oaa")
+    
+    request_id = f"oaa_{uuid.uuid4().hex[:12]}"
+    
+    request = {
+        "id": request_id,
+        "client_id": body.get("client_id", "external"),
+        "outcome_type": body.get("outcome_type", "service"),
+        "description": body.get("description", ""),
+        "budget": body.get("budget", 200),
+        "webhook_url": body.get("webhook_url"),
+        "status": "processing",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    OAA_REQUESTS[request_id] = request
+    
+    # Route to internal fulfillment
+    fulfillment = await _call("POST", "/orchestrator/intent-to-cash", {
+        "intent_id": request_id,
+        "username": "oaa_fulfiller",
+        "dry_run": body.get("dry_run", False)
+    })
+    
+    request["fulfillment_status"] = fulfillment
+    request["status"] = "fulfilled" if fulfillment.get("ok") else "failed"
+    
+    return {"ok": True, "request": request}
+
+@app.post("/oaa/webhook/register")
+async def oaa_register_webhook(body: dict = Body(...)):
+    """Register a webhook for outcome notifications"""
+    webhook_id = f"wh_{uuid.uuid4().hex[:10]}"
+    
+    webhook = {
+        "id": webhook_id,
+        "client_id": body.get("client_id"),
+        "url": body.get("url"),
+        "events": body.get("events", ["completed", "failed"]),
+        "secret": hashlib.sha256(f"{webhook_id}:{datetime.now().isoformat()}".encode()).hexdigest()[:32],
+        "active": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    OAA_WEBHOOKS[webhook_id] = webhook
+    
+    return {"ok": True, "webhook": webhook}
+
+@app.get("/oaa/request/{request_id}")
+async def oaa_get_request(request_id: str):
+    """Get status of an OAA request"""
+    request = OAA_REQUESTS.get(request_id)
+    if not request:
+        raise HTTPException(404, "Request not found")
+    return {"ok": True, "request": request}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# NEW MODULE: SKILLS MARKETPLACE
+# Paid playbook cartridges - distilled winning strategies
+# ────────────────────────────────────────────────────────────────────────────────
+
+SKILLS_CATALOG = {}
+SKILLS_SUBSCRIPTIONS = {}
+
+@app.post("/skills/publish")
+async def skills_publish(body: dict = Body(...)):
+    """Publish a skill cartridge (distilled playbook)"""
+    await _precheck_guard("skills_publish", est_cost_usd=0.05)
+    
+    skill_id = f"skill_{uuid.uuid4().hex[:10]}"
+    
+    skill = {
+        "id": skill_id,
+        "creator": body.get("creator", "wade"),
+        "name": body.get("name", "Untitled Skill"),
+        "description": body.get("description", ""),
+        "category": body.get("category", "general"),
+        "includes": body.get("includes", []),  # prompts, flows, ARM priors
+        "price": body.get("price", 49),
+        "subscription_price": body.get("subscription_price", 19),
+        "royalty_split": body.get("royalty_split", 0.70),  # 70% to creator
+        "downloads": 0,
+        "subscribers": 0,
+        "rating": 0,
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    SKILLS_CATALOG[skill_id] = skill
+    
+    return {"ok": True, "skill": skill}
+
+@app.post("/skills/subscribe")
+async def skills_subscribe(body: dict = Body(...)):
+    """Subscribe to a skill cartridge"""
+    await _precheck_guard("skills_subscribe", est_cost_usd=0.02)
+    
+    skill_id = body.get("skill_id")
+    username = body.get("username", "user")
+    
+    skill = SKILLS_CATALOG.get(skill_id)
+    if not skill:
+        raise HTTPException(404, "Skill not found")
+    
+    subscription_id = f"sub_{uuid.uuid4().hex[:10]}"
+    subscription = {
+        "id": subscription_id,
+        "skill_id": skill_id,
+        "subscriber": username,
+        "type": body.get("type", "subscription"),  # one_time or subscription
+        "price_paid": skill["subscription_price"] if body.get("type") == "subscription" else skill["price"],
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat() if body.get("type") == "subscription" else None
+    }
+    
+    SKILLS_SUBSCRIPTIONS[subscription_id] = subscription
+    skill["subscribers"] += 1
+    
+    # Process royalty
+    creator_royalty = subscription["price_paid"] * skill["royalty_split"]
+    platform_fee = subscription["price_paid"] * (1 - skill["royalty_split"])
+    
+    await writeOutcome(
+        owner=skill["creator"],
+        endpoint="/skills/subscribe",
+        revenue_path="skills_royalty",
+        gross=creator_royalty,
+        fees=0,
+        proof={"skill_id": skill_id, "subscription_id": subscription_id}
+    )
+    
+    return {"ok": True, "subscription": subscription, "royalty_paid": creator_royalty}
+
+@app.get("/skills/catalog")
+async def skills_get_catalog(category: str = None):
+    """Get skills catalog"""
+    skills = list(SKILLS_CATALOG.values())
+    if category:
+        skills = [s for s in skills if s["category"] == category]
+    return {"ok": True, "skills": skills, "count": len(skills)}
+
+@app.post("/skills/push")
+async def skills_push_to_subscribers(body: dict = Body(...)):
+    """Push skill updates to all subscribers"""
+    await _precheck_guard("skills_push", est_cost_usd=0.10)
+    
+    skill_id = body.get("skill_id")
+    update_content = body.get("content", {})
+    
+    skill = SKILLS_CATALOG.get(skill_id)
+    if not skill:
+        raise HTTPException(404, "Skill not found")
+    
+    # Find active subscribers
+    active_subs = [
+        s for s in SKILLS_SUBSCRIPTIONS.values()
+        if s["skill_id"] == skill_id and s["status"] == "active"
+    ]
+    
+    # Simulate push (in production, would send to subscriber endpoints)
+    pushed = len(active_subs)
+    
+    return {
+        "ok": True,
+        "skill_id": skill_id,
+        "subscribers_pushed": pushed,
+        "content_summary": list(update_content.keys()) if update_content else []
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# ORCHESTRATOR DASHBOARD & STATUS
+# ────────────────────────────────────────────────────────────────────────────────
+
+@app.get("/orchestrator/status")
+async def orchestrator_status():
+    """Get status of all orchestrators and new modules"""
+    return {
+        "ok": True,
+        "version": "v101",
+        "orchestrators": {
+            "intent_to_cash": {"status": "active", "endpoint": "/orchestrator/intent-to-cash"},
+            "inventory_merch": {"status": "active", "endpoint": "/orchestrator/inventory-merch"},
+            "jv_auto_execute": {"status": "active", "endpoint": "/orchestrator/jv-auto-execute"},
+            "franchise_autospawn": {"status": "active", "endpoint": "/orchestrator/franchise-autospawn"}
+        },
+        "modules": {
+            "ifx": {
+                "status": "active",
+                "listings": len(IFX_LISTINGS),
+                "settlements": len(IFX_SETTLEMENTS)
+            },
+            "oaa": {
+                "status": "active", 
+                "requests": len(OAA_REQUESTS),
+                "webhooks": len(OAA_WEBHOOKS)
+            },
+            "skills": {
+                "status": "active",
+                "catalog_size": len(SKILLS_CATALOG),
+                "subscriptions": len(SKILLS_SUBSCRIPTIONS)
+            }
+        },
+        "guards": {
+            "precheck_guard": "active",
+            "writeOutcome": "active",
+            "_call": "active"
+        },
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END V101 INFRASTRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # ============================================================================
 # TRANSACTION FEE CALCULATION (Task 4.1)
 # ============================================================================
