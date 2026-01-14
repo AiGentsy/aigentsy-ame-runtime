@@ -20040,8 +20040,8 @@ async def comprehensive_matrix_test():
         "replies_high_priority": await test("GET", "/replies/high-priority"),
         "replies_check_all": await test("POST", "/replies/check-all", {"dry_run": True}),
         "engagement_respond_batch": await test("POST", "/engagement/respond-batch", {"dry_run": True}),
-        "outreach_send": await test("POST", "/autonomous/outreach/send", {"dry_run": True}),
-        "engagement_warm_then_dm": await test("POST", "/engagement/warm-then-dm", {"dry_run": True}),
+        "engagement_process_pending": await test("POST", "/engagement/process-pending-dms", {"dry_run": True}),
+        "conversation_auto_process": await test("POST", "/conversation/auto-process-replies", {"dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
@@ -20073,7 +20073,7 @@ async def comprehensive_matrix_test():
         "traffic_sources": await test("GET", "/traffic/sources"),
         "traffic_optimize": await test("GET", "/traffic/optimize"),
         "revenue_orchestrator_social": await test("POST", "/revenue-orchestrator/social/post-spawns", {"dry_run": True}),
-        "social_post": await test("POST", "/social/post", {"platform": "twitter", "content": "test", "dry_run": True}),
+        "social_generate": await test("POST", "/social/generate", {"username": "wade", "platforms": ["twitter"], "dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
