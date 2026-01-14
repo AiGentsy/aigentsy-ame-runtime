@@ -277,7 +277,9 @@ async def scrape_github(user_profile: Dict[str, Any]) -> List[Dict]:
                             "type": "open_source",
                             "estimated_value": 0,
                             "created_at": issue["created_at"],
-                            "tags": [label["name"] for label in issue.get("labels", [])]
+                            "tags": [label["name"] for label in issue.get("labels", [])],
+                            "author": issue.get("user", {}).get("login", ""),  # GitHub username
+                            "repo": issue.get("repository_url", "").split("/")[-1] if issue.get("repository_url") else ""
                         })
                         cache_opportunity("github", issue_id)
                 await asyncio.sleep(0.5)
@@ -316,7 +318,9 @@ async def scrape_github_bounties(user_profile: Dict[str, Any]) -> List[Dict]:
                             "type": "bounty",
                             "estimated_value": bounty_amount,
                             "created_at": issue["created_at"],
-                            "tags": [label["name"] for label in issue.get("labels", [])]
+                            "tags": [label["name"] for label in issue.get("labels", [])],
+                            "author": issue.get("user", {}).get("login", ""),  # GitHub username
+                            "repo": issue.get("repository_url", "").split("/")[-1] if issue.get("repository_url") else ""
                         })
                         cache_opportunity("github_bounties", issue_id)
     except Exception as e:
@@ -363,7 +367,8 @@ async def scrape_reddit(user_profile: Dict[str, Any]) -> List[Dict]:
                                 "type": "help_request",
                                 "estimated_value": budget,
                                 "created_at": datetime.fromtimestamp(post_data.get("created_utc", 0), timezone.utc).isoformat(),
-                                "subreddit": subreddit
+                                "subreddit": subreddit,
+                                "author": post_data.get("author", "")  # Reddit username for DM
                             })
                             cache_opportunity("reddit", post_id)
                 await asyncio.sleep(0.5)
@@ -405,7 +410,8 @@ async def scrape_hackernews(user_profile: Dict[str, Any]) -> List[Dict]:
                                 "url": f"https://news.ycombinator.com/item?id={story_id}",
                                 "type": "show_hn" if "Show HN" in title else "ask_hn",
                                 "estimated_value": 1000,
-                                "created_at": datetime.fromtimestamp(story.get("time", 0), timezone.utc).isoformat()
+                                "created_at": datetime.fromtimestamp(story.get("time", 0), timezone.utc).isoformat(),
+                                "author": story.get("by", "")  # HN username
                             })
                             cache_opportunity("hackernews", str(story_id))
                     await asyncio.sleep(0.1)
@@ -567,7 +573,8 @@ async def scrape_indiehackers(user_profile: Dict[str, Any]) -> List[Dict]:
                             "url": f"https://www.indiehackers.com{link}" if link.startswith("/") else link,
                             "type": "collaboration",
                             "estimated_value": 2000,
-                            "created_at": datetime.now(timezone.utc).isoformat()
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "author": ""  # IH doesn't expose username in scrape, contact extracted from text
                         })
                         cache_opportunity("indiehackers", post_id)
     except Exception as e:
@@ -790,7 +797,9 @@ async def scrape_dribbble(user_profile: Dict[str, Any]) -> List[Dict]:
                         "url": job.get('url', ''),
                         "type": "design_job",
                         "estimated_value": 3000,
-                        "created_at": datetime.now(timezone.utc).isoformat()
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "author": job.get('company', {}).get('name', '') if job.get('company') else "",
+                        "company": job.get('company', {}).get('name', '') if job.get('company') else ""
                     })
                     cache_opportunity("dribbble", job_id)
     except Exception as e:
@@ -834,7 +843,8 @@ async def scrape_behance(user_profile: Dict[str, Any]) -> List[Dict]:
                         "url": link if link.startswith("http") else f"https://www.behance.net{link}",
                         "type": "creative_job",
                         "estimated_value": 2500,
-                        "created_at": datetime.now(timezone.utc).isoformat()
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "author": ""  # Behance scrape doesn't expose poster, contact extracted from text
                     })
                     cache_opportunity("behance", job_id)
     except Exception as e:
@@ -894,7 +904,9 @@ async def scrape_producthunt(user_profile: Dict[str, Any]) -> List[Dict]:
                         "url": node.get('url', ''),
                         "type": "product_launch",
                         "estimated_value": 2000,
-                        "created_at": datetime.now(timezone.utc).isoformat()
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "author": node.get("user", {}).get("username", "") if node.get("user") else "",  # PH maker
+                        "twitter_handle": node.get("user", {}).get("twitterUsername", "") if node.get("user") else ""
                     })
                     cache_opportunity("producthunt", post_id)
     except Exception as e:
