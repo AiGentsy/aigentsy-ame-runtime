@@ -19922,6 +19922,201 @@ async def v99_quick_test():
     return {"ok": ok, "steps": steps}
 
 
+@app.get("/matrix/full-audit")
+async def full_matrix_audit():
+    """
+    COMPREHENSIVE AUDIT of all AiGentsy systems.
+    Shows what's loaded, what's working, what's missing.
+    """
+    import os
+    
+    audit = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "v99",
+        "matrix": {},
+        "summary": {}
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 1: DISCOVERY & LEAD GEN
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["discovery"] = {
+        "mega_discovery": MEGA_DISCOVERY_AVAILABLE if 'MEGA_DISCOVERY_AVAILABLE' in dir() else False,
+        "internet_discovery": INTERNET_DISCOVERY_AVAILABLE if 'INTERNET_DISCOVERY_AVAILABLE' in dir() else False,
+        "amg_orchestrator": AMG_ORCHESTRATOR_AVAILABLE if 'AMG_ORCHESTRATOR_AVAILABLE' in dir() else False,
+        "ame_pitches": AME_PITCHES_AVAILABLE if 'AME_PITCHES_AVAILABLE' in dir() else False,
+        "universal_contact_extraction": UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE if 'UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 2: OUTREACH & ENGAGEMENT  
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["outreach"] = {
+        "direct_outreach": DIRECT_OUTREACH_AVAILABLE if 'DIRECT_OUTREACH_AVAILABLE' in dir() else False,
+        "platform_response": PLATFORM_RESPONSE_AVAILABLE if 'PLATFORM_RESPONSE_AVAILABLE' in dir() else False,
+        "reply_detection": REPLY_DETECTION_AVAILABLE if 'REPLY_DETECTION_AVAILABLE' in dir() else False,
+        "resend_email": RESEND_AVAILABLE if 'RESEND_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 3: CONVERSATION & CLOSING
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["closing"] = {
+        "conversation_engine": CONVERSATION_ENGINE_AVAILABLE if 'CONVERSATION_ENGINE_AVAILABLE' in dir() else False,
+        "contract_engine": CONTRACT_ENGINE_AVAILABLE if 'CONTRACT_ENGINE_AVAILABLE' in dir() else False,
+        "client_portal": CLIENT_PORTAL_AVAILABLE if 'CLIENT_PORTAL_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 4: SOCIAL & CONTENT MONETIZATION
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["social_content"] = {
+        "social_engine": SOCIAL_ENGINE_AVAILABLE if 'SOCIAL_ENGINE_AVAILABLE' in dir() else False,
+        "third_party_monetization": THIRD_PARTY_MONETIZATION_AVAILABLE if 'THIRD_PARTY_MONETIZATION_AVAILABLE' in dir() else False,
+    }
+    
+    # Check social platforms
+    try:
+        social_engine = get_social_engine()
+        audit["matrix"]["social_content"]["connected_platforms"] = list(social_engine.connected_accounts.keys()) if hasattr(social_engine, 'connected_accounts') else []
+        audit["matrix"]["social_content"]["auto_posting_enabled"] = True
+    except:
+        audit["matrix"]["social_content"]["auto_posting_enabled"] = False
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 5: PLATFORM AUTOMATION
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["platform_automation"] = {
+        "fiverr": FIVERR_AUTOMATION_AVAILABLE if 'FIVERR_AUTOMATION_AVAILABLE' in dir() else False,
+        "dribbble": DRIBBBLE_AUTOMATION_AVAILABLE if 'DRIBBBLE_AUTOMATION_AVAILABLE' in dir() else False,
+        "99designs": NINETY_NINE_AUTOMATION_AVAILABLE if 'NINETY_NINE_AUTOMATION_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 6: AI & INTELLIGENCE
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["ai_intelligence"] = {
+        "metahive_brain": METAHIVE_BRAIN_AVAILABLE if 'METAHIVE_BRAIN_AVAILABLE' in dir() else False,
+        "metahive": METAHIVE_AVAILABLE if 'METAHIVE_AVAILABLE' in dir() else False,
+        "yield_memory": YIELD_MEMORY_AVAILABLE if 'YIELD_MEMORY_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 7: REVENUE & PAYMENTS
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["revenue"] = {
+        "revenue_orchestrator": REVENUE_ORCHESTRATOR_AVAILABLE if 'REVENUE_ORCHESTRATOR_AVAILABLE' in dir() else False,
+        "aigentsy_payments": AIGENTSY_PAYMENTS_AVAILABLE if 'AIGENTSY_PAYMENTS_AVAILABLE' in dir() else False,
+        "bundle_engine": BUNDLE_ENGINE_AVAILABLE if 'BUNDLE_ENGINE_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 8: SPAWN & AUTOMATION
+    # ═══════════════════════════════════════════════════════════════
+    audit["matrix"]["spawn"] = {
+        "auto_spawn": AUTO_SPAWN_AVAILABLE if 'AUTO_SPAWN_AVAILABLE' in dir() else False,
+        "agent_deployer": AGENT_DEPLOYER_AVAILABLE if 'AGENT_DEPLOYER_AVAILABLE' in dir() else False,
+        "wade_workflow": WADE_WORKFLOW_AVAILABLE if 'WADE_WORKFLOW_AVAILABLE' in dir() else False,
+        "master_runtime": MASTER_RUNTIME_AVAILABLE if 'MASTER_RUNTIME_AVAILABLE' in dir() else False,
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CREDENTIALS CHECK
+    # ═══════════════════════════════════════════════════════════════
+    audit["credentials"] = {
+        # Social Platforms
+        "twitter": bool(os.getenv("TWITTER_API_KEY")),
+        "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
+        "tiktok": bool(os.getenv("TIKTOK_ACCESS_TOKEN")),
+        "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
+        "youtube": bool(os.getenv("YOUTUBE_API_KEY")),
+        "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
+        # Work Platforms
+        "fiverr": bool(os.getenv("FIVERR_API_KEY") or os.getenv("FIVERR_SESSION")),
+        "upwork": bool(os.getenv("UPWORK_ACCESS_TOKEN")),
+        # Email/Messaging
+        "resend": bool(os.getenv("RESEND_API_KEY")),
+        "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
+        # Payments
+        "stripe": bool(os.getenv("STRIPE_SECRET_KEY")),
+        "paypal": bool(os.getenv("PAYPAL_CLIENT_ID")),
+        # AI
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        # Storage
+        "jsonbin": bool(os.getenv("JSONBIN_API_KEY")),
+        # Discovery
+        "reddit": bool(os.getenv("REDDIT_CLIENT_ID")),
+        "github": bool(os.getenv("GITHUB_TOKEN")),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # WORKFLOW ENDPOINTS CHECK
+    # ═══════════════════════════════════════════════════════════════
+    audit["workflow_endpoints"] = {
+        "discovery": [
+            "/vacuum/scrape-all",
+            "/execution/mega-discover",
+            "/autonomous/discover-and-execute",
+        ],
+        "outreach": [
+            "/autonomous/outreach/send",
+            "/engagement/respond-batch",
+            "/replies/check-all",
+        ],
+        "social_monetization": [
+            "/social/process-queue",
+            "/social/auto-generate",
+            "/viral/generate-content",
+            "/viral/cross-post",
+            "/affiliate/generate-content",
+            "/affiliate/deploy-content",
+        ],
+        "cart_recovery": [
+            "/revenue-orchestrator/cart-recovery",
+            "/retarget/process-queue",
+        ],
+        "closing": [
+            "/conversations/hot-leads",
+            "/contract/auto-send-for-closing",
+            "/contracts/pending-payments",
+        ],
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # SUMMARY
+    # ═══════════════════════════════════════════════════════════════
+    total_systems = 0
+    working_systems = 0
+    for category, systems in audit["matrix"].items():
+        for name, status in systems.items():
+            if isinstance(status, bool):
+                total_systems += 1
+                if status:
+                    working_systems += 1
+    
+    total_creds = len(audit["credentials"])
+    working_creds = sum(1 for v in audit["credentials"].values() if v)
+    
+    audit["summary"] = {
+        "systems": f"{working_systems}/{total_systems}",
+        "credentials": f"{working_creds}/{total_creds}",
+        "missing_critical": [],
+    }
+    
+    # Check for critical missing items
+    if not audit["credentials"]["stripe"]:
+        audit["summary"]["missing_critical"].append("STRIPE_SECRET_KEY - Cannot collect payments")
+    if not audit["credentials"]["resend"]:
+        audit["summary"]["missing_critical"].append("RESEND_API_KEY - Cannot send emails")
+    if not audit["credentials"]["openrouter"]:
+        audit["summary"]["missing_critical"].append("OPENROUTER_API_KEY - AI responses won't work")
+    if not audit["matrix"]["social_content"].get("social_engine"):
+        audit["summary"]["missing_critical"].append("Social Engine not loaded - Auto-posting disabled")
+    
+    return audit
+
+
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
 
 @app.get("/dealgraph/config")
