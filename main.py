@@ -215,6 +215,21 @@ except ImportError as e:
     UNIVERSAL_CONTACT_EXTRACTION_AVAILABLE = False
     print(f"❌ universal_contact_extraction: {e}")
 
+# Reply Detection Engine
+try:
+    from reply_detection_engine import (
+        ReplyDetectionEngine,
+        DetectedReply,
+        ReplyChannel,
+        ReplyStatus,
+        get_reply_engine
+    )
+    REPLY_DETECTION_AVAILABLE = True
+    print("✅ reply_detection_engine loaded")
+except ImportError as e:
+    REPLY_DETECTION_AVAILABLE = False
+    print(f"❌ reply_detection_engine: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END V91 IMPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -18266,6 +18281,8 @@ async def send_outreach_proposal(
     - contact_email for email outreach
     - contact_twitter for Twitter DM
     - contact_reddit for Reddit DM
+    
+    Automatically tracks sent proposals for reply detection.
     """
     if not DIRECT_OUTREACH_AVAILABLE:
         return {"error": "Direct outreach not available", "status": "unavailable"}
@@ -18292,12 +18309,34 @@ async def send_outreach_proposal(
         result = await outreach.process_opportunity(opportunity, contact)
         
         if result:
+            # Track sent proposal for reply detection
+            if REPLY_DETECTION_AVAILABLE and result.status.value == "sent":
+                try:
+                    reply_engine = get_reply_engine()
+                    reply_engine.track_sent_proposal(
+                        proposal_id=result.proposal_id,
+                        proposal_data={
+                            'proposal_id': result.proposal_id,
+                            'opportunity_id': opportunity_id,
+                            'channel': result.channel.value,
+                            'recipient_email': contact_email,
+                            'recipient_handle': contact_twitter or contact_reddit,
+                            'recipient_name': contact_name,
+                            'title': title,
+                            'pain_point': pain_point,
+                            'estimated_value': estimated_value
+                        }
+                    )
+                except Exception as track_error:
+                    print(f"⚠️ Reply tracking error: {track_error}")
+            
             return {
                 "status": "success",
                 "sent": result.status.value == "sent",
                 "channel": result.channel.value,
                 "proposal_id": result.proposal_id,
-                "error": result.error
+                "error": result.error,
+                "tracking": "enabled" if REPLY_DETECTION_AVAILABLE else "disabled"
             }
         else:
             return {"status": "filtered", "reason": "Did not pass quality checks or rate limits"}
@@ -18750,6 +18789,174 @@ async def run_full_cycle_v99():
     results["completed_at"] = datetime.now(timezone.utc).isoformat()
     
     return results
+
+
+# ============================================================
+# REPLY DETECTION ENDPOINTS
+# ============================================================
+
+@app.post("/webhooks/resend")
+async def resend_webhook(request: Request):
+    """
+    Resend webhook endpoint for email events.
+    Events: sent, delivered, opened, clicked, bounced, complained
+    """
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        body = await request.body()
+        signature = request.headers.get("resend-signature", "")
+        event_data = await request.json()
+        
+        engine = get_reply_engine()
+        
+        if signature and not engine.verify_resend_webhook(body, signature):
+            return {"error": "Invalid signature"}, 401
+        
+        result = await engine.process_resend_webhook(event_data)
+        event_type = event_data.get('type', 'unknown')
+        print(f"📧 Resend webhook: {event_type}")
+        
+        return {"ok": True, "event": event_type, "processed": True}
+        
+    except Exception as e:
+        print(f"⚠️ Resend webhook error: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.post("/webhooks/email-reply")
+async def email_reply_webhook(request: Request):
+    """
+    Endpoint to receive email replies.
+    Body: {from_email, from_name, to_email, subject, body, received_at}
+    """
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        reply_data = await request.json()
+        engine = get_reply_engine()
+        reply = await engine.process_email_reply(reply_data)
+        
+        return {
+            "ok": True,
+            "reply_id": reply.reply_id,
+            "intent": reply.intent,
+            "sentiment": reply.sentiment,
+            "status": "queued"
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Email reply webhook error: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.post("/replies/check-all")
+async def check_all_replies():
+    """Check all channels for new replies (Twitter DMs, Reddit inbox, etc.)"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        results = await engine.check_all_channels()
+        
+        return {
+            "ok": True,
+            "new_replies": {
+                "twitter": len(results.get('twitter', [])),
+                "reddit": len(results.get('reddit', [])),
+                "email": len(results.get('email', []))
+            },
+            "total": sum(len(v) for v in results.values())
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/replies/pending")
+async def get_pending_replies(limit: int = 20):
+    """Get replies waiting to be processed"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        replies = engine.get_pending_replies(limit)
+        
+        return {
+            "ok": True,
+            "count": len(replies),
+            "replies": [r.to_dict() for r in replies]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/replies/high-priority")
+async def get_high_priority_replies():
+    """Get high-priority replies (intent=interested) - HOT LEADS!"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        replies = engine.get_high_priority_replies()
+        
+        return {
+            "ok": True,
+            "count": len(replies),
+            "replies": [r.to_dict() for r in replies],
+            "message": f"🔥 {len(replies)} interested prospects waiting!"
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/replies/{reply_id}/mark-responded")
+async def mark_reply_responded(reply_id: str):
+    """Mark a reply as responded to"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        engine.mark_reply_responded(reply_id)
+        return {"ok": True, "reply_id": reply_id, "status": "responded"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/replies/{reply_id}/mark-converted")
+async def mark_reply_converted(reply_id: str):
+    """Mark a reply as converted to deal"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        engine.mark_reply_converted(reply_id)
+        return {"ok": True, "reply_id": reply_id, "status": "converted"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/replies/stats")
+async def get_reply_stats():
+    """Get reply detection and conversion stats"""
+    if not REPLY_DETECTION_AVAILABLE:
+        return {"error": "Reply detection not available"}
+    
+    try:
+        engine = get_reply_engine()
+        stats = engine.get_stats()
+        return {"ok": True, "stats": stats}
+    except Exception as e:
+        return {"error": str(e)}
 
 
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
