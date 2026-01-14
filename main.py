@@ -19924,389 +19924,197 @@ async def v99_quick_test():
 
 @app.get("/matrix/full-audit")
 async def full_matrix_audit():
+    """Redirects to surgical test"""
+    return {"redirect": "/matrix/surgical-test", "message": "Use /matrix/surgical-test for real functional testing"}
+
+
+@app.get("/matrix/surgical-test")
+async def surgical_matrix_test():
     """
-    COMPREHENSIVE AUDIT of all AiGentsy systems.
-    Shows what's loaded, what's working, what's missing.
+    SURGICAL FUNCTIONAL TEST - Calls REAL endpoints, returns REAL results.
+    No placeholders. No fake data. Every result is from an actual endpoint call.
     """
-    import os
+    import httpx
+    from datetime import datetime, timezone
     
-    audit = {
+    results = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "v99",
-        "matrix": {},
+        "test_type": "SURGICAL_LIVE_TEST",
+        "categories": {},
         "summary": {}
     }
     
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 1: DISCOVERY & LEAD GEN (Check ACTUAL live engines)
-    # ═══════════════════════════════════════════════════════════════
-    discovery_checks = {}
-    
-    # Ultimate Discovery - Direct import at top
-    try:
-        from ultimate_discovery_engine import discover_all_opportunities
-        discovery_checks["ultimate_discovery"] = True
-    except:
-        discovery_checks["ultimate_discovery"] = False
-    
-    # Alpha Discovery
-    try:
-        from alpha_discovery_engine import AlphaDiscoveryEngine
-        discovery_checks["alpha_discovery"] = True
-    except:
-        discovery_checks["alpha_discovery"] = False
-    
-    # Week2 Master Orchestrator
-    try:
-        from week2_master_orchestrator import Week2MasterOrchestrator
-        discovery_checks["week2_master_orchestrator"] = True
-    except:
-        discovery_checks["week2_master_orchestrator"] = False
-    
-    # CSuite Orchestrator
-    try:
-        from csuite_orchestrator import get_orchestrator
-        discovery_checks["csuite_orchestrator"] = True
-    except:
-        discovery_checks["csuite_orchestrator"] = False
-    
-    # Universal Contact Extraction
-    try:
-        from universal_contact_extraction import get_contact_extractor
-        discovery_checks["universal_contact_extraction"] = True
-    except:
-        discovery_checks["universal_contact_extraction"] = False
-    
-    # AMG Orchestrator
-    try:
-        from amg_orchestrator import get_amg
-        discovery_checks["amg_orchestrator"] = True
-    except:
-        discovery_checks["amg_orchestrator"] = False
-    
-    audit["matrix"]["discovery"] = discovery_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 2: OUTREACH & ENGAGEMENT  
-    # ═══════════════════════════════════════════════════════════════
-    outreach_checks = {}
-    
-    try:
-        from direct_outreach_engine import get_outreach_engine
-        outreach_checks["direct_outreach"] = True
-    except:
-        outreach_checks["direct_outreach"] = False
-    
-    try:
-        from platform_response_engine import get_platform_response_engine
-        outreach_checks["platform_response"] = True
-    except:
-        outreach_checks["platform_response"] = False
-    
-    try:
-        from reply_detection_engine import get_reply_detection_engine
-        outreach_checks["reply_detection"] = True
-    except:
-        outreach_checks["reply_detection"] = False
-    
-    outreach_checks["resend_configured"] = bool(os.getenv("RESEND_API_KEY"))
-    
-    audit["matrix"]["outreach"] = outreach_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 3: CONVERSATION & CLOSING
-    # ═══════════════════════════════════════════════════════════════
-    closing_checks = {}
-    
-    try:
-        from conversation_engine import get_conversation_engine
-        closing_checks["conversation_engine"] = True
-    except:
-        closing_checks["conversation_engine"] = False
-    
-    try:
-        from contract_payment_engine import get_contract_engine
-        closing_checks["contract_engine"] = True
-    except:
-        closing_checks["contract_engine"] = False
-    
-    try:
-        from dealgraph import get_deal_graph
-        closing_checks["dealgraph"] = True
-    except:
+    # Use internal ASGI calls - faster and no network overhead
+    async def call_endpoint(method: str, path: str, body: dict = None):
+        """Call endpoint via internal ASGI transport"""
         try:
-            from autonomous_deal_graph import get_deal_graph
-            closing_checks["dealgraph"] = True
-        except:
-            closing_checks["dealgraph"] = False
-    
-    audit["matrix"]["closing"] = closing_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 4: SOCIAL & CONTENT MONETIZATION
-    # ═══════════════════════════════════════════════════════════════
-    social_checks = {}
-    
-    try:
-        from social_autoposting_engine import get_social_engine
-        social_engine = get_social_engine()
-        social_checks["social_engine"] = True
-        social_checks["connected_platforms"] = list(getattr(social_engine, 'connected_accounts', {}).keys())
-    except Exception as e:
-        social_checks["social_engine"] = False
-        social_checks["social_engine_error"] = str(e)
-        social_checks["connected_platforms"] = []
-    
-    try:
-        from third_party_monetization import ThirdPartyMonetization
-        social_checks["third_party_monetization"] = True
-    except:
-        social_checks["third_party_monetization"] = False
-    
-    # Check platform credentials for social
-    social_checks["platform_credentials"] = {
-        "twitter": bool(os.getenv("TWITTER_API_KEY")),
-        "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
-        "tiktok": bool(os.getenv("TIKTOK_ACCESS_TOKEN")),
-        "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
-        "youtube": bool(os.getenv("YOUTUBE_API_KEY")),
-        "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
-    }
-    
-    audit["matrix"]["social_content"] = social_checks
+            async with httpx.AsyncClient(app=app, base_url="http://test") as client:
+                if method == "GET":
+                    resp = await client.get(path, timeout=30.0)
+                else:
+                    resp = await client.post(path, json=body or {}, timeout=30.0)
+                
+                try:
+                    data = resp.json()
+                except:
+                    data = {"raw": resp.text[:300]}
+                
+                return {
+                    "status": resp.status_code,
+                    "ok": resp.status_code in [200, 201],
+                    "data": data if resp.status_code in [200, 201] else {"error": resp.text[:200]}
+                }
+        except Exception as e:
+            return {"status": "exception", "ok": False, "data": {"error": str(e)[:200]}}
     
     # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 5: PLATFORM AUTOMATION (Fiverr, etc)
+    # CATEGORY 1: HEALTH & CORE SYSTEMS
     # ═══════════════════════════════════════════════════════════════
-    platform_checks = {}
-    
-    try:
-        from fiverr_automation_engine import FiverrAutomation
-        platform_checks["fiverr"] = True
-    except:
-        platform_checks["fiverr"] = False
-    
-    try:
-        from dribbble_automation_engine import DribbbleAutomation
-        platform_checks["dribbble"] = True
-    except:
-        platform_checks["dribbble"] = False
-    
-    try:
-        from ninety_nine_designs_engine import NinetyNineDesigns
-        platform_checks["99designs"] = True
-    except:
-        platform_checks["99designs"] = False
-    
-    audit["matrix"]["platform_automation"] = platform_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 6: AI & INTELLIGENCE
-    # ═══════════════════════════════════════════════════════════════
-    ai_checks = {}
-    
-    try:
-        from metahive_brain import MetaHiveBrain
-        ai_checks["metahive_brain"] = True
-    except:
-        ai_checks["metahive_brain"] = False
-    
-    try:
-        from open_metahive_api import get_metahive_api
-        ai_checks["metahive_api"] = True
-    except:
-        ai_checks["metahive_api"] = False
-    
-    try:
-        from yield_memory import store_pattern, get_patterns
-        ai_checks["yield_memory"] = True
-    except:
-        ai_checks["yield_memory"] = False
-    
-    ai_checks["openrouter"] = bool(os.getenv("OPENROUTER_API_KEY"))
-    ai_checks["openai"] = bool(os.getenv("OPENAI_API_KEY"))
-    
-    audit["matrix"]["ai_intelligence"] = ai_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 7: REVENUE & PAYMENTS
-    # ═══════════════════════════════════════════════════════════════
-    revenue_checks = {}
-    
-    try:
-        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
-        revenue_checks["revenue_orchestrator"] = True
-    except:
-        revenue_checks["revenue_orchestrator"] = False
-    
-    try:
-        from aigentsy_payments import AigentsyPayments
-        revenue_checks["aigentsy_payments"] = True
-    except:
-        revenue_checks["aigentsy_payments"] = False
-    
-    revenue_checks["stripe"] = bool(os.getenv("STRIPE_SECRET_KEY"))
-    revenue_checks["paypal"] = bool(os.getenv("PAYPAL_CLIENT_ID"))
-    
-    audit["matrix"]["revenue"] = revenue_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CATEGORY 8: SPAWN & AUTOMATION
-    # ═══════════════════════════════════════════════════════════════
-    spawn_checks = {}
-    
-    try:
-        from spawn_engine import SpawnEngine
-        spawn_checks["spawn_engine"] = True
-    except:
-        spawn_checks["spawn_engine"] = False
-    
-    try:
-        from wade_integrated_workflow import IntegratedFulfillmentWorkflow
-        spawn_checks["wade_workflow"] = True
-    except:
-        spawn_checks["wade_workflow"] = False
-    
-    try:
-        from auto_bidding_orchestrator import auto_bid_on_opportunity
-        spawn_checks["auto_bidding"] = True
-    except:
-        spawn_checks["auto_bidding"] = False
-    
-    try:
-        from fulfillment_coordinator import FulfillmentCoordinator
-        spawn_checks["fulfillment_coordinator"] = True
-    except:
-        spawn_checks["fulfillment_coordinator"] = False
-    
-    audit["matrix"]["spawn"] = spawn_checks
-    
-    # ═══════════════════════════════════════════════════════════════
-    # CREDENTIALS CHECK (All)
-    # ═══════════════════════════════════════════════════════════════
-    audit["credentials"] = {
-        # Social Platforms
-        "twitter": bool(os.getenv("TWITTER_API_KEY")),
-        "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
-        "tiktok": bool(os.getenv("TIKTOK_ACCESS_TOKEN")),
-        "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
-        "youtube": bool(os.getenv("YOUTUBE_API_KEY")),
-        "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
-        # Work Platforms
-        "fiverr": bool(os.getenv("FIVERR_API_KEY") or os.getenv("FIVERR_SESSION")),
-        "upwork": bool(os.getenv("UPWORK_ACCESS_TOKEN")),
-        "github": bool(os.getenv("GITHUB_TOKEN")),
-        "reddit": bool(os.getenv("REDDIT_CLIENT_ID")),
-        # Email/Messaging
-        "resend": bool(os.getenv("RESEND_API_KEY")),
-        "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
-        # Payments
-        "stripe": bool(os.getenv("STRIPE_SECRET_KEY")),
-        "paypal": bool(os.getenv("PAYPAL_CLIENT_ID")),
-        # AI
-        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
-        "openai": bool(os.getenv("OPENAI_API_KEY")),
-        # Storage
-        "jsonbin": bool(os.getenv("JSONBIN_API_KEY")),
+    results["categories"]["1_health"] = {
+        "health": await call_endpoint("GET", "/health"),
+        "metrics_summary": await call_endpoint("GET", "/metrics/summary"),
+        "revenue_summary": await call_endpoint("GET", "/revenue/summary"),
     }
     
     # ═══════════════════════════════════════════════════════════════
-    # WORKFLOW ENDPOINTS - What should be firing every 15 min
+    # CATEGORY 2: DISCOVERY PIPELINE
     # ═══════════════════════════════════════════════════════════════
-    audit["workflow_endpoints"] = {
-        "discovery": [
-            "/execution/mega-discover → Uses ultimate_discovery_engine",
-            "/autonomous/discover-and-execute",
-            "/alpha/discover → Uses alpha_discovery_engine",
-        ],
-        "outreach": [
-            "/autonomous/outreach/send",
-            "/engagement/respond-batch → Platform comments",
-            "/engagement/process-pending-dms",
-            "/replies/check-all → Inbox monitoring",
-        ],
-        "social_monetization": [
-            "/social/process-queue → Auto-post to platforms",
-            "/social/auto-generate → Generate content",
-            "/viral/generate-content",
-            "/viral/cross-post → Cross-post viral",
-            "/affiliate/generate-content",
-            "/affiliate/deploy-content",
-            "/revenue-orchestrator/social/post-spawns",
-        ],
-        "cart_nudge_recovery": [
-            "/revenue-orchestrator/cart-recovery",
-            "/retarget/process-queue",
-            "/recovery/process → T+15m/T+23h/T+3d",
-        ],
-        "conversation_closing": [
-            "/conversation/auto-process-replies",
-            "/conversations/hot-leads",
-            "/contract/auto-send-for-closing",
-            "/contracts/pending-payments",
-            "/autonomous/full-cycle-v99",
-        ],
-        "financial": [
-            "/stripe/batch-payouts",
-            "/revenue/reconcile",
-            "/escrow/auto-release",
-            "/payments/batch-execute",
-        ],
+    results["categories"]["2_discovery"] = {
+        "wade_dashboard": await call_endpoint("GET", "/wade/dashboard"),
+        "wade_execution_status": await call_endpoint("GET", "/wade/execution-status"),
+        "wade_fulfillment_queue": await call_endpoint("GET", "/wade/fulfillment-queue"),
+        "alpha_discover_dryrun": await call_endpoint("POST", "/alpha/discover", {"max_results": 2, "dry_run": True}),
     }
     
     # ═══════════════════════════════════════════════════════════════
-    # SUMMARY
+    # CATEGORY 3: OUTREACH PIPELINE
     # ═══════════════════════════════════════════════════════════════
-    total_systems = 0
-    working_systems = 0
-    for category, systems in audit["matrix"].items():
-        for name, status in systems.items():
-            if isinstance(status, bool):
-                total_systems += 1
-                if status:
-                    working_systems += 1
-    
-    total_creds = len(audit["credentials"])
-    working_creds = sum(1 for v in audit["credentials"].values() if v)
-    
-    audit["summary"] = {
-        "systems": f"{working_systems}/{total_systems}",
-        "credentials": f"{working_creds}/{total_creds}",
-        "missing_critical": [],
-        "ready_systems": [],
+    results["categories"]["3_outreach"] = {
+        "outreach_stats": await call_endpoint("GET", "/autonomous/outreach/stats"),
+        "engagement_stats": await call_endpoint("GET", "/engagement/stats"),
+        "engagement_pending_dms": await call_endpoint("GET", "/engagement/pending-dms"),
+        "replies_stats": await call_endpoint("GET", "/replies/stats"),
+        "replies_pending": await call_endpoint("GET", "/replies/pending"),
+        "replies_high_priority": await call_endpoint("GET", "/replies/high-priority"),
     }
     
-    # Identify what's working
-    if audit["matrix"]["discovery"].get("ultimate_discovery"):
-        audit["summary"]["ready_systems"].append("✅ Ultimate Discovery (27 platforms)")
-    if audit["matrix"]["discovery"].get("alpha_discovery"):
-        audit["summary"]["ready_systems"].append("✅ Alpha Discovery")
-    if audit["matrix"]["discovery"].get("csuite_orchestrator"):
-        audit["summary"]["ready_systems"].append("✅ CSuite Orchestrator")
-    if audit["matrix"]["outreach"].get("direct_outreach"):
-        audit["summary"]["ready_systems"].append("✅ Direct Outreach")
-    if audit["matrix"]["closing"].get("conversation_engine"):
-        audit["summary"]["ready_systems"].append("✅ Conversation AI")
-    if audit["matrix"]["closing"].get("contract_engine"):
-        audit["summary"]["ready_systems"].append("✅ Contract Engine")
-    if audit["matrix"]["social_content"].get("social_engine"):
-        audit["summary"]["ready_systems"].append("✅ Social Auto-Posting")
-    if audit["matrix"]["spawn"].get("auto_bidding"):
-        audit["summary"]["ready_systems"].append("✅ Auto-Bidding")
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 4: CONVERSATION & CLOSING
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["4_conversation_closing"] = {
+        "conversations_stats": await call_endpoint("GET", "/conversations/stats"),
+        "conversations_hot_leads": await call_endpoint("GET", "/conversations/hot-leads"),
+        "contracts_stats": await call_endpoint("GET", "/contracts/stats"),
+        "contracts_pending_payments": await call_endpoint("GET", "/contracts/pending-payments"),
+    }
     
-    # Check for critical missing items
-    if not audit["credentials"]["stripe"]:
-        audit["summary"]["missing_critical"].append("❌ STRIPE_SECRET_KEY - Cannot collect payments")
-    if not audit["credentials"]["resend"]:
-        audit["summary"]["missing_critical"].append("❌ RESEND_API_KEY - Cannot send emails")
-    if not audit["credentials"]["openrouter"]:
-        audit["summary"]["missing_critical"].append("❌ OPENROUTER_API_KEY - AI responses won't work")
-    if not audit["matrix"]["social_content"].get("social_engine"):
-        audit["summary"]["missing_critical"].append("⚠️ Social Engine not loaded - Auto-posting may be limited")
-    if not audit["credentials"]["instagram"] and not audit["credentials"]["tiktok"]:
-        audit["summary"]["missing_critical"].append("⚠️ No Instagram/TikTok credentials - Social monetization limited")
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 5: SOCIAL AUTO-POSTING
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["5_social"] = {
+        "social_platforms": await call_endpoint("GET", "/social/platforms"),
+        "social_connected": await call_endpoint("GET", "/social/connected/wade"),
+        "social_pending": await call_endpoint("GET", "/social/pending/wade"),
+        "social_strategy": await call_endpoint("GET", "/social/strategy/wade"),
+    }
     
-    return audit
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 6: PLATFORM AUTOMATION (Fiverr, Dribbble, 99designs)
+    # ═══════════════════════════════════════════════════════════════
+    # These may return errors if not configured - that's real data
+    results["categories"]["6_platform_automation"] = {
+        "fiverr_launch_dryrun": await call_endpoint("POST", "/fiverr/launch", {"dry_run": True}),
+        "dribbble_start_dryrun": await call_endpoint("POST", "/dribbble/start", {"dry_run": True}),
+        "99designs_scan_dryrun": await call_endpoint("POST", "/99designs/scan-and-enter", {"dry_run": True}),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 7: CONTENT GENERATION (Video, Audio, Graphics)
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["7_content_generation"] = {
+        "video_status": await call_endpoint("GET", "/wade/video/status"),
+        "audio_status": await call_endpoint("GET", "/wade/audio/status"),
+        "graphics_status": await call_endpoint("GET", "/wade/graphics/status"),
+        "research_status": await call_endpoint("GET", "/wade/research/status"),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 8: AI & INTELLIGENCE
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["8_ai_intelligence"] = {
+        "csuite_agents": await call_endpoint("GET", "/csuite/agents"),
+        "metahive_summary": await call_endpoint("POST", "/metahive/summary", {}),
+        "hive_distribute_dryrun": await call_endpoint("POST", "/hive/distribute", {"dry_run": True}),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 9: REVENUE & PAYMENTS
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["9_revenue"] = {
+        "cash_ledger": await call_endpoint("GET", "/revenue/cash-ledger/summary?hours=24"),
+        "stripe_balance": await call_endpoint("GET", "/stripe/balance"),
+        "revenue_orchestrator_dashboard": await call_endpoint("GET", "/revenue-orchestrator/dashboard"),
+        "treasury_summary": await call_endpoint("GET", "/treasury/summary"),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 10: SPAWN & AUTOMATION
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["10_spawn_automation"] = {
+        "spawn_dashboard": await call_endpoint("GET", "/spawn/dashboard"),
+        "spawn_businesses": await call_endpoint("GET", "/spawn/businesses"),
+        "spawn_templates": await call_endpoint("GET", "/spawn/templates"),
+        "intents_auction": await call_endpoint("GET", "/intents/list?status=AUCTION"),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 11: V99 PIPELINE (End-to-End)
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["11_v99_pipeline"] = {
+        "v99_system_check": await call_endpoint("GET", "/v99/system-check"),
+        "v99_quick_test": await call_endpoint("GET", "/v99/quick-test"),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CATEGORY 12: ORCHESTRATION
+    # ═══════════════════════════════════════════════════════════════
+    results["categories"]["12_orchestration"] = {
+        "orchestrator_status": await call_endpoint("GET", "/orchestrator/status"),
+        "wade_integration_status": await call_endpoint("GET", "/wade/integration/status"),
+        "wade_revenue_mesh_status": await call_endpoint("GET", "/wade/revenue-mesh/status"),
+    }
+    
+    # ═══════════════════════════════════════════════════════════════
+    # CALCULATE REAL SUMMARY
+    # ═══════════════════════════════════════════════════════════════
+    total = 0
+    passed = 0
+    failures = []
+    
+    for cat_name, tests in results["categories"].items():
+        for test_name, result in tests.items():
+            total += 1
+            if result.get("ok"):
+                passed += 1
+            else:
+                failures.append({
+                    "category": cat_name,
+                    "test": test_name,
+                    "status": result.get("status"),
+                    "error": str(result.get("data", {}).get("error", "unknown"))[:150]
+                })
+    
+    results["summary"] = {
+        "total_tests": total,
+        "passed": passed,
+        "failed": total - passed,
+        "pass_rate": f"{(passed/total*100):.1f}%" if total > 0 else "0%",
+        "overall_status": "✅ HEALTHY" if passed >= total * 0.8 else "⚠️ DEGRADED" if passed >= total * 0.5 else "❌ CRITICAL",
+        "failures": failures
+    }
+    
+    return results
 
 
         # ============ DEALGRAPH (UNIFIED STATE MACHINE) ============
