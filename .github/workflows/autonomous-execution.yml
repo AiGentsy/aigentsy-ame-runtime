@@ -1053,6 +1053,65 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/syndication/royalty/process" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 31a: IFX/OAA MARKET-MAKER (v104 upgrade)
+      # Auto-quote intents, Kelly-size positions, sweep spreads
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 IFX/OAA Market-Maker
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 IFX/OAA MARKET-MAKER - Orderbook & Spread Sweep"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Fetch fresh intents for orderbook
+          INTENTS=$(timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/discover-with-contacts" POST '{"limit":20}' 45 || echo '{"intents":[]}')
+          
+          # Auto-quote into orderbook (Kelly sizing + SLA + pricing)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/ifx/auto-quote" POST "$INTENTS" 45 | tee json/ifx_orderbook.json | jq -c '{ok,quotes_created,total_inventory_committed}' || true
+          
+          # Sweep high-EV spreads (execute & reconcile)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/pricing/sweep-spreads" POST '{"min_ev":50,"max_execute":5}' 45 | jq -c '{ok,executed_count,total_revenue}' || true
+          
+          # Mark-to-market (reprice stale quotes)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/ifx/mark-to-market" POST '{}' 30 | jq -c '{ok,repriced}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 31b: DEALGRAPH UNDERWRITING (v104 upgrade)
+      # Tranche structure, premiums, bonds, insurance binding
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🛡️ DealGraph Risk Tranching
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🛡️ DEALGRAPH RISK TRANCHING - Underwrite & Bind"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get a sample deal to underwrite (from orderbook or pipeline)
+          DEAL_VALUE=$(jq -r '.orderbook[0].expected_value // 1000' json/ifx_orderbook.json 2>/dev/null || echo "1000")
+          DEAL_ID=$(jq -r '.orderbook[0].intent_id // "deal_auto"' json/ifx_orderbook.json 2>/dev/null || echo "deal_auto")
+          
+          # Get underwriting quote (tranches + premiums)
+          QUOTE=$(timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/underwriting/quote" POST "{\"id\":\"$DEAL_ID\",\"value\":$DEAL_VALUE,\"source\":\"ifx_orderbook\"}" 30)
+          echo "$QUOTE" | tee json/underwriting_quote.json | jq -c '{ok,total_premium}' || true
+          
+          QUOTE_ID=$(echo "$QUOTE" | jq -r '.quote.quote_id // ""')
+          PREMIUM=$(echo "$QUOTE" | jq -r '.quote.total_premium // 0')
+          
+          if [ -n "$QUOTE_ID" ] && [ "$QUOTE_ID" != "null" ]; then
+            # Bind insurance policy
+            timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/insurance/bind" POST "{\"quote_id\":\"$QUOTE_ID\",\"deal_id\":\"$DEAL_ID\",\"coverage\":$DEAL_VALUE,\"premium\":$PREMIUM}" 30 | jq -c '{ok,policy_id}' || true
+            
+            # Issue performance bond (25% penal sum)
+            timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/bonds/issue" POST "{\"deal_id\":\"$DEAL_ID\",\"principal\":$DEAL_VALUE,\"penal_sum_pct\":0.25}" 30 | jq -c '{ok,bond_id}' || true
+            
+            # Reconcile tranche revenue
+            timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/revenue/reconcile-tranche" POST "{\"deal_id\":\"$DEAL_ID\",\"premium\":$PREMIUM}" 20 | jq -c '{ok}' || true
+          fi
+          
+          # Underwriting status
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/underwriting/status" GET '' 15 | jq -c '{ok,policies,bonds,quotes}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 32: COMPLIANCE & SAFETY
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🛡️ Compliance & Safety
