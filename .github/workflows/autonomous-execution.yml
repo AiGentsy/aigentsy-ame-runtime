@@ -1503,6 +1503,34 @@ jobs:
           ./_log.sh "health_checks" "true" "$(($(date +%s) - PHASE_START))000"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 47: LAUNCH MATRIX VALIDATION (v104+ hardening)
+      # Golden path test, strike check, tenant guard validation
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🎯 Launch Matrix Validation
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🎯 LAUNCH MATRIX VALIDATION - Golden Path & Strike Check"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Run 10-minute golden path test (synthetic)
+          GOLDEN=$(timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/test/golden-path" POST '{"tenant_id":"test_run_'${{ github.run_number }}'"}' 45 2>/dev/null || echo '{"ok":false}')
+          echo "$GOLDEN" | tee json/golden-path.json | jq -c '{ok,total_ms,all_steps_passed,under_10_min}' || true
+          
+          # Check platform strikes
+          STRIKES=$(timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/platform/strikes/status" GET '' 20 2>/dev/null || echo '{"ok":false}')
+          echo "$STRIKES" | tee json/strikes.json | jq -c '{ok,total_strikes}' || true
+          
+          # Get permissions audit for step summary
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/platform/permissions/audit" GET '' 20 | tee json/permissions-audit.json | jq -c '{ok,hot,degraded}' || true
+          
+          # IFX orderbook snapshot
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/ifx/orderbook" GET '' 20 | tee json/orderbook-snapshot.json | jq -c '{ok,count,total_committed}' || true
+          
+          # DealGraph coverage stats
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/stats" GET '' 20 | jq -c '{ok,coverage_pct,premium_mrr}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # CANARY ARTIFACT
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📦 Revenue Canary Artifact
@@ -1518,6 +1546,12 @@ jobs:
           V99_CONTRACTS=$(cat json/v99-contracts.json 2>/dev/null || echo '{}')
           MATRIX=$(cat json/matrix.json 2>/dev/null || echo '{}')
           NDJSON_LOG=$(cat logs/run.ndjson 2>/dev/null | jq -s '.' || echo '[]')
+          # v104+ Launch Matrix validation
+          GOLDEN_PATH=$(cat json/golden-path.json 2>/dev/null || echo '{}')
+          STRIKES=$(cat json/strikes.json 2>/dev/null || echo '{}')
+          ORDERBOOK=$(cat json/orderbook-snapshot.json 2>/dev/null || echo '{}')
+          PERMISSIONS=$(cat json/permissions-audit.json 2>/dev/null || echo '{}')
+          UNDERWRITING=$(cat json/underwriting_quote.json 2>/dev/null || echo '{}')
           
           cat > canary.json <<EOF
           {
@@ -1534,9 +1568,22 @@ jobs:
             },
             "aggression": {
               "level": "${{ steps.aggression.outputs.aggression }}",
-              "mode": "${{ steps.aggression.outputs.mode }}"
+              "mode": "${{ steps.aggression.outputs.mode }}",
+              "max_bids": "${{ steps.aggression.outputs.max_bids }}",
+              "max_spawns": "${{ steps.aggression.outputs.max_spawns }}"
             },
             "slo_violated": "${{ steps.slo.outputs.slo_violated }}",
+            "budget_ok": "${{ steps.config.outputs.budget_ok }}",
+            "platform_healthy": "${{ steps.config.outputs.platform_healthy }}",
+            "launch_matrix": {
+              "golden_path": $GOLDEN_PATH,
+              "strikes": $STRIKES,
+              "permissions": $PERMISSIONS
+            },
+            "market_maker": {
+              "orderbook": $ORDERBOOK,
+              "underwriting": $UNDERWRITING
+            },
             "orchestrator": $DASH,
             "wade": $WADE,
             "spawn": $SPAWN,
