@@ -3493,6 +3493,15 @@ PLATFORM_PACING = {
     "default": {"hourly_limit": 30, "daily_limit": 150, "jitter_sec": (60, 120), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"}
 }
 
+# v104+: Per-platform strike counters for TOS violations
+PLATFORM_STRIKES = {
+    "twitter": {"strikes": 0, "threshold": 3, "auto_downgrade": True, "last_strike": None},
+    "reddit": {"strikes": 0, "threshold": 3, "auto_downgrade": True, "last_strike": None},
+    "linkedin": {"strikes": 0, "threshold": 2, "auto_downgrade": True, "last_strike": None},
+    "fiverr": {"strikes": 0, "threshold": 2, "auto_downgrade": True, "last_strike": None},
+    "upwork": {"strikes": 0, "threshold": 2, "auto_downgrade": True, "last_strike": None}
+}
+
 PLATFORM_TOS_RULES = {
     "twitter": {"no_automation_disclosure": False, "max_mentions_per_tweet": 3, "no_duplicate_content": True, "warmup_required": True},
     "reddit": {"no_self_promo_ratio": 0.1, "karma_required": 100, "account_age_days": 30, "no_brigading": True},
@@ -3500,6 +3509,195 @@ PLATFORM_TOS_RULES = {
     "fiverr": {"response_time_hours": 24, "no_external_links": True, "no_contact_sharing": True},
     "upwork": {"connects_required": True, "profile_complete": True, "no_fee_circumvention": True}
 }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# TENANT GUARD (v104+ hardening)
+# Fail hard on missing tenant context for white-label safety
+# ────────────────────────────────────────────────────────────────────────────────
+
+TENANT_REQUIRED_ROUTES = [
+    "/sku/load", "/revenue/orchestrator", "/proposals/create", "/proposals/generate",
+    "/ifx/publish", "/oaa/execute", "/reconciliation/persist", "/contract/create"
+]
+
+async def tenant_guard(tenant_id: str, route: str):
+    """
+    Tenant Guard - fails hard when tenant context is missing.
+    Prevents cross-contamination in white-label deployments.
+    """
+    if not tenant_id or tenant_id in ["", "null", "undefined"]:
+        # Check if route requires tenant
+        requires_tenant = any(r in route for r in TENANT_REQUIRED_ROUTES)
+        if requires_tenant:
+            raise HTTPException(400, f"Tenant context required for {route}. Pass tenantId in request body.")
+    return True
+
+@app.post("/tenant/guard/check")
+async def tenant_guard_check(body: dict = Body(...)):
+    """Check if tenant context is valid"""
+    tenant_id = body.get("tenantId") or body.get("tenant_id")
+    route = body.get("route", "/unknown")
+    
+    try:
+        await tenant_guard(tenant_id, route)
+        return {"ok": True, "tenant_id": tenant_id, "route": route, "valid": True}
+    except HTTPException as e:
+        return {"ok": False, "error": str(e.detail), "valid": False}
+
+@app.post("/platform/strike/record")
+async def platform_strike_record(body: dict = Body(...)):
+    """
+    Record a TOS strike for a platform.
+    Auto-downgrades aggression for that platform when threshold exceeded.
+    """
+    platform = body.get("platform", "").lower()
+    reason = body.get("reason", "unknown")
+    
+    if platform not in PLATFORM_STRIKES:
+        PLATFORM_STRIKES[platform] = {"strikes": 0, "threshold": 3, "auto_downgrade": True, "last_strike": None}
+    
+    PLATFORM_STRIKES[platform]["strikes"] += 1
+    PLATFORM_STRIKES[platform]["last_strike"] = datetime.now(timezone.utc).isoformat()
+    
+    strikes = PLATFORM_STRIKES[platform]["strikes"]
+    threshold = PLATFORM_STRIKES[platform]["threshold"]
+    
+    # Auto-downgrade if threshold exceeded
+    downgraded = False
+    if strikes >= threshold and PLATFORM_STRIKES[platform]["auto_downgrade"]:
+        if platform in PLATFORM_PACING:
+            PLATFORM_PACING[platform]["health"] = "red"
+            downgraded = True
+    
+    return {
+        "ok": True,
+        "platform": platform,
+        "strikes": strikes,
+        "threshold": threshold,
+        "reason": reason,
+        "downgraded": downgraded
+    }
+
+@app.get("/platform/strikes/status")
+async def platform_strikes_status():
+    """Get strike status across all platforms"""
+    status = []
+    for platform, data in PLATFORM_STRIKES.items():
+        status.append({
+            "platform": platform,
+            "strikes": data["strikes"],
+            "threshold": data["threshold"],
+            "at_risk": data["strikes"] >= data["threshold"] - 1,
+            "blocked": data["strikes"] >= data["threshold"]
+        })
+    
+    return {
+        "ok": True,
+        "platforms": status,
+        "total_strikes": sum(d["strikes"] for d in PLATFORM_STRIKES.values())
+    }
+
+@app.post("/platform/strikes/reset")
+async def platform_strikes_reset(body: dict = Body(...)):
+    """Reset strikes for a platform (admin action)"""
+    platform = body.get("platform")
+    
+    if platform and platform in PLATFORM_STRIKES:
+        PLATFORM_STRIKES[platform]["strikes"] = 0
+        PLATFORM_STRIKES[platform]["last_strike"] = None
+        if platform in PLATFORM_PACING:
+            PLATFORM_PACING[platform]["health"] = "green"
+        return {"ok": True, "platform": platform, "reset": True}
+    
+    # Reset all
+    for p in PLATFORM_STRIKES:
+        PLATFORM_STRIKES[p]["strikes"] = 0
+        PLATFORM_STRIKES[p]["last_strike"] = None
+    for p in PLATFORM_PACING:
+        PLATFORM_PACING[p]["health"] = "green"
+    
+    return {"ok": True, "reset_all": True}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 10-MINUTE GOLDEN PATH TEST (v104+ hardening)
+# Synthetic test: Hello → First API → PoO badge in <10 minutes
+# ────────────────────────────────────────────────────────────────────────────────
+
+GOLDEN_PATH_RUNS = []
+
+@app.post("/test/golden-path")
+async def test_golden_path(body: dict = Body(...)):
+    """
+    Run 10-minute golden path test.
+    Synthetic user: Hello → first API call → PoO badge
+    """
+    tenant_id = body.get("tenant_id", f"test_{uuid.uuid4().hex[:8]}")
+    start_time = datetime.now(timezone.utc)
+    steps = {}
+    
+    try:
+        # Step 1: Hello
+        step1_start = datetime.now(timezone.utc)
+        hello_result = await _call("POST", "/onboarding/hello", {"tenant_id": tenant_id})
+        steps["hello"] = {
+            "ok": hello_result.get("ok", False),
+            "ms": (datetime.now(timezone.utc) - step1_start).total_seconds() * 1000
+        }
+        
+        # Step 2: Issue API key
+        step2_start = datetime.now(timezone.utc)
+        keys_result = await _call("POST", "/keys/issue", {"tenant_id": tenant_id})
+        steps["keys"] = {
+            "ok": keys_result.get("ok", False),
+            "ms": (datetime.now(timezone.utc) - step2_start).total_seconds() * 1000
+        }
+        
+        # Step 3: First API call (quote)
+        step3_start = datetime.now(timezone.utc)
+        api_result = await _call("POST", "/oaa/quote", {"tenant_id": tenant_id, "outcome_type": "service"})
+        steps["first_api"] = {
+            "ok": api_result.get("ok", False),
+            "ms": (datetime.now(timezone.utc) - step3_start).total_seconds() * 1000
+        }
+        
+        # Step 4: PoO badge
+        step4_start = datetime.now(timezone.utc)
+        badge_result = await _call("POST", "/proof/poo/badge", {"tenant_id": tenant_id})
+        steps["poo_badge"] = {
+            "ok": badge_result.get("ok", False),
+            "ms": (datetime.now(timezone.utc) - step4_start).total_seconds() * 1000
+        }
+        
+    except Exception as e:
+        steps["error"] = str(e)
+    
+    total_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+    all_passed = all(s.get("ok", False) for s in steps.values() if isinstance(s, dict) and "ok" in s)
+    under_10_min = total_ms < 600000  # 10 minutes in ms
+    
+    result = {
+        "ok": all_passed and under_10_min,
+        "tenant_id": tenant_id,
+        "total_ms": round(total_ms, 2),
+        "under_10_min": under_10_min,
+        "all_steps_passed": all_passed,
+        "steps": steps,
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+    
+    GOLDEN_PATH_RUNS.append(result)
+    
+    return result
+
+@app.get("/test/golden-path/history")
+async def test_golden_path_history(limit: int = 10):
+    """Get golden path test history"""
+    return {
+        "ok": True,
+        "runs": GOLDEN_PATH_RUNS[-limit:],
+        "total_runs": len(GOLDEN_PATH_RUNS),
+        "pass_rate": len([r for r in GOLDEN_PATH_RUNS if r["ok"]]) / len(GOLDEN_PATH_RUNS) if GOLDEN_PATH_RUNS else 0
+    }
 
 @app.post("/platform/pacing-guard")
 async def platform_pacing_guard(body: dict = Body(...)):
