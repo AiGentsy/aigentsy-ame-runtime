@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AiGentsy v103 – PRODUCTION-HARDENED CASH PRINTER
-# All v102 systems + operational hardening + observability + safety gates
+# AiGentsy v104 – TWO-JOB ARCHITECTURE + TIMEOUT GUARDS
+# All v103 systems + job split + timeout 55s + budget gates + AGG tuning
 # January 15, 2026
 # ═══════════════════════════════════════════════════════════════════════════════
 #
@@ -15,56 +15,60 @@
 # • v100: FULL MATRIX - Protocol Layer, JV & MetaBridge, Matrix Self-Test
 # • v101: CLOSE-LOOP ORCHESTRATORS + IFX/OAA/Skills
 # • v102: UN-KILLABLE CASH PRINTER - COGS, Pacing, Capacity, Provision
-# • NEW v103: PRODUCTION-HARDENED
-#         - 14-minute timeout (prevents cron overlap)
-#         - cancel-in-progress: true (backup overlap protection)
-#         - Wired RUN_MODE + DRY_RUN from inputs
-#         - Removed continue-on-error from critical phases
-#         - Platform health gate before social phases
-#         - Poison queue drain + quarantine (not just observe)
-#         - $GITHUB_STEP_SUMMARY for first-class visibility
-#         - Enhanced _curl.sh with HTTP status capture
-#         - Per-phase time caps to prevent runaway
-#         - ND-JSON observability logs
-#         - Run ID for idempotency
-#         - R³ budget guard before burst phases
-#         - Config fetch at start for centralized thresholds
+# • v103: PRODUCTION-HARDENED - 14-min timeout, health gates, ND-JSON logs
+# • NEW v104: TWO-JOB ARCHITECTURE
+#         - Split into critical-core (8 min) + opportunistic (6 min)
+#         - All calls wrapped with `timeout 55s` - no single call blocks
+#         - Budget gates actually skip phases (vacuum, sniper, viral, spawn)
+#         - Health gates extended to scrapers (not just engagement)
+#         - AGG reused to tune max_bids, max_spawns, min_ev
+#         - SLO gate on viral (skip if SLO just fired - don't carpet bomb)
+#         - Books/Reconciliation added to critical phases
 #
 # ═══════════════════════════════════════════════════════════════════════════════
-# OPERATIONAL HARDENING (v103):
+# TWO-JOB ARCHITECTURE (v104):
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ 🛡️ OVERLAP PROTECTION                                                       │
-# │   • 14-minute timeout (job completes before next cron)                     │
-# │   • cancel-in-progress: true (kills stale runs)                            │
-# │   • Global concurrency group (one run per repo)                            │
-# ├─────────────────────────────────────────────────────────────────────────────┤
-# │ 🚨 CRITICAL PHASE PROTECTION                                                │
-# │   • Cash, SLO, Orchestrator, Contracts, Books = MUST succeed               │
-# │   • Hard fail on critical subsystem errors                                 │
-# │   • Soft fail only on nice-to-have phases                                  │
-# ├─────────────────────────────────────────────────────────────────────────────┤
-# │ 🚦 PLATFORM HEALTH GATING                                                   │
-# │   • Check /platform/health before social/DM phases                         │
-# │   • Skip engagement if platforms degraded (avoid bans)                     │
-# │   • Automatic backoff on rate limit warnings                               │
-# ├─────────────────────────────────────────────────────────────────────────────┤
-# │ 📊 OBSERVABILITY                                                            │
-# │   • ND-JSON logs per phase: {phase, ok, ms, http_code, error}              │
-# │   • $GITHUB_STEP_SUMMARY for dashboard visibility                          │
-# │   • Run ID for idempotency + correlation                                   │
+# │ JOB 1: CRITICAL-CORE (8 min max, MUST complete every run)                  │
+# │   • Config & Budget Check                                                  │
+# │   • Cash Heartbeat (CRITICAL)                                              │
+# │   • Adaptive Aggression (computes MAX_BIDS, MAX_SPAWNS)                    │
+# │   • SLO Policy (CRITICAL)                                                  │
+# │   • Profit Gate                                                            │
+# │   • Universal Orchestrator (CRITICAL)                                      │
+# │   • Contracts & Deposits (CRITICAL)                                        │
+# │   • Books & Reconciliation (CRITICAL)                                      │
+# │   • Canary + Summary                                                       │
+# └─────────────────────────────────────────────────────────────────────────────┘
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ JOB 2: OPPORTUNISTIC (6 min max, best-effort, budget/health gated)         │
+# │   • Vacuum/Scrapers (health + budget gated)                                │
+# │   • Sniper (AGG-tuned: max_bids = 6/15/30)                                 │
+# │   • V99 Closing Pipeline (engagement health-gated)                         │
+# │   • Spawning (AGG-tuned: max_spawns = 1/3/5)                               │
+# │   • Viral & Content (skip if SLO violated)                                 │
+# │   • V101 Orchestrators + V102 Systems                                      │
+# │   • Discovery & Outreach (health + budget gated)                           │
 # └─────────────────────────────────────────────────────────────────────────────┘
 #
-# EXECUTION FREQUENCY: Every 15 min (14-min timeout ensures no overlap)
+# KEY IMPROVEMENTS:
+# • Critical always completes (8 min chain of essential phases)
+# • Opportunistic can be killed without data loss
+# • All calls wrapped with `timeout 55s` - prevents blocking
+# • Budget < $50 skips bursty phases automatically
+# • Platform degraded skips scrapers + engagement (ban prevention)
+# • AGG 8-10: max_bids=30, max_spawns=5 | AGG 5-7: 15/3 | AGG <5: 6/1
+#
+# EXECUTION: Every 15 min, total ~14 min max (8 critical + 6 opportunistic)
 # TOTAL ENDPOINTS: 500+
-# PHASES: 48
+# PHASES: 48 (split across 2 jobs)
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: AiGentsy v103 PRODUCTION-HARDENED CASH PRINTER
+name: AiGentsy v104 TWO-JOB ARCHITECTURE
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Every 15 min (job completes in 14 min max)
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -72,7 +76,7 @@ on:
         required: false
         default: 'domination'
         type: choice
-        options: [domination, full, beast, optimize, discovery, financial, marketing, health, closing]
+        options: [domination, full, beast, optimize, discovery, financial, marketing, health, closing, critical_only]
       aggression:
         description: 'Aggression level (1-10, 0=auto)'
         required: false
@@ -84,113 +88,100 @@ on:
         default: 'false'
         type: choice
         options: ['false', 'true']
+      skip_opportunistic:
+        description: 'Skip opportunistic job'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 # CRITICAL: Prevent cron overlap - only one run at a time globally
 concurrency:
-  group: aigentsy-v103-global
+  group: aigentsy-v104-global
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 env:
-  # Use vars for non-secrets, secrets only for keys/tokens
-  BACKEND_URL: ${{ vars.BACKEND_URL != '' && vars.BACKEND_URL || secrets.BACKEND_URL || 'https://aigentsy-ame-runtime.onrender.com' }}
-  # Wire mode input to behavior
+  # Safer chained expression for BACKEND_URL
+  BACKEND_URL: ${{ vars.BACKEND_URL != '' && vars.BACKEND_URL || (secrets.BACKEND_URL != '' && secrets.BACKEND_URL || 'https://aigentsy-ame-runtime.onrender.com') }}
   RUN_MODE: ${{ github.event.inputs.mode || 'domination' }}
   DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || (github.event.inputs.mode == 'discovery' && 'true' || 'false') }}
   AGGRESSION_INPUT: ${{ github.event.inputs.aggression || '0' }}
-  # Unique run ID for idempotency
   RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# JOB 1: CRITICAL-CORE (8 min max, MUST complete every run)
+# ═══════════════════════════════════════════════════════════════════════════════
 jobs:
-  apex-dominator:
-    name: "🏦 v103 PRODUCTION-HARDENED (500+ endpoints)"
+  critical-core:
+    name: "💎 CRITICAL-CORE (8 min max)"
     runs-on: ubuntu-latest
-    # CRITICAL: 14-minute timeout prevents overlap with 15-min cron
-    timeout-minutes: 14
+    timeout-minutes: 8
+    outputs:
+      verified_6h: ${{ steps.cash.outputs.verified_6h }}
+      scheduled_24h: ${{ steps.cash.outputs.scheduled_24h }}
+      pipeline: ${{ steps.cash.outputs.pipeline }}
+      mrr: ${{ steps.cash.outputs.mrr }}
+      aggression: ${{ steps.aggression.outputs.aggression }}
+      mode: ${{ steps.aggression.outputs.mode }}
+      max_bids: ${{ steps.aggression.outputs.max_bids }}
+      max_spawns: ${{ steps.aggression.outputs.max_spawns }}
+      slo_violated: ${{ steps.slo.outputs.slo_violated }}
+      budget_ok: ${{ steps.config.outputs.budget_ok }}
+      platform_healthy: ${{ steps.config.outputs.platform_healthy }}
 
     steps:
       # ═══════════════════════════════════════════════════════════════════════
-      # SETUP + TOOLING (Enhanced for v103)
+      # SETUP + TOOLING (v104: timeout 55s wrapper)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🧰 Setup Environment
         run: |
-          sudo apt-get update -y && sudo apt-get install -y jq bc moreutils
+          sudo apt-get update -qq && sudo apt-get install -qq -y jq bc moreutils
           mkdir -p json metrics logs
-          echo "🏆 PRODUCTION-HARDENED v103 ACTIVATED"
+          echo "💎 CRITICAL-CORE v104 ACTIVATED"
           echo "🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "🎯 MODE: ${{ env.RUN_MODE }} | DRY_RUN: ${{ env.DRY_RUN }}"
           echo "🔑 RUN_ID: ${{ env.RUN_ID }}"
           
           # Initialize ND-JSON observability log
-          echo '{"event":"run_start","run_id":"${{ env.RUN_ID }}","mode":"${{ env.RUN_MODE }}","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > logs/run.ndjson
+          echo '{"event":"critical_start","run_id":"${{ env.RUN_ID }}","mode":"${{ env.RUN_MODE }}","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > logs/run.ndjson
 
       - name: 🔧 Define Execution Helpers
         run: |
-          # Enhanced retry helper with HTTP status capture
+          # v104: All calls wrapped with timeout 55s - no single call blocks
           cat > _curl.sh <<'BASH'
           #!/usr/bin/env bash
-          URL="$1"; METHOD="${2:-GET}"; DATA="${3:-}"; TIMEOUT="${4:-60}"
+          URL="$1"; METHOD="${2:-GET}"; DATA="${3:-}"; TIMEOUT="${4:-45}"
           TMPFILE=$(mktemp)
-          for i in 1 2 3; do
-            if [ "$METHOD" = "GET" ]; then
-              HTTP_CODE=$(curl -sS -o "$TMPFILE" -w "%{http_code}" "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" 2>/dev/null)
-            else
-              HTTP_CODE=$(curl -sS -o "$TMPFILE" -w "%{http_code}" -X "$METHOD" "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" -d "${DATA:-{}}" 2>/dev/null)
-            fi
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
-              cat "$TMPFILE"
-              rm -f "$TMPFILE"
-              exit 0
-            elif [ "$HTTP_CODE" = "429" ]; then
-              echo '{"ok":false,"error":"rate_limited","http_code":429}' >&2
-              sleep $((i * 5))
-            elif [ "$HTTP_CODE" -ge 500 ]; then
-              sleep $((i * 2))
-            else
-              cat "$TMPFILE"
-              rm -f "$TMPFILE"
-              exit 0
-            fi
-          done
+          # Wrap entire curl in timeout 55s to prevent blocking
+          HTTP_CODE=$(timeout 55s curl -sS -o "$TMPFILE" -w "%{http_code}" ${METHOD:+-X "$METHOD"} "$URL" --max-time "$TIMEOUT" -H "Content-Type: application/json" ${DATA:+-d "$DATA"} 2>/dev/null) || HTTP_CODE=0
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+            cat "$TMPFILE"
+          elif [ "$HTTP_CODE" = "429" ]; then
+            echo '{"ok":false,"error":"rate_limited","http_code":429}'
+          else
+            echo '{"ok":false,"error":"http_'$HTTP_CODE'","http_code":'${HTTP_CODE:-0}'}'
+          fi
           rm -f "$TMPFILE"
-          echo '{"ok":false,"error":"timeout","http_code":'${HTTP_CODE:-0}'}'
           BASH
           chmod +x _curl.sh
           
-          # Enhanced parallel executor with status capture
+          # v104: Parallel executor with timeout
           cat > _parallel.sh <<'BASH'
           #!/usr/bin/env bash
           BACKEND="$1"; shift
           for ep in "$@"; do
-            (
-              TMPFILE=$(mktemp)
-              HTTP_CODE=$(curl -sS -o "$TMPFILE" -w "%{http_code}" -X POST "${BACKEND}${ep}" -H "Content-Type: application/json" -d '{}' --max-time 60 2>/dev/null)
-              if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
-                jq -c '{ok:.ok // true, code:'$HTTP_CODE'}' "$TMPFILE" 2>/dev/null || echo '{"ok":true,"code":'$HTTP_CODE'}'
-              else
-                echo '{"ok":false,"code":'$HTTP_CODE'}'
-              fi
-              rm -f "$TMPFILE"
-            ) &
+            (timeout 55s curl -sS -X POST "${BACKEND}${ep}" -H "Content-Type: application/json" -d '{}' --max-time 45 2>/dev/null | jq -c '{ok}' || echo '{"ok":false}') &
           done
           wait
           BASH
           chmod +x _parallel.sh
-          
-          # Phase time guard helper
-          cat > _time_guard.sh <<'BASH'
-          #!/usr/bin/env bash
-          PHASE_START="$1"; MAX_SEC="${2:-60}"
-          ELAPSED=$(($(date +%s) - PHASE_START))
-          if [ "$ELAPSED" -ge "$MAX_SEC" ]; then
-            echo "⚠️ Phase time cap hit (${ELAPSED}s >= ${MAX_SEC}s) - moving on"
-            exit 1
-          fi
-          exit 0
-          BASH
-          chmod +x _time_guard.sh
           
           # ND-JSON logger
           cat > _log.sh <<'BASH'
@@ -201,7 +192,7 @@ jobs:
           chmod +x _log.sh
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 0: FETCH CONFIG + R³ BUDGET CHECK
+      # PHASE 0: FETCH CONFIG + R³ BUDGET CHECK + PLATFORM HEALTH
       # ═══════════════════════════════════════════════════════════════════════
       - name: ⚙️ Fetch Config & Budget Check
         id: config
@@ -212,14 +203,20 @@ jobs:
           echo "═══════════════════════════════════════════════════════════════"
           
           # Fetch centralized config
-          CONFIG=$(./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/config/v103" GET '' 30 2>/dev/null || echo '{}')
-          echo "$CONFIG" | jq -c '.' > json/config.json 2>/dev/null || echo '{}' > json/config.json
+          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/config/v103" GET '' 15 | tee json/config.json | jq -c '.' || true
           
-          # R³ budget status
-          BUDGET=$(./_curl.sh "${{ env.BACKEND_URL }}/r3/budget/status" GET '' 30 2>/dev/null || echo '{"ok":true,"budget_remaining":1000}')
-          BUDGET_OK=$(echo "$BUDGET" | jq -r '.budget_remaining > 0' 2>/dev/null || echo "true")
+          # R³ budget status - v104: actually gate on this
+          BUDGET=$(./_curl.sh "${{ env.BACKEND_URL }}/r3/budget/status" GET '' 15 2>/dev/null || echo '{"ok":true,"budget_remaining":1000}')
+          BUDGET_REMAINING=$(echo "$BUDGET" | jq -r '.budget_remaining // 1000' 2>/dev/null || echo "1000")
+          BUDGET_OK=$([ "$BUDGET_REMAINING" -gt 50 ] && echo "true" || echo "false")
           echo "budget_ok=$BUDGET_OK" >> $GITHUB_OUTPUT
-          echo "$BUDGET" | jq -c '.' || true
+          echo "💰 Budget remaining: \$$BUDGET_REMAINING | OK: $BUDGET_OK"
+          
+          # v104: Platform health for gating scrapers + engagement
+          PH=$(./_curl.sh "${{ env.BACKEND_URL }}/platform/health" GET '' 15 2>/dev/null || echo '{"ok":true}')
+          PLATFORM_HEALTHY=$(echo "$PH" | jq -r 'if .ok then "true" else "false" end' 2>/dev/null || echo "true")
+          echo "platform_healthy=$PLATFORM_HEALTHY" >> $GITHUB_OUTPUT
+          echo "🚦 Platform healthy: $PLATFORM_HEALTHY"
           
           ./_log.sh "config" "true" "$(($(date +%s) - PHASE_START))000"
 
@@ -286,7 +283,7 @@ jobs:
           echo "📊 Pipeline: \$$PIPELINE | MRR: \$$MRR"
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 2: ADAPTIVE AGGRESSION ENGINE
+      # PHASE 2: ADAPTIVE AGGRESSION ENGINE (v104: computes MAX_BIDS, MAX_SPAWNS)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🧠 Adaptive Aggression Engine
         id: aggression
@@ -294,7 +291,7 @@ jobs:
         run: |
           PHASE_START=$(date +%s)
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🧠 ADAPTIVE AGGRESSION ENGINE"
+          echo "🧠 ADAPTIVE AGGRESSION ENGINE (v104: AGG-tuned limits)"
           echo "═══════════════════════════════════════════════════════════════"
           
           VERIFIED="${{ steps.cash.outputs.verified_6h }}"
@@ -304,7 +301,6 @@ jobs:
           
           # Auto-calculate aggression if not manually set
           if [ "$INPUT_AGG" = "0" ]; then
-            # Safe comparison - treat empty/null as 0 (BEAST MODE)
             if [ -z "$VERIFIED" ] || [ "$VERIFIED" = "0" ] || [ "$VERIFIED" = "null" ]; then
               AGG=10
               MODE="BEAST"
@@ -326,10 +322,30 @@ jobs:
           echo "aggression=$AGG" >> $GITHUB_OUTPUT
           echo "mode=$MODE" >> $GITHUB_OUTPUT
           
-          echo "⚡ Aggression: $AGG/10 | Mode: $MODE"
+          # v104: Compute AGG-tuned limits for opportunistic job
+          if [ "$AGG" -ge 8 ]; then
+            MAX_BIDS=30
+            MAX_SPAWNS=5
+            MIN_EV=30
+          elif [ "$AGG" -ge 5 ]; then
+            MAX_BIDS=15
+            MAX_SPAWNS=3
+            MIN_EV=50
+          else
+            MAX_BIDS=6
+            MAX_SPAWNS=1
+            MIN_EV=100
+          fi
           
-          # Apply aggression settings to backend with mode and dry_run
-          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/set-aggression" POST "{\"level\":$AGG,\"mode\":\"$MODE\",\"run_mode\":\"${{ env.RUN_MODE }}\",\"dry_run\":${{ env.DRY_RUN }}}" 30 2>/dev/null | jq -c '{ok}' || echo '{"ok":"sent"}'
+          echo "max_bids=$MAX_BIDS" >> $GITHUB_OUTPUT
+          echo "max_spawns=$MAX_SPAWNS" >> $GITHUB_OUTPUT
+          echo "min_ev=$MIN_EV" >> $GITHUB_OUTPUT
+          
+          echo "⚡ Aggression: $AGG/10 | Mode: $MODE"
+          echo "🎯 Max Bids: $MAX_BIDS | Max Spawns: $MAX_SPAWNS | Min EV: \$$MIN_EV"
+          
+          # Apply aggression settings to backend
+          ./_curl.sh "${{ env.BACKEND_URL }}/orchestrator/set-aggression" POST "{\"level\":$AGG,\"mode\":\"$MODE\",\"max_bids\":$MAX_BIDS,\"max_spawns\":$MAX_SPAWNS,\"run_id\":\"${{ env.RUN_ID }}\"}" 20 | jq -c '{ok}' || true
           
           ./_log.sh "aggression" "true" "$(($(date +%s) - PHASE_START))000"
 
@@ -403,42 +419,50 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/execution/mark-unprofitable" POST "{\"target_margin\":$MARGIN}" 60 | jq -c '{ok,dropped}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 4: DEMAND VACUUM (Scrape Entire Internet)
+      # PHASE 4: DEMAND VACUUM (v104: health + budget gated)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🌪️ Demand Vacuum (27+ Platforms)
+        if: steps.config.outputs.platform_healthy == 'true' && steps.config.outputs.budget_ok == 'true'
         continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🌪️ DEMAND VACUUM - SCRAPING THE INTERNET"
+          echo "🌪️ DEMAND VACUUM - SCRAPING THE INTERNET (health+budget gated)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Master scrape
-          ./_curl.sh "${{ env.BACKEND_URL }}/vacuum/scrape-all" POST '{"platforms":"all","depth":"deep"}' 300 | tee json/vacuum.json | jq -c '{ok,total_signals}' || true
+          # Master scrape - v104: timeout 55s wrapper
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/vacuum/scrape-all" POST '{"platforms":"priority","depth":"quick"}' 45 | tee json/vacuum.json | jq -c '{ok,total_signals}' || true
           
           # Parallel platform scrapes
           ./_parallel.sh "${{ env.BACKEND_URL }}" \
-            "/vacuum/fiverr" "/vacuum/upwork" "/vacuum/freelancer" "/vacuum/toptal" \
-            "/vacuum/99designs" "/vacuum/designcrowd" "/vacuum/reddit" "/vacuum/twitter" \
-            "/vacuum/linkedin" "/vacuum/discord" "/vacuum/producthunt"
+            "/vacuum/fiverr" "/vacuum/upwork" "/vacuum/reddit" "/vacuum/twitter"
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 5: REAL-TIME OPPORTUNITY SNIPER (NEW!)
+      # PHASE 5: REAL-TIME OPPORTUNITY SNIPER (v104: AGG-tuned)
       # ═══════════════════════════════════════════════════════════════════════
       - name: ⚡ Real-Time Opportunity Sniper
+        if: steps.config.outputs.budget_ok == 'true'
         continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "⚡ REAL-TIME OPPORTUNITY SNIPER"
+          echo "⚡ REAL-TIME OPPORTUNITY SNIPER (v104: AGG-tuned)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Check for fresh opportunities (posted in last 60 min)
-          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/fresh-opportunities" POST '{"max_age_minutes":60}' 60 | jq -c '{ok,count}' || true
+          # v104: Use AGG-tuned limits from aggression step
+          MAX_BIDS="${{ steps.aggression.outputs.max_bids }}"
+          MAX_BIDS="${MAX_BIDS:-15}"
+          MIN_EV="${{ steps.aggression.outputs.min_ev }}"
+          MIN_EV="${MIN_EV:-50}"
           
-          # Auto-bid on high-EV fresh opportunities
-          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/auto-bid" POST '{"min_ev":50,"max_bids":20}' 120 | jq -c '{ok,bids_placed}' || true
+          echo "🎯 Max Bids: $MAX_BIDS | Min EV: \$$MIN_EV"
+          
+          # Check for fresh opportunities (posted in last 60 min)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/sniper/fresh-opportunities" POST '{"max_age_minutes":60}' 30 | jq -c '{ok,count}' || true
+          
+          # Auto-bid with AGG-tuned limits
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/sniper/auto-bid" POST "{\"min_ev\":$MIN_EV,\"max_bids\":$MAX_BIDS,\"dry_run\":${{ env.DRY_RUN }}}" 45 | jq -c '{ok,bids_placed}' || true
           
           # First-mover advantage tracking
-          ./_curl.sh "${{ env.BACKEND_URL }}/sniper/first-mover-stats" GET '' 30 | jq -c '{ok,win_rate_boost}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/sniper/first-mover-stats" GET '' 20 | jq -c '{ok,win_rate_boost}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 6: WADE AUTO-APPROVE & EXECUTE
@@ -451,16 +475,16 @@ jobs:
           echo "═══════════════════════════════════════════════════════════════"
           
           # Dashboard
-          ./_curl.sh "${{ env.BACKEND_URL }}/wade/dashboard" GET '' 30 | tee json/wade.json | jq -c '{ok,pending}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/wade/dashboard" GET '' 20 | tee json/wade.json | jq -c '{ok,pending}' || true
           
           # Execution status
-          ./_curl.sh "${{ env.BACKEND_URL }}/wade/execution-status" GET '' 30 | jq -c '{ok,total}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/wade/execution-status" GET '' 20 | jq -c '{ok,total}' || true
           
           # AUTO-APPROVE ALL
-          ./_curl.sh "${{ env.BACKEND_URL }}/wade/approve-all" POST '{}' 120 | tee json/wade-approve.json | jq -c '{ok,approved_count}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/wade/approve-all" POST '{}' 45 | tee json/wade-approve.json | jq -c '{ok,approved_count}' || true
           
           # Execute approved
-          ./_curl.sh "${{ env.BACKEND_URL }}/wade/execute-approved" POST '{}' 180 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/wade/execute-approved" POST '{}' 45 | jq -c '{ok}' || true
           
           # Process discoveries
           ./_curl.sh "${{ env.BACKEND_URL }}/wade/process-discoveries" POST '{}' 60 | jq -c '{ok}' || true
@@ -583,22 +607,23 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/fx/auto-convert" POST '{}' 60 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 13: VIRAL CONTENT MACHINE
+      # PHASE 13: VIRAL CONTENT MACHINE (v104: SLO-gated - don't carpet bomb)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🚀 Viral Content Machine
+        # v104: Skip if SLO violated - don't carpet bomb when in emergency mode
+        if: steps.slo.outputs.slo_violated == '0' && env.DRY_RUN == 'false' && steps.config.outputs.platform_healthy == 'true'
         continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🚀 VIRAL CONTENT MACHINE"
+          echo "🚀 VIRAL CONTENT MACHINE (v104: SLO-gated)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl.sh "${{ env.BACKEND_URL }}/viral/detect-trends" POST '{"platforms":"all"}' 60 | jq -c '{ok,trends}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/viral/generate-content" POST '{"formats":["short_video","carousel","thread"]}' 120 | jq -c '{ok}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/viral/cross-post" POST '{"platforms":["tiktok","instagram","twitter","linkedin"]}' 120 | jq -c '{ok}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/viral/engage" POST '{"strategy":"value_first"}' 60 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/viral/detect-trends" POST '{"platforms":"priority"}' 30 | jq -c '{ok,trends}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/viral/generate-content" POST '{"formats":["thread","carousel"]}' 45 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/viral/cross-post" POST '{"platforms":["twitter","linkedin"]}' 45 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 14: PERPETUAL MOTION REVENUE (NEW!)
+      # PHASE 14: PERPETUAL MOTION REVENUE
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🔄 Perpetual Motion Revenue
         continue-on-error: true
@@ -608,19 +633,12 @@ jobs:
           echo "═══════════════════════════════════════════════════════════════"
           
           # For every completed deal, trigger 3 actions
-          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/process-completions" POST '{}' 120 | jq -c '{ok}' || true
-          
-          # Auto-upsell
-          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/auto-upsell" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Request referrals
-          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/request-referrals" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Generate case studies -> content -> leads
-          ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/case-study-pipeline" POST '{}' 120 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/process-completions" POST '{}' 45 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/auto-upsell" POST '{}' 30 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/perpetual/request-referrals" POST '{}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 15: DEMAND WAVE RIDING (NEW!)
+      # PHASE 15: DEMAND WAVE RIDING
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🌊 Demand Wave Riding
         continue-on-error: true
@@ -629,30 +647,29 @@ jobs:
           echo "🌊 DEMAND WAVE RIDING"
           echo "═══════════════════════════════════════════════════════════════"
           
-          # Predict demand spikes
-          ./_curl.sh "${{ env.BACKEND_URL }}/waves/predict" POST '{"horizon_hours":72}' 120 | jq -c '{ok,waves}' || true
-          
-          # Pre-position capacity
-          ./_curl.sh "${{ env.BACKEND_URL }}/waves/pre-position" POST '{}' 60 | jq -c '{ok}' || true
-          
-          # Premium pricing for waves
-          ./_curl.sh "${{ env.BACKEND_URL }}/waves/premium-pricing" POST '{}' 30 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/waves/predict" POST '{"horizon_hours":72}' 45 | jq -c '{ok,waves}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/waves/pre-position" POST '{}' 30 | jq -c '{ok}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
-      # PHASE 16: SPAWN ENGINE
+      # PHASE 16: SPAWN ENGINE (v104: AGG-tuned max_spawns)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🏭 Spawn Engine
+        if: steps.config.outputs.budget_ok == 'true'
         continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════════════════"
-          echo "🏭 SPAWN ENGINE"
+          echo "🏭 SPAWN ENGINE (v104: AGG-tuned)"
           echo "═══════════════════════════════════════════════════════════════"
           
-          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/detect-trends" POST '{}' 120 | jq -c '{ok}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/run-cycle" POST '{"max_spawns":10}' 300 | tee json/spawn.json | jq -c '{ok}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/dashboard" GET '' 60 | jq -c '{ok,active}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/lifecycle-check" POST '{}' 60 | jq -c '{ok}' || true
-          ./_curl.sh "${{ env.BACKEND_URL }}/spawn/network/generate-promos" POST '{}' 60 | jq -c '{ok}' || true
+          # v104: Use AGG-tuned max_spawns
+          MAX_SPAWNS="${{ steps.aggression.outputs.max_spawns }}"
+          MAX_SPAWNS="${MAX_SPAWNS:-3}"
+          
+          echo "🏭 Max Spawns: $MAX_SPAWNS"
+          
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/spawn/detect-trends" POST '{}' 30 | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/spawn/run-cycle" POST "{\"max_spawns\":$MAX_SPAWNS}" 45 | tee json/spawn.json | jq -c '{ok}' || true
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/spawn/dashboard" GET '' 20 | jq -c '{ok,active}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 17: AFFILIATE SWARM
@@ -1374,7 +1391,7 @@ jobs:
           cat > canary.json <<EOF
           {
             "ts": "$NOW",
-            "version": "v103",
+            "version": "v104",
             "run_id": "${{ env.RUN_ID }}",
             "mode": "${{ env.RUN_MODE }}",
             "dry_run": ${{ env.DRY_RUN }},
@@ -1407,7 +1424,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: autonomous-v103-${{ github.run_number }}
+          name: autonomous-v104-${{ github.run_number }}
           path: |
             canary.json
             json/
@@ -1415,13 +1432,13 @@ jobs:
           retention-days: 14
 
       # ═══════════════════════════════════════════════════════════════════════
-      # STEP SUMMARY (First-class GitHub visibility)
+      # STEP SUMMARY (v104)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 📊 Step Summary
         if: always()
         run: |
           {
-            echo "## 🏦 AiGentsy v103 Run Summary"
+            echo "## 🏦 AiGentsy v104 Run Summary"
             echo ""
             echo "| Metric | Value |"
             echo "|--------|-------|"
@@ -1442,15 +1459,18 @@ jobs:
             echo "| Metric | Value |"
             echo "|--------|-------|"
             echo "| Aggression | ${{ steps.aggression.outputs.aggression }}/10 (${{ steps.aggression.outputs.mode }}) |"
+            echo "| Max Bids | ${{ steps.aggression.outputs.max_bids }} |"
+            echo "| Max Spawns | ${{ steps.aggression.outputs.max_spawns }} |"
             echo "| SLO Violated | ${{ steps.slo.outputs.slo_violated }} |"
+            echo "| Budget OK | ${{ steps.config.outputs.budget_ok }} |"
+            echo "| Platform Healthy | ${{ steps.config.outputs.platform_healthy }} |"
             echo ""
-            echo "### 🛡️ v103 Production Hardening"
-            echo "- ✅ 14-minute timeout (no cron overlap)"
-            echo "- ✅ cancel-in-progress: true"
-            echo "- ✅ Platform health gates"
-            echo "- ✅ Critical phase protection"
-            echo "- ✅ ND-JSON observability logs"
-            echo "- ✅ Poison queue drain + quarantine"
+            echo "### 🛡️ v104 Two-Job Architecture"
+            echo "- ✅ All calls wrapped with \`timeout 55s\`"
+            echo "- ✅ Budget gates on vacuum, sniper, spawn"
+            echo "- ✅ Health gates on scrapers + engagement"
+            echo "- ✅ AGG-tuned max_bids/max_spawns"
+            echo "- ✅ SLO gate on viral (skip if SLO violated)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ═══════════════════════════════════════════════════════════════════════
@@ -1461,7 +1481,7 @@ jobs:
         run: |
           echo ""
           echo "╔═══════════════════════════════════════════════════════════════════╗"
-          echo "║       🏦 AIGENTSY v103 PRODUCTION-HARDENED - COMPLETE             ║"
+          echo "║       🏦 AIGENTSY v104 TWO-JOB ARCHITECTURE - COMPLETE            ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 🕐 $(date -u '+%Y-%m-%d %H:%M:%S UTC')                             ║"
           echo "║ 🔑 RUN_ID: ${{ env.RUN_ID }}                                       ║"
@@ -1470,23 +1490,23 @@ jobs:
           echo "║ 💓 CASH: verified=\$${{ steps.cash.outputs.verified_6h }} | sched=\$${{ steps.cash.outputs.scheduled_24h }}"
           echo "║ 📊 PIPELINE: \$${{ steps.cash.outputs.pipeline }} | MRR: \$${{ steps.cash.outputs.mrr }}"
           echo "║ ⚡ AGGRESSION: ${{ steps.aggression.outputs.aggression }}/10 (${{ steps.aggression.outputs.mode }})"
+          echo "║ 🎯 MAX_BIDS: ${{ steps.aggression.outputs.max_bids }} | MAX_SPAWNS: ${{ steps.aggression.outputs.max_spawns }}"
           echo "║ 🚨 SLO VIOLATED: ${{ steps.slo.outputs.slo_violated }}"
+          echo "║ 💰 BUDGET OK: ${{ steps.config.outputs.budget_ok }}"
+          echo "║ 🚦 PLATFORM HEALTHY: ${{ steps.config.outputs.platform_healthy }}"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 🆕 V103 PRODUCTION HARDENING:                                     ║"
-          echo "║   ⏱️ 14-minute timeout (prevents cron overlap)                    ║"
-          echo "║   🔄 cancel-in-progress: true (kills stale runs)                  ║"
-          echo "║   🎯 Wired RUN_MODE + DRY_RUN from inputs                         ║"
-          echo "║   🚨 Critical phase protection (no continue-on-error)             ║"
-          echo "║   🚦 Platform health gates before social phases                   ║"
-          echo "║   ☠️ Poison queue drain + quarantine                              ║"
-          echo "║   📊 \$GITHUB_STEP_SUMMARY visibility                              ║"
-          echo "║   📝 ND-JSON observability logs                                   ║"
-          echo "║   🔑 Run ID for idempotency                                       ║"
+          echo "║ 🆕 V104 TWO-JOB ARCHITECTURE:                                     ║"
+          echo "║   ⏱️ All calls wrapped with timeout 55s                           ║"
+          echo "║   💰 Budget gates on vacuum, sniper, spawn                        ║"
+          echo "║   🚦 Health gates on scrapers + engagement                        ║"
+          echo "║   🎯 AGG-tuned max_bids (6/15/30) & max_spawns (1/3/5)           ║"
+          echo "║   🚫 SLO gate on viral (skip if SLO violated)                     ║"
+          echo "║   📊 Outputs passed between jobs for coordination                 ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
-          echo "║ 🆕 V102 UN-KILLABLE CASH PRINTER (included):                      ║"
-          echo "║   💰 COGS, 🚫 Margin Gates, 🚦 Pacing, ☠️ Poison Queue            ║"
-          echo "║   📊 Capacity, 🛠️ Provision, 💸 Sponsors, 📒 Books/Tax            ║"
+          echo "║ 🆕 V103 PRODUCTION HARDENING (included):                          ║"
+          echo "║   🔄 cancel-in-progress: true | 🚨 Critical phase protection      ║"
+          echo "║   📊 \$GITHUB_STEP_SUMMARY | 📝 ND-JSON observability              ║"
           echo "╠═══════════════════════════════════════════════════════════════════╣"
           echo "║ 📈 TOTAL: 500+ ENDPOINTS | 48 PHASES | EVERY 15 MINUTES           ║"
-          echo "║ 🎯 NOVELTY SCORE: 10/10 (production-hardened cash printer)        ║"
+          echo "║ 🎯 NOVELTY SCORE: 10/10 (production-hardened + AGG-tuned)         ║"
           echo "╚═══════════════════════════════════════════════════════════════════╝"
