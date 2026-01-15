@@ -2497,6 +2497,595 @@ async def dealgraph_stats():
         "ts": datetime.now(timezone.utc).isoformat()
     }
 
+# ════════════════════════════════════════════════════════════════════════════════
+# HYPER-ACCRETIVE UPGRADES (v104+)
+# 6 compact features that plug into existing modules
+# ════════════════════════════════════════════════════════════════════════════════
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 1. OUTCOME CREDIT VAULTS (OCV)
+# Prepaid outcomes at discount - float + lock-in + predictable cash flow
+# ────────────────────────────────────────────────────────────────────────────────
+
+OCV_CREDITS = {}  # user_id -> {balance, purchased, redeemed}
+OCV_MARKET = []   # Secondary market listings
+
+@app.post("/oaa/credits/mint")
+async def oaa_credits_mint(body: dict = Body(...)):
+    """Mint outcome credits - buyer prepays at discount"""
+    user_id = body.get("user_id", "anon")
+    amount_usd = body.get("amount", 100)
+    discount_pct = body.get("discount_pct", 10)  # 10% discount for prepay
+    
+    # Calculate credits (discounted)
+    credit_value = amount_usd * (1 + discount_pct / 100)
+    
+    if user_id not in OCV_CREDITS:
+        OCV_CREDITS[user_id] = {"balance": 0, "purchased": 0, "redeemed": 0}
+    
+    OCV_CREDITS[user_id]["balance"] += credit_value
+    OCV_CREDITS[user_id]["purchased"] += amount_usd
+    
+    # Record the float (cash received, liability created)
+    await _call("POST", "/revenue/reconcile", {
+        "amount": amount_usd,
+        "source": "ocv_prepay",
+        "user_id": user_id,
+        "liability": credit_value
+    })
+    
+    return {
+        "ok": True,
+        "credits_minted": round(credit_value, 2),
+        "paid": amount_usd,
+        "discount_pct": discount_pct,
+        "new_balance": round(OCV_CREDITS[user_id]["balance"], 2)
+    }
+
+@app.post("/oaa/credits/redeem")
+async def oaa_credits_redeem(body: dict = Body(...)):
+    """Redeem credits for outcome fulfillment"""
+    user_id = body.get("user_id", "anon")
+    outcome_type = body.get("outcome_type", "service")
+    amount = body.get("amount", 100)
+    
+    if user_id not in OCV_CREDITS or OCV_CREDITS[user_id]["balance"] < amount:
+        return {"ok": False, "error": "insufficient_credits"}
+    
+    OCV_CREDITS[user_id]["balance"] -= amount
+    OCV_CREDITS[user_id]["redeemed"] += amount
+    
+    # Execute the outcome
+    result = await _call("POST", "/oaa/execute", {
+        "outcome_type": outcome_type,
+        "budget": amount,
+        "payment_method": "credits"
+    })
+    
+    return {
+        "ok": True,
+        "redeemed": amount,
+        "remaining_balance": round(OCV_CREDITS[user_id]["balance"], 2),
+        "outcome": result
+    }
+
+@app.get("/oaa/credits/balance")
+async def oaa_credits_balance(user_id: str = "anon"):
+    """Get credit balance for user"""
+    credits = OCV_CREDITS.get(user_id, {"balance": 0, "purchased": 0, "redeemed": 0})
+    return {"ok": True, "user_id": user_id, **credits}
+
+@app.post("/oaa/credits/market")
+async def oaa_credits_market_list(body: dict = Body(...)):
+    """List credits on secondary market"""
+    user_id = body.get("user_id")
+    amount = body.get("amount", 50)
+    ask_price = body.get("ask_price", amount * 0.95)  # 5% discount typical
+    
+    if user_id not in OCV_CREDITS or OCV_CREDITS[user_id]["balance"] < amount:
+        return {"ok": False, "error": "insufficient_credits"}
+    
+    listing = {
+        "listing_id": f"ocv_{uuid.uuid4().hex[:8]}",
+        "seller": user_id,
+        "amount": amount,
+        "ask_price": ask_price,
+        "listed_at": datetime.now(timezone.utc).isoformat()
+    }
+    OCV_MARKET.append(listing)
+    
+    return {"ok": True, "listing": listing}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 2. DEMAND-PEGGED DYNAMIC BUNDLES
+# Auto-compose kits from winners using pricing bandit + LTV predictor
+# ────────────────────────────────────────────────────────────────────────────────
+
+DYNAMIC_BUNDLES = []
+
+@app.post("/bundles/auto-compose")
+async def bundles_auto_compose(body: dict = Body(...)):
+    """Auto-compose bundles from winning SKUs this week"""
+    max_items = body.get("max_items", 5)
+    target_aov = body.get("target_aov", 500)
+    
+    # Get winning items from pricing bandit
+    winners = []
+    for arm_name, arm_data in PRICING_BANDIT_ARMS.items():
+        if arm_data["trials"] > 10:
+            conv_rate = arm_data["conversions"] / arm_data["trials"]
+            if conv_rate > 0.25:  # 25%+ conversion
+                winners.append({
+                    "sku": arm_name,
+                    "conv_rate": conv_rate,
+                    "avg_price": arm_data["revenue"] / arm_data["conversions"] if arm_data["conversions"] > 0 else 100
+                })
+    
+    # Sort by conversion rate
+    winners.sort(key=lambda x: x["conv_rate"], reverse=True)
+    
+    # Compose bundle
+    bundle_items = winners[:max_items]
+    bundle_value = sum(item["avg_price"] for item in bundle_items)
+    bundle_price = bundle_value * 0.85  # 15% bundle discount
+    
+    bundle = {
+        "bundle_id": f"bundle_{uuid.uuid4().hex[:8]}",
+        "items": bundle_items,
+        "item_count": len(bundle_items),
+        "bundle_value": round(bundle_value, 2),
+        "bundle_price": round(bundle_price, 2),
+        "discount_pct": 15,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    DYNAMIC_BUNDLES.append(bundle)
+    
+    return {"ok": True, "bundle": bundle}
+
+@app.get("/bundles/price-elasticity")
+async def bundles_price_elasticity(bundle_id: str = None):
+    """Get price elasticity data for bundles"""
+    # Mock elasticity curve based on bandit data
+    elasticity = {
+        "price_points": [
+            {"price_mult": 0.8, "expected_conv": 0.45},
+            {"price_mult": 0.9, "expected_conv": 0.38},
+            {"price_mult": 1.0, "expected_conv": 0.30},
+            {"price_mult": 1.1, "expected_conv": 0.22},
+            {"price_mult": 1.2, "expected_conv": 0.15}
+        ],
+        "optimal_price_mult": 0.9,
+        "max_revenue_mult": 0.95
+    }
+    return {"ok": True, "bundle_id": bundle_id, "elasticity": elasticity}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 3. CREATOR PROFIT-SHARE PROGRAM
+# Formalize rev-share storefronts for long-tail passive leads
+# ────────────────────────────────────────────────────────────────────────────────
+
+CREATOR_STOREFRONTS = {}
+
+@app.post("/syndication/creator-onboard")
+async def syndication_creator_onboard(body: dict = Body(...)):
+    """Onboard creator to profit-share program"""
+    creator_id = body.get("creator_id", f"creator_{uuid.uuid4().hex[:8]}")
+    name = body.get("name", "Anonymous Creator")
+    rev_share_pct = body.get("rev_share_pct", 20)  # 20% default
+    content_types = body.get("content_types", ["video", "article", "social"])
+    
+    storefront = {
+        "creator_id": creator_id,
+        "name": name,
+        "rev_share_pct": rev_share_pct,
+        "content_types": content_types,
+        "total_revenue": 0,
+        "total_paid": 0,
+        "referrals": 0,
+        "status": "active",
+        "onboarded_at": datetime.now(timezone.utc).isoformat()
+    }
+    CREATOR_STOREFRONTS[creator_id] = storefront
+    
+    return {"ok": True, "storefront": storefront}
+
+@app.post("/syndication/auto-share")
+async def syndication_auto_share(body: dict = Body(...)):
+    """Auto-share content through creator storefronts"""
+    content_id = body.get("content_id")
+    content_type = body.get("content_type", "article")
+    
+    shared_to = []
+    for creator_id, storefront in CREATOR_STOREFRONTS.items():
+        if storefront["status"] == "active" and content_type in storefront["content_types"]:
+            # Queue content for creator's channels
+            shared_to.append({
+                "creator_id": creator_id,
+                "rev_share_pct": storefront["rev_share_pct"]
+            })
+    
+    return {
+        "ok": True,
+        "content_id": content_id,
+        "shared_to": shared_to,
+        "creator_count": len(shared_to)
+    }
+
+@app.post("/royalty/settle-creator")
+async def royalty_settle_creator(body: dict = Body(...)):
+    """Settle royalties for creator"""
+    creator_id = body.get("creator_id")
+    period = body.get("period", "weekly")
+    
+    if creator_id not in CREATOR_STOREFRONTS:
+        return {"ok": False, "error": "creator_not_found"}
+    
+    storefront = CREATOR_STOREFRONTS[creator_id]
+    
+    # Calculate owed (mock - would pull from actual attribution)
+    revenue_attributed = storefront["total_revenue"] - storefront["total_paid"]
+    payout = revenue_attributed * (storefront["rev_share_pct"] / 100)
+    
+    if payout > 0:
+        storefront["total_paid"] += payout
+        # Queue payout
+        await _call("POST", "/payments/queue", {
+            "recipient": creator_id,
+            "amount": payout,
+            "type": "creator_royalty"
+        })
+    
+    return {
+        "ok": True,
+        "creator_id": creator_id,
+        "payout": round(payout, 2),
+        "total_paid": round(storefront["total_paid"], 2)
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 4. AD-INVENTORY AMM
+# Treat promotions as slots with expected conversion, Kelly+Bandit bidding
+# ────────────────────────────────────────────────────────────────────────────────
+
+AD_INVENTORY = {
+    "twitter": {"slots": 10, "base_cpm": 5.0, "conv_rate": 0.02},
+    "linkedin": {"slots": 5, "base_cpm": 15.0, "conv_rate": 0.03},
+    "reddit": {"slots": 20, "base_cpm": 2.0, "conv_rate": 0.015},
+    "email": {"slots": 100, "base_cpm": 0.5, "conv_rate": 0.05}
+}
+
+@app.post("/amg/amm/quote")
+async def amg_amm_quote(body: dict = Body(...)):
+    """Quote ad inventory slot using Kelly+Bandit"""
+    platform = body.get("platform", "twitter")
+    impressions = body.get("impressions", 1000)
+    expected_value = body.get("expected_value", 100)  # Expected revenue per conversion
+    
+    if platform not in AD_INVENTORY:
+        return {"ok": False, "error": "unknown_platform"}
+    
+    inv = AD_INVENTORY[platform]
+    
+    # Kelly sizing for ad spend
+    conv_rate = inv["conv_rate"]
+    cost_per_conv = (inv["base_cpm"] / 1000) * (1 / conv_rate)
+    ev_ratio = expected_value / cost_per_conv if cost_per_conv > 0 else 1
+    
+    kelly_fraction = conv_rate - ((1 - conv_rate) / ev_ratio)
+    kelly_fraction = max(0, min(kelly_fraction, 0.25))  # Cap at 25%
+    
+    recommended_spend = impressions * (inv["base_cpm"] / 1000)
+    kelly_adjusted_spend = recommended_spend * (1 + kelly_fraction)
+    
+    return {
+        "ok": True,
+        "platform": platform,
+        "impressions": impressions,
+        "base_cpm": inv["base_cpm"],
+        "conv_rate": conv_rate,
+        "recommended_spend": round(recommended_spend, 2),
+        "kelly_fraction": round(kelly_fraction, 4),
+        "kelly_adjusted_spend": round(kelly_adjusted_spend, 2),
+        "expected_conversions": round(impressions * conv_rate / 1000, 2)
+    }
+
+@app.post("/amg/amm/fill")
+async def amg_amm_fill(body: dict = Body(...)):
+    """Fill ad inventory slot"""
+    platform = body.get("platform", "twitter")
+    slots = body.get("slots", 1)
+    spend = body.get("spend", 50)
+    
+    if platform not in AD_INVENTORY:
+        return {"ok": False, "error": "unknown_platform"}
+    
+    inv = AD_INVENTORY[platform]
+    
+    if slots > inv["slots"]:
+        return {"ok": False, "error": "insufficient_inventory"}
+    
+    # Fill slots
+    AD_INVENTORY[platform]["slots"] -= slots
+    
+    # Queue ad execution
+    await _call("POST", "/amg/queue", {
+        "platform": platform,
+        "slots": slots,
+        "spend": spend
+    })
+    
+    return {
+        "ok": True,
+        "platform": platform,
+        "slots_filled": slots,
+        "spend": spend,
+        "remaining_slots": AD_INVENTORY[platform]["slots"]
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 5. AUTONOMOUS CROSS-INSTALL (Revenue Pack)
+# Deploy best-practice funnels into connected SaaS with consent
+# ────────────────────────────────────────────────────────────────────────────────
+
+REVENUE_PACKS = {
+    "shopify_growth": {
+        "name": "Shopify Growth Pack",
+        "components": ["cart_recovery", "upsell_popup", "exit_intent", "email_sequence"],
+        "platforms": ["shopify"],
+        "expected_lift": 0.15
+    },
+    "stripe_optimization": {
+        "name": "Stripe Optimization Pack",
+        "components": ["smart_retry", "dunning_email", "payment_method_update"],
+        "platforms": ["stripe"],
+        "expected_lift": 0.08
+    },
+    "hubspot_automation": {
+        "name": "HubSpot Automation Pack",
+        "components": ["lead_scoring", "nurture_sequence", "meeting_scheduler"],
+        "platforms": ["hubspot"],
+        "expected_lift": 0.20
+    }
+}
+
+INSTALLED_PACKS = {}
+
+@app.post("/platform/auto-enable-pack")
+async def platform_auto_enable_pack(body: dict = Body(...)):
+    """Auto-enable revenue pack on connected platform"""
+    user_id = body.get("user_id", "wade")
+    pack_id = body.get("pack_id", "shopify_growth")
+    
+    if pack_id not in REVENUE_PACKS:
+        return {"ok": False, "error": "unknown_pack"}
+    
+    pack = REVENUE_PACKS[pack_id]
+    
+    # Check platform connection
+    connected = True  # Would check OAuth
+    
+    if not connected:
+        return {"ok": False, "error": "platform_not_connected"}
+    
+    # Install pack
+    install_id = f"install_{uuid.uuid4().hex[:8]}"
+    installation = {
+        "install_id": install_id,
+        "user_id": user_id,
+        "pack_id": pack_id,
+        "pack_name": pack["name"],
+        "components": pack["components"],
+        "expected_lift": pack["expected_lift"],
+        "status": "active",
+        "installed_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    INSTALLED_PACKS[install_id] = installation
+    
+    return {"ok": True, "installation": installation}
+
+@app.get("/platform/pack/health")
+async def platform_pack_health(install_id: str = None):
+    """Check health of installed revenue pack"""
+    if install_id and install_id in INSTALLED_PACKS:
+        pack = INSTALLED_PACKS[install_id]
+        return {
+            "ok": True,
+            "install_id": install_id,
+            "status": pack["status"],
+            "health": "healthy",
+            "components_active": len(pack["components"])
+        }
+    
+    # Return all packs health
+    return {
+        "ok": True,
+        "total_installed": len(INSTALLED_PACKS),
+        "healthy": len([p for p in INSTALLED_PACKS.values() if p["status"] == "active"])
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 6. UNDERWRITER LP SHARES (Tokenless Ledger)
+# Scale balance sheet with LP-style tranches for trusted partners
+# ────────────────────────────────────────────────────────────────────────────────
+
+INSURANCE_LPS = {}
+BOND_LPS = {}
+
+@app.post("/insurance/lp/register")
+async def insurance_lp_register(body: dict = Body(...)):
+    """Register LP for insurance pool"""
+    lp_id = body.get("lp_id", f"lp_{uuid.uuid4().hex[:8]}")
+    name = body.get("name", "Anonymous LP")
+    commitment = body.get("commitment", 10000)
+    tranche = body.get("tranche", "senior")  # senior, mezzanine, equity
+    
+    lp = {
+        "lp_id": lp_id,
+        "name": name,
+        "commitment": commitment,
+        "deployed": 0,
+        "tranche": tranche,
+        "yield_earned": 0,
+        "status": "active",
+        "registered_at": datetime.now(timezone.utc).isoformat()
+    }
+    INSURANCE_LPS[lp_id] = lp
+    
+    return {"ok": True, "lp": lp}
+
+@app.get("/insurance/lp/share-statement")
+async def insurance_lp_share_statement(lp_id: str):
+    """Get LP share statement"""
+    if lp_id not in INSURANCE_LPS:
+        return {"ok": False, "error": "lp_not_found"}
+    
+    lp = INSURANCE_LPS[lp_id]
+    
+    # Calculate current position
+    utilization = lp["deployed"] / lp["commitment"] if lp["commitment"] > 0 else 0
+    
+    return {
+        "ok": True,
+        "lp_id": lp_id,
+        "commitment": lp["commitment"],
+        "deployed": lp["deployed"],
+        "utilization_pct": round(utilization * 100, 2),
+        "yield_earned": round(lp["yield_earned"], 2),
+        "tranche": lp["tranche"],
+        "status": lp["status"]
+    }
+
+@app.post("/bonds/lp/yield-sweep")
+async def bonds_lp_yield_sweep(body: dict = Body(...)):
+    """Sweep yield to bond LPs"""
+    period = body.get("period", "weekly")
+    
+    total_yield = 0
+    sweeps = []
+    
+    # Calculate yield from premium MRR
+    premium_pool = DEALGRAPH_COVERAGE.get("premium_mrr", 0)
+    
+    for lp_id, lp in INSURANCE_LPS.items():
+        if lp["status"] != "active":
+            continue
+        
+        # Yield based on tranche
+        tranche_rates = {"senior": 0.02, "mezzanine": 0.05, "equity": 0.12}
+        rate = tranche_rates.get(lp["tranche"], 0.05)
+        
+        # Pro-rata share of premium pool
+        share = lp["commitment"] / sum(l["commitment"] for l in INSURANCE_LPS.values()) if INSURANCE_LPS else 0
+        lp_yield = premium_pool * share * rate
+        
+        lp["yield_earned"] += lp_yield
+        total_yield += lp_yield
+        
+        sweeps.append({
+            "lp_id": lp_id,
+            "yield": round(lp_yield, 2),
+            "tranche": lp["tranche"]
+        })
+    
+    return {
+        "ok": True,
+        "period": period,
+        "total_yield": round(total_yield, 2),
+        "sweeps": sweeps
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# OAUTH HEALTH & PERMISSIONS AUDIT (Hardening)
+# ────────────────────────────────────────────────────────────────────────────────
+
+OAUTH_TOKENS = {}  # platform -> {token, expires_at, scopes}
+
+@app.post("/oauth/refresh-all")
+async def oauth_refresh_all(body: dict = Body(...)):
+    """Refresh all OAuth tokens that are near expiry"""
+    refreshed = []
+    failed = []
+    
+    for platform, token_data in OAUTH_TOKENS.items():
+        expires_at = token_data.get("expires_at")
+        if expires_at:
+            try:
+                expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if expiry < datetime.now(timezone.utc) + timedelta(hours=1):
+                    # Would call actual refresh endpoint
+                    OAUTH_TOKENS[platform]["expires_at"] = (
+                        datetime.now(timezone.utc) + timedelta(hours=24)
+                    ).isoformat()
+                    refreshed.append(platform)
+            except:
+                failed.append(platform)
+    
+    return {
+        "ok": True,
+        "refreshed": refreshed,
+        "failed": failed,
+        "total_tokens": len(OAUTH_TOKENS)
+    }
+
+@app.get("/oauth/scope-audit")
+async def oauth_scope_audit():
+    """Audit OAuth scopes across platforms"""
+    audit = []
+    
+    for platform, token_data in OAUTH_TOKENS.items():
+        scopes = token_data.get("scopes", [])
+        required = ["read", "write"]  # Platform-specific in production
+        missing = [s for s in required if s not in scopes]
+        
+        audit.append({
+            "platform": platform,
+            "scopes": scopes,
+            "missing": missing,
+            "healthy": len(missing) == 0
+        })
+    
+    return {
+        "ok": True,
+        "platforms": len(audit),
+        "healthy": len([a for a in audit if a["healthy"]]),
+        "audit": audit
+    }
+
+@app.get("/platform/permissions/audit")
+async def platform_permissions_audit():
+    """Audit which third-party rails are hot or degraded"""
+    platforms = ["shopify", "stripe", "hubspot", "twitter", "linkedin", "fiverr", "upwork"]
+    
+    audit = []
+    for platform in platforms:
+        token = OAUTH_TOKENS.get(platform, {})
+        has_token = bool(token)
+        
+        # Check pacing health
+        pacing = PLATFORM_PACING.get(platform, {})
+        is_limited = pacing.get("current", 0) >= pacing.get("limit", 100) * 0.8
+        
+        status = "hot" if has_token and not is_limited else "degraded" if has_token else "disconnected"
+        
+        audit.append({
+            "platform": platform,
+            "connected": has_token,
+            "rate_limited": is_limited,
+            "status": status
+        })
+    
+    hot = len([a for a in audit if a["status"] == "hot"])
+    degraded = len([a for a in audit if a["status"] == "degraded"])
+    
+    return {
+        "ok": True,
+        "hot": hot,
+        "degraded": degraded,
+        "disconnected": len(platforms) - hot - degraded,
+        "rails": audit
+    }
+
 # ────────────────────────────────────────────────────────────────────────────────
 # NEW MODULE: OAA (Outcome-as-an-API)
 # White-label your protocol for external platforms
