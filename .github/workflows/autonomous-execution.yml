@@ -221,6 +221,26 @@ jobs:
           ./_log.sh "config" "true" "$(($(date +%s) - PHASE_START))000"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 0a: OAUTH/SCOPE HEALTH (v104+ hardening)
+      # Refresh tokens + audit permissions before platform phases
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔑 OAuth & Scope Health
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔑 OAUTH/SCOPE HEALTH - Token refresh + permissions audit"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Refresh any tokens near expiry
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/oauth/refresh-all" POST '{}' 30 | jq -c '{ok,refreshed,failed}' || true
+          
+          # Audit scopes
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/oauth/scope-audit" GET '' 20 | jq -c '{ok,healthy,platforms}' || true
+          
+          # Full permissions audit (hot/degraded/disconnected)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/platform/permissions/audit" GET '' 20 | tee json/permissions.json | jq -c '{ok,hot,degraded,disconnected}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 1: CASH HEARTBEAT - CRITICAL (no continue-on-error)
       # ═══════════════════════════════════════════════════════════════════════
       - name: 💓 Cash Heartbeat (CRITICAL)
@@ -1133,6 +1153,35 @@ jobs:
           
           # Underwriting status
           timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/underwriting/status" GET '' 15 | jq -c '{ok,policies,bonds,quotes}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 31d: CREDIT & AMM EXPANSION (v104+ hyper-accretive)
+      # OCV credits, dynamic bundles, creator profit-share, ad AMM, LP yields
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💎 Credit & AMM Expansion
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💎 CREDIT & AMM EXPANSION - Hyper-Accretive Features"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # 1. Auto-compose dynamic bundles from winners
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/bundles/auto-compose" POST '{"max_items":5,"target_aov":500}' 30 | jq -c '{ok,bundle_id,bundle_price}' || true
+          
+          # 2. Auto-share content through creator storefronts
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/syndication/auto-share" POST '{"content_type":"article"}' 30 | jq -c '{ok,creator_count}' || true
+          
+          # 3. Quote ad inventory AMM
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/amg/amm/quote" POST '{"platform":"twitter","impressions":1000,"expected_value":100}' 20 | jq -c '{ok,kelly_adjusted_spend}' || true
+          
+          # 4. Sweep LP yields (weekly)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/bonds/lp/yield-sweep" POST '{"period":"weekly"}' 30 | jq -c '{ok,total_yield}' || true
+          
+          # 5. Check revenue pack health
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/platform/pack/health" GET '' 15 | jq -c '{ok,healthy}' || true
+          
+          # 6. OCV market status
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/oaa/credits/balance" GET 'user_id=wade' 15 | jq -c '{ok,balance}' || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 32: COMPLIANCE & SAFETY
