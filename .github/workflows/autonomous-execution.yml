@@ -832,6 +832,29 @@ jobs:
           ./_log.sh "contracts" "true" "$(($(date +%s) - PHASE_START))000"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19e2: DEALGRAPH RISK-TRANCHING (Market Insurer Lift)
+      # Route every deal through performance_bonds + insurance_pool
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🧩 DealGraph Risk-Tranching
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🧩 DEALGRAPH RISK-TRANCHING – route→tranche→underwrite"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Route all open deals through DealGraph
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/route" POST '{"scope":"all_open_deals","priority":"closing"}' 45 | jq -c '{ok,routed}' || true
+          
+          # Apply risk tranching (bond + insurance)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/risk-tranche" POST '{"method":"bond+insurance","target_cover_pct":0.8}' 45 | jq -c '{ok,tranches_created,covered_value}' || true
+          
+          # Final underwriting with market pricing
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/underwrite" POST '{"premium_mode":"market","max_exposure_pct":0.2}' 45 | jq -c '{ok,policies_bound}' || true
+          
+          # Get coverage stats
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/stats" GET '' 20 | jq -c '{ok,coverage_pct,premium_mrr}' || true
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 19f: V99 FULL AUTONOMOUS CYCLE
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🔄 V99 Full Autonomous Cycle
