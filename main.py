@@ -1849,6 +1849,713 @@ async def orchestrator_status():
 # END V101 INFRASTRUCTURE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# V102 INFRASTRUCTURE: COGS, Pacing, Capacity, Provision, Poison Queue
+# "Un-killable cash printer" upgrades
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ────────────────────────────────────────────────────────────────────────────────
+# COGS (Cost of Goods Sold) ESTIMATION
+# Know your true costs before bidding - stop losing $1 to make $0.90
+# ────────────────────────────────────────────────────────────────────────────────
+
+# SKU cost profiles (model/compute/API costs, human minutes, platform fees)
+SKU_COST_PROFILES = {
+    "service": {"model_cost": 0.15, "compute_min": 5, "human_min": 30, "platform_fee_pct": 0.028, "failure_risk": 0.05},
+    "content": {"model_cost": 0.08, "compute_min": 2, "human_min": 15, "platform_fee_pct": 0.028, "failure_risk": 0.03},
+    "design": {"model_cost": 0.25, "compute_min": 10, "human_min": 45, "platform_fee_pct": 0.028, "failure_risk": 0.08},
+    "video": {"model_cost": 0.50, "compute_min": 30, "human_min": 60, "platform_fee_pct": 0.028, "failure_risk": 0.10},
+    "audio": {"model_cost": 0.20, "compute_min": 15, "human_min": 20, "platform_fee_pct": 0.028, "failure_risk": 0.05},
+    "automation": {"model_cost": 0.30, "compute_min": 20, "human_min": 90, "platform_fee_pct": 0.028, "failure_risk": 0.12},
+    "default": {"model_cost": 0.10, "compute_min": 5, "human_min": 30, "platform_fee_pct": 0.028, "failure_risk": 0.05}
+}
+
+# Hourly rates
+COMPUTE_COST_PER_MIN = 0.002  # $0.002/min compute
+HUMAN_COST_PER_MIN = 0.50     # $0.50/min human (internal cost basis)
+
+@app.post("/execution/estimate-cogs")
+async def estimate_cogs(body: dict = Body(...)):
+    """
+    Estimate Cost of Goods Sold before bidding/closing.
+    Returns model/compute/API costs, human minutes, platform fees, FX, slippage, failure risk.
+    """
+    sku_type = body.get("sku_type", "service")
+    price = body.get("price", 200)
+    urgency = body.get("urgency", "normal")
+    currency = body.get("currency", "USD")
+    
+    profile = SKU_COST_PROFILES.get(sku_type, SKU_COST_PROFILES["default"])
+    
+    # Urgency multipliers (rush = more cost)
+    urgency_mult = {"urgent": 1.5, "normal": 1.0, "flexible": 0.8}.get(urgency, 1.0)
+    
+    # Calculate costs
+    model_cost = profile["model_cost"] * urgency_mult
+    compute_cost = profile["compute_min"] * COMPUTE_COST_PER_MIN * urgency_mult
+    human_cost = profile["human_min"] * HUMAN_COST_PER_MIN * urgency_mult
+    platform_fee = price * profile["platform_fee_pct"] + 0.28  # 2.8% + 28¢
+    
+    # FX slippage (if non-USD)
+    fx_slippage = price * 0.02 if currency != "USD" else 0
+    
+    # Failure risk buffer
+    failure_buffer = price * profile["failure_risk"]
+    
+    # Total COGS
+    total_cogs = model_cost + compute_cost + human_cost + platform_fee + fx_slippage + failure_buffer
+    
+    # Margin calculation
+    gross_margin = price - total_cogs
+    margin_pct = (gross_margin / price * 100) if price > 0 else 0
+    
+    # Margin thresholds by mode
+    target_margins = {
+        "beast": 20,      # Accept 20%+ margin in beast mode
+        "normal": 35,     # Need 35%+ margin normally
+        "optimize": 50    # Want 50%+ margin in optimize mode
+    }
+    
+    return {
+        "ok": True,
+        "sku_type": sku_type,
+        "price": price,
+        "cogs_breakdown": {
+            "model_cost": round(model_cost, 2),
+            "compute_cost": round(compute_cost, 2),
+            "human_cost": round(human_cost, 2),
+            "platform_fee": round(platform_fee, 2),
+            "fx_slippage": round(fx_slippage, 2),
+            "failure_buffer": round(failure_buffer, 2)
+        },
+        "total_cogs": round(total_cogs, 2),
+        "gross_margin": round(gross_margin, 2),
+        "margin_pct": round(margin_pct, 1),
+        "target_margins": target_margins,
+        "bid_recommended": margin_pct >= target_margins["normal"],
+        "urgency": urgency
+    }
+
+@app.post("/execution/margin-gate")
+async def margin_gate(body: dict = Body(...)):
+    """
+    Gate bids/contracts - only proceed if margin meets threshold.
+    Dynamic SLA↔Price linker: rush SLA = higher price bandit priors.
+    """
+    price = body.get("price", 200)
+    sku_type = body.get("sku_type", "service")
+    urgency = body.get("urgency", "normal")
+    mode = body.get("mode", "normal")  # beast, normal, optimize
+    
+    # Get COGS estimate
+    cogs_result = await estimate_cogs(Body({
+        "sku_type": sku_type,
+        "price": price,
+        "urgency": urgency
+    }))
+    
+    margin_pct = cogs_result["margin_pct"]
+    target = cogs_result["target_margins"].get(mode, 35)
+    
+    passed = margin_pct >= target
+    
+    # If rush/urgent, suggest price adjustment
+    suggested_price = price
+    if urgency == "urgent" and not passed:
+        # Calculate minimum price for target margin
+        total_cogs = cogs_result["total_cogs"]
+        suggested_price = total_cogs / (1 - target/100)
+    
+    return {
+        "ok": True,
+        "passed": passed,
+        "margin_pct": margin_pct,
+        "target_margin": target,
+        "mode": mode,
+        "price": price,
+        "suggested_price": round(suggested_price, 2) if suggested_price != price else None,
+        "action": "proceed" if passed else "adjust_price_or_decline"
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# PLATFORM PACING & TOS GUARD
+# Avoid bans - rate limits, jitter, compliance per platform
+# ────────────────────────────────────────────────────────────────────────────────
+
+# Platform rate limits and health status
+PLATFORM_PACING = {
+    "twitter": {"hourly_limit": 50, "daily_limit": 300, "jitter_sec": (30, 120), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "reddit": {"hourly_limit": 30, "daily_limit": 200, "jitter_sec": (60, 180), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "linkedin": {"hourly_limit": 25, "daily_limit": 100, "jitter_sec": (120, 300), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "fiverr": {"hourly_limit": 20, "daily_limit": 100, "jitter_sec": (60, 180), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "upwork": {"hourly_limit": 15, "daily_limit": 75, "jitter_sec": (120, 300), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "email": {"hourly_limit": 100, "daily_limit": 500, "jitter_sec": (10, 30), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"},
+    "default": {"hourly_limit": 30, "daily_limit": 150, "jitter_sec": (60, 120), "current_hour": 0, "current_day": 0, "last_reset": None, "health": "green"}
+}
+
+PLATFORM_TOS_RULES = {
+    "twitter": {"no_automation_disclosure": False, "max_mentions_per_tweet": 3, "no_duplicate_content": True, "warmup_required": True},
+    "reddit": {"no_self_promo_ratio": 0.1, "karma_required": 100, "account_age_days": 30, "no_brigading": True},
+    "linkedin": {"connection_request_limit": 100, "no_scraping": True, "real_profile_required": True},
+    "fiverr": {"response_time_hours": 24, "no_external_links": True, "no_contact_sharing": True},
+    "upwork": {"connects_required": True, "profile_complete": True, "no_fee_circumvention": True}
+}
+
+@app.post("/platform/pacing-guard")
+async def platform_pacing_guard(body: dict = Body(...)):
+    """
+    Check if action is allowed based on platform rate limits and TOS.
+    Applies per-platform ceilings, randomized jitter, warmup requirements.
+    """
+    platform = body.get("platform", "default").lower()
+    action_type = body.get("action_type", "message")  # message, bid, post, connect
+    
+    pacing = PLATFORM_PACING.get(platform, PLATFORM_PACING["default"])
+    tos = PLATFORM_TOS_RULES.get(platform, {})
+    
+    # Reset counters if needed (hourly)
+    now = datetime.now(timezone.utc)
+    if pacing["last_reset"] is None or (now - datetime.fromisoformat(pacing["last_reset"].replace("Z", "+00:00"))).seconds > 3600:
+        pacing["current_hour"] = 0
+        pacing["last_reset"] = now.isoformat()
+    
+    # Check limits
+    at_hourly_limit = pacing["current_hour"] >= pacing["hourly_limit"]
+    at_daily_limit = pacing["current_day"] >= pacing["daily_limit"]
+    
+    # Calculate jitter
+    import random
+    jitter_min, jitter_max = pacing["jitter_sec"]
+    recommended_delay = random.randint(jitter_min, jitter_max)
+    
+    # Health check
+    health = pacing["health"]
+    if at_hourly_limit:
+        health = "yellow"
+    if at_daily_limit:
+        health = "red"
+    
+    allowed = not at_hourly_limit and not at_daily_limit and health != "red"
+    
+    if allowed:
+        pacing["current_hour"] += 1
+        pacing["current_day"] += 1
+    
+    return {
+        "ok": True,
+        "platform": platform,
+        "allowed": allowed,
+        "health": health,
+        "limits": {
+            "hourly": f"{pacing['current_hour']}/{pacing['hourly_limit']}",
+            "daily": f"{pacing['current_day']}/{pacing['daily_limit']}"
+        },
+        "recommended_delay_sec": recommended_delay if allowed else 3600,
+        "tos_rules": tos,
+        "action": "proceed_with_delay" if allowed else "wait_or_switch_platform"
+    }
+
+@app.get("/platform/health")
+async def platform_health():
+    """Get health status of all platforms"""
+    return {
+        "ok": True,
+        "platforms": {
+            name: {
+                "health": p["health"],
+                "hourly_usage": f"{p['current_hour']}/{p['hourly_limit']}",
+                "daily_usage": f"{p['current_day']}/{p['daily_limit']}"
+            }
+            for name, p in PLATFORM_PACING.items()
+        },
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.post("/platform/reset-counters")
+async def platform_reset_counters(body: dict = Body(...)):
+    """Reset platform counters (daily reset)"""
+    platform = body.get("platform")
+    reset_type = body.get("type", "hourly")  # hourly or daily
+    
+    if platform and platform in PLATFORM_PACING:
+        if reset_type == "daily":
+            PLATFORM_PACING[platform]["current_day"] = 0
+        PLATFORM_PACING[platform]["current_hour"] = 0
+        PLATFORM_PACING[platform]["health"] = "green"
+        PLATFORM_PACING[platform]["last_reset"] = datetime.now(timezone.utc).isoformat()
+    else:
+        # Reset all
+        for p in PLATFORM_PACING.values():
+            if reset_type == "daily":
+                p["current_day"] = 0
+            p["current_hour"] = 0
+            p["health"] = "green"
+            p["last_reset"] = datetime.now(timezone.utc).isoformat()
+    
+    return {"ok": True, "reset": platform or "all", "type": reset_type}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# POISON QUEUE & RETRY POLICY
+# Handle repeated failures gracefully
+# ────────────────────────────────────────────────────────────────────────────────
+
+POISON_QUEUE = []
+RETRY_COUNTS = {}
+MAX_RETRIES = 3
+
+@app.post("/queue/poison/add")
+async def add_to_poison_queue(body: dict = Body(...)):
+    """Add a failed item to poison queue after max retries"""
+    item_id = body.get("item_id")
+    endpoint = body.get("endpoint")
+    error = body.get("error", "unknown")
+    payload = body.get("payload", {})
+    
+    key = f"{endpoint}:{item_id}"
+    RETRY_COUNTS[key] = RETRY_COUNTS.get(key, 0) + 1
+    
+    if RETRY_COUNTS[key] >= MAX_RETRIES:
+        poison_item = {
+            "id": f"poison_{uuid.uuid4().hex[:10]}",
+            "item_id": item_id,
+            "endpoint": endpoint,
+            "error": error,
+            "payload": payload,
+            "retries": RETRY_COUNTS[key],
+            "poisoned_at": datetime.now(timezone.utc).isoformat(),
+            "status": "quarantined"
+        }
+        POISON_QUEUE.append(poison_item)
+        del RETRY_COUNTS[key]
+        
+        return {
+            "ok": True,
+            "action": "quarantined",
+            "poison_item": poison_item,
+            "suggestion": "schedule_alternative_or_manual_review"
+        }
+    
+    return {
+        "ok": True,
+        "action": "retry_scheduled",
+        "retries": RETRY_COUNTS[key],
+        "max_retries": MAX_RETRIES,
+        "remaining": MAX_RETRIES - RETRY_COUNTS[key]
+    }
+
+@app.get("/queue/poison")
+async def get_poison_queue():
+    """Get all items in poison queue"""
+    return {
+        "ok": True,
+        "count": len(POISON_QUEUE),
+        "items": POISON_QUEUE[-50:],  # Last 50
+        "pending_retries": len(RETRY_COUNTS)
+    }
+
+@app.post("/queue/poison/recover")
+async def recover_from_poison(body: dict = Body(...)):
+    """Attempt to recover a poison queue item with alternative action"""
+    poison_id = body.get("poison_id")
+    alternative_endpoint = body.get("alternative_endpoint")
+    
+    item = next((p for p in POISON_QUEUE if p["id"] == poison_id), None)
+    if not item:
+        raise HTTPException(404, "Poison item not found")
+    
+    if alternative_endpoint:
+        # Try alternative
+        try:
+            result = await _call("POST", alternative_endpoint, item["payload"])
+            item["status"] = "recovered"
+            item["recovered_via"] = alternative_endpoint
+            item["recovered_at"] = datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "action": "recovered", "result": result}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "action": "recovery_failed"}
+    
+    # Mark for manual review
+    item["status"] = "manual_review"
+    return {"ok": True, "action": "marked_for_review", "item": item}
+
+# ────────────────────────────────────────────────────────────────────────────────
+# CAPACITY FORECASTING
+# Predict resource needs and scale intelligently
+# ────────────────────────────────────────────────────────────────────────────────
+
+# Capacity tracking
+CAPACITY_SLOTS = {
+    "service": {"total": 100, "used": 0, "reserved": 10},
+    "content": {"total": 200, "used": 0, "reserved": 20},
+    "design": {"total": 50, "used": 0, "reserved": 5},
+    "video": {"total": 20, "used": 0, "reserved": 2},
+    "audio": {"total": 30, "used": 0, "reserved": 3},
+    "automation": {"total": 40, "used": 0, "reserved": 4}
+}
+
+@app.post("/capacity/forecast")
+async def capacity_forecast(body: dict = Body(...)):
+    """
+    Predict human minutes + GPU minutes needed in next 72h by SKU.
+    Returns scaling recommendations.
+    """
+    hours = body.get("hours", 72)
+    
+    forecasts = {}
+    recommendations = []
+    
+    for sku, slots in CAPACITY_SLOTS.items():
+        available = slots["total"] - slots["used"] - slots["reserved"]
+        utilization = (slots["used"] / slots["total"] * 100) if slots["total"] > 0 else 0
+        
+        # Simple forecast based on current utilization
+        profile = SKU_COST_PROFILES.get(sku, SKU_COST_PROFILES["default"])
+        predicted_human_min = slots["used"] * profile["human_min"] * (hours / 24)
+        predicted_compute_min = slots["used"] * profile["compute_min"] * (hours / 24)
+        
+        forecasts[sku] = {
+            "current_utilization_pct": round(utilization, 1),
+            "available_slots": available,
+            "predicted_human_minutes": round(predicted_human_min),
+            "predicted_compute_minutes": round(predicted_compute_min),
+            "predicted_cost": round(
+                predicted_human_min * HUMAN_COST_PER_MIN + 
+                predicted_compute_min * COMPUTE_COST_PER_MIN, 2
+            )
+        }
+        
+        # Recommendations
+        if utilization > 80:
+            recommendations.append({
+                "sku": sku,
+                "action": "scale_up",
+                "reason": f"Utilization at {utilization:.0f}%",
+                "suggested_increase": int(slots["total"] * 0.5)
+            })
+        elif utilization < 20 and slots["used"] > 0:
+            recommendations.append({
+                "sku": sku,
+                "action": "scale_down",
+                "reason": f"Utilization at {utilization:.0f}%",
+                "suggested_decrease": int(slots["total"] * 0.3)
+            })
+    
+    return {
+        "ok": True,
+        "forecast_hours": hours,
+        "forecasts": forecasts,
+        "recommendations": recommendations,
+        "total_predicted_cost": sum(f["predicted_cost"] for f in forecasts.values()),
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.post("/capacity/allocate")
+async def capacity_allocate(body: dict = Body(...)):
+    """Allocate capacity slot for a job"""
+    sku = body.get("sku", "service")
+    job_id = body.get("job_id")
+    
+    if sku not in CAPACITY_SLOTS:
+        sku = "service"
+    
+    slots = CAPACITY_SLOTS[sku]
+    available = slots["total"] - slots["used"] - slots["reserved"]
+    
+    if available <= 0:
+        return {
+            "ok": False,
+            "error": "no_capacity",
+            "sku": sku,
+            "available": 0,
+            "suggestion": "queue_or_scale"
+        }
+    
+    slots["used"] += 1
+    
+    return {
+        "ok": True,
+        "allocated": True,
+        "sku": sku,
+        "job_id": job_id,
+        "remaining_capacity": available - 1
+    }
+
+@app.post("/capacity/release")
+async def capacity_release(body: dict = Body(...)):
+    """Release capacity slot after job completion"""
+    sku = body.get("sku", "service")
+    job_id = body.get("job_id")
+    
+    if sku in CAPACITY_SLOTS and CAPACITY_SLOTS[sku]["used"] > 0:
+        CAPACITY_SLOTS[sku]["used"] -= 1
+    
+    return {"ok": True, "released": True, "sku": sku, "job_id": job_id}
+
+@app.post("/spawn/scale-or-shed")
+async def spawn_scale_or_shed(body: dict = Body(...)):
+    """
+    Scale franchises for SKUs with >80% utilization.
+    Shed (kill) tail performers with <20% utilization.
+    """
+    utilization_threshold_scale = body.get("scale_threshold", 80)
+    utilization_threshold_shed = body.get("shed_threshold", 20)
+    
+    actions = []
+    
+    for sku, slots in CAPACITY_SLOTS.items():
+        utilization = (slots["used"] / slots["total"] * 100) if slots["total"] > 0 else 0
+        
+        if utilization > utilization_threshold_scale:
+            # Scale up
+            increase = int(slots["total"] * 0.5)
+            slots["total"] += increase
+            actions.append({
+                "sku": sku,
+                "action": "scaled_up",
+                "old_capacity": slots["total"] - increase,
+                "new_capacity": slots["total"],
+                "reason": f"Utilization was {utilization:.0f}%"
+            })
+        elif utilization < utilization_threshold_shed and slots["used"] > 0:
+            # Shed capacity
+            decrease = int(slots["total"] * 0.2)
+            slots["total"] = max(10, slots["total"] - decrease)  # Keep minimum 10
+            actions.append({
+                "sku": sku,
+                "action": "shed",
+                "old_capacity": slots["total"] + decrease,
+                "new_capacity": slots["total"],
+                "reason": f"Utilization was {utilization:.0f}%"
+            })
+    
+    return {
+        "ok": True,
+        "actions": actions,
+        "current_capacity": {k: v["total"] for k, v in CAPACITY_SLOTS.items()}
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# PROVISION & PUBLISH
+# Auto-ship storefronts/landers for spawned businesses
+# ────────────────────────────────────────────────────────────────────────────────
+
+PROVISIONED_SITES = {}
+
+@app.post("/provision/bootstrap")
+async def provision_bootstrap(body: dict = Body(...)):
+    """Bootstrap infrastructure for a new spawn/franchise"""
+    spawn_id = body.get("spawn_id", f"spawn_{uuid.uuid4().hex[:8]}")
+    template = body.get("template", "storefront")
+    
+    provision_id = f"prov_{uuid.uuid4().hex[:10]}"
+    
+    provision = {
+        "id": provision_id,
+        "spawn_id": spawn_id,
+        "template": template,
+        "status": "provisioning",
+        "components": {
+            "database": {"status": "pending", "provider": "supabase"},
+            "hosting": {"status": "pending", "provider": "vercel"},
+            "domain": {"status": "pending", "provider": "auto"},
+            "payments": {"status": "pending", "provider": "stripe"}
+        },
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Simulate provisioning
+    for component in provision["components"].values():
+        component["status"] = "ready"
+    
+    provision["status"] = "ready"
+    provision["url"] = f"https://{spawn_id}.aigentsy.com"
+    
+    PROVISIONED_SITES[provision_id] = provision
+    
+    return {"ok": True, "provision": provision}
+
+@app.post("/storefront/autopublish")
+async def storefront_autopublish(body: dict = Body(...)):
+    """Auto-publish storefronts for spawned businesses"""
+    max_publish = body.get("max", 10)
+    source = body.get("source", "spawn")
+    
+    # Get spawns that need publishing
+    published = []
+    
+    # Simulate publishing (in production, would integrate with vercel_deployer)
+    for i in range(min(max_publish, 3)):  # Limit to 3 for demo
+        site_id = f"site_{uuid.uuid4().hex[:8]}"
+        published.append({
+            "site_id": site_id,
+            "url": f"https://{site_id}.aigentsy.com",
+            "status": "live",
+            "published_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {
+        "ok": True,
+        "published": len(published),
+        "sites": published,
+        "source": source
+    }
+
+@app.get("/provision/status")
+async def provision_status():
+    """Get status of all provisioned sites"""
+    return {
+        "ok": True,
+        "total_provisioned": len(PROVISIONED_SITES),
+        "sites": list(PROVISIONED_SITES.values())[-20:]
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# OAA SLA ENFORCEMENT
+# Enforce SLAs on white-label outcomes
+# ────────────────────────────────────────────────────────────────────────────────
+
+OAA_SLA_VIOLATIONS = []
+
+@app.post("/oaa/sla-enforce")
+async def oaa_sla_enforce(body: dict = Body(...)):
+    """
+    Enforce SLAs on OAA requests.
+    Apply penalties if SLO falls below tier.
+    Kill-switch for chronic failures.
+    """
+    check_all = body.get("check_all", True)
+    
+    violations = []
+    penalties_applied = 0
+    
+    for request_id, request in OAA_REQUESTS.items():
+        if request["status"] == "processing":
+            # Check if overdue (simple check: > 24h)
+            created = datetime.fromisoformat(request["created_at"].replace("Z", "+00:00"))
+            age_hours = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+            
+            if age_hours > 24:
+                violation = {
+                    "request_id": request_id,
+                    "client_id": request["client_id"],
+                    "age_hours": round(age_hours, 1),
+                    "sla_hours": 24,
+                    "penalty_pct": 10,  # 10% penalty
+                    "ts": datetime.now(timezone.utc).isoformat()
+                }
+                violations.append(violation)
+                OAA_SLA_VIOLATIONS.append(violation)
+                penalties_applied += 1
+                
+                # Mark as SLA breach
+                request["sla_breach"] = True
+                request["penalty_applied"] = True
+    
+    return {
+        "ok": True,
+        "checked": len(OAA_REQUESTS),
+        "violations": len(violations),
+        "penalties_applied": penalties_applied,
+        "violation_details": violations
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# ENHANCED PRECHECK GUARD (v102)
+# Now includes dedupe, COGS, and pacing
+# ────────────────────────────────────────────────────────────────────────────────
+
+# Dedupe tracking
+DEDUPE_HASHES = set()
+
+@app.post("/orchestrator/precheck-guard")
+async def orchestrator_precheck_guard(body: dict = Body(...)):
+    """
+    Comprehensive precheck before any action:
+    1. Dedupe (already in queue? already bid? already contacted?)
+    2. Rate-limit per platform (OAuth health + TOS thresholds)
+    3. Budget/SLO gates (R³, SLO, risk)
+    4. COGS/margin check
+    """
+    intent_id = body.get("intent_id")
+    contact_id = body.get("contact_id")
+    platform = body.get("platform", "default")
+    action_type = body.get("action_type", "bid")
+    price = body.get("price", 200)
+    sku_type = body.get("sku_type", "service")
+    
+    checks = {}
+    
+    # 1. Dedupe check
+    dedupe_key = f"{intent_id}:{contact_id}:{action_type}"
+    dedupe_hash = hashlib.md5(dedupe_key.encode()).hexdigest()
+    checks["dedupe"] = {
+        "passed": dedupe_hash not in DEDUPE_HASHES,
+        "reason": "duplicate" if dedupe_hash in DEDUPE_HASHES else "unique"
+    }
+    
+    # 2. Platform pacing
+    pacing_result = await platform_pacing_guard(Body({"platform": platform, "action_type": action_type}))
+    checks["pacing"] = {
+        "passed": pacing_result["allowed"],
+        "health": pacing_result["health"],
+        "delay": pacing_result["recommended_delay_sec"]
+    }
+    
+    # 3. Budget/SLO (uses existing _precheck_guard)
+    try:
+        await _precheck_guard(f"{action_type}_{sku_type}", est_cost_usd=price * 0.1)
+        checks["budget_slo"] = {"passed": True}
+    except HTTPException as e:
+        checks["budget_slo"] = {"passed": False, "reason": str(e.detail)}
+    
+    # 4. COGS/margin check
+    cogs_result = await estimate_cogs(Body({"sku_type": sku_type, "price": price}))
+    checks["margin"] = {
+        "passed": cogs_result["bid_recommended"],
+        "margin_pct": cogs_result["margin_pct"],
+        "min_required": 35
+    }
+    
+    # Overall decision
+    all_passed = all(c.get("passed", False) for c in checks.values())
+    
+    if all_passed:
+        # Add to dedupe set
+        DEDUPE_HASHES.add(dedupe_hash)
+    
+    return {
+        "ok": True,
+        "proceed": all_passed,
+        "checks": checks,
+        "recommendation": "proceed" if all_passed else "block_or_adjust"
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# V102 STATUS ENDPOINT
+# ────────────────────────────────────────────────────────────────────────────────
+
+@app.get("/v102/status")
+async def v102_status():
+    """Get status of all v102 systems"""
+    return {
+        "ok": True,
+        "version": "v102",
+        "systems": {
+            "cogs": {"status": "active", "endpoints": ["/execution/estimate-cogs", "/execution/margin-gate"]},
+            "platform_pacing": {"status": "active", "platforms": len(PLATFORM_PACING)},
+            "poison_queue": {"status": "active", "queued": len(POISON_QUEUE), "pending_retries": len(RETRY_COUNTS)},
+            "capacity": {"status": "active", "total_slots": sum(s["total"] for s in CAPACITY_SLOTS.values())},
+            "provision": {"status": "active", "sites": len(PROVISIONED_SITES)},
+            "oaa_sla": {"status": "active", "violations": len(OAA_SLA_VIOLATIONS)},
+            "precheck_guard": {"status": "active", "dedupe_entries": len(DEDUPE_HASHES)}
+        },
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END V102 INFRASTRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # ============================================================================
 # TRANSACTION FEE CALCULATION (Task 4.1)
 # ============================================================================
