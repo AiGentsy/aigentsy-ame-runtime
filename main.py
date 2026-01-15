@@ -1206,6 +1206,146 @@ async def writeOutcome(
         return {"ok": False, "error": str(e)}
 
 # ────────────────────────────────────────────────────────────────────────────────
+# UNIFIED OUTCOME LEDGER API (v104 gap closure)
+# ────────────────────────────────────────────────────────────────────────────────
+
+OUTCOME_LEDGER = []
+
+@app.post("/outcomes/write")
+async def outcomes_write(body: dict = Body(...)):
+    """
+    Unified outcome sink - every money-path hits this endpoint.
+    Triggers: (a) upsell/cross-sell, (b) referral request, (c) case-study gen
+    """
+    owner = body.get("owner", "system")
+    endpoint = body.get("endpoint", "unknown")
+    revenue_path = body.get("revenue_path", "direct")
+    gross = body.get("gross", 0.0)
+    fees = body.get("fees", 0.0)
+    outcome_type = body.get("type", "revenue")  # revenue, refund, chargeback
+    run_id = body.get("run_id")
+    metadata = body.get("metadata", {})
+    
+    # Dedup by run_id if provided
+    if run_id:
+        existing = [o for o in OUTCOME_LEDGER if o.get("run_id") == run_id and o.get("endpoint") == endpoint]
+        if existing:
+            return {"ok": True, "dedupe": True, "outcome_id": existing[0]["id"]}
+    
+    # Write via unified outcome writer
+    result = await writeOutcome(owner, endpoint, revenue_path, gross, fees, metadata=metadata)
+    
+    if result.get("ok"):
+        outcome = result["outcome"]
+        outcome["type"] = outcome_type
+        outcome["run_id"] = run_id
+        OUTCOME_LEDGER.append(outcome)
+        
+        # Trigger perpetual motion if this is a "won" outcome
+        if outcome_type == "revenue" and gross > 0:
+            # (a) Queue upsell/cross-sell
+            await _call("POST", "/perpetual/auto-upsell", {"outcome_id": outcome["id"], "owner": owner})
+            # (b) Queue referral request
+            await _call("POST", "/perpetual/request-referrals", {"outcome_id": outcome["id"], "owner": owner})
+            # (c) Queue case-study generation
+            await _call("POST", "/perpetual/case-study-pipeline", {"outcome_id": outcome["id"]})
+    
+    return result
+
+@app.get("/outcomes/ledger")
+async def outcomes_ledger(hours: int = 24, limit: int = 100):
+    """Get recent outcomes from the unified ledger"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    recent = [
+        o for o in OUTCOME_LEDGER 
+        if datetime.fromisoformat(o["ts"].replace("Z", "+00:00")) > cutoff
+    ][-limit:]
+    
+    return {
+        "ok": True,
+        "count": len(recent),
+        "total_gross": sum(o.get("gross", 0) for o in recent),
+        "total_net": sum(o.get("net", 0) for o in recent),
+        "outcomes": recent
+    }
+
+@app.get("/outcomes/summary")
+async def outcomes_summary(hours: int = 24):
+    """Summary of outcomes by type and revenue path"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    recent = [
+        o for o in OUTCOME_LEDGER 
+        if datetime.fromisoformat(o["ts"].replace("Z", "+00:00")) > cutoff
+    ]
+    
+    by_type = {}
+    by_path = {}
+    
+    for o in recent:
+        t = o.get("type", "unknown")
+        p = o.get("revenue_path", "unknown")
+        by_type[t] = by_type.get(t, 0) + o.get("net", 0)
+        by_path[p] = by_path.get(p, 0) + o.get("net", 0)
+    
+    return {
+        "ok": True,
+        "hours": hours,
+        "count": len(recent),
+        "total_net": sum(o.get("net", 0) for o in recent),
+        "by_type": by_type,
+        "by_path": by_path
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# REPLIES PROCESS BATCH (v104 gap closure)
+# ────────────────────────────────────────────────────────────────────────────────
+
+@app.post("/replies/process-batch")
+async def replies_process_batch(body: dict = Body(...)):
+    """Process a batch of pending replies - detect intent and route"""
+    max_batch = body.get("max", 50)
+    
+    # Get pending replies
+    pending = await _call("GET", "/replies/pending", {"limit": max_batch})
+    replies = pending.get("replies", [])
+    
+    processed = 0
+    intents_detected = {"interested": 0, "question": 0, "objection": 0, "ready_to_buy": 0, "spam": 0}
+    
+    for reply in replies[:max_batch]:
+        reply_id = reply.get("id")
+        content = reply.get("content", "")
+        
+        # Simple intent detection
+        content_lower = content.lower()
+        if any(w in content_lower for w in ["buy", "purchase", "ready", "send invoice", "let's do it"]):
+            intent = "ready_to_buy"
+        elif any(w in content_lower for w in ["interested", "tell me more", "sounds good", "love to"]):
+            intent = "interested"
+        elif any(w in content_lower for w in ["how", "what", "when", "where", "why", "?"]):
+            intent = "question"
+        elif any(w in content_lower for w in ["expensive", "too much", "not sure", "maybe later"]):
+            intent = "objection"
+        else:
+            intent = "spam"
+        
+        intents_detected[intent] += 1
+        
+        # Route based on intent
+        if intent == "ready_to_buy":
+            await _call("POST", f"/conversation/{reply.get('conversation_id')}/mark-contract-sent", {})
+        elif intent in ["interested", "question"]:
+            await _call("POST", "/conversation/process-reply", {"reply_id": reply_id, "intent": intent})
+        
+        processed += 1
+    
+    return {
+        "ok": True,
+        "processed": processed,
+        "intents": intents_detected
+    }
+
+# ────────────────────────────────────────────────────────────────────────────────
 # CLOSE-LOOP ORCHESTRATORS
 # ────────────────────────────────────────────────────────────────────────────────
 
@@ -1285,7 +1425,10 @@ async def orchestrator_intent_to_cash(body: dict = Body(...)):
 async def orchestrator_inventory_merch(body: dict = Body(...)):
     """
     Commerce pipeline: Inventory → Pricing ARM → AAM/Retarget → Cart Recovery → Revenue
-    Bundles inventory management with pricing experiments and recovery flows.
+    v104: Now reads capacity/pacing and respects AGG/SLO for SKU selection.
+    - SLO violated → fast SKUs (express, quickturn, low-ticket)
+    - Optimized mode → high-margin SKUs
+    - Uses pricing bandit winner as price floor
     """
     await _precheck_guard("inventory_merch", est_cost_usd=0.10, slo_key="commerce")
     
@@ -1296,25 +1439,83 @@ async def orchestrator_inventory_merch(body: dict = Body(...)):
     steps = {}
     
     try:
+        # v104: Read AGG state for SKU selection strategy
+        agg_state = CURRENT_AGGRESSION
+        agg_level = agg_state.get("level", 6)
+        agg_mode = agg_state.get("mode", "NORMAL")
+        
+        # v104: Read capacity/pacing for inventory decisions
+        capacity_status = await _call("GET", "/capacity/status", {})
+        pacing_status = await _call("GET", "/platform/health", {})
+        
+        available_capacity = capacity_status.get("available", 100)
+        platform_healthy = pacing_status.get("ok", True)
+        
+        # v104: Determine SKU strategy based on AGG + SLO
+        if agg_level >= 8:  # BEAST mode - SLO likely violated, need fast cash
+            sku_strategy = "fast"
+            sku_tags = ["express", "quickturn", "low-ticket", "cart-recovery"]
+            margin_floor = 0.15  # Accept lower margins for velocity
+        elif agg_level <= 4:  # OPTIMIZE mode - healthy, maximize margin
+            sku_strategy = "premium"
+            sku_tags = ["high-margin", "enterprise", "retainer", "upsell"]
+            margin_floor = 0.50  # Only high-margin work
+        else:  # NORMAL mode
+            sku_strategy = "balanced"
+            sku_tags = ["standard", "pro", "bundle"]
+            margin_floor = 0.35
+        
+        steps["strategy"] = {
+            "sku_strategy": sku_strategy,
+            "sku_tags": sku_tags,
+            "margin_floor": margin_floor,
+            "agg_level": agg_level,
+            "agg_mode": agg_mode,
+            "available_capacity": available_capacity
+        }
+        
+        # v104: Get pricing bandit winner for price floor
+        bandit_leader = await _call("GET", "/pricing/bandit/leaderboard", {})
+        winner = bandit_leader.get("winner", {})
+        price_mult = winner.get("price_mult", 1.0) if winner else 1.0
+        
+        steps["pricing_bandit"] = {
+            "winner_arm": winner.get("arm") if winner else None,
+            "price_mult": price_mult
+        }
+        
         # Step 1: Get inventory status
         steps["inventory"] = await _call("GET", "/inventory/get", {"sku": sku})
         
-        # Step 2: Start pricing experiment (ARM)
+        # Step 2: Start pricing experiment with bandit-informed pricing
         steps["pricing_arm"] = await _call("POST", "/pricing/arm", {
             "op": "start",
             "username": username,
             "bundles": [{"id": f"{sku}-std"}, {"id": f"{sku}-pro"}],
-            "epsilon": 0.12
+            "epsilon": 0.12,
+            "price_mult": price_mult,  # v104: Use bandit winner
+            "margin_floor": margin_floor  # v104: Respect AGG margin floor
         })
         
-        # Step 3: Run AAM growth automation
-        steps["aam_growth"] = await _call("POST", "/aam/run/shopify/shopify-growth-v1", {})
+        # Step 3: Run AAM growth (only if platform healthy and capacity available)
+        if platform_healthy and available_capacity > 20:
+            steps["aam_growth"] = await _call("POST", "/aam/run/shopify/shopify-growth-v1", {
+                "sku_tags": sku_tags  # v104: Pass strategy-appropriate SKUs
+            })
+        else:
+            steps["aam_growth"] = {"skipped": True, "reason": "low_capacity_or_platform_unhealthy"}
         
-        # Step 4: Run cart abandonment recovery
+        # Step 4: Run cart abandonment recovery (always - high ROI)
         steps["cart_recovery"] = await _call("POST", "/aam/run/shopify/shopify-abandon-v1", {})
         
         # Step 5: Process subscription renewals
         steps["subscriptions"] = await _call("POST", "/subscriptions/process-renewals", {})
+        
+        # v104: If SLO violated (BEAST mode), also flip catalog to fast SKUs
+        if agg_level >= 8 and not dry_run:
+            steps["catalog_flip"] = await _call("POST", "/catalog/flip-to-fast-skus", {
+                "sku_tags": sku_tags
+            })
         
         # Step 6: Reconcile revenue
         if not dry_run:
@@ -1325,6 +1526,8 @@ async def orchestrator_inventory_merch(body: dict = Body(...)):
             "ok": True,
             "sku": sku,
             "dry_run": dry_run,
+            "v104_strategy": steps.get("strategy"),
+            "pricing_bandit": steps.get("pricing_bandit"),
             "pricing_exp": steps.get("pricing_arm"),
             "signals": {
                 "growth": steps.get("aam_growth"),
@@ -2671,7 +2874,10 @@ async def get_v104_config():
 
 @app.post("/orchestrator/set-aggression")
 async def set_aggression(body: dict = Body(...)):
-    """Set aggression level and AGG-tuned limits"""
+    """
+    Set aggression level and AGG-tuned limits.
+    v104: Now integrates pricing bandit winner as min price floor.
+    """
     level = body.get("level", 6)
     mode = body.get("mode", "NORMAL")
     max_bids = body.get("max_bids")
@@ -2704,6 +2910,21 @@ async def set_aggression(body: dict = Body(...)):
         else:
             min_ev = 100
     
+    # v104: Get pricing bandit winner for min price floor
+    bandit_winner = None
+    price_floor_mult = 1.0
+    try:
+        winner = PRICING_BANDIT_ARMS.get("dynamic", {})  # Default to dynamic
+        best_rev = 0
+        for arm_name, arm_data in PRICING_BANDIT_ARMS.items():
+            rev_per_trial = arm_data["revenue"] / arm_data["trials"] if arm_data["trials"] > 0 else 0
+            if rev_per_trial > best_rev:
+                best_rev = rev_per_trial
+                bandit_winner = arm_name
+                price_floor_mult = arm_data["price_mult"]
+    except:
+        pass
+    
     CURRENT_AGGRESSION.update({
         "level": level,
         "mode": mode,
@@ -2711,6 +2932,8 @@ async def set_aggression(body: dict = Body(...)):
         "max_spawns": max_spawns,
         "min_ev": min_ev,
         "run_id": run_id,
+        "bandit_winner": bandit_winner,
+        "price_floor_mult": price_floor_mult,
         "updated_at": datetime.now(timezone.utc).isoformat()
     })
     
@@ -2721,7 +2944,7 @@ async def set_aggression(body: dict = Body(...)):
 
 @app.get("/orchestrator/get-aggression")
 async def get_aggression():
-    """Get current aggression settings"""
+    """Get current aggression settings including pricing bandit integration"""
     return {"ok": True, "aggression": CURRENT_AGGRESSION}
 
 @app.get("/v103/status")
@@ -26173,6 +26396,89 @@ async def pricing_competitive(
     """Get competitive market pricing"""
     result = await get_competitive_pricing(service_type, quality_tier)
     return result
+
+# ────────────────────────────────────────────────────────────────────────────────
+# PRICING BANDIT (v104 gap closure)
+# ────────────────────────────────────────────────────────────────────────────────
+
+PRICING_BANDIT_ARMS = {
+    "low": {"price_mult": 0.8, "conversions": 45, "trials": 100, "revenue": 3600},
+    "standard": {"price_mult": 1.0, "conversions": 35, "trials": 100, "revenue": 3500},
+    "premium": {"price_mult": 1.2, "conversions": 25, "trials": 100, "revenue": 3000},
+    "dynamic": {"price_mult": 1.1, "conversions": 40, "trials": 100, "revenue": 4400}
+}
+
+@app.get("/pricing/bandit/leaderboard")
+async def pricing_bandit_leaderboard(segment: str = None):
+    """Get pricing bandit arm performance leaderboard"""
+    arms = []
+    for name, data in PRICING_BANDIT_ARMS.items():
+        conv_rate = data["conversions"] / data["trials"] if data["trials"] > 0 else 0
+        rev_per_trial = data["revenue"] / data["trials"] if data["trials"] > 0 else 0
+        arms.append({
+            "arm": name,
+            "price_mult": data["price_mult"],
+            "conversion_rate": round(conv_rate, 3),
+            "trials": data["trials"],
+            "revenue": data["revenue"],
+            "rev_per_trial": round(rev_per_trial, 2)
+        })
+    
+    # Sort by revenue per trial (the true optimization target)
+    arms.sort(key=lambda x: x["rev_per_trial"], reverse=True)
+    
+    winner = arms[0] if arms else None
+    
+    return {
+        "ok": True,
+        "segment": segment or "all",
+        "winner": winner,
+        "arms": arms,
+        "recommendation": f"Use '{winner['arm']}' pricing (${winner['rev_per_trial']}/trial)" if winner else None
+    }
+
+@app.post("/pricing/bandit/pull")
+async def pricing_bandit_pull(body: dict = Body(...)):
+    """Pull the bandit - get recommended pricing arm"""
+    segment = body.get("segment", "all")
+    
+    # Thompson sampling approximation - prefer arms with high rev/trial + exploration
+    import random
+    
+    best_arm = None
+    best_score = -1
+    
+    for name, data in PRICING_BANDIT_ARMS.items():
+        # Score = rev_per_trial + exploration bonus
+        rev_per_trial = data["revenue"] / data["trials"] if data["trials"] > 0 else 0
+        exploration = random.random() * 10 / (data["trials"] + 1)
+        score = rev_per_trial + exploration
+        
+        if score > best_score:
+            best_score = score
+            best_arm = name
+    
+    return {
+        "ok": True,
+        "arm": best_arm,
+        "price_mult": PRICING_BANDIT_ARMS[best_arm]["price_mult"],
+        "segment": segment
+    }
+
+@app.post("/pricing/bandit/update")
+async def pricing_bandit_update(body: dict = Body(...)):
+    """Update bandit arm with outcome"""
+    arm = body.get("arm", "standard")
+    converted = body.get("converted", False)
+    revenue = body.get("revenue", 0)
+    
+    if arm in PRICING_BANDIT_ARMS:
+        PRICING_BANDIT_ARMS[arm]["trials"] += 1
+        if converted:
+            PRICING_BANDIT_ARMS[arm]["conversions"] += 1
+            PRICING_BANDIT_ARMS[arm]["revenue"] += revenue
+    
+    return {"ok": True, "arm": arm, "updated": PRICING_BANDIT_ARMS.get(arm)}
     
 # === AIGENTSY EXPANSION ROUTES (non-destructive) ===
 try:
