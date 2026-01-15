@@ -1789,6 +1789,483 @@ async def ifx_get_settlement(settlement_id: str):
         raise HTTPException(404, "Settlement not found")
     return {"ok": True, "settlement": settlement}
 
+# ════════════════════════════════════════════════════════════════════════════════
+# IFX/OAA MARKET-MAKER MODE (v104 upgrade)
+# Turn every discovered intent into a quoted, SLA-backed instrument
+# Kelly-sized inventory commitments, real orderbook, disciplined capital allocator
+# ════════════════════════════════════════════════════════════════════════════════
+
+IFX_ORDERBOOK = []  # List of auto-quoted intents
+
+@app.post("/ifx/auto-quote")
+async def ifx_auto_quote(body: dict = Body(...)):
+    """
+    Build orderbook from intents with Kelly sizing + SLA + pricing.
+    Every discovered intent becomes a quoted instrument.
+    """
+    intents = body.get("intents", [])
+    bankroll = body.get("bankroll", 10000)  # Available capital
+    max_kelly = body.get("max_kelly", 0.5)  # Cap at 50% per position
+    
+    # If no intents provided, fetch from discovery
+    if not intents:
+        discovered = await _call("POST", "/autonomous/discover-with-contacts", {"limit": 20})
+        intents = discovered.get("intents", [])[:20]
+    
+    quotes = []
+    for intent in intents:
+        intent_id = intent.get("id", f"int_{uuid.uuid4().hex[:8]}")
+        ev = intent.get("ev", intent.get("estimated_value", 200))
+        win_prob = intent.get("win_probability", 0.35)
+        
+        # Kelly criterion: f* = (bp - q) / b where b=odds, p=win_prob, q=1-p
+        # Simplified: fraction = win_prob - (1-win_prob)/ev_ratio
+        ev_ratio = ev / 100 if ev > 0 else 1
+        kelly_raw = win_prob - ((1 - win_prob) / ev_ratio)
+        kelly_fraction = max(0, min(kelly_raw, max_kelly))  # Bound 0 to max_kelly
+        
+        inventory_commitment = round(bankroll * kelly_fraction, 2)
+        
+        # Get price from pricing_arm or fallback to margin formula
+        try:
+            pricing = await _call("POST", "/pricing/arm", {
+                "op": "quote",
+                "ev": ev,
+                "margin_target": 0.35
+            })
+            oaa_price = pricing.get("price", ev * 0.7)
+        except:
+            oaa_price = round(ev * 0.65, 2)  # 35% margin fallback
+        
+        # SLA window based on urgency/type
+        sla_hours = intent.get("sla_hours", 72)
+        if intent.get("urgency") == "urgent":
+            sla_hours = 24
+        elif intent.get("urgency") == "flexible":
+            sla_hours = 168
+        
+        quote = {
+            "quote_id": f"q_{uuid.uuid4().hex[:10]}",
+            "intent_id": intent_id,
+            "intent": intent,
+            "oaa_price": oaa_price,
+            "kelly_fraction": round(kelly_fraction, 4),
+            "inventory_commitment_usd": inventory_commitment,
+            "sla_hours": sla_hours,
+            "sla_deadline": (datetime.now(timezone.utc) + timedelta(hours=sla_hours)).isoformat(),
+            "win_probability": win_prob,
+            "expected_value": ev,
+            "status": "quoted",
+            "quoted_at": datetime.now(timezone.utc).isoformat()
+        }
+        quotes.append(quote)
+        IFX_ORDERBOOK.append(quote)
+    
+    return {
+        "ok": True,
+        "quotes_created": len(quotes),
+        "total_inventory_committed": sum(q["inventory_commitment_usd"] for q in quotes),
+        "orderbook": quotes
+    }
+
+@app.post("/ifx/mark-to-market")
+async def ifx_mark_to_market(body: dict = Body(...)):
+    """Reprice all quotes in orderbook with current pricing rules"""
+    repriced = 0
+    
+    for quote in IFX_ORDERBOOK:
+        if quote["status"] != "quoted":
+            continue
+        
+        ev = quote["expected_value"]
+        
+        # Get fresh price
+        try:
+            pricing = await _call("POST", "/pricing/arm", {
+                "op": "quote",
+                "ev": ev,
+                "margin_target": 0.35
+            })
+            new_price = pricing.get("price", ev * 0.7)
+        except:
+            new_price = round(ev * 0.65, 2)
+        
+        quote["oaa_price"] = new_price
+        quote["repriced_at"] = datetime.now(timezone.utc).isoformat()
+        repriced += 1
+    
+    return {
+        "ok": True,
+        "repriced": repriced,
+        "orderbook_size": len(IFX_ORDERBOOK)
+    }
+
+@app.post("/oaa/market-make")
+async def oaa_market_make(body: dict = Body(...)):
+    """
+    Full market-maker cycle: auto-quote → sweep spreads → reconcile.
+    This is the main entry point for autonomous market-making.
+    """
+    intents = body.get("intents", [])
+    min_ev = body.get("min_ev", 50)
+    dry_run = body.get("dry_run", False)
+    
+    results = {
+        "quotes_created": 0,
+        "spreads_swept": 0,
+        "contracts_created": [],
+        "revenue_reconciled": 0
+    }
+    
+    # Step 1: Auto-quote intents into orderbook
+    quote_result = await ifx_auto_quote(Body({"intents": intents}))
+    results["quotes_created"] = quote_result.get("quotes_created", 0)
+    
+    # Step 2: Sweep spreads (execute high-EV quotes)
+    sweep_result = await pricing_sweep_spreads(Body({"min_ev": min_ev, "dry_run": dry_run}))
+    results["spreads_swept"] = sweep_result.get("executed_count", 0)
+    results["contracts_created"] = sweep_result.get("contracts", [])
+    results["revenue_reconciled"] = sweep_result.get("total_revenue", 0)
+    
+    return {
+        "ok": True,
+        "market_make_cycle": results,
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.post("/pricing/sweep-spreads")
+async def pricing_sweep_spreads(body: dict = Body(...)):
+    """
+    Execute best-EV quotes from orderbook & reconcile revenue.
+    Calls contract_payment_engine and revenue_reconciliation.
+    """
+    min_ev = body.get("min_ev", 50)
+    max_execute = body.get("max_execute", 10)
+    dry_run = body.get("dry_run", False)
+    
+    # Sort by EV descending
+    executable = [
+        q for q in IFX_ORDERBOOK 
+        if q["status"] == "quoted" and q["expected_value"] >= min_ev
+    ]
+    executable.sort(key=lambda x: x["expected_value"], reverse=True)
+    
+    executed = []
+    contracts = []
+    total_revenue = 0
+    
+    for quote in executable[:max_execute]:
+        if dry_run:
+            quote["status"] = "dry_run_executed"
+            executed.append(quote["quote_id"])
+            continue
+        
+        # Execute: Create contract via contract_payment_engine
+        try:
+            contract = await _call("POST", "/contract/create", {
+                "intent_id": quote["intent_id"],
+                "amount": quote["oaa_price"],
+                "sla_hours": quote["sla_hours"],
+                "source": "ifx_market_maker"
+            })
+            contract_id = contract.get("contract_id", f"c_{uuid.uuid4().hex[:8]}")
+            contracts.append(contract_id)
+            
+            # Send contract
+            await _call("POST", "/contract/send", {"contract_id": contract_id})
+            
+            # Reconcile revenue
+            await _call("POST", "/revenue/reconcile", {
+                "amount": quote["oaa_price"],
+                "source": "ifx_spread",
+                "contract_id": contract_id
+            })
+            
+            quote["status"] = "executed"
+            quote["contract_id"] = contract_id
+            quote["executed_at"] = datetime.now(timezone.utc).isoformat()
+            executed.append(quote["quote_id"])
+            total_revenue += quote["oaa_price"]
+            
+        except Exception as e:
+            quote["status"] = "execution_failed"
+            quote["error"] = str(e)
+    
+    return {
+        "ok": True,
+        "executed_count": len(executed),
+        "contracts": contracts,
+        "total_revenue": total_revenue,
+        "dry_run": dry_run
+    }
+
+@app.get("/ifx/orderbook")
+async def ifx_get_orderbook(status: str = None):
+    """Get current orderbook state"""
+    if status:
+        book = [q for q in IFX_ORDERBOOK if q["status"] == status]
+    else:
+        book = IFX_ORDERBOOK
+    
+    return {
+        "ok": True,
+        "orderbook": book,
+        "count": len(book),
+        "total_committed": sum(q.get("inventory_commitment_usd", 0) for q in book if q["status"] == "quoted")
+    }
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DEALGRAPH UNDERWRITING (v104 upgrade)
+# Tranche structure: Senior/Mezz/Equity with premiums and bonds
+# Insure & underwrite other pipelines - earn spread on risk
+# ════════════════════════════════════════════════════════════════════════════════
+
+INSURANCE_POLICIES = {}
+PERFORMANCE_BONDS = {}
+TRANCHE_QUOTES = {}
+
+# Tranche definitions
+TRANCHES = {
+    "senior": {"attachment": 0.0, "detachment": 0.3, "rate": 0.02, "priority": 1},
+    "mezzanine": {"attachment": 0.3, "detachment": 0.7, "rate": 0.05, "priority": 2},
+    "equity": {"attachment": 0.7, "detachment": 1.0, "rate": 0.12, "priority": 3}
+}
+
+@app.post("/dealgraph/route-with-tranches")
+async def dealgraph_route_with_tranches(body: dict = Body(...)):
+    """
+    Route a deal through tranche structure.
+    Returns senior/mezz/equity stack with premiums.
+    """
+    deal_id = body.get("id", f"deal_{uuid.uuid4().hex[:8]}")
+    deal_value = body.get("value", 1000)
+    source = body.get("source", "unknown")
+    risk_score = body.get("risk_score", 0.15)  # 0-1, higher = riskier
+    
+    tranches_result = []
+    total_premium = 0
+    
+    for tranche_name, config in TRANCHES.items():
+        # Calculate tranche size
+        tranche_size = deal_value * (config["detachment"] - config["attachment"])
+        
+        # Premium = base_rate * risk_adjustment * size
+        risk_adj = 1 + (risk_score * 2)  # Risk doubles premium at max
+        premium = tranche_size * config["rate"] * risk_adj
+        
+        tranches_result.append({
+            "tranche": tranche_name,
+            "size": round(tranche_size, 2),
+            "attachment": config["attachment"],
+            "detachment": config["detachment"],
+            "base_rate": config["rate"],
+            "risk_adjusted_rate": round(config["rate"] * risk_adj, 4),
+            "premium": round(premium, 2),
+            "priority": config["priority"]
+        })
+        total_premium += premium
+    
+    return {
+        "ok": True,
+        "deal_id": deal_id,
+        "deal_value": deal_value,
+        "source": source,
+        "risk_score": risk_score,
+        "tranches": tranches_result,
+        "total_premium": round(total_premium, 2)
+    }
+
+@app.post("/underwriting/quote")
+async def underwriting_quote(body: dict = Body(...)):
+    """
+    Full underwriting quote with risk assessment and premiums.
+    Uses outcome_oracle and fraud_detector if available.
+    """
+    deal_id = body.get("id", f"deal_{uuid.uuid4().hex[:8]}")
+    deal_value = body.get("value", 1000)
+    source = body.get("source", "unknown")
+    
+    # Try to get risk from outcome_oracle / fraud_detector
+    risk_score = 0.15  # Default
+    fraud_risk = 0.05
+    outcome_risk = 0.10
+    
+    try:
+        # Soft import - outcome oracle
+        oracle_result = await _call("POST", "/outcome/oracle/assess", {"deal_id": deal_id, "value": deal_value})
+        outcome_risk = oracle_result.get("risk", 0.10)
+    except:
+        pass
+    
+    try:
+        # Soft import - fraud detector
+        fraud_result = await _call("POST", "/fraud/detect", {"deal_id": deal_id, "source": source})
+        fraud_risk = fraud_result.get("risk", 0.05)
+    except:
+        pass
+    
+    risk_score = (outcome_risk + fraud_risk) / 2
+    
+    # Get tranches
+    tranches_result = await dealgraph_route_with_tranches(Body({
+        "id": deal_id,
+        "value": deal_value,
+        "source": source,
+        "risk_score": risk_score
+    }))
+    
+    quote_id = f"uq_{uuid.uuid4().hex[:10]}"
+    quote = {
+        "quote_id": quote_id,
+        "deal_id": deal_id,
+        "deal_value": deal_value,
+        "source": source,
+        "risk_assessment": {
+            "outcome_risk": outcome_risk,
+            "fraud_risk": fraud_risk,
+            "combined_risk": risk_score
+        },
+        "tranches": tranches_result.get("tranches", []),
+        "total_premium": tranches_result.get("total_premium", 0),
+        "valid_until": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+        "quoted_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    TRANCHE_QUOTES[quote_id] = quote
+    
+    return {"ok": True, "quote": quote}
+
+@app.post("/insurance/bind")
+async def insurance_bind(body: dict = Body(...)):
+    """
+    Bind insurance policy to pool.
+    Uses insurance_pool module if available, else safe fallback.
+    """
+    quote_id = body.get("quote_id")
+    deal_id = body.get("deal_id", f"deal_{uuid.uuid4().hex[:8]}")
+    coverage = body.get("coverage", 1000)
+    premium = body.get("premium", 50)
+    
+    policy_id = f"pol_{uuid.uuid4().hex[:10]}"
+    
+    # Try to bind through insurance_pool module
+    pool_bound = False
+    try:
+        pool_result = await _call("POST", "/insurance/pool/bind", {
+            "policy_id": policy_id,
+            "deal_id": deal_id,
+            "coverage": coverage,
+            "premium": premium
+        })
+        pool_bound = pool_result.get("ok", False)
+    except:
+        pass
+    
+    policy = {
+        "policy_id": policy_id,
+        "quote_id": quote_id,
+        "deal_id": deal_id,
+        "coverage": coverage,
+        "premium": premium,
+        "pool_bound": pool_bound,
+        "status": "active",
+        "bound_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+    }
+    
+    INSURANCE_POLICIES[policy_id] = policy
+    
+    return {"ok": True, "policy_id": policy_id, "policy": policy}
+
+@app.post("/bonds/issue")
+async def bonds_issue(body: dict = Body(...)):
+    """
+    Issue performance bond for deal.
+    Uses performance_bonds module if available, else safe fallback.
+    """
+    deal_id = body.get("deal_id", f"deal_{uuid.uuid4().hex[:8]}")
+    principal = body.get("principal", 1000)
+    penal_sum_pct = body.get("penal_sum_pct", 0.25)  # 25% default
+    obligee = body.get("obligee", "client")
+    
+    bond_id = f"bond_{uuid.uuid4().hex[:10]}"
+    penal_sum = round(principal * penal_sum_pct, 2)
+    
+    # Try to issue through performance_bonds module
+    module_issued = False
+    try:
+        bond_result = await _call("POST", "/performance/bonds/issue", {
+            "bond_id": bond_id,
+            "deal_id": deal_id,
+            "principal": principal,
+            "penal_sum": penal_sum
+        })
+        module_issued = bond_result.get("ok", False)
+    except:
+        pass
+    
+    bond = {
+        "bond_id": bond_id,
+        "deal_id": deal_id,
+        "principal": principal,
+        "penal_sum": penal_sum,
+        "penal_sum_pct": penal_sum_pct,
+        "obligee": obligee,
+        "module_issued": module_issued,
+        "status": "active",
+        "issued_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    PERFORMANCE_BONDS[bond_id] = bond
+    
+    return {"ok": True, "bond_id": bond_id, "bond": bond}
+
+@app.post("/revenue/reconcile-tranche")
+async def revenue_reconcile_tranche(body: dict = Body(...)):
+    """
+    Reconcile tranche revenue - handoff to recon engine.
+    Event stub for accounting sweep.
+    """
+    policy_id = body.get("policy_id")
+    bond_id = body.get("bond_id")
+    premium = body.get("premium", 0)
+    deal_id = body.get("deal_id")
+    
+    # Queue for reconciliation
+    event = {
+        "event_type": "tranche_revenue",
+        "policy_id": policy_id,
+        "bond_id": bond_id,
+        "premium": premium,
+        "deal_id": deal_id,
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Push to revenue reconciliation
+    try:
+        await _call("POST", "/revenue/reconcile", {
+            "amount": premium,
+            "source": "underwriting_premium",
+            "deal_id": deal_id
+        })
+    except:
+        pass
+    
+    return {"ok": True, "event": event}
+
+@app.get("/underwriting/status")
+async def underwriting_status():
+    """Get underwriting system status"""
+    return {
+        "ok": True,
+        "policies": len(INSURANCE_POLICIES),
+        "bonds": len(PERFORMANCE_BONDS),
+        "quotes": len(TRANCHE_QUOTES),
+        "orderbook": len(IFX_ORDERBOOK),
+        "tranches_defined": list(TRANCHES.keys()),
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
 # ────────────────────────────────────────────────────────────────────────────────
 # NEW MODULE: OAA (Outcome-as-an-API)
 # White-label your protocol for external platforms
