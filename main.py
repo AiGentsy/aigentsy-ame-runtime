@@ -2266,6 +2266,237 @@ async def underwriting_status():
         "ts": datetime.now(timezone.utc).isoformat()
     }
 
+# ════════════════════════════════════════════════════════════════════════════════
+# DEALGRAPH ORCHESTRATION ENDPOINTS (v104 gap closure)
+# Route all deals through risk-tranching pipeline
+# ════════════════════════════════════════════════════════════════════════════════
+
+DEALGRAPH_ROUTED = []  # Deals routed through tranching
+DEALGRAPH_COVERAGE = {"total_value": 0, "covered_value": 0, "premium_mrr": 0}
+
+@app.post("/dealgraph/route")
+async def dealgraph_route(body: dict = Body(...)):
+    """
+    Route deals through the DealGraph for tranching.
+    Scope: all_open_deals, closing, new_only
+    """
+    scope = body.get("scope", "all_open_deals")
+    priority = body.get("priority", "closing")
+    
+    # Get deals to route based on scope
+    deals_to_route = []
+    
+    if scope == "all_open_deals":
+        # Get from pipeline
+        try:
+            pipeline = await _call("GET", "/deals/pipeline", {"status": "open"})
+            deals_to_route = pipeline.get("deals", [])[:20]
+        except:
+            pass
+        
+        # Also add from orderbook
+        for quote in IFX_ORDERBOOK:
+            if quote["status"] == "quoted":
+                deals_to_route.append({
+                    "id": quote["intent_id"],
+                    "value": quote["expected_value"],
+                    "source": "ifx_orderbook"
+                })
+    
+    elif scope == "closing":
+        # Only deals near close
+        try:
+            closing = await _call("GET", "/deals/pipeline", {"status": "closing"})
+            deals_to_route = closing.get("deals", [])[:10]
+        except:
+            pass
+    
+    # Route each deal
+    routed = []
+    for deal in deals_to_route[:20]:
+        deal_id = deal.get("id", f"deal_{uuid.uuid4().hex[:8]}")
+        value = deal.get("value", deal.get("amount", 500))
+        
+        routed_deal = {
+            "deal_id": deal_id,
+            "value": value,
+            "source": deal.get("source", "unknown"),
+            "priority": priority,
+            "routed_at": datetime.now(timezone.utc).isoformat(),
+            "status": "routed"
+        }
+        DEALGRAPH_ROUTED.append(routed_deal)
+        routed.append(deal_id)
+    
+    return {
+        "ok": True,
+        "routed": len(routed),
+        "deal_ids": routed,
+        "scope": scope
+    }
+
+@app.post("/dealgraph/risk-tranche")
+async def dealgraph_risk_tranche(body: dict = Body(...)):
+    """
+    Apply risk tranching to all routed deals.
+    Creates bond + insurance coverage for each.
+    """
+    method = body.get("method", "bond+insurance")
+    target_cover_pct = body.get("target_cover_pct", 0.8)  # 80% coverage target
+    
+    tranches_created = 0
+    covered_value = 0
+    policies_created = []
+    bonds_created = []
+    
+    for deal in DEALGRAPH_ROUTED:
+        if deal.get("status") != "routed":
+            continue
+        
+        deal_id = deal["deal_id"]
+        value = deal["value"]
+        coverage_target = value * target_cover_pct
+        
+        # Get underwriting quote
+        quote_result = await underwriting_quote(Body({
+            "id": deal_id,
+            "value": value,
+            "source": deal.get("source", "dealgraph")
+        }))
+        
+        if not quote_result.get("ok"):
+            continue
+        
+        quote = quote_result.get("quote", {})
+        premium = quote.get("total_premium", 0)
+        
+        # Bind insurance if method includes it
+        if "insurance" in method:
+            policy_result = await insurance_bind(Body({
+                "quote_id": quote.get("quote_id"),
+                "deal_id": deal_id,
+                "coverage": coverage_target,
+                "premium": premium
+            }))
+            if policy_result.get("ok"):
+                policies_created.append(policy_result.get("policy_id"))
+        
+        # Issue bond if method includes it
+        if "bond" in method:
+            bond_result = await bonds_issue(Body({
+                "deal_id": deal_id,
+                "principal": value,
+                "penal_sum_pct": 0.25
+            }))
+            if bond_result.get("ok"):
+                bonds_created.append(bond_result.get("bond_id"))
+        
+        deal["status"] = "tranched"
+        deal["coverage"] = coverage_target
+        deal["premium"] = premium
+        tranches_created += 1
+        covered_value += coverage_target
+        
+        # Update global coverage stats
+        DEALGRAPH_COVERAGE["total_value"] += value
+        DEALGRAPH_COVERAGE["covered_value"] += coverage_target
+        DEALGRAPH_COVERAGE["premium_mrr"] += premium
+    
+    return {
+        "ok": True,
+        "tranches_created": tranches_created,
+        "covered_value": round(covered_value, 2),
+        "policies": policies_created,
+        "bonds": bonds_created,
+        "method": method
+    }
+
+@app.post("/dealgraph/underwrite")
+async def dealgraph_underwrite(body: dict = Body(...)):
+    """
+    Final underwriting step - bind all policies and set exposure limits.
+    """
+    premium_mode = body.get("premium_mode", "market")  # market, fixed, dynamic
+    max_exposure_pct = body.get("max_exposure_pct", 0.2)  # Max 20% of book per deal
+    
+    policies_bound = 0
+    total_premium = 0
+    
+    # Calculate current book size
+    book_size = DEALGRAPH_COVERAGE.get("total_value", 10000) or 10000
+    max_single_exposure = book_size * max_exposure_pct
+    
+    for deal in DEALGRAPH_ROUTED:
+        if deal.get("status") != "tranched":
+            continue
+        
+        value = deal.get("value", 0)
+        
+        # Enforce exposure limit
+        if value > max_single_exposure:
+            deal["status"] = "exposure_exceeded"
+            continue
+        
+        # Adjust premium based on mode
+        base_premium = deal.get("premium", 0)
+        if premium_mode == "market":
+            # Use pricing bandit winner
+            winner = None
+            best_rev = 0
+            for arm_name, arm_data in PRICING_BANDIT_ARMS.items():
+                rev_per_trial = arm_data["revenue"] / arm_data["trials"] if arm_data["trials"] > 0 else 0
+                if rev_per_trial > best_rev:
+                    best_rev = rev_per_trial
+                    winner = arm_data
+            if winner:
+                base_premium *= winner.get("price_mult", 1.0)
+        elif premium_mode == "dynamic":
+            # Adjust by current AGG
+            agg = CURRENT_AGGRESSION.get("level", 6)
+            if agg >= 8:
+                base_premium *= 0.8  # Discount in beast mode
+            elif agg <= 4:
+                base_premium *= 1.2  # Premium in optimize mode
+        
+        deal["final_premium"] = round(base_premium, 2)
+        deal["status"] = "underwritten"
+        policies_bound += 1
+        total_premium += base_premium
+    
+    return {
+        "ok": True,
+        "policies_bound": policies_bound,
+        "total_premium": round(total_premium, 2),
+        "premium_mode": premium_mode,
+        "max_exposure": max_single_exposure
+    }
+
+@app.get("/dealgraph/stats")
+async def dealgraph_stats():
+    """Get DealGraph coverage and underwriting statistics"""
+    total_value = DEALGRAPH_COVERAGE.get("total_value", 0)
+    covered_value = DEALGRAPH_COVERAGE.get("covered_value", 0)
+    coverage_pct = (covered_value / total_value * 100) if total_value > 0 else 0
+    
+    # Count by status
+    status_counts = {}
+    for deal in DEALGRAPH_ROUTED:
+        status = deal.get("status", "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    
+    return {
+        "ok": True,
+        "total_deals": len(DEALGRAPH_ROUTED),
+        "total_value": round(total_value, 2),
+        "covered_value": round(covered_value, 2),
+        "coverage_pct": round(coverage_pct, 2),
+        "premium_mrr": round(DEALGRAPH_COVERAGE.get("premium_mrr", 0), 2),
+        "policies": len(INSURANCE_POLICIES),
+        "bonds": len(PERFORMANCE_BONDS),
+        "by_status": status_counts,
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+
 # ────────────────────────────────────────────────────────────────────────────────
 # NEW MODULE: OAA (Outcome-as-an-API)
 # White-label your protocol for external platforms
