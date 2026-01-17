@@ -28,11 +28,11 @@ import json
 
 # Import your existing infrastructure
 try:
-    from aigentsy_conductor import AigentsyConductor
+    from aigentsy_conductor import AiGentsyConductor  # Fixed: capital G
     CONDUCTOR_AVAILABLE = True
-except:
+except Exception as e:
     CONDUCTOR_AVAILABLE = False
-    print("⚠️ aigentsy_conductor not available")
+    print(f"⚠️ aigentsy_conductor not available: {e}")
 
 try:
     from pricing_oracle import calculate_dynamic_price
@@ -96,7 +96,7 @@ class UniversalAutonomousExecutor:
         
         # AI Conductor (routes to Claude/GPT-4/Gemini)
         if CONDUCTOR_AVAILABLE:
-            self.conductor = AigentsyConductor()
+            self.conductor = AiGentsyConductor()  # Fixed: capital G
             print("✅ AI Conductor loaded (Claude/GPT-4/Gemini routing)")
         else:
             self.conductor = None
