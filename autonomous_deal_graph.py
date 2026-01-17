@@ -24,6 +24,12 @@ INTEGRATES WITH:
 - metabridge.py (team formation)
 - intent_exchange.py (deal flow)
 - yield_memory.py (pattern storage)
+
+v2.0 AI FAMILY BRAIN INTEGRATION:
+- AI-powered need prediction
+- AI-generated intro messages
+- Learning from successful intros
+- Cross-pollination with MetaHive patterns
 """
 
 from datetime import datetime, timezone, timedelta
@@ -33,6 +39,31 @@ from enum import Enum
 from uuid import uuid4
 from collections import defaultdict
 import json
+
+# ============================================================
+# AI FAMILY BRAIN INTEGRATION
+# ============================================================
+
+try:
+    from ai_family_brain import (
+        get_brain, ai_execute, ai_content, TaskCategory,
+        record_quality, get_family_stats
+    )
+    AI_FAMILY_AVAILABLE = True
+except ImportError:
+    AI_FAMILY_AVAILABLE = False
+
+try:
+    from metahive_brain import contribute_to_hive, query_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+
+try:
+    from yield_memory import store_pattern, get_best_action
+    YIELD_AVAILABLE = True
+except ImportError:
+    YIELD_AVAILABLE = False
 
 
 def _now() -> str:
@@ -111,6 +142,10 @@ class Entity:
     # Tags
     tags: List[str] = field(default_factory=list)
     
+    # AI Family tracking (NEW)
+    ai_predicted_needs: List[str] = field(default_factory=list)
+    ai_engagement_score: float = 0.5
+    
     def to_dict(self) -> Dict:
         return asdict(self)
 
@@ -135,6 +170,9 @@ class Relationship:
     created_at: str = field(default_factory=_now)
     last_interaction: str = field(default_factory=_now)
     interaction_count: int = 1
+    
+    # AI Family tracking (NEW)
+    ai_quality_score: float = 0.5
     
     def to_dict(self) -> Dict:
         result = asdict(self)
@@ -178,6 +216,10 @@ class IntroOpportunity:
     status: str = "pending"  # pending, requested, completed, declined
     created_at: str = field(default_factory=_now)
     
+    # AI Family tracking (NEW)
+    ai_model_used: str = ""
+    ai_task_id: str = ""
+    
     def to_dict(self) -> Dict:
         return {
             "opportunity_id": self.opportunity_id,
@@ -191,7 +233,8 @@ class IntroOpportunity:
             "suggested_message": self.suggested_message,
             "urgency": self.urgency,
             "status": self.status,
-            "created_at": self.created_at
+            "created_at": self.created_at,
+            "ai_model_used": self.ai_model_used
         }
 
 
@@ -514,6 +557,11 @@ class DealGraph:
     1. Extract entities (client, team members)
     2. Create/strengthen relationships
     3. Detect intro opportunities
+    
+    v2.0: AI Family Brain Integration
+    - Uses AI to predict needs
+    - AI-generated personalized intro messages
+    - Learns from successful intros via MetaHive
     """
     
     def __init__(self):
@@ -523,6 +571,10 @@ class DealGraph:
         
         # Your entity (AiGentsy/user)
         self._self_entity_id: Optional[str] = None
+        
+        # AI Family tracking (NEW)
+        self._ai_tasks: List[Dict] = []
+        self._intro_outcomes: List[Dict] = []
     
     def set_self(self, name: str, email: str) -> str:
         """Set the 'self' entity (you/AiGentsy)"""
@@ -670,8 +722,31 @@ class DealGraph:
             "recorded_at": _now()
         }
         
-        # 7. Detect new intro opportunities
+        # 7. Detect new intro opportunities (v2.0: AI-enhanced)
         new_intros = self._detect_intro_opportunities(client_entity)
+        
+        # 8. v2.0: Contribute successful deal pattern to MetaHive
+        if METAHIVE_AVAILABLE and status == "completed" and deal_value > 0:
+            import asyncio
+            try:
+                asyncio.create_task(contribute_to_hive(
+                    username="aigentsy",
+                    pattern_type="deal_completion",
+                    context={
+                        "industry": client_industry,
+                        "service_type": service_type,
+                        "had_referrer": referrer is not None,
+                        "had_team": len(team_entities) > 0
+                    },
+                    action={"deal_flow": "standard"},
+                    outcome={
+                        "roas": deal_value / max(100, deal_value * 0.1),  # Estimate
+                        "revenue_usd": deal_value,
+                        "quality_score": 0.8
+                    }
+                ))
+            except:
+                pass
         
         return {
             "ok": True,
@@ -687,6 +762,8 @@ class DealGraph:
         Detect warm intro opportunities through new client
         
         Logic: New client may know people who need our services
+        
+        v2.0: Uses AI Family Brain for predictions and message generation
         """
         opportunities = []
         
@@ -728,6 +805,10 @@ class DealGraph:
             path_strength = self_to_client * client_to_target
             
             if path_strength >= 0.2:  # Minimum threshold
+                # v2.0: AI-enhanced predictions
+                predicted_need, ai_model, ai_task_id = self._predict_need_ai(target)
+                suggested_message = self._generate_intro_message_ai(new_client, target, predicted_need)
+                
                 # Create intro opportunity
                 intro = IntroOpportunity(
                     opportunity_id=_generate_id("intro"),
@@ -746,10 +827,12 @@ class DealGraph:
                     connector_to_target=rel,
                     path_strength=path_strength,
                     confidence=min(0.9, path_strength + 0.2),
-                    predicted_need=self._predict_need(target),
+                    predicted_need=predicted_need,
                     estimated_value=self._estimate_intro_value(target),
-                    suggested_message=self._generate_intro_message(new_client, target),
-                    urgency="medium"
+                    suggested_message=suggested_message,
+                    urgency="medium",
+                    ai_model_used=ai_model,
+                    ai_task_id=ai_task_id
                 )
                 
                 opportunities.append(intro)
@@ -757,8 +840,60 @@ class DealGraph:
         
         return opportunities
     
+    def _predict_need_ai(self, entity: Entity) -> Tuple[str, str, str]:
+        """
+        v2.0: Use AI Family Brain to predict entity's needs
+        
+        Returns: (predicted_need, ai_model_used, task_id)
+        """
+        if not AI_FAMILY_AVAILABLE:
+            return self._predict_need(entity), "", ""
+        
+        import asyncio
+        
+        try:
+            prompt = f"""Analyze this business contact and predict their most likely need:
+
+Name: {entity.name}
+Company Type: {entity.entity_type}
+Industry: {entity.industry or 'Unknown'}
+Domain: {entity.domain or 'Unknown'}
+
+Based on typical needs in their industry, predict ONE specific service they might need.
+Return ONLY the service type (e.g., "api_integration", "marketing_automation", "content_creation", "data_analysis").
+"""
+            
+            # Run synchronously for now (could be made async)
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Can't await in sync context, use fallback
+                return self._predict_need(entity), "", ""
+            
+            result = loop.run_until_complete(ai_execute(prompt, "consulting", 100, "speed"))
+            
+            if result.get("ok"):
+                predicted = result.get("response", "").strip().lower()
+                model = result.get("model", "")
+                task_id = result.get("task_id", "")
+                
+                # Store for learning
+                self._ai_tasks.append({
+                    "task_id": task_id,
+                    "type": "need_prediction",
+                    "entity_id": entity.entity_id,
+                    "prediction": predicted,
+                    "model": model,
+                    "timestamp": _now()
+                })
+                
+                return predicted, model, task_id
+        except:
+            pass
+        
+        return self._predict_need(entity), "", ""
+    
     def _predict_need(self, entity: Entity) -> Optional[str]:
-        """Predict what the entity might need"""
+        """Predict what the entity might need (fallback)"""
         # Simple heuristic based on industry
         industry_needs = {
             "saas": "product_development",
@@ -782,8 +917,59 @@ class DealGraph:
         
         return base
     
+    def _generate_intro_message_ai(self, connector: Entity, target: Entity, predicted_need: str) -> str:
+        """
+        v2.0: Use AI Family Brain to generate personalized intro message
+        """
+        if not AI_FAMILY_AVAILABLE:
+            return self._generate_intro_message(connector, target)
+        
+        import asyncio
+        
+        try:
+            prompt = f"""Write a brief, warm introduction request message.
+
+Connector (person who can introduce us): {connector.name}
+Target (person we want to meet): {target.name}
+Target's Industry: {target.industry or 'Unknown'}
+Predicted Need: {predicted_need}
+
+Write a message to {connector.name} asking for an introduction to {target.name}.
+Keep it:
+1. Personal and warm (reference working together)
+2. Specific about the value you can provide
+3. Easy to say yes to
+4. Under 100 words
+
+Message:"""
+            
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return self._generate_intro_message(connector, target)
+            
+            result = loop.run_until_complete(ai_content(prompt, 200))
+            
+            if result.get("ok"):
+                message = result.get("response", "").strip()
+                
+                # Store for learning
+                self._ai_tasks.append({
+                    "task_id": result.get("task_id", ""),
+                    "type": "intro_message",
+                    "connector_id": connector.entity_id,
+                    "target_id": target.entity_id,
+                    "model": result.get("model", ""),
+                    "timestamp": _now()
+                })
+                
+                return message
+        except:
+            pass
+        
+        return self._generate_intro_message(connector, target)
+    
     def _generate_intro_message(self, connector: Entity, target: Entity) -> str:
-        """Generate suggested intro request message"""
+        """Generate suggested intro request message (fallback)"""
         return f"Hi {connector.name}, I really enjoyed working together! I noticed you're connected with {target.name}. Would you be open to making an introduction? I think I could help them with [specific value prop]."
     
     # ==================== QUERIES ====================
@@ -831,6 +1017,14 @@ class DealGraph:
         # Total relationship strength
         total_strength = sum(rel.current_strength for rel in relationships)
         
+        # v2.0: AI Family stats
+        ai_stats = {}
+        if AI_FAMILY_AVAILABLE:
+            try:
+                ai_stats = get_family_stats()
+            except:
+                pass
+        
         return {
             "total_entities": len(self.graph._entities),
             "total_relationships": len(self.graph._relationships),
@@ -842,7 +1036,10 @@ class DealGraph:
             "pending_intro_opportunities": len([
                 o for o in self._intro_opportunities.values()
                 if o.status == "pending"
-            ])
+            ]),
+            "ai_family_available": AI_FAMILY_AVAILABLE,
+            "ai_tasks_executed": len(self._ai_tasks),
+            "ai_family_stats": ai_stats
         }
     
     def get_strongest_connections(self, limit: int = 10) -> List[Dict]:
@@ -879,8 +1076,68 @@ class DealGraph:
             "ok": True,
             "opportunity_id": opportunity_id,
             "status": "requested",
-            "suggested_message": opp.suggested_message
+            "suggested_message": opp.suggested_message,
+            "ai_model_used": opp.ai_model_used
         }
+    
+    def record_intro_outcome(
+        self,
+        opportunity_id: str,
+        success: bool,
+        deal_value: float = None,
+        notes: str = None
+    ) -> Dict[str, Any]:
+        """
+        v2.0: Record intro outcome for AI Family learning
+        """
+        opp = self._intro_opportunities.get(opportunity_id)
+        if not opp:
+            return {"ok": False, "error": "opportunity_not_found"}
+        
+        opp.status = "completed" if success else "declined"
+        
+        outcome = {
+            "opportunity_id": opportunity_id,
+            "success": success,
+            "deal_value": deal_value,
+            "ai_model_used": opp.ai_model_used,
+            "ai_task_id": opp.ai_task_id,
+            "predicted_need": opp.predicted_need,
+            "timestamp": _now()
+        }
+        self._intro_outcomes.append(outcome)
+        
+        # Record quality feedback to AI Family
+        if AI_FAMILY_AVAILABLE and opp.ai_task_id:
+            quality = 0.9 if success else 0.3
+            record_quality(opp.ai_task_id, quality, deal_value)
+        
+        # Contribute to MetaHive if successful
+        if METAHIVE_AVAILABLE and success and deal_value:
+            import asyncio
+            try:
+                asyncio.create_task(contribute_to_hive(
+                    username="aigentsy",
+                    pattern_type="warm_intro",
+                    context={
+                        "path_strength": opp.path_strength,
+                        "predicted_need": opp.predicted_need,
+                        "target_industry": self.graph.get_entity(opp.target_entity_id).industry if self.graph.get_entity(opp.target_entity_id) else None
+                    },
+                    action={
+                        "intro_flow": "warm",
+                        "ai_model": opp.ai_model_used
+                    },
+                    outcome={
+                        "roas": deal_value / 100,  # Cost estimate
+                        "revenue_usd": deal_value,
+                        "quality_score": 0.9
+                    }
+                ))
+            except:
+                pass
+        
+        return {"ok": True, "outcome": outcome}
 
 
 # ============================================================
@@ -904,8 +1161,11 @@ def get_deal_graph() -> DealGraph:
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("AUTONOMOUS DEAL GRAPH - Relationship Memory System")
+    print("AUTONOMOUS DEAL GRAPH v2.0 - AI FAMILY BRAIN INTEGRATION")
     print("=" * 70)
+    print(f"AI Family Available: {AI_FAMILY_AVAILABLE}")
+    print(f"MetaHive Available: {METAHIVE_AVAILABLE}")
+    print(f"Yield Memory Available: {YIELD_AVAILABLE}")
     
     graph = get_deal_graph()
     
@@ -965,6 +1225,8 @@ if __name__ == "__main__":
     print(f"   Total relationships: {stats['total_relationships']}")
     print(f"   Total deal value: ${stats['total_deal_value']:,.0f}")
     print(f"   Pending intros: {stats['pending_intro_opportunities']}")
+    print(f"   AI Family: {stats['ai_family_available']}")
+    print(f"   AI Tasks: {stats['ai_tasks_executed']}")
     
     # 6. Get strongest connections
     print("\n6. Strongest connections...")
@@ -980,7 +1242,9 @@ if __name__ == "__main__":
         target = graph.graph.get_entity(intro.target_entity_id)
         print(f"   - Via {connector.name if connector else 'Unknown'} → {target.name if target else 'Unknown'}")
         print(f"     Path strength: {intro.path_strength:.2f}, Value: ${intro.estimated_value:,.0f}")
+        if intro.ai_model_used:
+            print(f"     AI Model: {intro.ai_model_used}")
     
     print("\n" + "=" * 70)
-    print("✅ Deal Graph test complete!")
+    print("✅ Deal Graph v2.0 test complete!")
     print("=" * 70)
