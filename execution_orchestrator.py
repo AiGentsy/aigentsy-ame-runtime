@@ -58,9 +58,16 @@ from revenue_flows import (
 
 # ===== FINANCIAL TOOLS (P2P) =====
 try:
-    from ocl_p2p_lending import request_loan, offer_stake, get_available_stakes
+    from ocl_p2p_lending import (
+        create_loan_request as request_loan,  # Map to expected name
+        create_loan_offer as offer_stake,     # Map to expected name  
+        list_available_offers as get_available_stakes,  # Map to expected name
+        calculate_credit_score,
+        auto_repay_from_earnings
+    )
     OCL_P2P_AVAILABLE = True
-except:
+except Exception as e:
+    print(f"⚠️ OCL P2P import failed: {e}")
     OCL_P2P_AVAILABLE = False
 
 try:
