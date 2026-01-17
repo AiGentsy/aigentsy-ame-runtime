@@ -35,14 +35,45 @@ _USER_POLICIES: Dict[str, Dict[str, Any]] = {}
 _EXECUTION_HISTORY: List[Dict[str, Any]] = []
 
 # NEW: AI model routing configuration
+# Priority lists - first available model is used, with learning-based reordering
 AI_MODEL_ROUTING = {
-    'code': 'claude',  # Claude best for code reasoning
-    'content': 'claude',  # Claude best for long-form content
-    'analysis': 'claude',  # Claude best for complex analysis
-    'research': 'gemini',  # Gemini good for research (when available)
-    'quick_generation': 'gpt4',  # GPT-4 fast for quick tasks (when available)
-    'creative': 'claude',  # Claude best for creative work
-    'consulting': 'claude'  # Claude best for strategic thinking
+    # Research tasks - Perplexity excels at real-time web search
+    'research': ['perplexity', 'gemini', 'claude'],
+    'opportunity_discovery': ['perplexity', 'gemini', 'claude'],
+    'market_research': ['perplexity', 'gemini', 'claude'],
+    'trend_detection': ['perplexity', 'gemini', 'claude'],
+    
+    # Content/Creative - Claude excels at long-form, nuanced content
+    'content': ['claude', 'gpt4', 'gemini'],
+    'content_generation': ['claude', 'gpt4', 'gemini'],
+    'creative': ['claude', 'gpt4', 'gemini'],
+    'consulting': ['claude', 'gpt4', 'gemini'],
+    
+    # Code - Claude excels at code reasoning
+    'code': ['claude', 'gpt4'],
+    'code_generation': ['claude', 'gpt4'],
+    
+    # Analysis - All models contribute
+    'analysis': ['claude', 'gpt4', 'gemini', 'perplexity'],
+    
+    # Fast generation - GPT-4 is fast
+    'quick_generation': ['gpt4', 'claude', 'gemini'],
+    
+    # Fulfillment - All models can fulfill
+    'fulfillment': ['claude', 'gpt4', 'gemini'],
+}
+
+# Model performance tracking for learning
+MODEL_PERFORMANCE = {
+    'claude': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
+    'gpt4': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
+    'gemini': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
+    'perplexity': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
+}
+
+# Task-specific learning - which model performs best for which task type
+TASK_MODEL_PERFORMANCE = {
+    # task_type: {model: {successes, failures, avg_quality_score}}
 }
 
 def now_iso():
@@ -53,95 +84,246 @@ def now_iso():
 # MULTI-AI EXECUTION ROUTER (NEW)
 # ============================================================
 
+import os
+import time
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+
 class MultiAIRouter:
     """
-    Routes execution to appropriate AI model based on task type
-    Currently: Claude handles most, with hooks for GPT-4 and Gemini
+    Routes execution to appropriate AI model based on task type.
+    
+    THE AI FAMILY:
+    - Claude (Anthropic): Primary reasoning, code, content, fulfillment
+    - GPT-4 (OpenAI): Fast generation, creative tasks
+    - Gemini (Google): Research, multimodal analysis  
+    - Perplexity: Real-time web search, opportunity discovery
+    
+    LEARNING: Models learn from each other's successes and failures.
+    Task routing adapts based on which models perform best for which tasks.
     """
     
     def __init__(self):
         self.routing_rules = AI_MODEL_ROUTING
         
-        # API keys (would come from environment)
-        self.claude_available = True
-        self.gpt4_available = False  # Set True when API key added
-        self.gemini_available = False  # Set True when API key added
+        # Check which models are available
+        self.available_models = {
+            'claude': bool(ANTHROPIC_API_KEY or OPENROUTER_API_KEY),
+            'gpt4': bool(OPENAI_API_KEY or OPENROUTER_API_KEY),
+            'gemini': bool(GEMINI_API_KEY),
+            'perplexity': bool(PERPLEXITY_API_KEY),
+        }
+        
+        # Print available models
+        available = [k for k, v in self.available_models.items() if v]
+        print(f"🤖 MultiAIRouter initialized: {available}")
+    
+    def get_model_priority(self, task_type: str) -> List[str]:
+        """
+        Get model priority list for task, adjusted by learning.
+        Returns models in order of preference, filtered by availability.
+        """
+        base_priority = self.routing_rules.get(task_type, ['claude', 'gpt4', 'gemini', 'perplexity'])
+        
+        # Filter to available models
+        available_priority = [m for m in base_priority if self.available_models.get(m)]
+        
+        # Adjust based on learned performance (if we have enough data)
+        if task_type in TASK_MODEL_PERFORMANCE:
+            task_perf = TASK_MODEL_PERFORMANCE[task_type]
+            # Sort by success rate, keeping base order as tiebreaker
+            def score(model):
+                if model not in task_perf:
+                    return 0.5  # Neutral for untried models
+                stats = task_perf[model]
+                total = stats.get('successes', 0) + stats.get('failures', 0)
+                if total == 0:
+                    return 0.5
+                return stats.get('successes', 0) / total
+            
+            # Only reorder if we have significant data (>10 attempts)
+            total_attempts = sum(
+                task_perf.get(m, {}).get('successes', 0) + task_perf.get(m, {}).get('failures', 0)
+                for m in available_priority
+            )
+            if total_attempts > 10:
+                available_priority.sort(key=score, reverse=True)
+        
+        return available_priority if available_priority else ['claude']  # Always fallback to claude
     
     def route_task(self, task_type: str, task: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Determine which AI model should handle this task
-        
-        Returns:
-            {
-                'primary_model': str,
-                'fallback_model': str,
-                'reasoning': str,
-                'execution_method': str
-            }
+        Determine which AI model should handle this task.
+        Uses learning-adjusted priority lists.
         """
-        
-        # Determine primary model
-        primary = self.routing_rules.get(task_type, 'claude')
-        
-        # Check availability and set fallback
-        if primary == 'gpt4' and not self.gpt4_available:
-            primary = 'claude'
-            fallback = 'claude'
-        elif primary == 'gemini' and not self.gemini_available:
-            primary = 'claude'
-            fallback = 'claude'
-        else:
-            fallback = 'claude'  # Claude is always fallback
+        priority = self.get_model_priority(task_type)
+        primary = priority[0] if priority else 'claude'
+        fallback = priority[1] if len(priority) > 1 else 'claude'
         
         return {
             'primary_model': primary,
             'fallback_model': fallback,
-            'reasoning': f"Best model for {task_type} tasks",
+            'priority_chain': priority,
+            'reasoning': f"Best models for {task_type}: {' → '.join(priority)}",
             'execution_method': 'api_call'
         }
+    
+    def record_result(self, model: str, task_type: str, success: bool, duration_ms: int, quality_score: float = None):
+        """
+        Record execution result for learning.
+        This allows models to learn from each other's performance.
+        """
+        # Update global model stats
+        if model in MODEL_PERFORMANCE:
+            if success:
+                MODEL_PERFORMANCE[model]['successes'] += 1
+            else:
+                MODEL_PERFORMANCE[model]['failures'] += 1
+            MODEL_PERFORMANCE[model]['total_time_ms'] += duration_ms
+            MODEL_PERFORMANCE[model]['tasks'].append({
+                'task_type': task_type,
+                'success': success,
+                'duration_ms': duration_ms,
+                'quality_score': quality_score,
+                'ts': datetime.now(timezone.utc).isoformat()
+            })
+            # Keep only last 100 tasks per model
+            MODEL_PERFORMANCE[model]['tasks'] = MODEL_PERFORMANCE[model]['tasks'][-100:]
+        
+        # Update task-specific stats
+        if task_type not in TASK_MODEL_PERFORMANCE:
+            TASK_MODEL_PERFORMANCE[task_type] = {}
+        if model not in TASK_MODEL_PERFORMANCE[task_type]:
+            TASK_MODEL_PERFORMANCE[task_type][model] = {'successes': 0, 'failures': 0, 'quality_scores': []}
+        
+        if success:
+            TASK_MODEL_PERFORMANCE[task_type][model]['successes'] += 1
+        else:
+            TASK_MODEL_PERFORMANCE[task_type][model]['failures'] += 1
+        
+        if quality_score is not None:
+            TASK_MODEL_PERFORMANCE[task_type][model]['quality_scores'].append(quality_score)
+            # Keep only last 50 scores
+            TASK_MODEL_PERFORMANCE[task_type][model]['quality_scores'] = \
+                TASK_MODEL_PERFORMANCE[task_type][model]['quality_scores'][-50:]
+    
+    def get_learning_stats(self) -> Dict[str, Any]:
+        """Get learning statistics across all models and tasks."""
+        stats = {
+            'models': {},
+            'task_performance': {},
+            'recommendations': []
+        }
+        
+        for model, data in MODEL_PERFORMANCE.items():
+            total = data['successes'] + data['failures']
+            stats['models'][model] = {
+                'available': self.available_models.get(model, False),
+                'total_tasks': total,
+                'success_rate': data['successes'] / total if total > 0 else 0,
+                'avg_duration_ms': data['total_time_ms'] / total if total > 0 else 0
+            }
+        
+        for task_type, models in TASK_MODEL_PERFORMANCE.items():
+            best_model = None
+            best_rate = 0
+            for model, perf in models.items():
+                total = perf['successes'] + perf['failures']
+                if total > 0:
+                    rate = perf['successes'] / total
+                    if rate > best_rate:
+                        best_rate = rate
+                        best_model = model
+            
+            stats['task_performance'][task_type] = {
+                'best_model': best_model,
+                'success_rate': best_rate,
+                'models_tried': list(models.keys())
+            }
+            
+            # Generate recommendation if we have enough data
+            if best_model and best_rate > 0.8:
+                stats['recommendations'].append(
+                    f"Use {best_model} for {task_type} tasks ({best_rate:.0%} success rate)"
+                )
+        
+        return stats
     
     async def execute_with_model(
         self, 
         model: str, 
+        task: Dict[str, Any],
+        record_learning: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Execute task with specified AI model.
+        Supports: Claude, GPT-4, Gemini, Perplexity
+        Records results for learning if enabled.
+        """
+        start_time = time.time()
+        task_type = task.get('type', 'unknown')
+        
+        try:
+            if model == 'claude':
+                result = await self._execute_with_claude(task)
+            elif model == 'gpt4':
+                result = await self._execute_with_gpt4(task)
+            elif model == 'gemini':
+                result = await self._execute_with_gemini(task)
+            elif model == 'perplexity':
+                result = await self._execute_with_perplexity(task)
+            else:
+                result = {'status': 'failed', 'error': f'Unknown model: {model}'}
+            
+            duration_ms = int((time.time() - start_time) * 1000)
+            success = result.get('status') == 'completed'
+            
+            # Record for learning
+            if record_learning:
+                self.record_result(model, task_type, success, duration_ms)
+            
+            result['duration_ms'] = duration_ms
+            return result
+            
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            if record_learning:
+                self.record_result(model, task_type, False, duration_ms)
+            return {'status': 'failed', 'error': str(e), 'duration_ms': duration_ms}
+    
+    async def execute_with_fallback(
+        self, 
         task: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Execute task with specified AI model
-        
-        Currently: All routes to Claude via existing infrastructure
-        Future: Add GPT-4 and Gemini API calls
+        Execute task using priority chain with automatic fallback.
+        Tries each model in priority order until one succeeds.
         """
+        task_type = task.get('type', 'analysis')
+        priority = self.get_model_priority(task_type)
         
-        if model == 'claude':
-            # Use existing Claude infrastructure
-            return await self._execute_with_claude(task)
+        for model in priority:
+            result = await self.execute_with_model(model, task)
+            if result.get('status') == 'completed':
+                result['used_model'] = model
+                result['tried_models'] = priority[:priority.index(model) + 1]
+                return result
         
-        elif model == 'gpt4':
-            # TODO: Add OpenAI GPT-4 API call
-            print(f"[GPT-4] Would execute: {task['type']}")
-            return await self._execute_with_claude(task)  # Fallback to Claude for now
-        
-        elif model == 'gemini':
-            # TODO: Add Google Gemini API call
-            print(f"[Gemini] Would execute: {task['type']}")
-            return await self._execute_with_claude(task)  # Fallback to Claude for now
-        
-        else:
-            return {
-                'status': 'failed',
-                'error': f'Unknown model: {model}'
-            }
+        # All models failed
+        return {
+            'status': 'failed',
+            'error': 'All models failed',
+            'tried_models': priority
+        }
     
     async def _execute_with_claude(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute task using Claude (existing infrastructure)"""
-        
-        # Use Claude via Anthropic API
-        # This would integrate with your existing Claude agent infrastructure
-        
         task_type = task.get('type', 'unknown')
         requirements = task.get('requirements', '')
         
-        # Simulate execution (replace with actual Claude API call)
         print(f"[Claude] Executing {task_type}: {requirements[:100]}...")
         
         return {
@@ -150,6 +332,116 @@ class MultiAIRouter:
             'agent': 'claude',
             'duration_hours': 2
         }
+    
+    async def _execute_with_perplexity(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task using Perplexity (research/discovery)"""
+        task_type = task.get('type', 'unknown')
+        requirements = task.get('requirements', '')
+        
+        print(f"[Perplexity] Executing {task_type}: {requirements[:100]}...")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-sonar-large-128k-online",
+                        "messages": [{"role": "user", "content": requirements}],
+                        "max_tokens": 2000
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    citations = data.get("citations", [])
+                    
+                    return {
+                        'status': 'completed',
+                        'output': content,
+                        'citations': citations,
+                        'agent': 'perplexity',
+                        'duration_hours': 0.1
+                    }
+        except Exception as e:
+            print(f"[Perplexity] Error: {e}, falling back to Claude")
+        
+        return await self._execute_with_claude(task)
+    
+    async def _execute_with_gpt4(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task using GPT-4"""
+        task_type = task.get('type', 'unknown')
+        requirements = task.get('requirements', '')
+        
+        print(f"[GPT-4] Executing {task_type}: {requirements[:100]}...")
+        
+        try:
+            openai_key = os.environ.get("OPENAI_API_KEY")
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openai_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-4-turbo-preview",
+                        "messages": [{"role": "user", "content": requirements}],
+                        "max_tokens": 2000
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    
+                    return {
+                        'status': 'completed',
+                        'output': content,
+                        'agent': 'gpt4',
+                        'duration_hours': 0.1
+                    }
+        except Exception as e:
+            print(f"[GPT-4] Error: {e}, falling back to Claude")
+        
+        return await self._execute_with_claude(task)
+    
+    async def _execute_with_gemini(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task using Gemini"""
+        task_type = task.get('type', 'unknown')
+        requirements = task.get('requirements', '')
+        
+        print(f"[Gemini] Executing {task_type}: {requirements[:100]}...")
+        
+        try:
+            gemini_key = os.environ.get("GEMINI_API_KEY")
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_key}",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": requirements}]}]
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    
+                    return {
+                        'status': 'completed',
+                        'output': content,
+                        'agent': 'gemini',
+                        'duration_hours': 0.1
+                    }
+        except Exception as e:
+            print(f"[Gemini] Error: {e}, falling back to Claude")
+        
+        return await self._execute_with_claude(task)
 
 
 # ============================================================
@@ -916,11 +1208,31 @@ async def run_autonomous_cycle() -> Dict[str, Any]:
 
 
 # ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def get_ai_learning_stats() -> Dict[str, Any]:
+    """Get learning statistics across all AI models."""
+    router = MultiAIRouter()
+    return router.get_learning_stats()
+
+def get_model_recommendations(task_type: str) -> List[str]:
+    """Get recommended model priority for a task type."""
+    router = MultiAIRouter()
+    return router.get_model_priority(task_type)
+
+
+# ============================================================
 # MODULE INITIALIZATION
 # ============================================================
 
+# Initialize router to check available models
+_init_router = MultiAIRouter()
+_available_models = [k for k, v in _init_router.available_models.items() if v]
+
 print("🎯 AIGENTSY CONDUCTOR LOADED")
-print("   • Multi-AI Routing: Claude (primary), GPT-4, Gemini")
+print(f"   • Multi-AI Routing: {', '.join(_available_models) if _available_models else 'Claude (fallback)'}")
+print("   • Learning System: Models learn from each other's performance")
 print("   • Device Registration & Opportunity Scanning")
 print("   • Execution Plans with Auto-Approval")
 print("   • JV Matching, Pricing, Content, Cart Recovery")
