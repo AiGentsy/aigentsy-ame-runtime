@@ -1485,6 +1485,68 @@ jobs:
           
           ./_log.sh "precheck_status" "true" "$(($(date +%s) - PHASE_START))000"
 
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # v105 NEW: AI FAMILY BRAIN - RECORD CYCLE OUTCOMES
+      # Learn from this entire autonomous cycle
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🧠 AI Family - Record Cycle Outcomes
+        if: always()
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🧠 AI FAMILY BRAIN - RECORD CYCLE OUTCOMES"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Record all outcomes from this cycle for AI Family learning
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/ai-family/record-cycle-outcomes" POST '{"run_id":"${{ env.RUN_ID }}","mode":"${{ env.RUN_MODE }}"}' 45 | jq -c '{ok,outcomes_recorded,models_updated}' 2>/dev/null || true
+          
+          # Get AI Family stats
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/ai-family/stats" GET '' 20 | tee json/ai-family-stats.json | jq -c '{ok,family_stats}' 2>/dev/null || true
+          
+          ./_log.sh "ai_family_outcomes" "true" "$(($(date +%s) - PHASE_START))000"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # v105 NEW: AUTONOMOUS LOGIC UPGRADES - CHECK ACTIVE TESTS
+      # A/B test and deploy self-improving agent logic
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🔬 Logic Upgrades - Active Tests
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔬 AUTONOMOUS LOGIC UPGRADES - CHECK ACTIVE TESTS"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get active A/B tests
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/upgrades/tests/active" GET '' 20 | jq -c '{ok,active_count,tests}' 2>/dev/null || true
+          
+          # Analyze any completed tests
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/upgrades/tests/analyze-completed" POST '{}' 45 | jq -c '{ok,analyzed_count,winners}' 2>/dev/null || true
+          
+          # Auto-deploy winning logic if confidence high enough
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/upgrades/auto-deploy-winners" POST '{"min_confidence":0.8}' 45 | jq -c '{ok,deployed_count}' 2>/dev/null || true
+          
+          ./_log.sh "logic_upgrades" "true" "$(($(date +%s) - PHASE_START))000"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # v105 NEW: SUGGEST NEXT UPGRADE
+      # AI-powered suggestion for next logic upgrade to test
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💡 Suggest Next Upgrade
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💡 AI-POWERED UPGRADE SUGGESTION"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get AI-powered suggestion for next upgrade
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/upgrades/suggest-next" GET '' 30 | tee json/next-upgrade.json | jq -c '{ok,recommended_upgrade,ai_recommended}' 2>/dev/null || true
+          
+          ./_log.sh "upgrade_suggestion" "true" "$(($(date +%s) - PHASE_START))000"
+
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 47: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
