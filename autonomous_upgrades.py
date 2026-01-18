@@ -98,6 +98,123 @@ def create_logic_variant(
             base_buffer = variant_logic["delivery"].get("time_buffer", 0.2)
             mutation = random.uniform(-mutation_level, mutation_level)
             variant_logic["delivery"]["time_buffer"] = max(0.05, round(base_buffer * (1 + mutation), 2))
+
+
+# ============================================================
+# AI FAMILY BRAIN INTEGRATION  
+# ============================================================
+
+try:
+    from ai_family_brain import (
+        get_brain, ai_execute, ai_content,
+        record_quality, get_family_stats
+    )
+    AI_FAMILY_AVAILABLE = True
+except ImportError:
+    AI_FAMILY_AVAILABLE = False
+
+try:
+    from metahive_brain import contribute_to_hive, query_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+
+try:
+    from yield_memory import store_pattern, get_best_action
+    YIELD_AVAILABLE = True
+except ImportError:
+    YIELD_AVAILABLE = False
+
+
+# Logic upgrade types
+def _days_ago(ts_iso: str) -> int:
+    try:
+        then = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - then).days
+    except:
+        return 9999
+
+
+# Logic upgrade types
+UPGRADE_TYPES = {
+    "pricing_strategy": {
+        "name": "Pricing Strategy",
+        "description": "Optimize bid pricing logic",
+        "metrics": ["win_rate", "avg_margin", "conversion_rate"]
+    },
+    "response_speed": {
+        "name": "Response Speed",
+        "description": "Optimize time to respond to intents",
+        "metrics": ["response_time", "win_rate", "engagement_rate"]
+    },
+    "proposal_quality": {
+        "name": "Proposal Quality",
+        "description": "Improve proposal templates and messaging",
+        "metrics": ["acceptance_rate", "buyer_feedback", "repeat_rate"]
+    },
+    "delivery_optimization": {
+        "name": "Delivery Optimization",
+        "description": "Optimize work sequencing and delivery",
+        "metrics": ["on_time_rate", "quality_score", "rework_rate"]
+    },
+    "client_selection": {
+        "name": "Client Selection",
+        "description": "Better targeting of ideal clients",
+        "metrics": ["satisfaction_rate", "dispute_rate", "repeat_rate"]
+    }
+}
+
+
+def create_logic_variant(
+    upgrade_type: str,
+    base_logic: Dict[str, Any],
+    mutation_level: float = 0.2
+) -> Dict[str, Any]:
+    """
+    Create a variant of existing logic for A/B testing
+    
+    mutation_level: 0.1 = conservative, 0.5 = aggressive changes
+    """
+    from uuid import uuid4
+    
+    variant_id = f"var_{uuid4().hex[:12]}"
+    
+    # Clone base logic
+    variant_logic = base_logic.copy()
+    
+    # Apply mutations based on upgrade type
+    if upgrade_type == "pricing_strategy":
+        # Mutate pricing parameters
+        if "pricing" in variant_logic:
+            base_multiplier = variant_logic["pricing"].get("multiplier", 1.0)
+            mutation = random.uniform(-mutation_level, mutation_level)
+            variant_logic["pricing"]["multiplier"] = round(base_multiplier * (1 + mutation), 2)
+            
+            base_discount = variant_logic["pricing"].get("max_discount", 0.1)
+            variant_logic["pricing"]["max_discount"] = round(base_discount * (1 + mutation/2), 2)
+    
+    elif upgrade_type == "response_speed":
+        # Mutate response timing
+        if "response" in variant_logic:
+            base_delay = variant_logic["response"].get("target_minutes", 30)
+            mutation = random.uniform(-mutation_level, mutation_level)
+            variant_logic["response"]["target_minutes"] = max(5, int(base_delay * (1 + mutation)))
+    
+    elif upgrade_type == "proposal_quality":
+        # Mutate proposal parameters
+        if "proposal" in variant_logic:
+            templates = variant_logic["proposal"].get("templates", [])
+            if templates:
+                # Shuffle template priority
+                random.shuffle(templates)
+                variant_logic["proposal"]["templates"] = templates
+    
+    elif upgrade_type == "delivery_optimization":
+        # Mutate delivery parameters
+        if "delivery" in variant_logic:
+            base_buffer = variant_logic["delivery"].get("time_buffer", 0.2)
+            mutation = random.uniform(-mutation_level, mutation_level)
+            variant_logic["delivery"]["time_buffer"] = max(0.05, round(base_buffer * (1 + mutation), 2))
     
     elif upgrade_type == "client_selection":
         # Mutate selection criteria
@@ -355,10 +472,24 @@ def rollback_logic_upgrade(
         if upgrade_type not in user.get("logic", {}):
             continue
         
+        # Get upgrade history for this user
+        upgrade_history = user.get("logic_upgrades", [])
+        past_versions = [
+            u for u in upgrade_history 
+            if u.get("upgrade_type") == upgrade_type and u.get("version")
+        ]
+        
         # Remove current version
-        if rollback_to_version:
-            # Rollback to specific version (would need version history)
-            pass
+        if rollback_to_version and past_versions:
+            # Find the specified version in history
+            target_version = next(
+                (v for v in past_versions if v["version"] == rollback_to_version),
+                None
+            )
+            if target_version:
+                # Full state restoration requires storing complete logic in upgrade history
+                # Current implementation: removes upgrade to revert to default state
+                user["logic"].pop(upgrade_type, None)
         else:
             # Remove upgrade entirely (revert to default)
             user["logic"].pop(upgrade_type, None)
@@ -367,6 +498,7 @@ def rollback_logic_upgrade(
         user.setdefault("logic_upgrades", []).append({
             "upgrade_type": upgrade_type,
             "action": "rollback",
+            "from_version": rollback_to_version if rollback_to_version else "current",
             "rolled_back_at": _now()
         })
         
@@ -405,7 +537,8 @@ def suggest_next_upgrade(
     existing_tests: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    Suggest next logic upgrade to test based on platform needs
+    v2.0: AI-powered suggestion for next logic upgrade
+    Uses AI Family Brain to analyze platform performance
     """
     # Calculate platform metrics
     total_agents = len([u for u in users if u.get("intents") or u.get("role") == "agent"])
@@ -432,6 +565,43 @@ def suggest_next_upgrade(
         
         if bids > 0 and wins / bids < 0.3:
             needs["pricing_strategy"] = needs.get("pricing_strategy", 0) + 1
+    
+    # v2.0: Use AI Family to enhance analysis
+    if AI_FAMILY_AVAILABLE and needs:
+        try:
+            import asyncio
+            prompt = f"""Analyze upgrade priorities:
+Platform metrics:
+- Total agents: {total_agents}
+- Delivery issues: {needs.get('delivery_optimization', 0)} agents
+- Win rate issues: {needs.get('pricing_strategy', 0)} agents
+
+Which upgrade type should be prioritized? Return ONE of:
+- pricing_strategy
+- delivery_optimization
+- proposal_quality
+- response_speed
+- client_selection"""
+            
+            result = asyncio.run(ai_execute(
+                prompt=prompt,
+                task_category="analysis",
+                max_tokens=50
+            ))
+            
+            if result and 'content' in result:
+                ai_suggestion = result['content'].strip().lower()
+                if ai_suggestion in UPGRADE_TYPES:
+                    return {
+                        "ok": True,
+                        "recommended_upgrade": ai_suggestion,
+                        "description": UPGRADE_TYPES[ai_suggestion]["description"],
+                        "ai_recommended": True,
+                        "ai_model_used": result.get('model', 'unknown'),
+                        "rationale": "AI Family Brain analysis"
+                    }
+        except:
+            pass
     
     # Sort by need
     sorted_needs = sorted(needs.items(), key=lambda x: x[1], reverse=True)
