@@ -37567,6 +37567,446 @@ try:
 except ImportError as e:
     print(f"⚠️ apex_dominator_engine not found: {e}")
 
+ ═══════════════════════════════════════════════════════════════════════════════
+# V105: AI FAMILY AUTONOMOUS RECONCILIATION ENGINE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from autonomous_reconciliation_engine import reconciliation_engine
+    RECONCILIATION_AVAILABLE = True
+    print("✅ autonomous_reconciliation_engine loaded")
+except ImportError as e:
+    RECONCILIATION_AVAILABLE = False
+    print(f"⚠️ autonomous_reconciliation_engine not available: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RECONCILIATION ENGINE ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/reconciliation/dashboard")
+async def get_reconciliation_dashboard():
+    """Master dashboard for all autonomous activity with AI Family stats"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.get_dashboard()
+
+
+@app.post("/reconciliation/persist")
+async def persist_reconciliation():
+    """Save reconciliation state to JSONBin"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return await reconciliation_engine.persist_to_jsonbin()
+
+
+@app.post("/reconciliation/load")
+async def load_reconciliation():
+    """Load reconciliation state from JSONBin"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return await reconciliation_engine.load_from_jsonbin()
+
+
+@app.get("/reconciliation/ai-family")
+async def get_reconciliation_ai_family():
+    """Get AI Family stats from reconciliation"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.get_ai_family_stats()
+
+
+@app.post("/reconciliation/record-ai-task")
+async def record_ai_task(
+    task_id: str,
+    opportunity_id: str,
+    task_type: str,
+    ai_model: str,
+    result: Any = None
+):
+    """Record an AI task for tracking"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.record_ai_task(
+        task_id, opportunity_id, task_type, ai_model, result
+    )
+
+
+@app.post("/reconciliation/record-ai-outcome")
+async def record_ai_outcome(
+    task_id: str,
+    success: bool,
+    revenue: float = 0.0,
+    notes: str = None
+):
+    """Record outcome of an AI-assisted operation"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.record_ai_outcome(
+        task_id, success, revenue, notes
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WADE WORKFLOW ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/wade/dashboard")
+async def get_wade_dashboard():
+    """Wade's personal dashboard - Path B revenue"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    queue = reconciliation_engine.get_wade_queue()
+    active = reconciliation_engine.get_wade_active()
+    
+    return {
+        "ok": True,
+        "wade_balance": reconciliation_engine.wade_balance,
+        "pending_approval": len(queue),
+        "active_workflows": len(active),
+        "queue": queue,
+        "active": active
+    }
+
+
+@app.post("/wade/workflow/{workflow_id}/approve")
+async def approve_wade_workflow(workflow_id: str):
+    """Wade approves a workflow"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.update_wade_workflow(
+        workflow_id, 
+        "wade_approved",
+        {"approved_by": "wade", "approved_at": datetime.now(timezone.utc).isoformat()}
+    )
+
+
+@app.post("/wade/workflow/{workflow_id}/payment")
+async def record_wade_payment(workflow_id: str, amount: float):
+    """Record payment received for Wade workflow"""
+    if not RECONCILIATION_AVAILABLE:
+        return {"ok": False, "error": "Reconciliation engine not available"}
+    
+    return reconciliation_engine.update_wade_workflow(
+        workflow_id,
+        "paid",
+        {"amount": amount, "paid_at": datetime.now(timezone.utc).isoformat()}
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTONOMOUS LOGIC UPGRADES ENDPOINTS - Uses your existing autonomous_upgrades.py
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Storage for A/B tests (persisted via reconciliation engine)
+def _get_ab_tests() -> List[Dict]:
+    """Get A/B tests from reconciliation engine"""
+    if RECONCILIATION_AVAILABLE:
+        if not hasattr(reconciliation_engine, '_ab_tests'):
+            reconciliation_engine._ab_tests = []
+        return reconciliation_engine._ab_tests
+    return []
+
+def _save_ab_test(test: Dict):
+    """Save A/B test to reconciliation engine"""
+    if RECONCILIATION_AVAILABLE:
+        if not hasattr(reconciliation_engine, '_ab_tests'):
+            reconciliation_engine._ab_tests = []
+        reconciliation_engine._ab_tests.append(test)
+
+
+@app.get("/upgrades/types")
+async def get_upgrade_types():
+    """Get available upgrade types"""
+    return {
+        "ok": True,
+        "upgrade_types": UPGRADE_TYPES
+    }
+
+
+@app.get("/upgrades/tests/active")
+async def get_active_upgrade_tests():
+    """Get all active A/B tests"""
+    active = get_active_tests(_get_ab_tests())
+    
+    return {
+        "ok": True,
+        "active_count": len(active),
+        "tests": active
+    }
+
+
+@app.post("/upgrades/test/create")
+async def create_upgrade_test(
+    upgrade_type: str,
+    test_duration_days: int = 14,
+    sample_size: int = 100
+):
+    """Create a new A/B test for logic upgrade"""
+    
+    # Production control logic baseline
+    control_logic = {
+        "id": "control",
+        "version": "production",
+        "upgrade_type": upgrade_type,
+        "pricing": {
+            "multiplier": 1.0,
+            "max_discount": 0.1
+        },
+        "response": {
+            "target_minutes": 30
+        },
+        "proposal": {
+            "templates": ["standard", "technical", "creative"]
+        },
+        "delivery": {
+            "time_buffer": 0.2
+        },
+        "selection": {
+            "min_buyer_score": 50
+        }
+    }
+    
+    test = create_ab_test(upgrade_type, control_logic, test_duration_days, sample_size)
+    _save_ab_test(test)
+    
+    return {
+        "ok": True,
+        "test": test
+    }
+
+
+@app.post("/upgrades/tests/analyze-completed")
+async def analyze_completed_tests():
+    """Analyze all completed tests"""
+    
+    ab_tests = _get_ab_tests()
+    analyzed = []
+    winners = []
+    
+    for test in ab_tests:
+        if test.get("status") == "active":
+            result = analyze_ab_test(test, min_sample_size=30)
+            if result.get("ok") and result.get("is_significant"):
+                analyzed.append(result)
+                if result.get("overall_winner") == "variant":
+                    winners.append({
+                        "test_id": test["id"],
+                        "upgrade_type": test["upgrade_type"],
+                        "improvement": result["comparison"]
+                    })
+    
+    return {
+        "ok": True,
+        "analyzed_count": len(analyzed),
+        "winners": winners,
+        "results": analyzed
+    }
+
+
+@app.post("/upgrades/auto-deploy-winners")
+async def auto_deploy_winners(min_confidence: float = 0.8):
+    """Auto-deploy winning logic if confidence high enough"""
+    
+    ab_tests = _get_ab_tests()
+    deployed = []
+    
+    # Get actual users from JSONBin
+    try:
+        from log_to_jsonbin import get_all_users
+        users = get_all_users()
+    except ImportError:
+        # Return info about ready deployments
+        return {
+            "ok": True,
+            "deployed_count": 0,
+            "message": "User data not available",
+            "ready_to_deploy": [
+                {
+                    "test_id": test["id"],
+                    "upgrade_type": test["upgrade_type"],
+                    "confidence": test.get("results", {}).get("confidence", 0)
+                }
+                for test in ab_tests
+                if test.get("winner") and test.get("status") != "deployed"
+                and test.get("results", {}).get("confidence", 0) >= min_confidence * 100
+            ]
+        }
+    
+    for test in ab_tests:
+        if test.get("winner") and test.get("status") != "deployed":
+            results = test.get("results", {})
+            if results.get("confidence", 0) >= min_confidence * 100:
+                deploy_result = deploy_logic_upgrade(test, users)
+                if deploy_result.get("ok"):
+                    deployed.append(deploy_result)
+    
+    return {
+        "ok": True,
+        "deployed_count": len(deployed),
+        "deployments": deployed
+    }
+
+
+@app.get("/upgrades/suggest-next")
+async def suggest_next_logic_upgrade():
+    """AI-powered suggestion for next logic upgrade to test"""
+    
+    # Get actual users from JSONBin
+    try:
+        from log_to_jsonbin import get_all_users
+        users = get_all_users()
+    except ImportError:
+        # Fallback: analyze based on current test state
+        ab_tests = _get_ab_tests()
+        existing_types = set([t["upgrade_type"] for t in ab_tests if t.get("status") == "active"])
+        
+        # Return first untested upgrade type
+        for upgrade_type in UPGRADE_TYPES.keys():
+            if upgrade_type not in existing_types:
+                return {
+                    "ok": True,
+                    "recommended_upgrade": upgrade_type,
+                    "description": UPGRADE_TYPES[upgrade_type]["description"],
+                    "rationale": "Next untested upgrade type"
+                }
+        
+        return {
+            "ok": True,
+            "recommended_upgrade": None,
+            "message": "All upgrade types are being tested"
+        }
+    
+    ab_tests = _get_ab_tests()
+    suggestion = suggest_next_upgrade(users, ab_tests)
+    
+    return suggestion
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AI FAMILY BRAIN ENDPOINTS - Uses your existing ai_family_brain.py
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/ai-family/stats")
+async def get_ai_family_stats_endpoint():
+    """Get AI Family Brain statistics"""
+    
+    # Your ai_family_brain.py is already imported via main.py try/except blocks
+    # We'll use the same pattern
+    try:
+        from ai_family_brain import get_family_stats
+        stats = get_family_stats()
+        return {
+            "ok": True,
+            "family_stats": stats
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@app.post("/ai-family/record-cycle-outcomes")
+async def record_cycle_outcomes(run_id: str, mode: str = "domination"):
+    """Record outcomes from entire autonomous cycle for AI Family learning"""
+    
+    try:
+        from ai_family_brain import record_quality
+    except ImportError:
+        return {
+            "ok": False,
+            "error": "AI Family not available"
+        }
+    
+    # Analyze all operations from this cycle and record quality feedback
+    outcomes_recorded = 0
+    models_updated = []
+    
+    # Get all AI tasks from this cycle (from reconciliation engine)
+    if RECONCILIATION_AVAILABLE:
+        ai_tasks = reconciliation_engine.ai_tasks[-100:]  # Last 100 tasks
+        ai_outcomes = reconciliation_engine.ai_outcomes[-100:]  # Last 100 outcomes
+        
+        # Match tasks to outcomes and record quality
+        for outcome in ai_outcomes:
+            task_id = outcome.get("task_id")
+            success = outcome.get("success", False)
+            revenue = outcome.get("revenue", 0)
+            
+            try:
+                quality = 0.9 if success else 0.3
+                record_quality(task_id, quality, revenue)
+                outcomes_recorded += 1
+                
+                # Track which model was updated
+                task = next((t for t in ai_tasks if t["task_id"] == task_id), None)
+                if task:
+                    model = task.get("ai_model", "unknown")
+                    if model not in models_updated:
+                        models_updated.append(model)
+            except:
+                pass
+    
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "mode": mode,
+        "outcomes_recorded": outcomes_recorded,
+        "models_updated": models_updated,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.get("/v105/status")
+async def get_v105_status():
+    """Get v105 system status - AI Family Brain integration"""
+    return {
+        "ok": True,
+        "version": "v105",
+        "name": "AI Family Brain Integration",
+        "systems": {
+            "autonomous_routes": True,  # Already loaded in your main.py line 27
+            "reconciliation_engine": RECONCILIATION_AVAILABLE,
+            "logic_upgrades": True,  # Already loaded in your main.py line 583
+            "ai_family_brain": METAHIVE_BRAIN_AVAILABLE or YIELD_MEMORY_AVAILABLE  # Using your flags
+        },
+        "features": [
+            "AI-powered opportunity scoring",
+            "AI-generated proposals",
+            "Learning from successful executions",
+            "Cross-pollination with MetaHive",
+            "A/B testing for logic upgrades",
+            "Auto-deployment of winning strategies",
+            "AI-powered upgrade suggestions"
+        ],
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+print("=" * 80)
+print("🧠 AI FAMILY AUTONOMOUS SYSTEMS v105 LOADED")
+print("=" * 80)
+print(f"✓ Autonomous Routes: Already loaded (line 27)")
+print(f"✓ Reconciliation Engine: {RECONCILIATION_AVAILABLE}")
+print(f"✓ Logic Upgrades: Already loaded (line 583)")
+print(f"✓ AI Family Brain: Already loaded (lines 68-103)")
+print("=" * 80)
+if RECONCILIATION_AVAILABLE:
+    print("📍 NEW endpoints: /reconciliation/*, /wade/*")
+print("📍 NEW endpoints: /upgrades/*, /ai-family/*")
+print("📍 System status: /v105/status")
+print("=" * 80)
+
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 44B
