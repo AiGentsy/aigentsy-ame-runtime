@@ -58,6 +58,32 @@ class WorkflowOwner(str, Enum):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AI FAMILY BRAIN INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from ai_family_brain import (
+        get_brain, ai_execute, ai_content,
+        record_quality, get_family_stats
+    )
+    AI_FAMILY_AVAILABLE = True
+except ImportError:
+    AI_FAMILY_AVAILABLE = False
+
+try:
+    from metahive_brain import contribute_to_hive, query_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+
+try:
+    from yield_memory import store_pattern, get_best_action
+    YIELD_AVAILABLE = True
+except ImportError:
+    YIELD_AVAILABLE = False
+
 # DATA CLASSES
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -138,6 +164,10 @@ class AutonomousReconciliationEngine:
         # Revenue accumulators
         self.wade_balance: float = 0.0
         self.fees_collected: float = 0.0
+        
+        # v2.0: AI Family tracking
+        self.ai_tasks: List[Dict] = []  # Track AI tasks executed
+        self.ai_outcomes: List[Dict] = []  # Track learning outcomes
     
     # ═══════════════════════════════════════════════════════════════════════════
     # ACTIVITY TRACKING
@@ -445,10 +475,18 @@ class AutonomousReconciliationEngine:
     # ═══════════════════════════════════════════════════════════════════════════
     
     def get_dashboard(self) -> Dict:
-        """Get full reconciliation dashboard"""
+        """Get full reconciliation dashboard with AI Family stats"""
         
         summary_24h = self.reconcile(period_hours=24)
         summary_7d = self.reconcile(period_hours=24*7)
+        
+        # Get AI Family stats
+        ai_stats = {}
+        if AI_FAMILY_AVAILABLE:
+            try:
+                ai_stats = get_family_stats()
+            except:
+                pass
         
         return {
             "ok": True,
@@ -465,8 +503,111 @@ class AutonomousReconciliationEngine:
                 "active": len(self.get_wade_active()),
                 "total": len(self.wade_workflows)
             },
-            "total_activities": len(self.activities)
+            "total_activities": len(self.activities),
+            "ai_family": {
+                "available": AI_FAMILY_AVAILABLE,
+                "tasks_executed": len(self.ai_tasks),
+                "outcomes_recorded": len(self.ai_outcomes),
+                "stats": ai_stats
+            }
         }
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # AI FAMILY METHODS (v2.0)
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    def record_ai_task(
+        self,
+        task_id: str,
+        opportunity_id: str,
+        task_type: str,
+        ai_model: str,
+        result: Any = None
+    ) -> Dict:
+        """Record an AI task for tracking"""
+        
+        task = {
+            "task_id": task_id,
+            "opportunity_id": opportunity_id,
+            "task_type": task_type,
+            "ai_model": ai_model,
+            "result": result,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        self.ai_tasks.append(task)
+        
+        return {"ok": True, "task": task}
+    
+    def record_ai_outcome(
+        self,
+        task_id: str,
+        success: bool,
+        revenue: float = 0.0,
+        notes: str = None
+    ) -> Dict:
+        """Record outcome of an AI-assisted operation for learning"""
+        
+        outcome = {
+            "task_id": task_id,
+            "success": success,
+            "revenue": revenue,
+            "notes": notes,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        self.ai_outcomes.append(outcome)
+        
+        # Record to AI Family Brain
+        if AI_FAMILY_AVAILABLE:
+            quality = 0.9 if success else 0.3
+            try:
+                record_quality(task_id, quality, revenue)
+            except:
+                pass
+        
+        # Contribute to MetaHive if successful
+        if METAHIVE_AVAILABLE and success and revenue > 0:
+            import asyncio
+            try:
+                asyncio.create_task(contribute_to_hive(
+                    username="aigentsy",
+                    pattern_type="autonomous_reconciliation",
+                    context={"task_id": task_id},
+                    action={"ai_assisted": True},
+                    outcome={
+                        "revenue_usd": revenue,
+                        "quality_score": quality
+                    }
+                ))
+            except:
+                pass
+        
+        return {"ok": True, "outcome": outcome}
+    
+    def get_ai_family_stats(self) -> Dict:
+        """Get AI Family statistics"""
+        
+        if not AI_FAMILY_AVAILABLE:
+            return {
+                "ok": False,
+                "error": "AI Family not available"
+            }
+        
+        try:
+            family_stats = get_family_stats()
+            
+            return {
+                "ok": True,
+                "tasks_tracked": len(self.ai_tasks),
+                "outcomes_recorded": len(self.ai_outcomes),
+                "family_stats": family_stats
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": str(e)
+            }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
