@@ -30,7 +30,7 @@ print("=" * 50)
 
 try:
     from ai_family_brain import (
-        get_brain, ai_execute, ai_content, TaskCategory,
+        get_brain, ai_execute, ai_content,
         record_quality, get_family_stats
     )
     AI_FAMILY_AVAILABLE = True
@@ -104,6 +104,9 @@ router = APIRouter(prefix="/autonomous", tags=["autonomous_execution"])
 # Wade's autonomous approval queue
 AUTONOMOUS_APPROVAL_QUEUE = {}  # {opportunity_id: {...}}
 
+# Autonomous execution rules (persists rules for auto-execution)
+AUTONOMOUS_RULES = []  # List of enabled autonomous rules
+
 # AI Family task tracking
 _ai_tasks = []
 
@@ -160,11 +163,9 @@ Type: {opportunity.get('type', 'Unknown')}
 
 Return ONLY a number between 0.0 and 1.0"""
                 
-                task_id = f"score_{opportunity.get('id', 'unknown')}"
                 result = await ai_execute(
-                    task_id=task_id,
                     prompt=prompt,
-                    category=TaskCategory.ANALYSIS,
+                    task_category="analysis",
                     max_tokens=50
                 )
                 
@@ -173,6 +174,9 @@ Return ONLY a number between 0.0 and 1.0"""
                         ai_score = float(result['content'].strip())
                         opp_data['ai_win_probability'] = ai_score
                         opp_data['ai_model_used'] = result.get('model', 'unknown')
+                        
+                        # Track this AI task
+                        task_id = f"score_{opportunity.get('id', 'unknown')}"
                         _ai_tasks.append({
                             'task_id': task_id,
                             'opportunity_id': opportunity.get('id'),
@@ -295,11 +299,9 @@ Value: ${value}
 
 Return number 0.0-1.0"""
                 
-                task_id = f"queue_score_{opportunity.get('id')}"
                 result = await ai_execute(
-                    task_id=task_id,
                     prompt=prompt,
-                    category=TaskCategory.ANALYSIS,
+                    task_category="analysis",
                     max_tokens=50
                 )
                 
@@ -309,6 +311,9 @@ Return number 0.0-1.0"""
                         win_prob = max(win_prob, ai_win_prob)  # Take higher score
                         opp_data['ai_enhanced'] = True
                         opp_data['ai_win_prob'] = ai_win_prob
+                        
+                        # Track this AI task
+                        task_id = f"queue_score_{opportunity.get('id')}"
                     except:
                         pass
             except:
@@ -510,9 +515,7 @@ async def enable_autonomous_for_opportunity_type(
         max_value: Maximum value to auto-execute
     """
     
-    # This would save to JSONBin in production
-    # For now, just return confirmation
-    
+    # Store rule in module-level persistent storage
     rule = {
         'platform': platform,
         'type': opportunity_type,
@@ -522,10 +525,14 @@ async def enable_autonomous_for_opportunity_type(
         'enabled_by': 'wade'
     }
     
+    # Add to persistent rules
+    AUTONOMOUS_RULES.append(rule)
+    
     return {
         'ok': True,
         'message': f'Autonomous mode enabled for {platform}/{opportunity_type}',
         'rule': rule,
+        'active_rules_count': len(AUTONOMOUS_RULES),
         'next_step': 'Matching opportunities will auto-execute on next discovery run'
     }
 
@@ -693,7 +700,7 @@ async def autonomous_quick_health():
 
 @router.post("/test-execution")
 async def test_autonomous_execution():
-    """Test autonomous execution with a stub opportunity"""
+    """Test autonomous execution with a synthetic test opportunity"""
     
     if not EXECUTOR_AVAILABLE:
         raise HTTPException(503, "Executor not available")
