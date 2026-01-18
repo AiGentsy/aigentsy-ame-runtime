@@ -1,10 +1,16 @@
 """
-AUTONOMOUS ROUTES - FULLY AUTOMATED EXECUTION
+AUTONOMOUS ROUTES v2.0 - AI FAMILY POWERED EXECUTION
 Works alongside execution_routes.py to provide autonomous mode
 
 Wade's Hybrid System:
 - /execution/* - Manual 4-stage approval (existing)
 - /autonomous/* - Fully autonomous execution (this file)
+
+v2.0 AI FAMILY BRAIN INTEGRATION:
+- AI-powered opportunity scoring
+- AI-generated proposals
+- Learning from successful executions
+- Cross-pollination with MetaHive patterns
 
 Wade can choose which mode for each opportunity type.
 """
@@ -15,8 +21,39 @@ from datetime import datetime
 import asyncio
 
 print("=" * 50)
-print("LOADING AUTONOMOUS_ROUTES.PY")
+print("LOADING AUTONOMOUS_ROUTES.PY v2.0")
 print("=" * 50)
+
+# ============================================================
+# AI FAMILY BRAIN INTEGRATION
+# ============================================================
+
+try:
+    from ai_family_brain import (
+        get_brain, ai_execute, ai_content, TaskCategory,
+        record_quality, get_family_stats
+    )
+    AI_FAMILY_AVAILABLE = True
+    print("✓ AI Family Brain imported")
+except ImportError:
+    AI_FAMILY_AVAILABLE = False
+    print("⚠️ AI Family Brain not available")
+
+try:
+    from metahive_brain import contribute_to_hive, query_hive
+    METAHIVE_AVAILABLE = True
+    print("✓ MetaHive Brain imported")
+except ImportError:
+    METAHIVE_AVAILABLE = False
+    print("⚠️ MetaHive Brain not available")
+
+try:
+    from yield_memory import store_pattern, get_best_action
+    YIELD_AVAILABLE = True
+    print("✓ Yield Memory imported")
+except ImportError:
+    YIELD_AVAILABLE = False
+    print("⚠️ Yield Memory not available")
 
 # Import autonomous executor
 try:
@@ -54,8 +91,11 @@ except:
     HEALTH_CHECK_AVAILABLE = False
     print("⚠️ System Health Checker not available")
 
+print(f"✓ AI Family Available: {AI_FAMILY_AVAILABLE}")
+print(f"✓ MetaHive Available: {METAHIVE_AVAILABLE}")
+print(f"✓ Yield Memory Available: {YIELD_AVAILABLE}")
 print("=" * 50)
-print("AUTONOMOUS_ROUTES.PY LOADED")
+print("AUTONOMOUS_ROUTES.PY v2.0 LOADED")
 print("=" * 50)
 
 # Create router with different prefix
@@ -63,6 +103,9 @@ router = APIRouter(prefix="/autonomous", tags=["autonomous_execution"])
 
 # Wade's autonomous approval queue
 AUTONOMOUS_APPROVAL_QUEUE = {}  # {opportunity_id: {...}}
+
+# AI Family task tracking
+_ai_tasks = []
 
 
 # ============================================================
@@ -76,12 +119,12 @@ async def discover_and_execute(
     max_executions: int = 10
 ) -> Dict[str, Any]:
     """
-    FULLY AUTONOMOUS PIPELINE
+    FULLY AUTONOMOUS PIPELINE with AI Family Brain
     
     1. Discover opportunities
-    2. Score and route them
+    2. AI-powered scoring and routing
     3. Automatically execute approved ones
-    4. Track to completion
+    4. Track to completion + learn from outcomes
     
     Args:
         auto_approve_user: Auto-execute user opportunities
@@ -89,7 +132,7 @@ async def discover_and_execute(
         max_executions: Max number to execute in this run
         
     Returns:
-        Discovery results + execution status
+        Discovery results + execution status + AI Family stats
     """
     
     if not DISCOVERY_AVAILABLE:
@@ -102,7 +145,45 @@ async def discover_and_execute(
     discovery_engine = AlphaDiscoveryEngine()
     discovery_results = await discovery_engine.discover_and_route(score_opportunities=True)
     
-    # STEP 2: Execute approved opportunities
+    # STEP 2: AI-powered scoring (if AI Family available)
+    if AI_FAMILY_AVAILABLE:
+        for opp_data in discovery_results.get('routing', {}).get('user_routed', {}).get('opportunities', []):
+            opportunity = opp_data['opportunity']
+            
+            # Use AI Family to predict win probability
+            try:
+                prompt = f"""Analyze this opportunity and predict win probability:
+Title: {opportunity.get('title', 'Unknown')}
+Platform: {opportunity.get('platform', 'Unknown')}
+Value: ${opportunity.get('value', 0)}
+Type: {opportunity.get('type', 'Unknown')}
+
+Return ONLY a number between 0.0 and 1.0"""
+                
+                task_id = f"score_{opportunity.get('id', 'unknown')}"
+                result = await ai_execute(
+                    task_id=task_id,
+                    prompt=prompt,
+                    category=TaskCategory.ANALYSIS,
+                    max_tokens=50
+                )
+                
+                if result and 'content' in result:
+                    try:
+                        ai_score = float(result['content'].strip())
+                        opp_data['ai_win_probability'] = ai_score
+                        opp_data['ai_model_used'] = result.get('model', 'unknown')
+                        _ai_tasks.append({
+                            'task_id': task_id,
+                            'opportunity_id': opportunity.get('id'),
+                            'ai_score': ai_score
+                        })
+                    except:
+                        pass
+            except:
+                pass
+    
+    # STEP 3: Execute approved opportunities
     executor = get_executor()
     executions = []
     
@@ -146,12 +227,25 @@ async def discover_and_execute(
                     user=None  # AiGentsy opportunity
                 )
     
+    # Get AI Family stats
+    ai_stats = {}
+    if AI_FAMILY_AVAILABLE:
+        try:
+            ai_stats = get_family_stats()
+        except:
+            pass
+    
     return {
         'ok': True,
         'discovery': discovery_results,
         'executions': {
             'count': len(executions),
             'results': executions
+        },
+        'ai_family': {
+            'available': AI_FAMILY_AVAILABLE,
+            'tasks_executed': len(_ai_tasks),
+            'stats': ai_stats
         },
         'message': f"Discovered {discovery_results['total_opportunities']} opportunities, executed {len(executions)} autonomously"
     }
@@ -164,6 +258,8 @@ async def discover_and_queue_for_autonomous(
 ) -> Dict[str, Any]:
     """
     Discover opportunities and queue HIGH-CONFIDENCE ones for autonomous approval
+    
+    v2.0: Uses AI Family Brain to predict win probability
     
     Wade reviews queue and enables autonomous mode for specific opportunity types
     
@@ -189,6 +285,35 @@ async def discover_and_queue_for_autonomous(
         win_prob = score.get('win_probability', 0)
         value = opportunity.get('value', 0)
         
+        # v2.0: Use AI Family to enhance scoring
+        if AI_FAMILY_AVAILABLE and win_prob < min_win_probability:
+            try:
+                prompt = f"""Analyze opportunity win probability:
+{opportunity.get('title', 'Unknown')}
+Platform: {opportunity.get('platform')}
+Value: ${value}
+
+Return number 0.0-1.0"""
+                
+                task_id = f"queue_score_{opportunity.get('id')}"
+                result = await ai_execute(
+                    task_id=task_id,
+                    prompt=prompt,
+                    category=TaskCategory.ANALYSIS,
+                    max_tokens=50
+                )
+                
+                if result and 'content' in result:
+                    try:
+                        ai_win_prob = float(result['content'].strip())
+                        win_prob = max(win_prob, ai_win_prob)  # Take higher score
+                        opp_data['ai_enhanced'] = True
+                        opp_data['ai_win_prob'] = ai_win_prob
+                    except:
+                        pass
+            except:
+                pass
+        
         # Only queue if high confidence AND reasonable value
         if win_prob >= min_win_probability and value <= max_value:
             high_confidence.append(opp_data)
@@ -200,7 +325,8 @@ async def discover_and_queue_for_autonomous(
                 'score': score,
                 'routing': opp_data.get('routing', {}),
                 'queued_at': datetime.utcnow().isoformat(),
-                'approved_for_autonomous': False
+                'approved_for_autonomous': False,
+                'ai_enhanced': opp_data.get('ai_enhanced', False)
             }
     
     return {
@@ -212,6 +338,7 @@ async def discover_and_queue_for_autonomous(
             'min_win_probability': min_win_probability,
             'max_value': max_value
         },
+        'ai_family_used': AI_FAMILY_AVAILABLE,
         'high_confidence_opportunities': high_confidence
     }
 
@@ -245,6 +372,7 @@ async def get_autonomous_approval_queue():
         'ok': True,
         'count': len(queue),
         'total_potential_value': total_value,
+        'ai_enhanced_count': len([q for q in queue if q.get('ai_enhanced')]),
         'opportunities': queue,
         'message': f'{len(queue)} opportunities ready for autonomous approval'
     }
@@ -257,6 +385,8 @@ async def approve_for_autonomous_execution(
 ) -> Dict[str, Any]:
     """
     Wade approves an opportunity to run AUTONOMOUSLY
+    
+    v2.0: Records outcome to AI Family for learning
     
     Args:
         opportunity_id: ID of opportunity
@@ -297,7 +427,8 @@ async def approve_for_autonomous_execution(
         return {
             'ok': True,
             'message': 'Approved and executing autonomously',
-            'execution': result
+            'execution': result,
+            'ai_enhanced': opp_data.get('ai_enhanced', False)
         }
     
     else:
@@ -308,6 +439,56 @@ async def approve_for_autonomous_execution(
             'opportunity_id': opportunity_id,
             'will_execute': 'on_next_autonomous_run'
         }
+
+
+@router.post("/record-execution-outcome")
+async def record_execution_outcome(
+    execution_id: str,
+    success: bool,
+    revenue: float = 0.0,
+    notes: str = None
+) -> Dict[str, Any]:
+    """
+    v2.0 NEW: Record execution outcome for AI Family learning
+    """
+    
+    outcome = {
+        'execution_id': execution_id,
+        'success': success,
+        'revenue': revenue,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    
+    # Record quality to AI Family
+    if AI_FAMILY_AVAILABLE:
+        # Find related AI task
+        related_task = next((t for t in _ai_tasks if t['opportunity_id'] in execution_id), None)
+        
+        if related_task:
+            quality = 0.9 if success else 0.3
+            record_quality(related_task['task_id'], quality, revenue)
+    
+    # Contribute to MetaHive if successful
+    if METAHIVE_AVAILABLE and success and revenue > 0:
+        try:
+            await contribute_to_hive(
+                username="aigentsy",
+                pattern_type="autonomous_execution",
+                context={"execution_id": execution_id},
+                action={"auto_approved": True},
+                outcome={
+                    "revenue_usd": revenue,
+                    "quality_score": 0.9 if success else 0.3
+                }
+            )
+        except:
+            pass
+    
+    return {
+        'ok': True,
+        'outcome': outcome,
+        'ai_family_recorded': AI_FAMILY_AVAILABLE and related_task is not None
+    }
 
 
 @router.post("/enable-autonomous-for-type")
@@ -377,7 +558,7 @@ async def get_autonomous_execution_status(execution_id: str):
 
 @router.get("/stats")
 async def get_autonomous_stats():
-    """Get autonomous execution statistics"""
+    """Get autonomous execution statistics with AI Family stats"""
     
     if not EXECUTOR_AVAILABLE:
         raise HTTPException(503, "Executor not available")
@@ -397,7 +578,40 @@ async def get_autonomous_stats():
         ])
     }
     
+    # Add AI Family stats
+    stats['ai_family'] = {
+        'available': AI_FAMILY_AVAILABLE,
+        'tasks_executed': len(_ai_tasks)
+    }
+    
+    if AI_FAMILY_AVAILABLE:
+        try:
+            stats['ai_family']['stats'] = get_family_stats()
+        except:
+            pass
+    
     return stats
+
+
+@router.get("/ai-family-stats")
+async def get_ai_family_stats():
+    """Get AI Family Brain statistics"""
+    
+    if not AI_FAMILY_AVAILABLE:
+        raise HTTPException(503, "AI Family not available")
+    
+    try:
+        stats = get_family_stats()
+        return {
+            'ok': True,
+            'tasks_tracked': len(_ai_tasks),
+            'family_stats': stats
+        }
+    except Exception as e:
+        return {
+            'ok': False,
+            'error': str(e)
+        }
 
 
 # ============================================================
@@ -503,5 +717,6 @@ async def test_autonomous_execution():
     return {
         'ok': True,
         'test': 'autonomous_execution_completed',
-        'result': result
+        'result': result,
+        'ai_family_available': AI_FAMILY_AVAILABLE
     }
