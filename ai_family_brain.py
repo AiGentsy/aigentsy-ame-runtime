@@ -91,6 +91,26 @@ class TaskCategory(str, Enum):
     UPSELL_IDENTIFICATION = "upsell_identification"
     CHURN_PREDICTION = "churn_prediction"
     REVENUE_OPTIMIZATION = "revenue_optimization"
+    # V111 Super-Harvesters (Trillion-Class)
+    ABANDONED_CHECKOUT_RECOVERY = "abandoned_checkout_recovery"
+    RECEIVABLES_FACTORING = "receivables_factoring"
+    PAYMENTS_OPTIMIZATION = "payments_optimization"
+    
+    # V112 Market Maker Extensions
+    MARKET_MAKING = "market_making"
+    RISK_TRANCHING = "risk_tranching"
+    OFFER_SYNDICATION = "offer_syndication"
+    
+    # V110 Gap Harvesters (General)
+    GAP_HARVESTING = "gap_harvesting"
+    WASTE_MONETIZATION = "waste_monetization"
+    
+    # Revenue Engine Operations
+    QUOTE_GENERATION = "quote_generation"
+    SPREAD_CALCULATION = "spread_calculation"
+    KELLY_SIZING = "kelly_sizing"
+    INVOICE_ANALYSIS = "invoice_analysis"
+    PAYMENT_ROUTING = "payment_routing"
 
 
 @dataclass
