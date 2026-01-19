@@ -1,37 +1,25 @@
-# internet_domination_engine.py
+# internet_domination_engine_REAL.py
 """
-🌐 INTERNET DOMINATION ENGINE v94
-================================
+🌐 INTERNET DOMINATION ENGINE - PRODUCTION VERSION
+==================================================
 
-The goal: Monetize the entirety of the internet, autonomously, 24/7/365
+PHASE 1: Free Sources (GitHub, Reddit, HackerNews) - WORKS NOW
+PHASE 2: Paid APIs (SerpAPI, Google, Bing) - WORKS WHEN API KEYS SET
 
-Systems:
-1. DEMAND VACUUM - Scrape 27+ platforms for ANY monetizable signal
-2. INSTANT ARBITRAGE - Buy low, sell high across platforms in real-time
-3. VIRAL CONTENT MACHINE - Auto-generate viral content for all platforms
-4. AFFILIATE SWARM - Deploy affiliate links across the entire internet
-5. LEAD MAGNET FACTORY - Auto-create lead magnets for every niche
-6. PRICE INTELLIGENCE - Monitor competitor pricing, undercut instantly
-7. REPUTATION FARMING - Auto-generate reviews, testimonials, social proof
-8. TREND HIJACKING - Jump on trends within minutes of detection
-9. MICRO-SERVICE ARMY - Spin up niche services on-demand
-10. PASSIVE INCOME GENERATORS - Royalties, licensing, recurring revenue
-11. GEOGRAPHIC ARBITRAGE - Exploit price differences across regions
-12. TIME-DECAY EXPLOITATION - Catch expiring deals, domains, opportunities
-13. API ECONOMY PLAYS - Resell API access, aggregate services
-14. DATA MONETIZATION - Package and sell insights, reports, intelligence
-15. NETWORK EFFECT AMPLIFIER - Every user/spawn recruits more users
+This version has REAL scrapers that actually return opportunities!
+No more empty [] arrays!
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 import asyncio
-import uuid
+import aiohttp
 import os
-import httpx
+import re
+import hashlib
 
 router = APIRouter(tags=["Internet Domination"])
 
@@ -40,575 +28,782 @@ router = APIRouter(tags=["Internet Domination"])
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class PlatformTier(Enum):
+    """Platform access tiers"""
+    FREE = "free"  # No API key needed
+    PAID = "paid"  # Requires API key
+    OAUTH = "oauth"  # Requires OAuth flow
+
+
 PLATFORMS = {
-    "freelance": ["fiverr", "upwork", "freelancer", "toptal", "99designs", "designcrowd"],
-    "social": ["reddit", "twitter", "linkedin", "facebook", "discord", "slack"],
-    "marketplace": ["amazon", "ebay", "etsy", "shopify", "gumroad", "producthunt"],
-    "jobs": ["indeed", "linkedin_jobs", "remoteok", "weworkremotely", "angellist"],
-    "content": ["youtube", "medium", "substack", "quora", "stackoverflow", "tiktok"]
+    # Tier 1: FREE - Works immediately
+    "free": {
+        "github": {"tier": PlatformTier.FREE, "value": "high"},
+        "reddit": {"tier": PlatformTier.FREE, "value": "high"},
+        "hackernews": {"tier": PlatformTier.FREE, "value": "high"},
+        "stackoverflow": {"tier": PlatformTier.FREE, "value": "medium"},
+    },
+    
+    # Tier 2: PAID - Requires API keys
+    "paid": {
+        "google_search": {"tier": PlatformTier.PAID, "cost": "$50-200/mo", "key": "SERPAPI_KEY"},
+        "bing_search": {"tier": PlatformTier.PAID, "cost": "$7/1000 queries", "key": "BING_SEARCH_KEY"},
+        "linkedin_jobs": {"tier": PlatformTier.PAID, "cost": "Varies", "key": "LINKEDIN_API_KEY"},
+    },
+    
+    # Tier 3: OAUTH - Requires OAuth flow (future)
+    "oauth": {
+        "upwork": {"tier": PlatformTier.OAUTH, "status": "future"},
+        "fiverr": {"tier": PlatformTier.OAUTH, "status": "future"},
+        "freelancer": {"tier": PlatformTier.OAUTH, "status": "future"},
+    }
 }
 
-ALL_PLATFORMS = [p for category in PLATFORMS.values() for p in category]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REAL SCRAPERS - TIER 1 (FREE)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class RealScrapers:
+    """
+    Production scrapers that actually return real data
+    No more empty [] arrays!
+    """
+    
+    def __init__(self):
+        self.github_token = os.getenv('GITHUB_TOKEN')
+        self.serpapi_key = os.getenv('SERPAPI_KEY')
+        self.bing_key = os.getenv('BING_SEARCH_KEY')
+    
+    # -------------------------------------------------------------------------
+    # GITHUB SCRAPER - FREE, WORKS NOW
+    # -------------------------------------------------------------------------
+    
+    async def scrape_github_advanced(self) -> List[Dict]:
+        """
+        Advanced GitHub scraping - gets MORE than basic explicit_marketplace_scrapers
+        
+        Searches:
+        1. Bounty issues (money involved)
+        2. Help wanted (beginner friendly)
+        3. Good first issue (easy money)
+        4. Funded projects (startups hiring)
+        5. Recently created repos (new projects need help)
+        """
+        
+        print("   🔍 GitHub Advanced: Deep scan for opportunities...")
+        
+        opportunities = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {}
+                if self.github_token:
+                    headers['Authorization'] = f'token {self.github_token}'
+                
+                # EXPANDED SEARCHES - More than basic scraper
+                searches = [
+                    # Money-related
+                    ('label:bounty is:open', 'bounty'),
+                    ('label:sponsored is:open', 'sponsored'),
+                    ('label:funded is:open', 'funded'),
+                    ('in:title bounty is:open', 'bounty_title'),
+                    ('in:body "$" is:open label:"help wanted"', 'paid_help'),
+                    
+                    # Easy opportunities
+                    ('label:"good first issue" is:open', 'beginner'),
+                    ('label:"help wanted" is:open', 'help_wanted'),
+                    ('label:beginner is:open', 'beginner'),
+                    
+                    # High-value repos
+                    ('stars:>1000 is:open label:"help wanted"', 'popular'),
+                    ('created:>2024-01-01 is:open label:bounty', 'recent'),
+                ]
+                
+                for query, category in searches:
+                    url = f'https://api.github.com/search/issues?q={query}&sort=created&per_page=20'
+                    
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            
+                            for issue in data.get('items', []):
+                                value = self._extract_github_value_advanced(issue)
+                                
+                                opportunities.append({
+                                    'id': f"github_adv_{issue['id']}",
+                                    'platform': 'github',
+                                    'category': category,
+                                    'type': 'software_development',
+                                    'title': issue['title'],
+                                    'description': issue.get('body', '')[:500],
+                                    'url': issue['html_url'],
+                                    'value': value,
+                                    'estimated_value': value,
+                                    'urgency': 'medium',
+                                    'created_at': issue['created_at'],
+                                    'source_data': {
+                                        'repo': issue['repository_url'].split('/')[-2:],
+                                        'labels': [l['name'] for l in issue.get('labels', [])],
+                                        'comments': issue.get('comments', 0),
+                                        'state': issue.get('state', 'open')
+                                    },
+                                    'contact_info': {
+                                        'github_user': issue.get('user', {}).get('login'),
+                                        'github_url': issue.get('user', {}).get('html_url')
+                                    }
+                                })
+                        
+                        # Rate limiting
+                        await asyncio.sleep(0.5)
+        
+        except Exception as e:
+            print(f"   ❌ GitHub advanced scraper error: {e}")
+        
+        # Dedupe by issue ID
+        seen = set()
+        unique = []
+        for opp in opportunities:
+            if opp['id'] not in seen:
+                seen.add(opp['id'])
+                unique.append(opp)
+        
+        print(f"   ✅ GitHub Advanced: Found {len(unique)} unique opportunities")
+        return unique
+    
+    def _extract_github_value_advanced(self, issue: Dict) -> float:
+        """Enhanced value extraction"""
+        
+        # Check labels for bounty amounts
+        for label in issue.get('labels', []):
+            label_name = label['name'].lower()
+            
+            # Look for $ amounts
+            if '$' in label_name:
+                try:
+                    amount = int(''.join(filter(str.isdigit, label_name)))
+                    if amount > 0:
+                        return float(amount)
+                except:
+                    pass
+            
+            # Look for keywords
+            if 'bounty' in label_name:
+                # Check for amount in label
+                numbers = re.findall(r'\d+', label_name)
+                if numbers:
+                    return float(numbers[0])
+        
+        # Check body for bounty mentions
+        body = issue.get('body', '').lower()
+        
+        # Look for explicit $ mentions
+        money_patterns = [
+            r'\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',  # $1,000 or $1000.00
+            r'(\d+)\s*(?:dollars|USD|usd)',  # 1000 dollars
+            r'bounty[:\s]+\$?(\d+)',  # bounty: $500
+        ]
+        
+        for pattern in money_patterns:
+            matches = re.findall(pattern, body)
+            if matches:
+                try:
+                    amount = float(str(matches[0]).replace(',', ''))
+                    if amount > 0:
+                        return amount
+                except:
+                    pass
+        
+        # Estimate based on labels and repo popularity
+        labels = ' '.join([l['name'].lower() for l in issue.get('labels', [])])
+        
+        if 'bounty' in labels or 'sponsored' in labels or 'funded' in labels:
+            return 1000.0  # Assume $1k for bounty issues
+        elif 'help wanted' in labels:
+            # Check repo stars for value estimation
+            return 500.0  # Medium value
+        elif 'good first issue' in labels or 'beginner' in labels:
+            return 100.0  # Beginner issue
+        else:
+            return 300.0  # Default
+    
+    # -------------------------------------------------------------------------
+    # REDDIT SCRAPER - FREE, WORKS NOW
+    # -------------------------------------------------------------------------
+    
+    async def scrape_reddit_advanced(self) -> List[Dict]:
+        """
+        Advanced Reddit scraping - MORE subreddits than basic scraper
+        
+        Subreddits:
+        1. r/forhire - Direct hiring
+        2. r/entrepreneur - Business opportunities
+        3. r/startups - Startup hiring
+        4. r/programming - Tech jobs
+        5. r/freelance - Freelance gigs
+        6. r/slavelabour - Micro tasks
+        7. r/jobs4bitcoins - Crypto payments
+        8. r/hiring - General hiring
+        """
+        
+        print("   🔍 Reddit Advanced: Scanning 8+ subreddits...")
+        
+        opportunities = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                subreddits = [
+                    'forhire', 'entrepreneur', 'startups', 'programming',
+                    'freelance', 'slavelabour', 'jobs4bitcoins', 'hiring',
+                    'remotejs', 'webdev', 'designjobs'
+                ]
+                
+                for subreddit in subreddits:
+                    url = f'https://www.reddit.com/r/{subreddit}/new.json?limit=25'
+                    
+                    async with session.get(url, headers={'User-Agent': 'AiGentsy-Advanced-Bot/2.0'}) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            
+                            for post in data.get('data', {}).get('children', []):
+                                post_data = post['data']
+                                title = post_data['title'].lower()
+                                
+                                # EXPANDED filtering - catch more opportunities
+                                keywords = [
+                                    'hiring', 'looking for', 'need', 'seeking',
+                                    'wanted', 'opportunity', 'gig', 'job',
+                                    'project', 'work', 'freelance', 'contract',
+                                    'paid', '$', 'budget', 'hire'
+                                ]
+                                
+                                if any(kw in title for kw in keywords):
+                                    value = self._extract_reddit_value_advanced(post_data)
+                                    opp_type = self._classify_reddit_opportunity(post_data)
+                                    
+                                    # Extract contact info
+                                    contact = self._extract_reddit_contact(post_data)
+                                    
+                                    opportunities.append({
+                                        'id': f"reddit_adv_{post_data['id']}",
+                                        'platform': 'reddit',
+                                        'type': opp_type,
+                                        'title': post_data['title'],
+                                        'description': post_data.get('selftext', '')[:500],
+                                        'url': f"https://reddit.com{post_data['permalink']}",
+                                        'value': value,
+                                        'estimated_value': value,
+                                        'urgency': 'medium',
+                                        'created_at': datetime.fromtimestamp(post_data['created_utc']).isoformat(),
+                                        'source_data': {
+                                            'subreddit': subreddit,
+                                            'score': post_data['score'],
+                                            'num_comments': post_data.get('num_comments', 0)
+                                        },
+                                        'contact_info': contact
+                                    })
+                    
+                    await asyncio.sleep(1)  # Reddit rate limiting
+        
+        except Exception as e:
+            print(f"   ❌ Reddit advanced scraper error: {e}")
+        
+        print(f"   ✅ Reddit Advanced: Found {len(opportunities)} opportunities")
+        return opportunities
+    
+    def _extract_reddit_value_advanced(self, post: Dict) -> float:
+        """Enhanced Reddit value extraction"""
+        
+        text = (post.get('title', '') + ' ' + post.get('selftext', '')).lower()
+        
+        # Look for explicit budget mentions
+        money_patterns = [
+            r'\$(\d{1,3}(?:,\d{3})*)',  # $1,000 or $1000
+            r'(\d+)\s*(?:dollars|bucks|USD)',  # 1000 dollars
+            r'budget[:\s]+\$?(\d+)',  # budget: $500
+            r'pay(?:ing)?\s+\$?(\d+)',  # paying $500
+        ]
+        
+        for pattern in money_patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                try:
+                    amount = float(str(matches[0]).replace(',', ''))
+                    if 50 <= amount <= 50000:  # Sanity check
+                        return amount
+                except:
+                    pass
+        
+        # Estimate based on keywords
+        if any(word in text for word in ['enterprise', 'corporate', 'business']):
+            return 2000.0
+        elif any(word in text for word in ['startup', 'app', 'website']):
+            return 1500.0
+        elif any(word in text for word in ['freelance', 'contract', 'project']):
+            return 800.0
+        elif any(word in text for word in ['task', 'quick', 'small']):
+            return 150.0
+        else:
+            return 500.0
+    
+    def _classify_reddit_opportunity(self, post: Dict) -> str:
+        """Classify opportunity type from Reddit post"""
+        
+        text = (post.get('title', '') + ' ' + post.get('selftext', '')).lower()
+        
+        if any(kw in text for kw in ['code', 'developer', 'programming', 'software']):
+            return 'software_development'
+        elif any(kw in text for kw in ['design', 'logo', 'graphic', 'ui', 'ux']):
+            return 'graphic_design'
+        elif any(kw in text for kw in ['content', 'writing', 'article', 'blog']):
+            return 'content_creation'
+        elif any(kw in text for kw in ['marketing', 'seo', 'social']):
+            return 'marketing'
+        elif any(kw in text for kw in ['video', 'editing', 'youtube']):
+            return 'video_editing'
+        else:
+            return 'general'
+    
+    def _extract_reddit_contact(self, post: Dict) -> Dict:
+        """Extract contact info from Reddit post"""
+        
+        text = post.get('selftext', '')
+        
+        contact = {
+            'reddit_username': post.get('author'),
+            'reddit_url': f"https://reddit.com/user/{post.get('author')}"
+        }
+        
+        # Extract email
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, text)
+        if emails:
+            contact['email'] = emails[0]
+        
+        # Extract Twitter
+        twitter_pattern = r'@([A-Za-z0-9_]{1,15})'
+        twitter = re.findall(twitter_pattern, text)
+        if twitter:
+            contact['twitter'] = twitter[0]
+        
+        return contact
+    
+    # -------------------------------------------------------------------------
+    # HACKERNEWS SCRAPER - FREE, WORKS NOW
+    # -------------------------------------------------------------------------
+    
+    async def scrape_hackernews_advanced(self) -> List[Dict]:
+        """
+        Advanced HackerNews scraping - Gets MORE than just Who's Hiring
+        
+        Searches:
+        1. Who's Hiring threads (jobs)
+        2. Freelancer/seeking posts
+        3. Show HN with commercial potential
+        4. Ask HN about hiring
+        """
+        
+        print("   🔍 HackerNews Advanced: Deep scan...")
+        
+        opportunities = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # 1. Who's Hiring threads
+                url = 'https://hn.algolia.com/api/v1/search?query=who%20is%20hiring&tags=story'
+                
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        for hit in data.get('hits', [])[:5]:  # Top 5 hiring threads
+                            story_id = hit['objectID']
+                            comments_url = f'https://hn.algolia.com/api/v1/items/{story_id}'
+                            
+                            async with session.get(comments_url) as comments_resp:
+                                if comments_resp.status == 200:
+                                    comments_data = await comments_resp.json()
+                                    
+                                    for comment in comments_data.get('children', [])[:20]:  # 20 jobs per thread
+                                        if comment.get('text'):
+                                            value = self._extract_hn_value_advanced(comment)
+                                            opp_type = self._classify_hn_opportunity(comment)
+                                            contact = self._extract_hn_contact(comment)
+                                            
+                                            opportunities.append({
+                                                'id': f"hn_adv_{comment['id']}",
+                                                'platform': 'hackernews',
+                                                'type': opp_type,
+                                                'title': f"HN: {comment.get('author', 'Unknown')} - {opp_type}",
+                                                'description': comment.get('text', '')[:500],
+                                                'url': f"https://news.ycombinator.com/item?id={comment['id']}",
+                                                'value': value,
+                                                'estimated_value': value,
+                                                'urgency': 'medium',
+                                                'created_at': datetime.fromtimestamp(comment['created_at_i']).isoformat(),
+                                                'source_data': {
+                                                    'author': comment.get('author', ''),
+                                                    'story_id': story_id,
+                                                    'points': comment.get('points', 0)
+                                                },
+                                                'contact_info': contact
+                                            })
+                
+                # 2. Freelancer/seeking posts
+                freelance_url = 'https://hn.algolia.com/api/v1/search?query=freelancer%20OR%20seeking%20OR%20looking%20for&tags=story'
+                
+                async with session.get(freelance_url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        for hit in data.get('hits', [])[:10]:
+                            if hit.get('title'):
+                                opportunities.append({
+                                    'id': f"hn_freelance_{hit['objectID']}",
+                                    'platform': 'hackernews',
+                                    'type': 'freelance',
+                                    'title': hit['title'],
+                                    'description': hit.get('story_text', '')[:500],
+                                    'url': hit.get('url', f"https://news.ycombinator.com/item?id={hit['objectID']}"),
+                                    'value': 3000.0,
+                                    'estimated_value': 3000.0,
+                                    'urgency': 'medium',
+                                    'created_at': datetime.fromtimestamp(hit['created_at_i']).isoformat(),
+                                    'source_data': {
+                                        'author': hit.get('author', ''),
+                                        'points': hit.get('points', 0)
+                                    }
+                                })
+        
+        except Exception as e:
+            print(f"   ❌ HackerNews advanced scraper error: {e}")
+        
+        print(f"   ✅ HackerNews Advanced: Found {len(opportunities)} opportunities")
+        return opportunities
+    
+    def _extract_hn_value_advanced(self, comment: Dict) -> float:
+        """Enhanced HN value extraction"""
+        
+        text = comment.get('text', '').lower()
+        
+        # Look for salary/rate mentions
+        money_patterns = [
+            r'\$(\d{1,3}(?:,\d{3})*)',
+            r'(\d+)k\s*(?:per|/)\s*year',
+            r'(\d+)\s*(?:/hr|per hour)',
+        ]
+        
+        for pattern in money_patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                try:
+                    amount = float(str(matches[0]).replace(',', '').replace('k', '000'))
+                    # Convert hourly/yearly to project value
+                    if '/hr' in text or 'per hour' in text:
+                        amount = amount * 40  # 40 hour project
+                    elif 'year' in text:
+                        amount = amount / 12  # Monthly project value
+                    
+                    if 100 <= amount <= 50000:
+                        return amount
+                except:
+                    pass
+        
+        # Estimate based on keywords
+        if any(word in text for word in ['senior', 'lead', 'architect']):
+            return 5000.0
+        elif any(word in text for word in ['engineer', 'developer', 'full-time']):
+            return 3500.0
+        elif any(word in text for word in ['contract', 'freelance', 'project']):
+            return 2500.0
+        else:
+            return 3000.0
+    
+    def _classify_hn_opportunity(self, comment: Dict) -> str:
+        """Classify HN opportunity"""
+        
+        text = comment.get('text', '').lower()
+        
+        if any(kw in text for kw in ['engineer', 'developer', 'software', 'backend', 'frontend', 'full stack']):
+            return 'software_development'
+        elif any(kw in text for kw in ['design', 'designer', 'ui', 'ux']):
+            return 'design'
+        elif any(kw in text for kw in ['marketing', 'growth', 'seo']):
+            return 'marketing'
+        elif any(kw in text for kw in ['data', 'analyst', 'analytics', 'ml', 'ai']):
+            return 'data_science'
+        else:
+            return 'engineering'
+    
+    def _extract_hn_contact(self, comment: Dict) -> Dict:
+        """Extract contact from HN comment"""
+        
+        text = comment.get('text', '')
+        
+        contact = {
+            'hn_username': comment.get('author'),
+            'hn_url': f"https://news.ycombinator.com/user?id={comment.get('author')}"
+        }
+        
+        # Extract email
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, text)
+        if emails:
+            contact['email'] = emails[0]
+        
+        return contact
+    
+    # -------------------------------------------------------------------------
+    # SERPAPI SCRAPERS - PAID, WORKS WHEN API KEY SET
+    # -------------------------------------------------------------------------
+    
+    async def scrape_with_serpapi(self, queries: List[str]) -> List[Dict]:
+        """
+        Use SerpAPI to search for opportunities across the entire internet
+        
+        REQUIRES: SERPAPI_KEY environment variable
+        COST: $50-200/month depending on volume
+        """
+        
+        if not self.serpapi_key:
+            print("   ⚠️  SerpAPI: No API key set, skipping...")
+            return []
+        
+        print(f"   🔍 SerpAPI: Searching {len(queries)} queries...")
+        
+        opportunities = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                for query in queries:
+                    url = "https://serpapi.com/search"
+                    params = {
+                        "q": query,
+                        "api_key": self.serpapi_key,
+                        "num": 10,
+                        "engine": "google"
+                    }
+                    
+                    async with session.get(url, params=params) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            
+                            for result in data.get("organic_results", []):
+                                # Parse search result into opportunity
+                                value = self._estimate_value_from_serpapi(result, query)
+                                
+                                opportunities.append({
+                                    'id': f"serpapi_{hashlib.md5(result['link'].encode()).hexdigest()[:12]}",
+                                    'platform': 'google_search',
+                                    'type': self._classify_from_query(query),
+                                    'title': result.get('title', ''),
+                                    'description': result.get('snippet', '')[:500],
+                                    'url': result.get('link', ''),
+                                    'value': value,
+                                    'estimated_value': value,
+                                    'urgency': 'medium',
+                                    'created_at': datetime.now(timezone.utc).isoformat(),
+                                    'source_data': {
+                                        'position': result.get('position', 0),
+                                        'domain': urlparse(result['link']).netloc if result.get('link') else '',
+                                        'search_query': query
+                                    }
+                                })
+                    
+                    await asyncio.sleep(1)  # Rate limiting
+        
+        except Exception as e:
+            print(f"   ❌ SerpAPI error: {e}")
+        
+        print(f"   ✅ SerpAPI: Found {len(opportunities)} opportunities")
+        return opportunities
+    
+    def _estimate_value_from_serpapi(self, result: Dict, query: str) -> float:
+        """Estimate opportunity value from SerpAPI result"""
+        
+        snippet = result.get('snippet', '').lower()
+        title = result.get('title', '').lower()
+        combined = f"{title} {snippet}"
+        
+        # Look for explicit amounts
+        money_pattern = r'\$(\d{1,3}(?:,\d{3})*)'
+        matches = re.findall(money_pattern, combined)
+        if matches:
+            try:
+                return float(matches[0].replace(',', ''))
+            except:
+                pass
+        
+        # Estimate based on query type
+        if 'freelance' in query or 'gig' in query:
+            return 800.0
+        elif 'job' in query or 'hiring' in query:
+            return 3000.0
+        elif 'project' in query:
+            return 1500.0
+        else:
+            return 1000.0
+    
+    def _classify_from_query(self, query: str) -> str:
+        """Classify opportunity from search query"""
+        
+        query = query.lower()
+        
+        if any(kw in query for kw in ['developer', 'programming', 'software']):
+            return 'software_development'
+        elif any(kw in query for kw in ['design', 'graphic', 'logo']):
+            return 'graphic_design'
+        elif any(kw in query for kw in ['writing', 'content', 'article']):
+            return 'content_creation'
+        elif any(kw in query for kw in ['marketing', 'seo', 'social']):
+            return 'marketing'
+        else:
+            return 'general'
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. DEMAND VACUUM - Scrape the entire internet for opportunities
+# MAIN ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class VacuumConfig(BaseModel):
-    platforms: str = "all"
-    depth: str = "deep"
-    keywords: Optional[List[str]] = None
-    min_value: float = 25.0
+class DominationConfig(BaseModel):
+    """Configuration for internet domination scan"""
+    use_free: bool = True  # GitHub, Reddit, HN
+    use_paid: bool = True  # SerpAPI if key available
+    search_queries: Optional[List[str]] = None
+    max_opportunities: int = 500
 
-# Store scraped signals
-_vacuum_signals: List[Dict] = []
 
-@router.post("/vacuum/scrape-all")
-async def vacuum_scrape_all(config: VacuumConfig = VacuumConfig()):
-    """Scrape ALL platforms for monetizable signals"""
-    global _vacuum_signals
+_scrapers = RealScrapers()
+_opportunity_cache: List[Dict] = []
+
+
+@router.post("/domination/scan-all")
+async def domination_scan_all(config: DominationConfig = DominationConfig()):
+    """
+    REAL Internet Domination Scan
     
-    signals = []
-    platforms_to_scrape = ALL_PLATFORMS if config.platforms == "all" else config.platforms.split(",")
+    Phase 1: Free sources (GitHub, Reddit, HN) - WORKS NOW
+    Phase 2: Paid sources (SerpAPI) - WORKS WHEN API KEY SET
     
-    for platform in platforms_to_scrape:
-        # Simulate scraping (in production, call actual scrapers)
-        platform_signals = await _scrape_platform(platform, config)
-        signals.extend(platform_signals)
+    Returns REAL opportunities, not empty arrays!
+    """
     
-    # Score and filter signals
-    scored_signals = [
-        {**s, "score": _score_signal(s), "scraped_at": datetime.utcnow().isoformat()}
-        for s in signals
-    ]
+    global _opportunity_cache
     
-    # Keep high-value signals
-    high_value = [s for s in scored_signals if s["score"] >= 50]
-    _vacuum_signals.extend(high_value)
+    print("\n" + "="*70)
+    print("🌐 INTERNET DOMINATION ENGINE - REAL SCAN")
+    print("="*70)
     
-    # Dedupe and keep latest 10000
-    _vacuum_signals = _dedupe_signals(_vacuum_signals)[-10000:]
+    all_opportunities = []
+    sources_used = []
+    
+    # PHASE 1: FREE SOURCES (Always works)
+    if config.use_free:
+        print("\n📡 PHASE 1: FREE SOURCES")
+        
+        # GitHub
+        github_opps = await _scrapers.scrape_github_advanced()
+        all_opportunities.extend(github_opps)
+        sources_used.append(f"GitHub ({len(github_opps)})")
+        
+        # Reddit
+        reddit_opps = await _scrapers.scrape_reddit_advanced()
+        all_opportunities.extend(reddit_opps)
+        sources_used.append(f"Reddit ({len(reddit_opps)})")
+        
+        # HackerNews
+        hn_opps = await _scrapers.scrape_hackernews_advanced()
+        all_opportunities.extend(hn_opps)
+        sources_used.append(f"HackerNews ({len(hn_opps)})")
+    
+    # PHASE 2: PAID SOURCES (Only if API keys available)
+    if config.use_paid and _scrapers.serpapi_key:
+        print("\n💰 PHASE 2: PAID SOURCES")
+        
+        # Default search queries if none provided
+        if not config.search_queries:
+            config.search_queries = [
+                "freelance developer jobs",
+                "remote programming gigs",
+                "startup hiring developers",
+                "need web developer",
+                "looking for graphic designer",
+                "content writer needed"
+            ]
+        
+        serpapi_opps = await _scrapers.scrape_with_serpapi(config.search_queries)
+        all_opportunities.extend(serpapi_opps)
+        sources_used.append(f"SerpAPI ({len(serpapi_opps)})")
+    
+    # Dedupe and score
+    unique_opps = _dedupe_opportunities(all_opportunities)
+    scored_opps = sorted(unique_opps, key=lambda x: x.get('value', 0), reverse=True)
+    
+    # Limit results
+    final_opps = scored_opps[:config.max_opportunities]
+    
+    # Update cache
+    _opportunity_cache = final_opps
+    
+    total_value = sum(opp.get('value', 0) for opp in final_opps)
+    
+    print(f"\n✅ SCAN COMPLETE")
+    print(f"   Total found: {len(final_opps)} opportunities")
+    print(f"   Total value: ${total_value:,.0f}")
+    print(f"   Sources: {', '.join(sources_used)}")
+    print("="*70 + "\n")
     
     return {
         "ok": True,
-        "total_signals": len(signals),
-        "high_value_signals": len(high_value),
-        "platforms_scraped": len(platforms_to_scrape),
-        "top_signals": sorted(high_value, key=lambda x: x["score"], reverse=True)[:10]
+        "total_opportunities": len(final_opps),
+        "total_value": total_value,
+        "sources_used": sources_used,
+        "opportunities": final_opps[:20],  # Return top 20
+        "api_keys_configured": {
+            "serpapi": bool(_scrapers.serpapi_key),
+            "bing": bool(_scrapers.bing_key),
+            "github_token": bool(_scrapers.github_token)
+        }
     }
 
-async def _scrape_platform(platform: str, config: VacuumConfig) -> List[Dict]:
-    """Scrape a single platform for signals"""
-    # This would call actual scraper APIs in production
-    # For now, return structure for integration
-    return []
 
-def _score_signal(signal: Dict) -> float:
-    """Score a signal by monetization potential"""
-    score = 50.0
+@router.get("/domination/opportunities")
+async def get_domination_opportunities(limit: int = 100):
+    """Get cached opportunities from last scan"""
     
-    # Budget signals
-    if signal.get("budget"):
-        if signal["budget"] > 1000: score += 30
-        elif signal["budget"] > 500: score += 20
-        elif signal["budget"] > 100: score += 10
-    
-    # Urgency signals
-    if signal.get("urgent"): score += 15
-    if signal.get("deadline_days", 999) < 3: score += 10
-    
-    # Competition signals
-    if signal.get("bids", 999) < 5: score += 10
-    
-    # Niche signals
-    high_value_niches = ["ai", "automation", "enterprise", "saas", "fintech"]
-    if any(n in signal.get("niche", "").lower() for n in high_value_niches):
-        score += 15
-    
-    return min(100, score)
+    return {
+        "ok": True,
+        "total": len(_opportunity_cache),
+        "opportunities": _opportunity_cache[:limit]
+    }
 
-def _dedupe_signals(signals: List[Dict]) -> List[Dict]:
-    """Remove duplicate signals"""
+
+def _dedupe_opportunities(opportunities: List[Dict]) -> List[Dict]:
+    """Remove duplicates based on URL or ID"""
+    
     seen = set()
     unique = []
-    for s in signals:
-        key = f"{s.get('platform')}:{s.get('id', s.get('title', ''))}"
-        if key not in seen:
+    
+    for opp in opportunities:
+        # Create unique key from URL or ID
+        key = opp.get('url') or opp.get('id')
+        if key and key not in seen:
             seen.add(key)
-            unique.append(s)
+            unique.append(opp)
+    
     return unique
 
-# Individual platform endpoints
-@router.post("/vacuum/{platform}")
-async def vacuum_platform(platform: str):
-    """Scrape a specific platform"""
-    signals = await _scrape_platform(platform, VacuumConfig())
-    return {"ok": True, "platform": platform, "signals": len(signals)}
+
+# Helper to parse URLs
+from urllib.parse import urlparse
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 2. INSTANT ARBITRAGE - Buy low, sell high
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class ArbitrageConfig(BaseModel):
-    min_profit_pct: float = 15.0
-    max_risk: str = "medium"
-    source: Optional[str] = None
-    target: Optional[str] = None
-
-_arbitrage_opportunities: List[Dict] = []
-
-@router.post("/arbitrage/scan-all-markets")
-async def arbitrage_scan_all(config: ArbitrageConfig = ArbitrageConfig()):
-    """Scan all markets for arbitrage opportunities"""
-    opportunities = []
+# Example usage
+if __name__ == "__main__":
+    import uvicorn
+    from fastapi import FastAPI
     
-    # Service arbitrage: Find cheap services, resell premium
-    service_arb = await _find_service_arbitrage(config)
-    opportunities.extend(service_arb)
+    app = FastAPI()
+    app.include_router(router)
     
-    # Content arbitrage: Repurpose content across platforms
-    content_arb = await _find_content_arbitrage()
-    opportunities.extend(content_arb)
-    
-    # Price arbitrage: Same product, different prices
-    price_arb = await _find_price_arbitrage()
-    opportunities.extend(price_arb)
-    
-    _arbitrage_opportunities.extend(opportunities)
-    
-    return {
-        "ok": True,
-        "opportunities": len(opportunities),
-        "total_potential_profit": sum(o.get("potential_profit", 0) for o in opportunities),
-        "top_opportunities": sorted(opportunities, key=lambda x: x.get("roi", 0), reverse=True)[:10]
-    }
-
-async def _find_service_arbitrage(config: ArbitrageConfig) -> List[Dict]:
-    """Find service arbitrage opportunities (buy cheap labor, sell premium)"""
-    # In production: Compare prices across Fiverr, Upwork, etc.
-    return []
-
-async def _find_content_arbitrage() -> List[Dict]:
-    """Find content that can be repurposed across platforms"""
-    return []
-
-async def _find_price_arbitrage() -> List[Dict]:
-    """Find same products at different prices"""
-    return []
-
-@router.post("/arbitrage/service-flip")
-async def arbitrage_service_flip(source: str = "fiverr", target: str = "upwork", markup: float = 2.5):
-    """Buy services cheap on one platform, sell premium on another"""
-    return {
-        "ok": True,
-        "source": source,
-        "target": target,
-        "markup": markup,
-        "opportunities_found": 0,
-        "action": "service_arbitrage_scan"
-    }
-
-@router.post("/arbitrage/expiring-domains")
-async def arbitrage_expiring_domains(max_price: float = 50, min_value: float = 500):
-    """Find expiring domains worth more than their price"""
-    return {"ok": True, "domains_found": 0, "max_price": max_price, "min_value": min_value}
-
-@router.post("/arbitrage/content-flip")
-async def arbitrage_content_flip(source: str = "youtube", targets: List[str] = ["tiktok", "instagram"]):
-    """Repurpose content from one platform to many"""
-    return {"ok": True, "source": source, "targets": targets, "content_found": 0}
-
-@router.post("/arbitrage/geo-exploit")
-async def arbitrage_geo_exploit(
-    low_cost_regions: List[str] = ["IN", "PH", "PK"],
-    high_price_regions: List[str] = ["US", "UK", "AU"]
-):
-    """Exploit geographic price differences"""
-    return {
-        "ok": True,
-        "low_cost_regions": low_cost_regions,
-        "high_price_regions": high_price_regions,
-        "opportunities": 0
-    }
-
-@router.post("/arbitrage/execute-all")
-async def arbitrage_execute_all(min_roi: float = 1.5, max_risk: str = "medium"):
-    """Execute all profitable arbitrage opportunities"""
-    executable = [o for o in _arbitrage_opportunities if o.get("roi", 0) >= min_roi]
-    return {
-        "ok": True,
-        "executed": len(executable),
-        "skipped": len(_arbitrage_opportunities) - len(executable),
-        "total_profit": sum(o.get("potential_profit", 0) for o in executable)
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 3. VIRAL CONTENT MACHINE
-# ═══════════════════════════════════════════════════════════════════════════════
-
-_viral_trends: List[Dict] = []
-_viral_content: List[Dict] = []
-
-@router.post("/viral/detect-trends")
-async def viral_detect_trends(platforms: str = "all", lookback_hours: int = 4):
-    """Detect trending topics across all platforms"""
-    global _viral_trends
-    
-    # In production: Call Twitter API, Reddit API, Google Trends, etc.
-    trends = [
-        {"topic": "AI agents", "platform": "twitter", "velocity": 0.85, "detected_at": datetime.utcnow().isoformat()},
-        {"topic": "automation", "platform": "reddit", "velocity": 0.72, "detected_at": datetime.utcnow().isoformat()},
-    ]
-    
-    _viral_trends = trends
-    
-    return {
-        "ok": True,
-        "trends": len(trends),
-        "top_trends": trends[:10],
-        "platforms_scanned": platforms
-    }
-
-@router.post("/viral/generate-content")
-async def viral_generate_content(formats: List[str] = ["short_video", "carousel", "thread", "meme"]):
-    """Generate viral content for detected trends"""
-    global _viral_content
-    
-    content_pieces = []
-    for trend in _viral_trends[:5]:  # Top 5 trends
-        for fmt in formats:
-            content_pieces.append({
-                "id": str(uuid.uuid4())[:8],
-                "trend": trend["topic"],
-                "format": fmt,
-                "status": "generated",
-                "created_at": datetime.utcnow().isoformat()
-            })
-    
-    _viral_content.extend(content_pieces)
-    
-    return {
-        "ok": True,
-        "content_generated": len(content_pieces),
-        "formats": formats,
-        "based_on_trends": len(_viral_trends)
-    }
-
-@router.post("/viral/cross-post")
-async def viral_cross_post(platforms: List[str] = ["tiktok", "instagram", "twitter"]):
-    """Cross-post content to all platforms"""
-    posted = 0
-    for content in _viral_content:
-        if content["status"] == "generated":
-            content["status"] = "posted"
-            content["posted_to"] = platforms
-            posted += 1
-    
-    return {"ok": True, "posted": posted, "platforms": platforms}
-
-@router.post("/viral/engage")
-async def viral_engage(strategy: str = "value_first", cta: str = "soft"):
-    """Engage with trending conversations"""
-    return {"ok": True, "strategy": strategy, "cta": cta, "engagements": 0}
-
-@router.post("/viral/optimize-hashtags")
-async def viral_optimize_hashtags():
-    """Optimize hashtags for maximum reach"""
-    return {"ok": True, "hashtags_optimized": 0}
-
-@router.post("/viral/schedule-optimal")
-async def viral_schedule_optimal(timezone_targets: List[str] = ["US/Eastern", "US/Pacific"]):
-    """Schedule posts for optimal times"""
-    return {"ok": True, "scheduled": 0, "timezones": timezone_targets}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 4. AFFILIATE SWARM
-# ═══════════════════════════════════════════════════════════════════════════════
-
-_affiliate_content: List[Dict] = []
-
-@router.post("/affiliate/generate-content")
-async def affiliate_generate_content(networks: List[str] = ["amazon", "shareasale"]):
-    """Generate affiliate content for top products"""
-    return {"ok": True, "networks": networks, "content_generated": 0}
-
-@router.post("/affiliate/deploy-content")
-async def affiliate_deploy_content(targets: List[str] = ["medium", "youtube"]):
-    """Deploy affiliate content to platforms"""
-    return {"ok": True, "targets": targets, "deployed": 0}
-
-@router.post("/affiliate/seo-reviews")
-async def affiliate_seo_reviews(niches: List[str] = ["saas", "electronics"]):
-    """Generate SEO-optimized review content"""
-    return {"ok": True, "niches": niches, "reviews_generated": 0}
-
-@router.post("/affiliate/comparison-pages")
-async def affiliate_comparison_pages():
-    """Generate comparison pages"""
-    return {"ok": True, "pages_generated": 0}
-
-@router.post("/affiliate/email-sequences")
-async def affiliate_email_sequences():
-    """Create email sequences with affiliate offers"""
-    return {"ok": True, "sequences_created": 0}
-
-@router.post("/affiliate/optimize")
-async def affiliate_optimize():
-    """Optimize affiliate campaigns"""
-    return {"ok": True, "optimizations": 0, "revenue": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 5. LEAD MAGNET FACTORY
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/leadmag/generate")
-async def leadmag_generate(types: List[str] = ["ebook", "checklist", "template"]):
-    """Generate lead magnets"""
-    return {"ok": True, "types": types, "generated": 0}
-
-@router.post("/leadmag/deploy-pages")
-async def leadmag_deploy_pages():
-    """Deploy landing pages for lead magnets"""
-    return {"ok": True, "pages_deployed": 0}
-
-@router.post("/leadmag/create-forms")
-async def leadmag_create_forms():
-    """Create opt-in forms"""
-    return {"ok": True, "forms_created": 0}
-
-@router.post("/leadmag/ab-test")
-async def leadmag_ab_test():
-    """A/B test lead magnet headlines"""
-    return {"ok": True, "tests_running": 0}
-
-@router.post("/leadmag/nurture-sequences")
-async def leadmag_nurture_sequences():
-    """Create email nurture sequences"""
-    return {"ok": True, "sequences_created": 0}
-
-@router.post("/leadmag/convert")
-async def leadmag_convert():
-    """Convert leads to customers"""
-    return {"ok": True, "leads": 0, "conversions": 0, "conversion_rate": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 6. PRICE INTELLIGENCE
-# ═══════════════════════════════════════════════════════════════════════════════
-
-_competitor_prices: Dict[str, List[Dict]] = {}
-
-@router.post("/pricing/monitor-competitors")
-async def pricing_monitor_competitors(platforms: List[str] = ["fiverr", "upwork"]):
-    """Monitor competitor pricing"""
-    return {"ok": True, "platforms": platforms, "competitors_tracked": 0}
-
-@router.post("/pricing/dynamic-reprice")
-async def pricing_dynamic_reprice(strategy: str = "undercut_10pct", min_margin: float = 0.40):
-    """Dynamically reprice to stay competitive"""
-    return {"ok": True, "strategy": strategy, "min_margin": min_margin, "repriced": 0}
-
-@router.post("/pricing/demand-adjust")
-async def pricing_demand_adjust():
-    """Adjust prices based on demand"""
-    return {"ok": True, "adjustments": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 7. REPUTATION FARMING
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/reputation/request-reviews")
-async def reputation_request_reviews():
-    """Request reviews from completed orders"""
-    return {"ok": True, "requests_sent": 0}
-
-@router.post("/reputation/generate-case-studies")
-async def reputation_generate_case_studies():
-    """Generate case studies from successful projects"""
-    return {"ok": True, "case_studies_generated": 0}
-
-@router.post("/reputation/collect-testimonials")
-async def reputation_collect_testimonials():
-    """Collect testimonials"""
-    return {"ok": True, "testimonials_collected": 0}
-
-@router.post("/reputation/update-portfolio")
-async def reputation_update_portfolio():
-    """Update portfolio with recent work"""
-    return {"ok": True, "portfolio_items_added": 0}
-
-@router.post("/reputation/distribute-badges")
-async def reputation_distribute_badges():
-    """Distribute trust badges"""
-    return {"ok": True, "badges_distributed": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 8. TREND HIJACKING
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/trends/detect-breaking")
-async def trends_detect_breaking(sources: List[str] = ["twitter", "reddit", "google"]):
-    """Detect breaking trends"""
-    return {"ok": True, "sources": sources, "trends_detected": 0}
-
-@router.post("/trends/generate-content")
-async def trends_generate_content():
-    """Generate content for detected trends"""
-    return {"ok": True, "content_generated": 0}
-
-@router.post("/trends/create-offers")
-async def trends_create_offers():
-    """Create trend-specific offers"""
-    return {"ok": True, "offers_created": 0}
-
-@router.post("/trends/deploy")
-async def trends_deploy():
-    """Deploy trend content"""
-    return {"ok": True, "deployed": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 9. MICRO-SERVICE ARMY
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/microservice/identify-gaps")
-async def microservice_identify_gaps():
-    """Identify underserved niches"""
-    return {"ok": True, "gaps_identified": 0}
-
-@router.post("/microservice/deploy")
-async def microservice_deploy(auto_scale: bool = True):
-    """Deploy micro-services for gaps"""
-    return {"ok": True, "auto_scale": auto_scale, "services_deployed": 0}
-
-@router.post("/microservice/cross-sell")
-async def microservice_cross_sell():
-    """Cross-sell between micro-services"""
-    return {"ok": True, "cross_sells": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 10. PASSIVE INCOME GENERATORS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/passive/royalty-sweep")
-async def passive_royalty_sweep():
-    """Sweep royalty payments"""
-    return {"ok": True, "royalties_collected": 0}
-
-@router.post("/passive/license-renewals")
-async def passive_license_renewals():
-    """Process license renewals"""
-    return {"ok": True, "renewals_processed": 0}
-
-@router.post("/passive/process-subscriptions")
-async def passive_process_subscriptions():
-    """Process subscription payments"""
-    return {"ok": True, "subscriptions_processed": 0}
-
-@router.post("/passive/distribute-revenue")
-async def passive_distribute_revenue():
-    """Distribute revenue shares"""
-    return {"ok": True, "distributions": 0}
-
-@router.post("/passive/monetize-assets")
-async def passive_monetize_assets():
-    """Monetize digital assets"""
-    return {"ok": True, "assets_monetized": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 11. API ECONOMY
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/api-economy/meter-usage")
-async def api_economy_meter_usage():
-    """Meter API usage"""
-    return {"ok": True, "metered_calls": 0}
-
-@router.post("/api-economy/bill-customers")
-async def api_economy_bill_customers():
-    """Bill API customers"""
-    return {"ok": True, "customers_billed": 0, "revenue": 0}
-
-@router.post("/api-economy/aggregate")
-async def api_economy_aggregate():
-    """Aggregate third-party APIs"""
-    return {"ok": True, "apis_aggregated": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 12. DATA MONETIZATION
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/data/generate-reports")
-async def data_generate_reports():
-    """Generate market reports"""
-    return {"ok": True, "reports_generated": 0}
-
-@router.post("/data/trend-products")
-async def data_trend_products():
-    """Create trend analysis products"""
-    return {"ok": True, "products_created": 0}
-
-@router.post("/data/competitive-intel")
-async def data_competitive_intel():
-    """Generate competitive intelligence"""
-    return {"ok": True, "intel_reports": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 13. NETWORK AMPLIFIER
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/network/process-referrals")
-async def network_process_referrals():
-    """Process referral program"""
-    return {"ok": True, "referrals_processed": 0}
-
-@router.post("/network/viral-loops")
-async def network_viral_loops():
-    """Activate viral loops"""
-    return {"ok": True, "loops_activated": 0}
-
-@router.post("/network/ugc-incentives")
-async def network_ugc_incentives():
-    """Incentivize user-generated content"""
-    return {"ok": True, "incentives_sent": 0}
-
-@router.post("/network/community-rewards")
-async def network_community_rewards():
-    """Distribute community rewards"""
-    return {"ok": True, "rewards_distributed": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 14. SELF-HEALING
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/orchestrator/auto-recover")
-async def orchestrator_auto_recover():
-    """Auto-recover failed systems"""
-    return {"ok": True, "systems_recovered": 0}
-
-@router.post("/orchestrator/clear-stuck")
-async def orchestrator_clear_stuck():
-    """Clear stuck queues"""
-    return {"ok": True, "queues_cleared": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# WIRE-UP HELPER
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def include_domination_engine(app):
-    """Include this router in your FastAPI app"""
-    app.include_router(router, prefix="", tags=["Internet Domination"])
-    print("🌐 INTERNET DOMINATION ENGINE LOADED - 15 systems active")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
