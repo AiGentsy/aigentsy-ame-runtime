@@ -253,6 +253,36 @@ class ExecutionOrchestrator:
                 print(f"   [Skip] Mesh recommends skipping: {result['reason']}")
                 return result
             
+            # ===== STAGE 0.5: V106 GUARDRAILS + MARKET-MAKER (NEW) =====
+            print("[Stage 0.5] V106 Guardrails + Market-Maker...")
+            try:
+                from v106_integration_orchestrator import check_autonomy_guardrails, market_maker_auto_quote
+                
+                # Check if we should proceed
+                guardrails = await check_autonomy_guardrails()
+                result['stages']['v106_guardrails'] = guardrails
+                
+                if not guardrails['proceed']:
+                    result['status'] = 'blocked_by_guardrails'
+                    result['reason'] = guardrails.get('reason')
+                    print(f"   [Block] V106 guardrails: {result['reason']}")
+                    return result
+                
+                # Create market-maker quote
+                quote = await market_maker_auto_quote(opportunity)
+                result['stages']['v106_market_maker'] = quote
+                
+                # If quote matched on IFX, skip manual execution
+                if quote.get('action') == 'matched_and_executing':
+                    result['status'] = 'executed_via_ifx'
+                    result['execution'] = quote['matches']
+                    print(f"   [IFX Match] Executed via orderbook match")
+                    return result
+                    
+            except Exception as e:
+                print(f"[V106] Integration error: {e}")
+                # Continue with normal flow if v106 unavailable
+            
             # ===== STAGE 1: PRE-EXECUTION CHECKS =====
             print("[Stage 1] Pre-execution checks...")
             pre_checks = await self._pre_execution_checks(opportunity, username, is_aigentsy)
@@ -267,6 +297,22 @@ class ExecutionOrchestrator:
             print("[Stage 2] Financing setup...")
             financing = await self._setup_financing(opportunity, username, is_aigentsy)
             result['stages']['financing'] = financing
+            
+            # ===== STAGE 2.5: V106 RISK-TRANCHING (NEW) =====
+            print("[Stage 2.5] V106 Risk-Tranching (Bonds + Insurance)...")
+            try:
+                from v106_integration_orchestrator import risk_tranche_deal
+                
+                risk_tranche = await risk_tranche_deal(
+                    execution_id=execution_id,
+                    opportunity=opportunity,
+                    relationship_strength=opportunity.get('relationship_strength', 0.5)
+                )
+                result['stages']['v106_risk_tranche'] = risk_tranche
+                print(f"   [Risk] Bond: ${risk_tranche.get('bond', {}).get('amount', 0):.2f}, Premium: ${risk_tranche.get('insurance', {}).get('premium', 0):.2f}")
+                
+            except Exception as e:
+                print(f"[V106] Risk-tranching error: {e}")
             
             # ===== STAGE 3: EXECUTION =====
             print("[Stage 3] Executing work...")
@@ -319,6 +365,22 @@ class ExecutionOrchestrator:
                 actual_revenue=payment.get('amount', 0),
                 mesh_optimization=mesh_optimization
             )
+            
+            # ===== V106: ENHANCED LEARNING FEEDBACK (NEW) =====
+            try:
+                from v106_integration_orchestrator import feed_outcome_to_learning
+                
+                learning = await feed_outcome_to_learning(
+                    opportunity=opportunity,
+                    execution_result=execution,
+                    success=True,
+                    actual_revenue=payment.get('amount', 0)
+                )
+                result['stages']['v106_learning'] = learning
+                print(f"   [Learning] Updated systems: {', '.join(learning.get('learning_systems_updated', []))}")
+                
+            except Exception as e:
+                print(f"[V106] Learning feedback error: {e}")
             
             result['status'] = 'completed'
             result['completed_at'] = datetime.now(timezone.utc).isoformat()
