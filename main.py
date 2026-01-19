@@ -35583,7 +35583,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
             alpha_engine = AlphaDiscoveryEngine()
             # Correct method: discover_and_route (not discover_all)
             discovery_result = await alpha_engine.discover_and_route(
-                dimensions=[1]
+                dimensions=[1],
                 score_opportunities=True,
                 auto_execute=False  # We'll handle execution separately
             )
