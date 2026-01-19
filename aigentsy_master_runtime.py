@@ -111,6 +111,11 @@ class RuntimeConfig:
     # Learning
     learning_sync_interval_hours: int = 6
     metahive_sync_interval_hours: int = 24
+    
+    # ===== V106 MODE (NEW) =====
+    use_v106_mode: bool = True  # Use integrated market-maker + risk-tranche
+    v106_min_cash_floor: float = 50.0
+    v106_kelly_budget: float = 10000.0
 
 
 DEFAULT_CONFIG = RuntimeConfig()
@@ -1306,35 +1311,52 @@ class AiGentsyMasterRuntime:
         
         router = get_platform_router()
         
+        # ===== V106 INTEGRATED EXECUTION MODE (NEW) =====
+        try:
+            from v106_integration_orchestrator import v106_integrated_execution
+            v106_mode_available = True
+        except:
+            v106_mode_available = False
+        
         for opp in high_confidence[:self.config.max_parallel_executions]:
             try:
-                exec_result = await router.execute_opportunity(opp)
-                
-                if exec_result.get('ok'):
-                    results['executed'] += 1
+                # ===== V106: Use integrated market-maker + risk-tranche mode =====
+                if v106_mode_available and self.config.use_v106_mode:
+                    exec_result = await v106_integrated_execution(opp, auto_execute=True)
                     
-                    # Track outcome
-                    if SYSTEMS.get('outcome_oracle'):
-                        on_event({
-                            'kind': 'OPPORTUNITY_EXECUTED',
-                            'username': 'aigentsy',
-                            'opportunity_id': opp.get('id'),
-                            'platform': exec_result.get('platform'),
-                            'timestamp': _now()
-                        })
-                    
-                    # Store learning pattern
-                    if SYSTEMS.get('yield_memory'):
-                        store_pattern(
-                            username='aigentsy',
-                            pattern_type='execution',
-                            context={'platform': exec_result.get('platform'), 'type': opp.get('type')},
-                            action={'executed': True},
-                            outcome={'status': 'pending'}
-                        )
-                        self.stats['patterns_learned'] += 1
+                    if exec_result.get('ok'):
+                        results['executed'] += 1
+                    else:
+                        results['failed'] += 1
                 else:
-                    results['failed'] += 1
+                    # Standard execution
+                    exec_result = await router.execute_opportunity(opp)
+                    
+                    if exec_result.get('ok'):
+                        results['executed'] += 1
+                    else:
+                        results['failed'] += 1
+                
+                # Track outcome (common to both modes)
+                if SYSTEMS.get('outcome_oracle'):
+                    on_event({
+                        'kind': 'OPPORTUNITY_EXECUTED',
+                        'username': 'aigentsy',
+                        'opportunity_id': opp.get('id'),
+                        'platform': exec_result.get('platform'),
+                        'timestamp': _now()
+                    })
+                
+                # Store learning pattern (common to both modes)
+                if SYSTEMS.get('yield_memory'):
+                    store_pattern(
+                        username='aigentsy',
+                        pattern_type='execution',
+                        context={'platform': exec_result.get('platform'), 'type': opp.get('type')},
+                        action={'executed': True},
+                        outcome={'status': 'pending'}
+                    )
+                    self.stats['patterns_learned'] += 1
                 
                 results['details'].append(exec_result)
                 
