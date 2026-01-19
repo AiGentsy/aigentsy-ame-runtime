@@ -43,6 +43,7 @@ from v97_cash_endpoints import include_v97_cash_endpoints
 from profit_engine_v98 import include_profit_engine
 from diagnostic_tracer import include_diagnostic_tracer
 from apex_upgrades_overlay import include_overlay
+from v110_gap_harvesters import include_gap_harvesters
 from opportunity_filters import (
     filter_opportunities,
     get_execute_now_opportunities,
@@ -59,7 +60,6 @@ from template_integration_coordinator import (
 )
 from real_signal_ingestion import get_signal_engine
 from autonomous_deal_graph import get_deal_graph
-from v110_gap_harvesters import include_gap_harvesters
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
