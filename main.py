@@ -34691,6 +34691,176 @@ try:
 except ImportError:
     SOCIAL_ENGINE_AVAILABLE = False
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADD THESE MISSING WADE ENDPOINTS TO main.py
+# Insert after your /wade/dashboard endpoint (around line 35970)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/wade/approve-all")
+async def approve_all_wade_workflows():
+    """
+    Approve ALL pending workflows in one click
+    This is what the dashboard's "Approve All" button calls
+    """
+    
+    try:
+        workflows = reconciliation_state.get("wade_workflows", {})
+        
+        pending = [
+            wf_id for wf_id, wf in workflows.items()
+            if wf.get("stage") == "pending_wade_approval"
+        ]
+        
+        if not pending:
+            return {
+                "ok": False,
+                "error": "No pending workflows to approve",
+                "approved_count": 0
+            }
+        
+        approved = []
+        failed = []
+        
+        for wf_id in pending:
+            try:
+                workflow = reconciliation_state["wade_workflows"][wf_id]
+                workflow["stage"] = "wade_approved"
+                workflow["approved_at"] = datetime.utcnow().isoformat()
+                
+                if "history" not in workflow:
+                    workflow["history"] = []
+                
+                workflow["history"].append({
+                    "stage": "wade_approved",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "action": "Bulk approved via approve-all button"
+                })
+                
+                approved.append(wf_id)
+                
+            except Exception as e:
+                failed.append({"id": wf_id, "error": str(e)})
+        
+        return {
+            "ok": True,
+            "approved_count": len(approved),
+            "failed_count": len(failed),
+            "approved": approved[:10],  # First 10 for reference
+            "failed": failed,
+            "message": f"Successfully approved {len(approved)} workflows"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "approved_count": 0
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/approve")
+async def approve_wade_workflow(workflow_id: str):
+    """
+    Wade approves a single workflow (individual checkmark button)
+    """
+    
+    try:
+        workflows = reconciliation_state.get("wade_workflows", {})
+        
+        # Try exact match first
+        if workflow_id not in workflows:
+            # Try partial match
+            matching = [k for k in workflows.keys() if workflow_id in k or k in workflow_id]
+            if matching:
+                workflow_id = matching[0]
+            else:
+                return {
+                    "ok": False, 
+                    "error": f"Workflow not found: {workflow_id}",
+                    "total_workflows": len(workflows)
+                }
+        
+        workflow = workflows[workflow_id]
+        workflow["stage"] = "wade_approved"
+        workflow["approved_at"] = datetime.utcnow().isoformat()
+        
+        if "history" not in workflow:
+            workflow["history"] = []
+        
+        workflow["history"].append({
+            "stage": "wade_approved",
+            "timestamp": datetime.utcnow().isoformat(),
+            "action": "Wade approved via checkmark button"
+        })
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "stage": "wade_approved",
+            "message": "Workflow approved successfully"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+@app.post("/wade/workflow/{workflow_id}/reject")
+async def reject_wade_workflow(workflow_id: str, reason: str = None):
+    """
+    Wade rejects a workflow (X button)
+    """
+    
+    try:
+        workflows = reconciliation_state.get("wade_workflows", {})
+        
+        # Try exact match first
+        if workflow_id not in workflows:
+            # Try partial match
+            matching = [k for k in workflows.keys() if workflow_id in k or k in workflow_id]
+            if matching:
+                workflow_id = matching[0]
+            else:
+                return {
+                    "ok": False, 
+                    "error": f"Workflow not found: {workflow_id}"
+                }
+        
+        workflow = workflows[workflow_id]
+        workflow["stage"] = "rejected"
+        workflow["rejected_at"] = datetime.utcnow().isoformat()
+        workflow["rejection_reason"] = reason
+        
+        if "history" not in workflow:
+            workflow["history"] = []
+        
+        workflow["history"].append({
+            "stage": "rejected",
+            "timestamp": datetime.utcnow().isoformat(),
+            "action": f"Wade rejected: {reason or 'No reason given'}"
+        })
+        
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "stage": "rejected",
+            "message": "Workflow rejected"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION: AME FULL WIRING (Autonomous Marketing Engine)
