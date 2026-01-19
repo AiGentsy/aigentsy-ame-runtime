@@ -55,6 +55,18 @@ except ImportError:
     YIELD_AVAILABLE = False
     print("⚠️ Yield Memory not available")
 
+# ============================================================
+# V106 INTEGRATION (NEW)
+# ============================================================
+
+try:
+    from v106_integration_orchestrator import v106_integrated_execution
+    V106_AVAILABLE = True
+    print("✓ V106 Integration imported")
+except ImportError:
+    V106_AVAILABLE = False
+    print("⚠️ V106 Integration not available")
+
 # Import autonomous executor
 try:
     from universal_executor import UniversalAutonomousExecutor, get_executor
@@ -198,9 +210,14 @@ Return ONLY a number between 0.0 and 1.0"""
         for opp_data in user_opps:
             opportunity = opp_data['opportunity']
             
-            # Execute autonomously
-            result = await executor.execute_opportunity(opportunity, auto_approve=True)
-            executions.append(result)
+            # ===== V106: Full integrated execution (market-maker + risk-tranche + close-loop) =====
+            if V106_AVAILABLE:
+                result = await v106_integrated_execution(opportunity, auto_execute=True)
+                executions.append(result)
+            else:
+                # Fallback to standard execution
+                result = await executor.execute_opportunity(opportunity, auto_approve=True)
+                executions.append(result)
             
             # Track revenue
             if PAYMENT_AVAILABLE:
@@ -218,9 +235,14 @@ Return ONLY a number between 0.0 and 1.0"""
         for opp_data in aigentsy_opps:
             opportunity = opp_data['opportunity']
             
-            # Execute autonomously
-            result = await executor.execute_opportunity(opportunity, auto_approve=True)
-            executions.append(result)
+            # ===== V106: Full integrated execution (market-maker + risk-tranche + close-loop) =====
+            if V106_AVAILABLE:
+                result = await v106_integrated_execution(opportunity, auto_execute=True)
+                executions.append(result)
+            else:
+                # Fallback to standard execution
+                result = await executor.execute_opportunity(opportunity, auto_approve=True)
+                executions.append(result)
             
             # Track revenue
             if PAYMENT_AVAILABLE:
