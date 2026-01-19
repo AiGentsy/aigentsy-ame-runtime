@@ -89,6 +89,14 @@ class PatternType(str, Enum):
     AI_SPECIALIZATION = "ai_specialization"
     AI_ENSEMBLE = "ai_ensemble"
     AI_CROSS_POLLINATION = "ai_cross_pollination"
+    # V111-V112 Revenue Engine Patterns
+    UACR_FULFILLMENT = "uacr_fulfillment"
+    RECEIVABLES_ADVANCE = "receivables_advance"
+    PAYMENTS_ROUTING = "payments_routing"
+    MARKET_MAKER_SPREAD = "market_maker_spread"
+    TRANCHE_ALLOCATION = "tranche_allocation"
+    OFFER_SYNDICATION_PATTERN = "offer_syndication_pattern"
+    GAP_HARVESTER_DISCOVERY = "gap_harvester_discovery"
 
 
 def _now() -> str:
