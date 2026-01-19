@@ -1548,6 +1548,42 @@ jobs:
           ./_log.sh "upgrade_suggestion" "true" "$(($(date +%s) - PHASE_START))000"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # v106 NEW: MARKET-MAKER MODE + RISK-TRANCHING
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🏦 v106 Market-Maker Mode
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🏦 V106 MARKET-MAKER MODE - Auto-quotes + Risk-tranching"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check v106 status
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/v106/status" GET '' 20 | tee json/v106-status.json | jq -c '{ok,systems_available,novelty_score}' 2>/dev/null || true
+          
+          # Check guardrails before running autonomy
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/v106/check-guardrails" GET '' 20 | jq -c '{proceed,mode,checks}' 2>/dev/null || true
+          
+          ./_log.sh "v106_market_maker" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 🔄 v106 Warm-Intro Loop
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔄 V106 WARM-INTRO FEEDBACK LOOP"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get warm intros from DealGraph and push to discovery
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/dealgraph/intro-opportunities" GET '' 30 2>/dev/null | jq -c '.opportunities[]?' 2>/dev/null | while read intro; do
+            if [ -n "$intro" ]; then
+              timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/v106/warm-intro-to-discovery" POST "$intro" 30 | jq -c '{ok,queued}' 2>/dev/null || true
+            fi
+          done
+          
+          ./_log.sh "v106_warm_intro_loop" "true" "$(($(date +%s) - PHASE_START))000"
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 47: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🏥 Health Checks
