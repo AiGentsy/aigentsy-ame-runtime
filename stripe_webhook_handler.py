@@ -33,8 +33,7 @@ else:
 async def handle_stripe_webhook(request: Request):
     """
     Handle Stripe webhook events.
-    Primary event: payment_intent.succeeded (when customer pays)
-    Awards AIGx based on transaction amount, user tier, and early adopter status.
+    UPGRADED: Now handles both kit purchases AND execution revenue!
     """
     if not STRIPE_SECRET or not STRIPE_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Stripe not configured.")
@@ -53,26 +52,87 @@ async def handle_stripe_webhook(request: Request):
     print(f"🔔 Received Stripe event: {event_type}")
     
     # ============================================================
-    # PAYMENT SUCCEEDED - AWARD AIGX
+    # PAYMENT SUCCEEDED - CHECK TYPE
     # ============================================================
     if event_type == "payment_intent.succeeded":
         payment_intent = event["data"]["object"]
+        metadata = payment_intent.get("metadata", {})
         
-        try:
-            result = await process_payment_success(payment_intent)
-            return {"status": "ok", "processed": True, "result": result}
-        except Exception as e:
-            print(f"❌ Error processing payment: {e}")
-            return {"status": "error", "error": str(e)}
+        # NEW: Check if execution revenue
+        if metadata.get("execution_id") or metadata.get("type") == "execution_revenue":
+            try:
+                result = await handle_execution_payment(payment_intent)
+                return {"status": "ok", "processed": True, "result": result}
+            except Exception as e:
+                print(f"❌ Error processing execution payment: {e}")
+                return {"status": "error", "error": str(e)}
+        
+        # Existing: Kit purchase
+        else:
+            try:
+                result = await process_payment_success(payment_intent)
+                return {"status": "ok", "processed": True, "result": result}
+            except Exception as e:
+                print(f"❌ Error processing payment: {e}")
+                return {"status": "error", "error": str(e)}
     
     # ============================================================
-    # CHECKOUT SESSION COMPLETED (Optional - for subscription setup)
+    # INVOICE PAID - EXECUTION REVENUE (NEW!)
+    # ============================================================
+    elif event_type == "invoice.paid":
+        invoice = event["data"]["object"]
+        metadata = invoice.get("metadata", {})
+        
+        if metadata.get("execution_id") or metadata.get("type") == "execution_revenue":
+            execution_id = metadata.get("execution_id")
+            amount_paid = invoice.get("amount_paid", 0) / 100
+            
+            print(f"💰 INVOICE PAID - EXECUTION REVENUE!")
+            print(f"   Execution: {execution_id}")
+            print(f"   Amount: ${amount_paid:.2f}")
+            
+            try:
+                from payment_collector import mark_paid
+                await mark_paid(
+                    execution_id=execution_id,
+                    stripe_charge_id=invoice.get("id"),
+                    amount=amount_paid
+                )
+                print(f"✅ Execution marked as paid")
+                return {"status": "ok", "processed": True}
+            except Exception as e:
+                print(f"⚠️ Failed to mark as paid: {e}")
+                return {"status": "error", "error": str(e)}
+    
+    # ============================================================
+    # CHECKOUT SESSION COMPLETED
     # ============================================================
     elif event_type == "checkout.session.completed":
         session = event["data"]["object"]
-        print(f"✅ Checkout session completed: {session.get('id')}")
-        # Handle subscription setup if needed in future
-        return {"status": "ok", "processed": False, "note": "Checkout session logged"}
+        metadata = session.get("metadata", {})
+        
+        # Check if execution revenue
+        if metadata.get("execution_id") or metadata.get("type") == "execution_revenue":
+            execution_id = metadata.get("execution_id")
+            amount_paid = session.get("amount_total", 0) / 100
+            
+            print(f"💰 CHECKOUT COMPLETED - EXECUTION REVENUE!")
+            print(f"   Execution: {execution_id}")
+            print(f"   Amount: ${amount_paid:.2f}")
+            
+            try:
+                from payment_collector import mark_paid
+                await mark_paid(
+                    execution_id=execution_id,
+                    stripe_charge_id=session.get("id"),
+                    amount=amount_paid
+                )
+                return {"status": "ok", "processed": True}
+            except Exception as e:
+                return {"status": "error", "error": str(e)}
+        else:
+            print(f"✅ Checkout session completed: {session.get('id')}")
+            return {"status": "ok", "processed": False, "note": "Checkout session logged"}
     
     # ============================================================
     # OTHER EVENTS (Log but don't process)
@@ -80,6 +140,41 @@ async def handle_stripe_webhook(request: Request):
     else:
         print(f"ℹ️ Unhandled event type: {event_type}")
         return {"status": "ok", "processed": False, "note": "Event logged"}
+
+
+async def handle_execution_payment(payment_intent: dict) -> dict:
+    """
+    Handle payment for execution revenue (NEW!)
+    """
+    
+    amount_usd = payment_intent.get("amount", 0) / 100.0
+    metadata = payment_intent.get("metadata", {})
+    execution_id = metadata.get("execution_id")
+    platform = metadata.get("platform")
+    
+    print(f"💰 EXECUTION PAYMENT RECEIVED!")
+    print(f"   Execution: {execution_id}")
+    print(f"   Amount: ${amount_usd:.2f}")
+    print(f"   Platform: {platform}")
+    
+    try:
+        from payment_collector import mark_paid
+        await mark_paid(
+            execution_id=execution_id,
+            stripe_charge_id=payment_intent.get('id'),
+            amount=amount_usd
+        )
+        print(f"✅ Marked as paid")
+    except Exception as e:
+        print(f"⚠️ Mark paid failed: {e}")
+    
+    return {
+        "ok": True,
+        "execution_id": execution_id,
+        "amount": amount_usd,
+        "platform": platform
+    }
+
 
 
 async def process_payment_success(payment_intent: dict) -> dict:
