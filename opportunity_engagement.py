@@ -262,35 +262,109 @@ class OpportunityEngagement:
         message: str
     ) -> Dict[str, Any]:
         """
-        Deliver completed solution back through same channel
+        Deliver completed solution AND request payment via Stripe
+        
+        UPGRADED: Now creates Stripe payment request after delivery!
         """
         
         platform = opportunity.get('platform', 'email')
         
+        # ===== STEP 1: DELIVER THE WORK =====
+        
         if platform == 'github':
-            # Submit PR or comment with solution
             print(f"[GitHub Delivery] Submitting solution for {opportunity['url']}")
-            return {
+            delivery_result = {
                 'success': True,
                 'method': 'github_pr',
                 'pr_url': 'https://github.com/example/repo/pull/456'
             }
         
         elif platform == 'upwork':
-            # Upload deliverables to Upwork
             print(f"[Upwork Delivery] Uploading deliverables")
-            return {
+            delivery_result = {
                 'success': True,
                 'method': 'upwork_upload'
             }
         
         else:
-            # Email delivery
             print(f"[Email Delivery] Sending completed work")
-            return {
+            delivery_result = {
                 'success': True,
                 'method': 'email'
             }
+        
+        # ===== STEP 2: REQUEST PAYMENT VIA STRIPE (NEW!) =====
+        
+        amount = opportunity.get('value', 1000)
+        client_email = self._extract_client_email(opportunity)
+        execution_id = solution.get('execution_id', f"exec_{opportunity.get('id')}")
+        
+        print(f"\n💰 Creating payment request for ${amount:,.2f}...")
+        
+        try:
+            from payment_collector import get_payment_collector
+            collector = get_payment_collector()
+            
+            # Create Stripe invoice/payment link
+            payment_request = await collector.create_payment_request(
+                execution_id=execution_id,
+                opportunity=opportunity,
+                delivery=delivery_result,
+                amount=amount,
+                client_email=client_email
+            )
+            
+            if payment_request.get('success'):
+                payment_url = payment_request.get('invoice_url') or payment_request.get('payment_link_url')
+                print(f"✅ Payment request created: {payment_url}")
+                
+                # ===== STEP 3: NOTIFY CLIENT =====
+                if client_email and payment_request.get('method') == 'stripe_invoice':
+                    print(f"📧 Invoice automatically sent to {client_email}")
+                else:
+                    print(f"💳 Payment link: {payment_url}")
+                    print(f"   (Send this to client via {platform})")
+                
+                delivery_result['payment_request'] = payment_request
+                delivery_result['payment_url'] = payment_url
+            else:
+                print(f"⚠️ Payment request failed: {payment_request.get('error')}")
+                delivery_result['payment_request'] = {'success': False}
+        
+        except Exception as e:
+            print(f"⚠️ Payment request error: {e}")
+            delivery_result['payment_request'] = {'success': False, 'error': str(e)}
+        
+        return delivery_result
+    
+    
+    def _extract_client_email(self, opportunity: Dict) -> Optional[str]:
+        """Extract client email from opportunity data"""
+        
+        import re
+        
+        # GitHub doesn't expose real emails
+        if opportunity.get('platform') == 'github':
+            return None
+        
+        # Try to extract from description
+        description = opportunity.get('description', '')
+        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', description)
+        if emails:
+            return emails[0]
+        
+        # Check source_data
+        source = opportunity.get('source_data', {})
+        if source.get('email'):
+            return source['email']
+        
+        # Check title
+        title = opportunity.get('title', '')
+        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', title)
+        if emails:
+            return emails[0]
+        
+        return None
     
     # TEMPLATE METHODS
     
