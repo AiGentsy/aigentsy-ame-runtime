@@ -469,6 +469,50 @@ except ImportError as e:
     SYSTEMS['fiverr_automation'] = False
     print(f"❌ fiverr_automation_engine: {e}")
 
+# ----- V107-V112 REVENUE ENGINES -----
+try:
+    from v107_accretive_overlays import include_v107_overlays
+    SYSTEMS['v107'] = True
+    print("✅ v107_accretive_overlays (20 engines)")
+except ImportError as e:
+    SYSTEMS['v107'] = False
+    print(f"❌ v107_accretive_overlays: {e}")
+
+try:
+    from v110_gap_harvesters import include_gap_harvesters, scan_all_harvesters
+    SYSTEMS['v110'] = True
+    print("✅ v110_gap_harvesters (15 engines)")
+except ImportError as e:
+    SYSTEMS['v110'] = False
+    print(f"❌ v110_gap_harvesters: {e}")
+
+try:
+    from v111_gapharvester_ii import (
+        include_gapharvester_ii,
+        uacr_scan_twitter,
+        uacr_scan_instagram,
+        uacr_batch_quote,
+        receivables_scan_stripe,
+        payments_optimize_routing
+    )
+    SYSTEMS['v111'] = True
+    print("✅ v111_gapharvester_ii ($4.6T U-ACR + Receivables + Payments)")
+except ImportError as e:
+    SYSTEMS['v111'] = False
+    print(f"❌ v111_gapharvester_ii: {e}")
+
+try:
+    from v112_market_maker_extensions import (
+        include_market_maker,
+        ifx_market_making_cycle,
+        tranche_check_settlements
+    )
+    SYSTEMS['v112'] = True
+    print("✅ v112_market_maker_extensions (IFX/OAA + Tranching)")
+except ImportError as e:
+    SYSTEMS['v112'] = False
+    print(f"❌ v112_market_maker_extensions: {e}")
+
 # ----- PREDICTION & SCORING -----
 try:
     from execution_scorer import ExecutionScorer
