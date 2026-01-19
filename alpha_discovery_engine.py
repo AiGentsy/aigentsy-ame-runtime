@@ -523,29 +523,42 @@ class AlphaDiscoveryEngine:
         self.scorer = ExecutionScorer() if SCORER_AVAILABLE else None
         self.orchestrator = ExecutionOrchestrator() if ORCHESTRATOR_AVAILABLE else None
         
-        # Dimension 1: Explicit marketplace scrapers
+        # Dimension 1: Explicit marketplace scrapers (REAL SCRAPERS - KEEP!)
         from explicit_marketplace_scrapers import ExplicitMarketplaceScrapers
         self.scrapers = ExplicitMarketplaceScrapers()
         
-        # Dimension 2: Pain point detector
-        from pain_point_detector import PainPointDetector
-        self.pain_detector = PainPointDetector()
+        # ===================================================================
+        # DIMENSIONS 2-7 DISABLED - PLACEHOLDER GENERATORS
+        # Uncomment when you build real implementations
+        # ===================================================================
         
-        # Dimension 3: Flow arbitrage detector
-        from flow_arbitrage_detector import FlowArbitrageDetector
-        self.arbitrage_detector = FlowArbitrageDetector()
+        # # Dimension 2: Pain point detector
+        # from pain_point_detector import PainPointDetector
+        # self.pain_detector = PainPointDetector()
         
-        # Dimensions 4-7: Advanced discovery
-        from advanced_discovery_dimensions import (
-            PredictiveIntelligenceEngine,
-            NetworkAmplificationEngine,
-            OpportunityCreationEngine,
-            EmergentPatternDetector
-        )
-        self.predictive_engine = PredictiveIntelligenceEngine()
-        self.network_amplifier = NetworkAmplificationEngine()
-        self.opportunity_creator = OpportunityCreationEngine()
-        self.emergent_detector = EmergentPatternDetector()
+        # # Dimension 3: Flow arbitrage detector
+        # from flow_arbitrage_detector import FlowArbitrageDetector
+        # self.arbitrage_detector = FlowArbitrageDetector()
+        
+        # # Dimensions 4-7: Advanced discovery
+        # from advanced_discovery_dimensions import (
+        #     PredictiveIntelligenceEngine,
+        #     NetworkAmplificationEngine,
+        #     OpportunityCreationEngine,
+        #     EmergentPatternDetector
+        # )
+        # self.predictive_engine = PredictiveIntelligenceEngine()
+        # self.network_amplifier = NetworkAmplificationEngine()
+        # self.opportunity_creator = OpportunityCreationEngine()
+        # self.emergent_detector = EmergentPatternDetector()
+        
+        # Set placeholder None values
+        self.pain_detector = None
+        self.arbitrage_detector = None
+        self.predictive_engine = None
+        self.network_amplifier = None
+        self.opportunity_creator = None
+        self.emergent_detector = None
     
     async def discover_and_route(
         self, 
@@ -586,52 +599,70 @@ class AlphaDiscoveryEngine:
             print(f"   → Found {len(d1_opps)} opportunities")
         
         # DIMENSION 2: Pain Point Detection
-        if 2 in dimensions:
+        if 2 in dimensions and self.pain_detector is not None:
             print("\n💢 DIMENSION 2: PAIN POINT DETECTION")
             d2_opps = await self.pain_detector.detect_all_pain_points()
             all_opportunities.extend(d2_opps)
             print(f"   → Found {len(d2_opps)} opportunities")
+        elif 2 in dimensions:
+            print("\n💢 DIMENSION 2: DISABLED (placeholder generator)")
+            d2_opps = []
         
         # DIMENSION 3: Flow Arbitrage
-        if 3 in dimensions:
+        if 3 in dimensions and self.arbitrage_detector is not None:
             print("\n🌊 DIMENSION 3: FLOW ARBITRAGE")
             d3_opps = await self.arbitrage_detector.detect_all_arbitrage()
             all_opportunities.extend(d3_opps)
             print(f"   → Found {len(d3_opps)} opportunities")
+        elif 3 in dimensions:
+            print("\n🌊 DIMENSION 3: DISABLED (placeholder generator)")
+            d3_opps = []
         
         # DIMENSION 4: Predictive Intelligence
-        if 4 in dimensions:
+        if 4 in dimensions and self.predictive_engine is not None:
             print("\n🔮 DIMENSION 4: PREDICTIVE INTELLIGENCE")
             d4_opps = await self.predictive_engine.predict_all_opportunities()
             all_opportunities.extend(d4_opps)
             print(f"   → Found {len(d4_opps)} opportunities")
+        elif 4 in dimensions:
+            print("\n🔮 DIMENSION 4: DISABLED (placeholder generator)")
+            d4_opps = []
         
         # DIMENSION 5: Network Amplification
-        if 5 in dimensions:
+        if 5 in dimensions and self.network_amplifier is not None:
             print("\n🔗 DIMENSION 5: NETWORK AMPLIFICATION")
             d5_opps = await self.network_amplifier.amplify_via_network()
             all_opportunities.extend(d5_opps)
             print(f"   → Found {len(d5_opps)} opportunities")
+        elif 5 in dimensions:
+            print("\n🔗 DIMENSION 5: DISABLED (placeholder generator)")
+            d5_opps = []
         
         # DIMENSION 6: Opportunity Creation
-        if 6 in dimensions:
+        if 6 in dimensions and self.opportunity_creator is not None:
             print("\n⚡ DIMENSION 6: OPPORTUNITY CREATION")
             d6_opps = await self.opportunity_creator.create_all_opportunities()
             all_opportunities.extend(d6_opps)
             print(f"   → Found {len(d6_opps)} opportunities")
+        elif 6 in dimensions:
+            print("\n⚡ DIMENSION 6: DISABLED (placeholder generator)")
+            d6_opps = []
         
         # DIMENSION 7: Emergent Patterns
-        if 7 in dimensions:
+        if 7 in dimensions and self.emergent_detector is not None:
             print("\n🤖 DIMENSION 7: EMERGENT PATTERNS")
             all_signals = {
                 'explicit_markets': d1_opps if 1 in dimensions else [],
-                'pain_points': d2_opps if 2 in dimensions else [],
-                'arbitrage': d3_opps if 3 in dimensions else [],
-                'predictions': d4_opps if 4 in dimensions else []
+                'pain_points': d2_opps if 2 in dimensions and self.pain_detector else [],
+                'arbitrage': d3_opps if 3 in dimensions and self.arbitrage_detector else [],
+                'predictions': d4_opps if 4 in dimensions and self.predictive_engine else []
             }
             d7_opps = await self.emergent_detector.detect_emergent_patterns(all_signals)
             all_opportunities.extend(d7_opps)
             print(f"   → Found {len(d7_opps)} opportunities")
+        elif 7 in dimensions:
+            print("\n🤖 DIMENSION 7: DISABLED (placeholder generator)")
+            d7_opps = []
         
         total_found = len(all_opportunities)
         total_value = sum(o.get('value', 0) for o in all_opportunities)
