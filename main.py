@@ -34483,352 +34483,113 @@ async def record_reconciliation_activity(
 @app.get("/wade/dashboard")
 async def get_wade_dashboard():
     """
-    Wade's personal dashboard - Path B revenue
-    Shows pending approvals, active workflows, and balance
+    Wade's approval dashboard - UNIFIED VERSION
+    Returns opportunities in correct format for frontend
     """
     
-    workflows = reconciliation_state["wade_workflows"]
+    # Try to get from wade_approval_dashboard first (preferred)
+    try:
+        from wade_approval_dashboard import fulfillment_queue
+        
+        pending = fulfillment_queue.get_pending_queue()
+        approved = fulfillment_queue.approved_fulfillments
+        stats = fulfillment_queue.get_stats()
+        
+        # Get Stripe balance
+        try:
+            import stripe
+            stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+            balance = stripe.Balance.retrieve()
+            wade_balance = balance.available[0].amount / 100 if balance.available else 0
+        except:
+            wade_balance = reconciliation_state.get("wade_balance", 0)
+        
+        # Format queue items for frontend (CORRECT STRUCTURE)
+        queue_items = []
+        for f in pending:
+            queue_items.append({
+                'id': f['id'],
+                'opportunity': {
+                    'title': f['opportunity'].get('title', 'Unknown Opportunity'),
+                    'platform': f['opportunity'].get('platform', 'Unknown'),
+                    'value': f['opportunity'].get('value', 0),
+                    'url': f['opportunity'].get('url', ''),
+                    'description': f['opportunity'].get('description', ''),
+                    'type': f['opportunity'].get('type', 'unknown')
+                },
+                'estimated_profit': f.get('estimated_profit', 0),
+                'estimated_cost': f.get('estimated_cost', 0),
+                'estimated_days': f.get('estimated_days', 7),
+                'confidence': f.get('confidence', 0.8),
+                'ai_models': f.get('ai_models', ['claude']),
+                'created_at': f.get('created_at', ''),
+                'title': f['opportunity'].get('title', 'Unknown'),  # Also add flat for compatibility
+                'platform': f['opportunity'].get('platform', 'Unknown'),
+                'estimated_value': f['opportunity'].get('value', 0)
+            })
+        
+        return {
+            'ok': True,
+            'wade_balance': wade_balance,
+            'pending_approval': len(queue_items),
+            'active_workflows': 0,  # TODO: Track active executions
+            'completed_workflows': len(approved),
+            'total_workflows': len(queue_items) + len(approved),
+            'queue': queue_items,
+            'active': []  # TODO: Get from execution tracker
+        }
+        
+    except ImportError:
+        # Fallback to reconciliation_state
+        pass
     
+    # Fallback: Use reconciliation_state
+    if not RECONCILIATION_AVAILABLE:
+        return {
+            "ok": False, 
+            "error": "Neither wade_approval_dashboard nor reconciliation_engine available",
+            "wade_balance": 0,
+            "pending_approval": 0,
+            "queue": []
+        }
+    
+    # Get from reconciliation_state
+    workflows = reconciliation_state.get("wade_workflows", {})
     pending = [w for w in workflows.values() if w.get("stage") == "pending_wade_approval"]
     active = [w for w in workflows.values() if w.get("stage") not in ["paid", "rejected", "cancelled"]]
     completed = [w for w in workflows.values() if w.get("stage") == "paid"]
     
+    # Format for frontend (CORRECT STRUCTURE)
+    queue_items = []
+    for wf in pending:
+        opp = wf.get('opportunity', {})
+        queue_items.append({
+            'id': wf.get('id'),
+            'opportunity': {
+                'title': opp.get('title', wf.get('title', 'Unknown')),
+                'platform': opp.get('platform', wf.get('platform', 'Unknown')),
+                'value': opp.get('value', wf.get('estimated_value', 0)),
+                'url': opp.get('url', ''),
+                'description': opp.get('description', ''),
+                'type': opp.get('type', 'unknown')
+            },
+            'estimated_profit': wf.get('estimated_profit', 0),
+            'estimated_cost': 0,
+            'estimated_days': 7,
+            'confidence': 0.8,
+            'ai_models': ['claude'],
+            'created_at': wf.get('created_at', '')
+        })
+    
     return {
         "ok": True,
-        "wade_balance": reconciliation_state["wade_balance"],
-        "pending_approval": len(pending),
+        "wade_balance": reconciliation_state.get("wade_balance", 0),
+        "pending_approval": len(queue_items),
         "active_workflows": len(active),
         "completed_workflows": len(completed),
         "total_workflows": len(workflows),
-        "queue": pending[:20],  # Top 20 pending
-        "active": active[:20]   # Top 20 active
-    }
-
-
-@app.post("/wade/workflow/create")
-async def create_wade_workflow(opportunity: dict):
-    """Create a new Wade workflow from discovered opportunity"""
-    
-    workflow_id = f"wade_wf_{datetime.utcnow().timestamp()}"
-    
-    workflow = {
-        "id": workflow_id,
-        "opportunity_id": opportunity.get("id"),
-        "opportunity": opportunity,
-        "stage": "pending_wade_approval",
-        "created_at": datetime.utcnow().isoformat(),
-        "revenue_path": "path_b_wade",
-        "estimated_value": opportunity.get("estimated_value", 0),
-        "estimated_profit": opportunity.get("fulfillability", {}).get("estimated_profit", 0),
-        "history": [{
-            "stage": "discovered",
-            "timestamp": datetime.utcnow().isoformat(),
-            "action": "Opportunity discovered and added to Wade queue"
-        }]
-    }
-    
-    reconciliation_state["wade_workflows"][workflow_id] = workflow
-    
-    # Record activity
-    reconciliation_state["activities"].append({
-        "id": f"act_{datetime.utcnow().timestamp()}",
-        "timestamp": datetime.utcnow().isoformat(),
-        "activity_type": "discovery",
-        "endpoint": "/wade/workflow/create",
-        "owner": "wade",
-        "revenue_path": "path_b_wade",
-        "amount": 0,
-        "fee_collected": 0,
-        "opportunity_id": opportunity.get("id"),
-        "details": {"workflow_id": workflow_id, "value": workflow["estimated_value"]}
-    })
-    
-    return {"ok": True, "workflow_id": workflow_id, "workflow": workflow}
-
-
-@app.post("/wade/workflow/{workflow_id}/approve")
-async def approve_wade_workflow(workflow_id: str):
-    """Wade approves a workflow - triggers auto-bid"""
-    
-    if workflow_id not in reconciliation_state["wade_workflows"]:
-        # Try to find by partial match or ID
-        matching = [k for k in reconciliation_state["wade_workflows"].keys() if workflow_id in k or k in workflow_id]
-        if matching:
-            workflow_id = matching[0]
-        else:
-            return {"ok": False, "error": f"Workflow not found: {workflow_id}"}
-    
-    workflow = reconciliation_state["wade_workflows"][workflow_id]
-    workflow["stage"] = "wade_approved"
-    workflow["approved_at"] = datetime.utcnow().isoformat()
-    
-    # Ensure history exists
-    if "history" not in workflow:
-        workflow["history"] = []
-    
-    workflow["history"].append({
-        "stage": "wade_approved",
-        "timestamp": datetime.utcnow().isoformat(),
-        "action": "Wade approved - ready for bidding"
-    })
-    
-    # Also update in integrated_workflow if it exists there
-    if WADE_WORKFLOW_AVAILABLE and hasattr(integrated_workflow, 'workflows'):
-        if workflow_id in integrated_workflow.workflows:
-            integrated_workflow.workflows[workflow_id]["stage"] = "wade_approved"
-    
-    return {"ok": True, "workflow_id": workflow_id, "stage": "wade_approved"}
-
-
-@app.post("/wade/approve-all")
-async def approve_all_wade_workflows():
-    """Approve ALL pending workflows in one click"""
-    
-    pending = [
-        wf_id for wf_id, wf in reconciliation_state["wade_workflows"].items()
-        if wf.get("stage") == "pending_wade_approval"
-    ]
-    
-    approved = []
-    failed = []
-    
-    for wf_id in pending:
-        try:
-            workflow = reconciliation_state["wade_workflows"][wf_id]
-            workflow["stage"] = "wade_approved"
-            workflow["approved_at"] = datetime.utcnow().isoformat()
-            
-            if "history" not in workflow:
-                workflow["history"] = []
-            
-            workflow["history"].append({
-                "stage": "wade_approved",
-                "timestamp": datetime.utcnow().isoformat(),
-                "action": "Bulk approved via approve-all"
-            })
-            
-            approved.append(wf_id)
-        except Exception as e:
-            failed.append({"id": wf_id, "error": str(e)})
-    
-    return {
-        "ok": True,
-        "approved_count": len(approved),
-        "failed_count": len(failed),
-        "approved": approved[:10],  # First 10 for reference
-        "failed": failed
-    }
-
-
-@app.get("/wade/execution-status")
-async def get_wade_execution_status():
-    """See exactly what automations are running/executing right now"""
-    
-    workflows = reconciliation_state["wade_workflows"]
-    
-    # Group by stage
-    by_stage = {}
-    for wf_id, wf in workflows.items():
-        stage = wf.get("stage", "unknown")
-        if stage not in by_stage:
-            by_stage[stage] = []
-        by_stage[stage].append({
-            "id": wf_id,
-            "title": wf.get("title", wf.get("opportunity", {}).get("title", "Unknown")),
-            "platform": wf.get("platform", wf.get("opportunity", {}).get("platform", "Unknown")),
-            "value": wf.get("estimated_value", 0),
-            "created": wf.get("created_at"),
-            "approved": wf.get("approved_at")
-        })
-    
-    # Get active automations
-    active_automations = {
-        "discovery": {
-            "status": "idle",
-            "last_run": None,
-            "opportunities_found": 0
-        },
-        "spawn_engine": {
-            "status": "active" if AUTO_SPAWN_AVAILABLE else "unavailable",
-            "active_spawns": 0,
-            "last_spawn": None
-        },
-        "social_posting": {
-            "status": "idle",
-            "platforms": {"twitter": False, "instagram": False, "tiktok": False},
-            "posts_today": 0
-        },
-        "fiverr_orders": {
-            "status": "idle",
-            "pending": 0,
-            "processing": 0
-        },
-        "cart_recovery": {
-            "status": "idle",
-            "abandoned_detected": 0,
-            "emails_sent": 0
-        },
-        "arbitrage": {
-            "status": "idle",
-            "opportunities": 0
-        }
-    }
-    
-    # Try to get real spawn stats
-    if AUTO_SPAWN_AVAILABLE:
-        try:
-            from auto_spawn_engine import get_engine
-            engine = get_engine()
-            stats = engine.get_dashboard()
-            active_automations["spawn_engine"]["active_spawns"] = stats.get("active", 0)
-        except:
-            pass
-    
-    return {
-        "ok": True,
-        "workflows_by_stage": by_stage,
-        "stage_counts": {stage: len(wfs) for stage, wfs in by_stage.items()},
-        "total_workflows": len(workflows),
-        "active_automations": active_automations,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-
-@app.post("/wade/workflow/{workflow_id}/reject")
-async def reject_wade_workflow(workflow_id: str, reason: str = None):
-    """Wade rejects a workflow"""
-    
-    if workflow_id not in reconciliation_state["wade_workflows"]:
-        # Try to find by partial match
-        matching = [k for k in reconciliation_state["wade_workflows"].keys() if workflow_id in k or k in workflow_id]
-        if matching:
-            workflow_id = matching[0]
-        else:
-            return {"ok": False, "error": f"Workflow not found: {workflow_id}"}
-    
-    workflow = reconciliation_state["wade_workflows"][workflow_id]
-    workflow["stage"] = "rejected"
-    workflow["rejected_at"] = datetime.utcnow().isoformat()
-    workflow["rejection_reason"] = reason
-    
-    # Ensure history exists
-    if "history" not in workflow:
-        workflow["history"] = []
-    
-    workflow["history"].append({
-        "stage": "rejected",
-        "timestamp": datetime.utcnow().isoformat(),
-        "action": f"Wade rejected: {reason or 'No reason given'}"
-    })
-    
-    return {"ok": True, "workflow_id": workflow_id, "stage": "rejected"}
-
-
-@app.post("/wade/workflow/{workflow_id}/payment")
-async def record_wade_payment(workflow_id: str, amount: float, proof: str = None):
-    """Record payment received for Wade workflow"""
-    
-    if workflow_id not in reconciliation_state["wade_workflows"]:
-        return {"ok": False, "error": "Workflow not found"}
-    
-    workflow = reconciliation_state["wade_workflows"][workflow_id]
-    workflow["stage"] = "paid"
-    workflow["paid_at"] = datetime.utcnow().isoformat()
-    workflow["payment"] = {
-        "amount": amount,
-        "proof": proof,
-        "received_at": datetime.utcnow().isoformat()
-    }
-    workflow["history"].append({
-        "stage": "paid",
-        "timestamp": datetime.utcnow().isoformat(),
-        "action": f"Payment received: ${amount}"
-    })
-    
-    # Update Wade's balance
-    reconciliation_state["wade_balance"] += amount
-    
-    # Record activity
-    reconciliation_state["activities"].append({
-        "id": f"act_{datetime.utcnow().timestamp()}",
-        "timestamp": datetime.utcnow().isoformat(),
-        "activity_type": "payment_received",
-        "endpoint": f"/wade/workflow/{workflow_id}/payment",
-        "owner": "wade",
-        "revenue_path": "path_b_wade",
-        "amount": amount,
-        "fee_collected": 0,
-        "opportunity_id": workflow.get("opportunity_id"),
-        "details": {"workflow_id": workflow_id, "proof": proof}
-    })
-    
-    return {
-        "ok": True,
-        "workflow_id": workflow_id,
-        "amount": amount,
-        "new_wade_balance": reconciliation_state["wade_balance"]
-    }
-
-
-@app.get("/wade/workflow/{workflow_id}")
-async def get_wade_workflow(workflow_id: str):
-    """Get a specific Wade workflow"""
-    
-    if workflow_id not in reconciliation_state["wade_workflows"]:
-        return {"ok": False, "error": "Workflow not found"}
-    
-    return {"ok": True, "workflow": reconciliation_state["wade_workflows"][workflow_id]}
-
-
-@app.post("/wade/auto-queue-opportunities")
-async def auto_queue_wade_opportunities():
-    """
-    Automatically queue Wade-fulfillable opportunities from discovery
-    Called by autonomous workflow to feed Wade's queue
-    """
-    
-    queued = 0
-    
-    # Integrate with discovery engine to auto-queue opportunities
-    try:
-        from alpha_discovery_engine import AlphaDiscoveryEngine
-        
-        discovery = AlphaDiscoveryEngine()
-        results = await discovery.discover_and_route(score_opportunities=True)
-        
-        # Get AiGentsy-routed opportunities (Wade fulfills these)
-        aigentsy_opps = results.get('routing', {}).get('aigentsy_routed', {}).get('opportunities', [])
-        
-        for opp_data in aigentsy_opps:
-            opportunity = opp_data['opportunity']
-            
-            # Add to Wade's fulfillment queue
-            if 'WADE_FULFILLMENT_QUEUE' not in globals():
-                global WADE_FULFILLMENT_QUEUE
-                WADE_FULFILLMENT_QUEUE = []
-            
-            fulfillment_record = {
-                'id': f"fulfill_{uuid.uuid4().hex[:8]}",
-                'opportunity': opportunity,
-                'routing': opp_data.get('routing', {}),
-                'status': 'pending',
-                'queued_at': datetime.now(timezone.utc).isoformat()
-            }
-            
-            WADE_FULFILLMENT_QUEUE.append(fulfillment_record)
-            queued += 1
-    
-    except Exception as e:
-        return {
-            "ok": False,
-            "error": str(e),
-            "queued": 0
-        }
-    
-    return {
-        "ok": True,
-        "queued": queued,
-        "message": f"Queued {queued} opportunities for Wade's fulfillment"
+        "queue": queue_items,
+        "active": active[:20]
     }
 
 
@@ -38023,54 +37784,6 @@ async def record_ai_outcome(
         task_id, success, revenue, notes
     )
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# WADE WORKFLOW ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.get("/wade/dashboard")
-async def get_wade_dashboard():
-    """Wade's personal dashboard - Path B revenue"""
-    if not RECONCILIATION_AVAILABLE:
-        return {"ok": False, "error": "Reconciliation engine not available"}
-    
-    queue = reconciliation_engine.get_wade_queue()
-    active = reconciliation_engine.get_wade_active()
-    
-    return {
-        "ok": True,
-        "wade_balance": reconciliation_engine.wade_balance,
-        "pending_approval": len(queue),
-        "active_workflows": len(active),
-        "queue": queue,
-        "active": active
-    }
-
-
-@app.post("/wade/workflow/{workflow_id}/approve")
-async def approve_wade_workflow(workflow_id: str):
-    """Wade approves a workflow"""
-    if not RECONCILIATION_AVAILABLE:
-        return {"ok": False, "error": "Reconciliation engine not available"}
-    
-    return reconciliation_engine.update_wade_workflow(
-        workflow_id, 
-        "wade_approved",
-        {"approved_by": "wade", "approved_at": datetime.now(timezone.utc).isoformat()}
-    )
-
-
-@app.post("/wade/workflow/{workflow_id}/payment")
-async def record_wade_payment(workflow_id: str, amount: float):
-    """Record payment received for Wade workflow"""
-    if not RECONCILIATION_AVAILABLE:
-        return {"ok": False, "error": "Reconciliation engine not available"}
-    
-    return reconciliation_engine.update_wade_workflow(
-        workflow_id,
-        "paid",
-        {"amount": amount, "paid_at": datetime.now(timezone.utc).isoformat()}
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
