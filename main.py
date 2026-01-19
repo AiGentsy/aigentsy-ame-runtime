@@ -35574,7 +35574,6 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
         "steps": {}
     }
     
-    try:
         # STEP 1: Discovery - Use Alpha Discovery (real implementation)
         print(f"🔍 Step 1: Alpha Discovery (7 dimensions, multi-AI)...")
         try:
@@ -35587,6 +35586,58 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
                 score_opportunities=True,
                 auto_execute=False  # We'll handle execution separately
             )
+            
+            # ================================================================
+            # GLOBAL HACKERNEWS CAP - Prevents 500 fake opportunities
+            # ================================================================
+            print(f"🔍 Applying global HackerNews cap...")
+            
+            # Get all opportunities from discovery result
+            all_opportunities = discovery_result.get("opportunities", [])
+            
+            # Separate HackerNews from other platforms
+            hn_opps = [o for o in all_opportunities if o.get('platform') == 'hackernews']
+            other_opps = [o for o in all_opportunities if o.get('platform') != 'hackernews']
+            
+            # Cap HackerNews at 50 max
+            hn_opps_capped = hn_opps[:50]
+            
+            # Log the cap
+            print(f"   HackerNews: {len(hn_opps)} → {len(hn_opps_capped)} (capped at 50)")
+            
+            # Combine back
+            all_opportunities = other_opps + hn_opps_capped
+            
+            # Update discovery_result with capped opportunities
+            discovery_result["opportunities"] = all_opportunities
+            discovery_result["total_opportunities"] = len(all_opportunities)
+            
+            # Also need to cap in routing sections if they exist
+            routing = discovery_result.get("routing", {})
+            if routing:
+                # Cap in aigentsy_routed
+                if "aigentsy_routed" in routing:
+                    aigentsy_opps = routing["aigentsy_routed"].get("opportunities", [])
+                    hn_aigentsy = [o for o in aigentsy_opps if o.get('platform') == 'hackernews']
+                    other_aigentsy = [o for o in aigentsy_opps if o.get('platform') != 'hackernews']
+                    hn_aigentsy_capped = hn_aigentsy[:25]  # Half for Wade
+                    routing["aigentsy_routed"]["opportunities"] = other_aigentsy + hn_aigentsy_capped
+                
+                # Cap in user_routed
+                if "user_routed" in routing:
+                    user_opps = routing["user_routed"].get("opportunities", [])
+                    hn_user = [o for o in user_opps if o.get('platform') == 'hackernews']
+                    other_user = [o for o in user_opps if o.get('platform') != 'hackernews']
+                    hn_user_capped = hn_user[:25]  # Half for users
+                    routing["user_routed"]["opportunities"] = other_user + hn_user_capped
+                
+                discovery_result["routing"] = routing
+            
+            print(f"✅ Total after HN cap: {len(all_opportunities)} opportunities")
+            # ================================================================
+            # END OF HACKERNEWS CAP
+            # ================================================================
+            
             results["steps"]["discovery"] = {
                 "engine": "alpha_discovery",
                 "opportunities_found": discovery_result.get("total_opportunities", 0),
@@ -35594,6 +35645,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
                 "wade_opportunities": len(discovery_result.get("wade_opportunities", [])),
                 "user_opportunities": len(discovery_result.get("user_opportunities", []))
             }
+            
         except ImportError as e:
             print(f"   ⚠️ Alpha Discovery not available: {e}")
             # Fallback to mega_discover
