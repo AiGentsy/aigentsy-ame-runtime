@@ -11,6 +11,10 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import httpx
+import stripe
+
+# Configure Stripe
+stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 # Import your existing revenue tracking
 try:
@@ -208,6 +212,179 @@ class PaymentCollector:
         }
         
         return stats
+    
+    
+    # ===================================================================
+    # STRIPE PAYMENT REQUEST CREATION (NEW!)
+    # ===================================================================
+    
+    async def create_payment_request(
+        self,
+        execution_id: str,
+        opportunity: Dict,
+        delivery: Dict,
+        amount: float,
+        client_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create Stripe payment request after execution completes
+        
+        This creates invoices/payment links for completed work!
+        """
+        
+        if not self.stripe_available:
+            print("⚠️ Stripe not configured - cannot create payment request")
+            return {
+                'success': False,
+                'method': 'stripe_unavailable',
+                'message': 'Stripe not configured'
+            }
+        
+        try:
+            if client_email:
+                result = await self._create_stripe_invoice(
+                    execution_id, opportunity, amount, client_email
+                )
+            else:
+                result = await self._create_stripe_payment_link(
+                    execution_id, opportunity, amount
+                )
+            
+            # Record the payment request
+            await self.record_execution_revenue(
+                execution_id=execution_id,
+                platform=opportunity.get('platform'),
+                opportunity_value=amount,
+                user=opportunity.get('user'),
+                status='payment_requested'
+            )
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Stripe payment creation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e),
+                'method': 'failed'
+            }
+    
+    
+    async def _create_stripe_invoice(
+        self,
+        execution_id: str,
+        opportunity: Dict,
+        amount: float,
+        client_email: str
+    ) -> Dict:
+        """Create and send Stripe invoice"""
+        
+        print(f"📧 Creating Stripe invoice for {client_email}...")
+        
+        # Get or create customer
+        customers = stripe.Customer.list(email=client_email, limit=1)
+        if customers.data:
+            customer = customers.data[0]
+            print(f"   Found existing customer: {customer.id}")
+        else:
+            customer = stripe.Customer.create(
+                email=client_email,
+                description=f"Client from {opportunity.get('platform')}"
+            )
+            print(f"   Created new customer: {customer.id}")
+        
+        # Create invoice
+        invoice = stripe.Invoice.create(
+            customer=customer.id,
+            auto_advance=True,
+            collection_method='send_invoice',
+            days_until_due=7,
+            metadata={
+                'execution_id': execution_id,
+                'opportunity_id': opportunity.get('id'),
+                'platform': opportunity.get('platform'),
+                'type': 'execution_revenue'
+            }
+        )
+        
+        # Add line item
+        stripe.InvoiceItem.create(
+            customer=customer.id,
+            invoice=invoice.id,
+            amount=int(amount * 100),  # Convert to cents
+            currency='usd',
+            description=opportunity.get('title', 'Service Delivery')
+        )
+        
+        # Finalize and send
+        invoice = stripe.Invoice.finalize_invoice(invoice.id)
+        invoice = stripe.Invoice.send_invoice(invoice.id)
+        
+        print(f"✅ Invoice sent to {client_email}")
+        print(f"   Invoice URL: {invoice.hosted_invoice_url}")
+        print(f"   Invoice ID: {invoice.id}")
+        
+        return {
+            'success': True,
+            'method': 'stripe_invoice',
+            'invoice_url': invoice.hosted_invoice_url,
+            'invoice_id': invoice.id,
+            'invoice_pdf': invoice.invoice_pdf,
+            'amount': amount,
+            'sent_to': client_email,
+            'due_date': invoice.due_date
+        }
+    
+    
+    async def _create_stripe_payment_link(
+        self,
+        execution_id: str,
+        opportunity: Dict,
+        amount: float
+    ) -> Dict:
+        """Create Stripe payment link (for when no email available)"""
+        
+        print(f"💳 Creating Stripe payment link...")
+        
+        payment_link = stripe.PaymentLink.create(
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': opportunity.get('title', 'Service Delivery'),
+                        'description': f"Platform: {opportunity.get('platform')}",
+                    },
+                    'unit_amount': int(amount * 100),  # Convert to cents
+                },
+                'quantity': 1,
+            }],
+            after_completion={
+                'type': 'redirect',
+                'redirect': {
+                    'url': 'https://aigentsy.com/payment-success'
+                }
+            },
+            metadata={
+                'execution_id': execution_id,
+                'opportunity_id': opportunity.get('id'),
+                'platform': opportunity.get('platform'),
+                'type': 'execution_revenue'
+            }
+        )
+        
+        print(f"✅ Payment link created")
+        print(f"   URL: {payment_link.url}")
+        print(f"   ID: {payment_link.id}")
+        
+        return {
+            'success': True,
+            'method': 'stripe_payment_link',
+            'payment_link_url': payment_link.url,
+            'payment_link_id': payment_link.id,
+            'amount': amount
+        }
 
 
 # Singleton instance
