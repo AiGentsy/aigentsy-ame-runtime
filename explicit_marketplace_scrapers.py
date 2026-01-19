@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 import os
 
 
-class ScaledMarketplaceScrapers:
+class ExplicitMarketplaceScrapers:
     """
     SCALED version - gets 10x more opportunities from free sources
     """
