@@ -116,6 +116,18 @@ class RuntimeConfig:
     use_v106_mode: bool = True  # Use integrated market-maker + risk-tranche
     v106_min_cash_floor: float = 50.0
     v106_kelly_budget: float = 10000.0
+    # ===== V107-V112 REVENUE ENGINES =====
+    # V111 Super-Harvesters
+    uacr_scan_interval_minutes: int = 15  # Twitter/Instagram abandoned checkout signals
+    receivables_scan_interval_minutes: int = 60  # Stripe invoice advances
+    payments_optimization_interval_minutes: int = 30  # Payment routing optimization
+    
+    # V112 Market Maker
+    market_maker_interval_minutes: int = 5  # High-frequency market making
+    tranche_settlement_check_minutes: int = 60  # Tranche settlements
+    
+    # V110 Gap Harvesters
+    gap_harvester_scan_minutes: int = 30  # 15 waste monetization engines
 
 
 DEFAULT_CONFIG = RuntimeConfig()
@@ -1738,6 +1750,201 @@ class AiGentsyMasterRuntime:
         except Exception as e:
             print(f"   ❌ JV Mesh error: {e}")
             return {'ok': False, 'error': str(e)}
+
+    # =========================================================================
+    # V107-V112 REVENUE ENGINES
+    # =========================================================================
+    
+    async def run_uacr_scan(self) -> Dict[str, Any]:
+        """
+        V111 - Universal Abandoned Checkout Reclaimer (U-ACR)
+        Scan Twitter/Instagram for abandoned checkout signals
+        Generate quotes and track potential revenue
+        """
+        
+        if not SYSTEMS.get('v111'):
+            return {"ok": False, "error": "V111 not available"}
+        
+        print("\n🔍 V111 U-ACR SCAN")
+        
+        try:
+            results = {
+                "timestamp": _now(),
+                "twitter_signals": 0,
+                "instagram_signals": 0,
+                "quotes_generated": 0,
+                "potential_revenue": 0.0
+            }
+            
+            # Scan Twitter for abandoned checkout signals
+            twitter_result = await uacr_scan_twitter(max_signals=50)
+            results["twitter_signals"] = len(twitter_result.get("signals", []))
+            
+            # Scan Instagram for shopping signals
+            instagram_result = await uacr_scan_instagram(max_signals=50)
+            results["instagram_signals"] = len(instagram_result.get("signals", []))
+            
+            # Generate quotes for high-confidence signals
+            quotes_result = await uacr_batch_quote(min_confidence=0.7)
+            quotes = quotes_result.get("quotes", [])
+            results["quotes_generated"] = len(quotes)
+            results["potential_revenue"] = sum(q.get("spread_amount", 0) for q in quotes)
+            
+            print(f"   📊 Twitter: {results['twitter_signals']} signals")
+            print(f"   📊 Instagram: {results['instagram_signals']} signals")
+            print(f"   💰 Quotes: {results['quotes_generated']} (${results['potential_revenue']:.2f} potential)")
+            
+            self.last_uacr = _now()
+            
+            return {"ok": True, **results}
+            
+        except Exception as e:
+            print(f"   ❌ U-ACR scan failed: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def run_receivables_scan(self) -> Dict[str, Any]:
+        """
+        V111 - Receivables Desk
+        Scan Stripe for unpaid invoices and create Kelly-sized advances
+        """
+        
+        if not SYSTEMS.get('v111'):
+            return {"ok": False, "error": "V111 not available"}
+        
+        print("\n💸 V111 RECEIVABLES SCAN")
+        
+        try:
+            # Scan Stripe for overdue invoices
+            result = await receivables_scan_stripe(days_overdue=7)
+            
+            invoices_found = result.get("invoices_found", 0)
+            advances_created = result.get("advances_created", 0)
+            total_advanced = result.get("total_advanced", 0.0)
+            
+            print(f"   📊 Invoices: {invoices_found} overdue")
+            print(f"   💰 Advances: {advances_created} created (${total_advanced:.2f})")
+            
+            self.last_receivables = _now()
+            
+            return {"ok": True, **result}
+            
+        except Exception as e:
+            print(f"   ❌ Receivables scan failed: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def run_payments_optimization(self) -> Dict[str, Any]:
+        """
+        V111 - Payments Interchange Optimizer
+        Analyze payment flows and optimize routing to cheapest PSP
+        """
+        
+        if not SYSTEMS.get('v111'):
+            return {"ok": False, "error": "V111 not available"}
+        
+        print("\n💳 V111 PAYMENTS OPTIMIZATION")
+        
+        try:
+            result = await payments_optimize_routing()
+            
+            routes_analyzed = result.get("routes_analyzed", 0)
+            savings = result.get("potential_savings", 0.0)
+            
+            print(f"   📊 Routes analyzed: {routes_analyzed}")
+            print(f"   💰 Potential savings: ${savings:.2f}")
+            
+            self.last_payments = _now()
+            
+            return {"ok": True, **result}
+            
+        except Exception as e:
+            print(f"   ❌ Payments optimization failed: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def run_market_maker_cycle(self) -> Dict[str, Any]:
+        """
+        V112 - IFX/OAA Market Maker
+        Execute high-frequency market making cycles
+        Collect spread revenue (10-30 bps)
+        """
+        
+        if not SYSTEMS.get('v112'):
+            return {"ok": False, "error": "V112 not available"}
+        
+        print("\n📈 V112 MARKET MAKER CYCLE")
+        
+        try:
+            result = await ifx_market_making_cycle()
+            
+            spreads_collected = result.get("spreads_collected", 0)
+            revenue = result.get("revenue", 0.0)
+            
+            print(f"   📊 Spreads: {spreads_collected} collected")
+            print(f"   💰 Revenue: ${revenue:.2f}")
+            
+            self.last_market_maker = _now()
+            
+            return {"ok": True, **result}
+            
+        except Exception as e:
+            print(f"   ❌ Market maker failed: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def run_tranche_settlements(self) -> Dict[str, Any]:
+        """
+        V112 - Risk Tranching Settlements
+        Check for tranche settlements and distribute returns
+        Collect AiGentsy carry (15% of profits)
+        """
+        
+        if not SYSTEMS.get('v112'):
+            return {"ok": False, "error": "V112 not available"}
+        
+        print("\n🏦 V112 TRANCHE SETTLEMENTS")
+        
+        try:
+            result = await tranche_check_settlements()
+            
+            settlements = result.get("settlements", 0)
+            carry = result.get("aigentsy_carry", 0.0)
+            
+            print(f"   📊 Settlements: {settlements}")
+            print(f"   💰 AiGentsy carry: ${carry:.2f}")
+            
+            self.last_tranches = _now()
+            
+            return {"ok": True, **result}
+            
+        except Exception as e:
+            print(f"   ❌ Tranche settlements failed: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def run_gap_harvesters(self) -> Dict[str, Any]:
+        """
+        V110 - Gap Harvesters (15 Engines)
+        Scan for waste monetization opportunities across all harvesters
+        """
+        
+        if not SYSTEMS.get('v110'):
+            return {"ok": False, "error": "V110 not available"}
+        
+        print("\n🔍 V110 GAP HARVESTERS SCAN")
+        
+        try:
+            result = await scan_all_harvesters()
+            
+            opportunities = result.get("opportunities_found", 0)
+            potential_revenue = result.get("potential_revenue", 0.0)
+            
+            print(f"   📊 Opportunities: {opportunities} found")
+            print(f"   💰 Potential: ${potential_revenue:.2f}")
+            
+            self.last_gap_harvesters = _now()
+            
+            return {"ok": True, **result}
+            
+        except Exception as e:
+            print(f"   ❌ Gap harvesters failed: {e}")
+            return {"ok": False, "error": str(e)}
     
     # =========================================================================
     # VALUE CHAIN CYCLE
@@ -1926,6 +2133,36 @@ class AiGentsyMasterRuntime:
         if self._should_run('internet_discovery', 30):
             internet = await self.run_internet_discovery()
             results['phases']['internet_discovery'] = internet
+
+        # 17. V111 U-ACR (every 15 min) - $4.6T TAM
+        if self._should_run('uacr', self.config.uacr_scan_interval_minutes):
+            uacr = await self.run_uacr_scan()
+            results['phases']['uacr'] = uacr
+        
+        # 18. V111 Receivables (every 60 min)
+        if self._should_run('receivables', self.config.receivables_scan_interval_minutes):
+            recv = await self.run_receivables_scan()
+            results['phases']['receivables'] = recv
+        
+        # 19. V111 Payments (every 30 min)
+        if self._should_run('payments', self.config.payments_optimization_interval_minutes):
+            pay = await self.run_payments_optimization()
+            results['phases']['payments'] = pay
+        
+        # 20. V112 Market Maker (every 5 min) - High frequency
+        if self._should_run('market_maker', self.config.market_maker_interval_minutes):
+            mm = await self.run_market_maker_cycle()
+            results['phases']['market_maker'] = mm
+        
+        # 21. V112 Tranche Settlements (every 60 min)
+        if self._should_run('tranches', self.config.tranche_settlement_check_minutes):
+            tranches = await self.run_tranche_settlements()
+            results['phases']['tranches'] = tranches
+        
+        # 22. V110 Gap Harvesters (every 30 min) - 15 engines
+        if self._should_run('gap_harvesters', self.config.gap_harvester_scan_minutes):
+            gap = await self.run_gap_harvesters()
+            results['phases']['gap_harvesters'] = gap
         
         results['completed_at'] = _now()
         results['stats'] = self.stats
@@ -1955,6 +2192,12 @@ class AiGentsyMasterRuntime:
             'proofs': getattr(self, 'last_proofs', None),
             'teams': getattr(self, 'last_teams', None),
             'syndication': getattr(self, 'last_syndication', None)
+            'uacr': getattr(self, 'last_uacr', None),
+            'receivables': getattr(self, 'last_receivables', None),
+            'payments': getattr(self, 'last_payments', None),
+            'market_maker': getattr(self, 'last_market_maker', None),
+            'tranches': getattr(self, 'last_tranches', None),
+            'gap_harvesters': getattr(self, 'last_gap_harvesters', None),
         }
         
         last = timestamps.get(phase)
@@ -1967,6 +2210,8 @@ class AiGentsyMasterRuntime:
             return elapsed >= interval_minutes
         except:
             return True
+
+    
     
     # =========================================================================
     # CONTINUOUS RUNNING
@@ -1980,6 +2225,11 @@ class AiGentsyMasterRuntime:
         print(f"   Social: every {self.config.social_interval_minutes} min")
         print(f"   AMG: every {self.config.amg_interval_minutes} min")
         print("   Press Ctrl+C to stop\n")
+        print(f"   V111 U-ACR: every {self.config.uacr_scan_interval_minutes} min")
+        print(f"   V111 Receivables: every {self.config.receivables_scan_interval_minutes} min")
+        print(f"   V111 Payments: every {self.config.payments_optimization_interval_minutes} min")
+        print(f"   V112 Market Maker: every {self.config.market_maker_interval_minutes} min")
+        print(f"   V110 Gap Harvesters: every {self.config.gap_harvester_scan_minutes} min")
         
         self._running = True
         
