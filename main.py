@@ -59,6 +59,8 @@ from template_integration_coordinator import (
 )
 from real_signal_ingestion import get_signal_engine
 from autonomous_deal_graph import get_deal_graph
+from v110_gap_harvesters import include_gap_harvesters
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # V91 WIRING IMPORTS - ALL SYSTEMS LIVE
@@ -1038,6 +1040,7 @@ app = FastAPI()
 register_investor_routes(app)
 include_diagnostic_tracer(app)
 include_profit_engine(app)
+include_gap_harvesters(app)
 include_v97_cash_endpoints(app)
 include_overlay(app)
 create_apex_upgrade_routes(app)
