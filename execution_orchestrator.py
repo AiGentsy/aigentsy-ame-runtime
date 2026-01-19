@@ -811,25 +811,21 @@ class ExecutionOrchestrator:
         revenue_multiplier: float = 1.0
     ) -> Dict[str, Any]:
         """
-        Stage 5: Process payment
-        - AiGentsy opportunities: Wade's Stripe account
-        - User opportunities: User's business/Stripe
-        - Track via payment_collector
-        - Record via revenue_flows
-        - Apply mesh revenue multiplier
+        Stage 5: Process payment - UPGRADED WITH STRIPE INTEGRATION!
+        
+        Now creates Stripe invoices/payment links for completed work
         """
         
         base_amount = opportunity.get('value', 0)
-        # Apply revenue mesh multiplier (capped at 3x)
         amount = base_amount * min(revenue_multiplier, 3.0)
         platform = opportunity.get('platform')
+        execution_id = delivery.get('execution_id', delivery.get('proof', {}).get('submission_id', 'unknown'))
         
         payment = {
             'amount': amount,
             'base_amount': base_amount,
             'revenue_multiplier': revenue_multiplier,
             'recipient': 'aigentsy' if is_aigentsy else username,
-            'stripe_account': 'wade_stripe' if is_aigentsy else f'{username}_stripe',
             'status': 'pending',
             'tracked': False
         }
@@ -838,42 +834,84 @@ class ExecutionOrchestrator:
         fees = calculate_base_fee(amount)
         
         if is_aigentsy:
-            # AiGentsy opportunity - Wade executes, keeps 100% of profit
             cost = opportunity.get('estimated_cost', amount * 0.30)
             profit = amount - cost
-            
             payment['gross'] = amount
             payment['cost'] = cost
             payment['profit'] = profit
-            payment['wade_keeps'] = profit  # 100% of profit after costs
+            payment['wade_keeps'] = profit
         else:
-            # User opportunity - User gets 97.2%, AiGentsy gets 2.8%
             payment['gross'] = amount
             payment['platform_fee'] = fees['total']
             payment['user_revenue'] = amount * 0.972
             payment['aigentsy_revenue'] = fees['total']
-            payment['wade_keeps'] = fees['total']  # Wade keeps platform fee
+            payment['wade_keeps'] = fees['total']
         
-        # Track payment
+        # ===== NEW: CREATE STRIPE PAYMENT REQUEST =====
+        print(f"\n💰 CREATING STRIPE PAYMENT REQUEST")
+        print(f"   Amount: ${amount:,.2f}")
+        print(f"   Execution: {execution_id}")
+        
+        client_email = self._extract_client_email(opportunity)
+        
+        try:
+            from payment_collector import get_payment_collector
+            collector = get_payment_collector()
+            
+            payment_request = await collector.create_payment_request(
+                execution_id=execution_id,
+                opportunity=opportunity,
+                delivery=delivery,
+                amount=amount,
+                client_email=client_email
+            )
+            
+            if payment_request.get('success'):
+                payment_url = payment_request.get('invoice_url') or payment_request.get('payment_link_url')
+                payment_id = payment_request.get('invoice_id') or payment_request.get('payment_link_id')
+                
+                print(f"✅ Payment request created")
+                print(f"   Method: {payment_request.get('method')}")
+                print(f"   URL: {payment_url}")
+                print(f"   ID: {payment_id}")
+                
+                payment['stripe_payment_url'] = payment_url
+                payment['stripe_payment_id'] = payment_id
+                payment['stripe_method'] = payment_request.get('method')
+                payment['client_email'] = client_email
+                payment['status'] = 'payment_requested'
+                payment['stripe_integrated'] = True
+                
+            else:
+                print(f"⚠️ Payment request failed: {payment_request.get('error')}")
+                payment['stripe_integrated'] = False
+                payment['stripe_error'] = payment_request.get('error')
+        
+        except Exception as e:
+            print(f"❌ Stripe integration error: {e}")
+            import traceback
+            traceback.print_exc()
+            payment['stripe_integrated'] = False
+            payment['stripe_error'] = str(e)
+        
+        # Track payment (existing code)
         if PAYMENT_TRACKING_AVAILABLE:
             try:
                 await record_revenue(
-                    execution_id=delivery.get('proof', {}).get('submission_id', 'unknown'),
+                    execution_id=execution_id,
                     platform=platform,
                     value=amount,
                     user=username,
-                    status='pending'
+                    status='payment_requested'
                 )
-                
                 payment['tracked'] = True
-                print(f"   [OK] Payment tracked: ${amount:,.2f} ({revenue_multiplier:.2f}x multiplier)")
+                print(f"   [OK] Payment tracked: ${amount:,.2f}")
             except Exception as e:
                 print(f"   [Warn] Payment tracking error: {e}")
         
-        # Record in revenue_flows
+        # Record in revenue_flows (existing code)
         try:
             if is_aigentsy:
-                # AiGentsy service payment
                 await ingest_service_payment(
                     username='aigentsy',
                     amount=payment['profit'],
@@ -881,28 +919,56 @@ class ExecutionOrchestrator:
                     service_type=opportunity.get('type', 'general')
                 )
             else:
-                # User service payment
                 await ingest_service_payment(
                     username=username,
                     amount=payment['user_revenue'],
                     platform=platform,
                     service_type=opportunity.get('type', 'general')
                 )
-            
             print(f"   [OK] Revenue recorded")
         except Exception as e:
             print(f"   [Warn] Revenue recording error: {e}")
         
-        # Credit AIGx to user (for platform activity)
+        # Credit AIGx (existing code)
         if not is_aigentsy and username:
             try:
-                aigx_earned = amount * 0.001  # 0.1% of transaction value as AIGx
+                aigx_earned = amount * 0.001
                 credit_aigx(username, aigx_earned, 'execution_completion')
                 print(f"   [AIGx] Credited: {aigx_earned:.4f} AIGx")
             except Exception as e:
                 print(f"   [Warn] AIGx credit error: {e}")
         
         return payment
+    
+    
+    def _extract_client_email(self, opportunity: Dict) -> Optional[str]:
+        """
+        Extract client email from opportunity data
+        """
+        import re
+        
+        # GitHub doesn't expose real emails
+        if opportunity.get('platform') == 'github':
+            return None
+        
+        # Try description
+        description = opportunity.get('description', '')
+        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', description)
+        if emails:
+            return emails[0]
+        
+        # Try source_data
+        source = opportunity.get('source_data', {})
+        if source.get('email'):
+            return source['email']
+        
+        # Try title
+        title = opportunity.get('title', '')
+        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', title)
+        if emails:
+            return emails[0]
+        
+        return None
     
     
     async def _post_execution(
