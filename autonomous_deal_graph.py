@@ -837,6 +837,25 @@ class DealGraph:
                 
                 opportunities.append(intro)
                 self._intro_opportunities[intro.opportunity_id] = intro
+                
+                # ===== V106: Feed back to discovery loop =====
+                try:
+                    from v106_integration_orchestrator import warm_intro_to_discovery
+                    import asyncio
+                    
+                    # Convert IntroOpportunity to dict for v106
+                    intro_dict = {
+                        'opportunity_id': intro.opportunity_id,
+                        'connector_entity_id': intro.connector_entity_id,
+                        'target_entity_id': intro.target_entity_id,
+                        'path_strength': intro.path_strength,
+                        'predicted_need': intro.predicted_need,
+                        'estimated_value': intro.estimated_value,
+                        'suggested_message': intro.suggested_message
+                    }
+                    asyncio.create_task(warm_intro_to_discovery(intro_dict))
+                except:
+                    pass
         
         return opportunities
     
