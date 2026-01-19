@@ -109,6 +109,14 @@ try:
 except:
     OCL_AVAILABLE = False
 
+# AiGentsy Payments integration
+try:
+    from aigentsy_payments import create_wade_payment_link, create_wade_invoice
+    AIGENTSY_PAYMENTS_AVAILABLE = True
+except ImportError:
+    AIGENTSY_PAYMENTS_AVAILABLE = False
+    print("⚠️ aigentsy_payments not available - payment links disabled")
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -390,6 +398,46 @@ async def uacr_fulfill(
     UACR_FULFILLMENTS[fulfillment["fulfillment_id"]] = fulfillment
     quote["fulfillment"] = fulfillment
     
+    # ═══════════════════════════════════════════════════════════════════════
+    # CREATE PAYMENT LINK VIA AIGENTSY_PAYMENTS
+    # ═══════════════════════════════════════════════════════════════════════
+    payment_link = None
+    payment_link_id = None
+    if AIGENTSY_PAYMENTS_AVAILABLE:
+        try:
+            # Get customer email from signal
+            signal = UACR_SIGNALS.get(quote.get("signal_id"))
+            customer_email = signal.get("user_id") if signal else None
+            
+            # Create payment link
+            payment_result = await create_wade_payment_link(
+                amount=quote["customer_price"],
+                description=f"U-ACR Fulfillment: {quote.get('product_intent', 'Product')}",
+                workflow_id=fulfillment["fulfillment_id"],
+                client_email=customer_email
+            )
+            
+            if payment_result.get("ok"):
+                payment_link = payment_result.get("payment_link")
+                payment_link_id = payment_result.get("payment_link_id")
+                fulfillment["payment_link"] = payment_link
+                fulfillment["payment_link_id"] = payment_link_id
+                fulfillment["payment_status"] = "awaiting_payment"
+                
+                print(f"✅ U-ACR payment link created: {payment_link}")
+            else:
+                print(f"⚠️ Failed to create payment link: {payment_result.get('error')}")
+                fulfillment["payment_status"] = "manual_required"
+                
+        except Exception as e:
+            print(f"❌ Error creating payment link: {e}")
+            fulfillment["payment_status"] = "manual_required"
+    else:
+        # Fallback to manual payment collection
+        fulfillment["payment_status"] = "manual_required"
+        print("⚠️ AiGentsy payments not available - manual payment required")
+    # ═══════════════════════════════════════════════════════════════════════
+    
     # Record revenue
     if RECONCILIATION_AVAILABLE:
         reconciliation_engine.record_activity(
@@ -401,7 +449,8 @@ async def uacr_fulfill(
             amount=quote["spread_amount"],
             details={
                 "product": quote["product_intent"],
-                "customer_price": quote["customer_price"]
+                "customer_price": quote["customer_price"],
+                "payment_link": payment_link
             }
         )
     
@@ -421,7 +470,10 @@ async def uacr_fulfill(
         "bond_id": bond_id,
         "contract_id": contract_id,
         "expected_delivery_hours": quote["sla_hours"],
-        "revenue_captured": round(quote["spread_amount"], 2)
+        "revenue_captured": round(quote["spread_amount"], 2),
+        "payment_link": payment_link,
+        "payment_link_id": payment_link_id,
+        "payment_status": fulfillment.get("payment_status")
     }
 
 
