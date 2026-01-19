@@ -25,3 +25,4 @@ python-docx>=0.8.11
 python-dotenv
 aiohttp==3.9.1
 feedparser==6.0.10
+tweepy>=4.14.0
