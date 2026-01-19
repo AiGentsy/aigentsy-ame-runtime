@@ -35574,6 +35574,7 @@ async def orchestrator_full_cycle(body: Dict = Body(default={})):
         "steps": {}
     }
     
+    try:
         # STEP 1: Discovery - Use Alpha Discovery (real implementation)
         print(f"🔍 Step 1: Alpha Discovery (7 dimensions, multi-AI)...")
         try:
