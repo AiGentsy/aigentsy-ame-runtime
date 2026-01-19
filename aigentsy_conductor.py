@@ -63,6 +63,20 @@ AI_MODEL_ROUTING = {
     'fulfillment': ['claude', 'gpt4', 'gemini'],
 }
 
+# V107-V112 Revenue Engine Tasks
+    'abandoned_checkout_recovery': ['perplexity', 'claude', 'gemini'],  # Research signals
+    'receivables_factoring': ['claude', 'gpt4'],  # Risk analysis
+    'payments_optimization': ['claude', 'gpt4'],  # Routing logic
+    'market_making': ['claude', 'gpt4'],  # Spread calculation
+    'risk_tranching': ['claude', 'gpt4'],  # Risk modeling
+    'offer_syndication': ['perplexity', 'claude', 'gemini'],  # Partner discovery
+    'gap_harvesting': ['perplexity', 'claude', 'gemini'],  # Opportunity discovery
+    'quote_generation': ['claude', 'gpt4'],  # Quote creation
+    'spread_calculation': ['claude', 'gpt4'],  # Spread optimization
+    'kelly_sizing': ['claude', 'gpt4'],  # Kelly criterion
+    'invoice_analysis': ['claude', 'gpt4'],  # Invoice risk assessment
+    'payment_routing': ['claude', 'gpt4'],  # PSP optimization
+
 # Model performance tracking for learning
 MODEL_PERFORMANCE = {
     'claude': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
