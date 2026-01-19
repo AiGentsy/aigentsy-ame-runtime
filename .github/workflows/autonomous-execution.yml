@@ -1584,6 +1584,85 @@ jobs:
           ./_log.sh "v106_warm_intro_loop" "true" "$(($(date +%s) - PHASE_START))000"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # v107 NEW: ACCRETIVE OVERLAYS (10 REVENUE UPGRADES)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💎 v107 Options & Reinsurance
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💎 V107 OPTIONS & REINSURANCE MESH"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check v107 status
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/v107/status" GET '' 20 | tee json/v107-status.json | jq -c '{ok,upgrades,revenue_streams}' 2>/dev/null || true
+          
+          # Check reinsurance orderbook
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/insurance/reinsurance/orderbook" GET '' 20 | jq -c '{ok,offers_count}' 2>/dev/null || true
+          
+          ./_log.sh "v107_options_reinsurance" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 📊 v107 Drawdown Check
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📊 V107 DRAWDOWN GOVERNOR - Circuit Breaker"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check drawdown and adjust aggression
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/treasury/drawdown-check" GET '' 20 | tee json/drawdown-check.json | jq -c '{drawdown,mode,actions}' 2>/dev/null || true
+          
+          ./_log.sh "v107_drawdown_check" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 🤝 v107 Partner Rev-Share
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🤝 V107 PARTNER REV-SHARE SETTLEMENT"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Get partner registry and settle each
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/partners/registry" GET '' 20 2>/dev/null | jq -c '.partners[]?.partner_id' 2>/dev/null | while read partner_id; do
+            if [ -n "$partner_id" ]; then
+              partner_id_clean=$(echo "$partner_id" | tr -d '"')
+              timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/partners/revshare/settle" POST "{\"partner_id\":\"$partner_id_clean\"}" 30 | jq -c '{ok,aigentsy_fee,partner_payout}' 2>/dev/null || true
+            fi
+          done
+          
+          ./_log.sh "v107_partner_revshare" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 🎯 v107 Auto-SKU Synthesis
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🎯 V107 AUTO-SKU SYNTHESIS - Close Spawn→Catalog Gap"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Check SKU catalog
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/sku/catalog" GET '' 20 | jq -c '{ok,sku_count}' 2>/dev/null || true
+          
+          # Check subscription bundles
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/bundles/catalog" GET '' 20 | jq -c '{ok,bundle_count}' 2>/dev/null || true
+          
+          ./_log.sh "v107_auto_sku_synthesis" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 🔍 v107 Compliance Scan
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🔍 V107 COMPLIANCE-AS-REVENUE (CAR)"
+          echo "═══════════════════════════════════════════════════════════════"
+          
+          # Run compliance scan on pipeline
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/car/scan" POST '{"pipeline_data":{"id":"auto_scan","message_rate":50}}' 30 | jq -c '{ok,risk_score,car_fee}' 2>/dev/null || true
+          
+          ./_log.sh "v107_compliance_scan" "true" "$(($(date +%s) - PHASE_START))000"
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 47: HEALTH CHECKS
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🏥 Health Checks
