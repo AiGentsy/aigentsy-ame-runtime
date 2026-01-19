@@ -61,9 +61,8 @@ AI_MODEL_ROUTING = {
     
     # Fulfillment - All models can fulfill
     'fulfillment': ['claude', 'gpt4', 'gemini'],
-}
-
-# V107-V112 Revenue Engine Tasks
+    
+    # V107-V112 Revenue Engine Tasks
     'abandoned_checkout_recovery': ['perplexity', 'claude', 'gemini'],  # Research signals
     'receivables_factoring': ['claude', 'gpt4'],  # Risk analysis
     'payments_optimization': ['claude', 'gpt4'],  # Routing logic
@@ -76,7 +75,7 @@ AI_MODEL_ROUTING = {
     'kelly_sizing': ['claude', 'gpt4'],  # Kelly criterion
     'invoice_analysis': ['claude', 'gpt4'],  # Invoice risk assessment
     'payment_routing': ['claude', 'gpt4'],  # PSP optimization
-
+}
 # Model performance tracking for learning
 MODEL_PERFORMANCE = {
     'claude': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
