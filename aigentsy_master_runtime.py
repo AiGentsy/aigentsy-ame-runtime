@@ -2191,7 +2191,7 @@ class AiGentsyMasterRuntime:
             'boosters': getattr(self, 'last_boosters', None),
             'proofs': getattr(self, 'last_proofs', None),
             'teams': getattr(self, 'last_teams', None),
-            'syndication': getattr(self, 'last_syndication', None)
+            'syndication': getattr(self, 'last_syndication', None),
             'uacr': getattr(self, 'last_uacr', None),
             'receivables': getattr(self, 'last_receivables', None),
             'payments': getattr(self, 'last_payments', None),
