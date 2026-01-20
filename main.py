@@ -9869,7 +9869,8 @@ async def run_alpha_discovery(request: Request):
         
         platforms = body.get('platforms', None)
         dimensions = body.get('dimensions', None)  # If None, uses all dimensions
-        
+
+        from alpha_discovery_engine import AlphaDiscoveryEngine
         engine = AlphaDiscoveryEngine()
         
         # Run discovery and routing
