@@ -33350,12 +33350,39 @@ async def discovery_alpha():
             score_opportunities=True,
             auto_execute=False
         )
+
+        # Extract routing data (correct field mapping)
+        routing = results.get("routing", {})
+        aigentsy_routed = routing.get("aigentsy_routed", {})
+        user_routed = routing.get("user_routed", {})
+        held = routing.get("held", {})
+
         return {
             "ok": True,
             "total_opportunities": results.get("total_opportunities", 0),
-            "wade_opportunities": results.get("wade_opportunities", []),
-            "user_opportunities": results.get("user_opportunities", []),
-            "dimensions_used": results.get("dimensions_used", 7)
+            "total_value": results.get("total_value", 0),
+            "dimensions_used": results.get("dimensions_used", [1]),
+            "routing_summary": {
+                "aigentsy": {
+                    "count": aigentsy_routed.get("count", 0),
+                    "value": aigentsy_routed.get("value", 0),
+                    "estimated_profit": aigentsy_routed.get("estimated_profit", 0)
+                },
+                "users": {
+                    "count": user_routed.get("count", 0),
+                    "value": user_routed.get("value", 0),
+                    "aigentsy_revenue": user_routed.get("aigentsy_revenue", 0)
+                },
+                "held": {
+                    "count": held.get("count", 0),
+                    "value": held.get("value", 0)
+                }
+            },
+            "total_potential_revenue": results.get("total_potential_revenue", 0),
+            # Full opportunity lists (limited to 50 each to avoid huge responses)
+            "aigentsy_opportunities": aigentsy_routed.get("opportunities", [])[:50],
+            "user_opportunities": user_routed.get("opportunities", [])[:50],
+            "held_opportunities": held.get("opportunities", [])[:20]
         }
     except ImportError:
         # Use Perplexity as fallback
