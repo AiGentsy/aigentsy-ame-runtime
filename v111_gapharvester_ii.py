@@ -192,16 +192,27 @@ async def uacr_ingest_signals(
         # Extract intent
         product_intent = signal.get("product_intent", "")
         price_range = signal.get("price_range", [0, 1000])
-        
-        # Estimate conversion probability
-        conversion_prob = 0.05  # Base 5%
-        
-        if "trust" in signal.get("text", "").lower():
-            conversion_prob += 0.03  # +3% if trust mentioned
-        
-        if price_range[1] > 500:
-            conversion_prob += 0.02  # +2% for higher AOV
-        
+        text = signal.get("text", "").lower()
+
+        # Use override if provided (from improved Twitter scraper)
+        # Otherwise calculate based on signal content
+        if "conversion_prob_override" in signal:
+            conversion_prob = signal["conversion_prob_override"]
+        else:
+            # Estimate conversion probability
+            conversion_prob = 0.05  # Base 5%
+
+            if "trust" in text:
+                conversion_prob += 0.03  # +3% if trust mentioned
+            if price_range[1] > 500:
+                conversion_prob += 0.02  # +2% for higher AOV
+            if any(term in text for term in ["wtb", "want to buy", "looking to buy"]):
+                conversion_prob += 0.05  # +5% for strong buy signals
+            if product_intent and product_intent != "general":
+                conversion_prob += 0.02  # +2% for specific product
+
+            conversion_prob = min(conversion_prob, 0.20)  # Cap at 20%
+
         signal_record = {
             "signal_id": signal_id,
             "source_type": source_type,
@@ -209,6 +220,7 @@ async def uacr_ingest_signals(
             "user_id": signal.get("user_id"),
             "product_intent": product_intent,
             "price_range": price_range,
+            "text_preview": text[:100] if text else None,
             "conversion_prob": conversion_prob,
             "status": "ingested",
             "ingested_at": _now()

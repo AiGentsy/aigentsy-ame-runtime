@@ -334,16 +334,75 @@ async def scrape_twitter_purchase_signals(
     if not TWITTER_AVAILABLE:
         return []
     
+    # HIGH-QUALITY PURCHASE INTENT QUERIES
+    # Each query targets specific buying signals, not general "looking for" noise
     search_queries = [
-        "looking for -RT lang:en",
-        '"can\'t find" seller -RT lang:en',
-        '"where to buy" -RT lang:en',
-        '"need" "don\'t know where" -RT lang:en',
-        "recommend seller -RT lang:en"
+        # Direct purchase intent
+        '"want to buy" -RT -is:retweet lang:en',
+        '"looking to buy" -RT -is:retweet lang:en',
+        '"trying to buy" -RT -is:retweet lang:en',
+        '"where can I buy" -RT -is:retweet lang:en',
+        '"anyone selling" -RT -is:retweet lang:en',
+
+        # ISO (In Search Of) - common marketplace language
+        '"ISO" (buy OR sell OR purchase) -RT -is:retweet lang:en',
+        '"in search of" (buy OR purchase) -RT -is:retweet lang:en',
+
+        # WTB (Want To Buy) - enthusiast/collector language
+        '"WTB" -RT -is:retweet lang:en',
+        '"want to purchase" -RT -is:retweet lang:en',
+
+        # Frustrated buyers (high intent)
+        '"can\'t find" (buy OR seller OR stock) -RT -is:retweet lang:en',
+        '"out of stock" (need OR want) -RT -is:retweet lang:en',
+        '"sold out" (looking OR need) -RT -is:retweet lang:en',
+
+        # Recommendation seeking (trust signals)
+        '"recommend" (seller OR store OR shop) -RT -is:retweet lang:en',
+        '"trusted seller" -RT -is:retweet lang:en',
+
+        # Price shopping (ready to buy)
+        '"best price" (buy OR purchase) -RT -is:retweet lang:en',
+        '"cheapest place to buy" -RT -is:retweet lang:en'
     ]
-    
+
+    # PRODUCT CATEGORIES with price ranges
+    PRODUCT_CATEGORIES = {
+        # Electronics
+        "laptop": {"keywords": ["laptop", "macbook", "chromebook", "notebook"], "price": [500, 3000]},
+        "phone": {"keywords": ["phone", "iphone", "android", "smartphone", "galaxy"], "price": [300, 1500]},
+        "tablet": {"keywords": ["tablet", "ipad"], "price": [300, 1500]},
+        "camera": {"keywords": ["camera", "dslr", "mirrorless", "canon", "nikon", "sony a7"], "price": [500, 4000]},
+        "headphones": {"keywords": ["headphones", "airpods", "earbuds", "beats"], "price": [50, 500]},
+        "console": {"keywords": ["ps5", "playstation", "xbox", "nintendo", "switch"], "price": [300, 600]},
+        "gpu": {"keywords": ["gpu", "graphics card", "rtx", "nvidia", "amd rx"], "price": [300, 2000]},
+        "monitor": {"keywords": ["monitor", "display", "4k monitor"], "price": [200, 1500]},
+
+        # Fashion/Luxury
+        "sneakers": {"keywords": ["sneakers", "jordans", "yeezys", "dunks", "air max"], "price": [100, 500]},
+        "watch": {"keywords": ["watch", "rolex", "omega", "seiko", "casio"], "price": [100, 10000]},
+        "bag": {"keywords": ["handbag", "purse", "louis vuitton", "gucci bag"], "price": [200, 5000]},
+
+        # Collectibles
+        "cards": {"keywords": ["pokemon card", "trading card", "sports card", "mtg"], "price": [20, 1000]},
+        "vinyl": {"keywords": ["vinyl", "record", "lp"], "price": [20, 200]},
+        "funko": {"keywords": ["funko", "pop figure"], "price": [15, 100]},
+
+        # Home/Appliances
+        "furniture": {"keywords": ["couch", "sofa", "desk", "chair", "mattress"], "price": [200, 2000]},
+        "appliance": {"keywords": ["refrigerator", "washer", "dryer", "dishwasher"], "price": [500, 2000]},
+
+        # Vehicles/Parts
+        "car_parts": {"keywords": ["car part", "auto part", "oem", "aftermarket"], "price": [50, 1000]},
+        "bike": {"keywords": ["bicycle", "ebike", "mountain bike"], "price": [200, 3000]},
+
+        # Services (high value)
+        "software": {"keywords": ["software", "license", "subscription"], "price": [50, 500]},
+        "tickets": {"keywords": ["ticket", "concert", "event", "game ticket"], "price": [50, 500]},
+    }
+
     signals = []
-    
+
     try:
         for query in search_queries:
             try:
@@ -352,53 +411,66 @@ async def scrape_twitter_purchase_signals(
                     max_results=min(max_results // len(search_queries), 100),
                     tweet_fields=["created_at", "public_metrics", "author_id"]
                 )
-                
+
                 if not tweets.data:
                     continue
-                
+
                 for tweet in tweets.data:
-                    # Parse intent from tweet text
                     text = tweet.text.lower()
-                    
-                    # Extract product intent (simple keyword extraction)
-                    product_keywords = []
-                    if "laptop" in text:
-                        product_keywords.append("laptop")
-                    if "phone" in text:
-                        product_keywords.append("phone")
-                    if "camera" in text:
-                        product_keywords.append("camera")
-                    # Add more product categories as needed
-                    
-                    # Estimate price range based on product
+
+                    # Skip if looks like spam/bot
+                    spam_indicators = ["follow me", "dm me", "click here", "free money", "giveaway"]
+                    if any(spam in text for spam in spam_indicators):
+                        continue
+
+                    # Extract product category and price range
+                    detected_category = None
                     price_range = [100, 1000]  # Default
-                    if "laptop" in product_keywords:
-                        price_range = [500, 2000]
-                    elif "phone" in product_keywords:
-                        price_range = [300, 1500]
-                    
+
+                    for category, config in PRODUCT_CATEGORIES.items():
+                        if any(kw in text for kw in config["keywords"]):
+                            detected_category = category
+                            price_range = config["price"]
+                            break
+
+                    # Calculate conversion probability based on signal strength
+                    base_prob = 0.05
+                    engagement = tweet.public_metrics.get("like_count", 0) if tweet.public_metrics else 0
+
+                    # Boost probability for strong signals
+                    if any(term in text for term in ["wtb", "want to buy", "looking to buy"]):
+                        base_prob += 0.05
+                    if any(term in text for term in ["urgent", "asap", "need today"]):
+                        base_prob += 0.03
+                    if detected_category:  # Specific product = higher intent
+                        base_prob += 0.02
+                    if engagement > 5:  # Engagement = social proof
+                        base_prob += 0.02
+
                     signal = {
                         "text": tweet.text,
                         "source": "twitter",
                         "user_id": f"twitter_{tweet.author_id}",
-                        "product_intent": " ".join(product_keywords) or "general",
+                        "product_intent": detected_category or "general",
                         "price_range": price_range,
                         "timestamp": tweet.created_at.isoformat() if tweet.created_at else None,
-                        "engagement": tweet.public_metrics.get("like_count", 0) if tweet.public_metrics else 0
+                        "engagement": engagement,
+                        "conversion_prob_override": min(base_prob, 0.20)  # Cap at 20%
                     }
-                    
+
                     signals.append(signal)
-                    
+
                     if len(signals) >= max_results:
                         break
-                
+
                 # Rate limit - Twitter API has strict limits
                 await asyncio.sleep(1)
-                
+
             except Exception as e:
                 print(f"⚠️ Error searching Twitter with query '{query}': {e}")
                 continue
-        
+
+        print(f"✅ Twitter: Captured {len(signals)} purchase intent signals")
         return signals
     except Exception as e:
         print(f"❌ Error scraping Twitter signals: {e}")
