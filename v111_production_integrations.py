@@ -335,35 +335,32 @@ async def scrape_twitter_purchase_signals(
         return []
     
     # HIGH-QUALITY PURCHASE INTENT QUERIES
-    # Each query targets specific buying signals, not general "looking for" noise
+    # Mix of specific intent + product-targeted queries for better results
     search_queries = [
-        # Direct purchase intent
+        # Direct purchase intent (high quality but low volume)
         '"want to buy" -RT -is:retweet lang:en',
         '"looking to buy" -RT -is:retweet lang:en',
-        '"trying to buy" -RT -is:retweet lang:en',
-        '"where can I buy" -RT -is:retweet lang:en',
         '"anyone selling" -RT -is:retweet lang:en',
-
-        # ISO (In Search Of) - common marketplace language
-        '"ISO" (buy OR sell OR purchase) -RT -is:retweet lang:en',
-        '"in search of" (buy OR purchase) -RT -is:retweet lang:en',
-
-        # WTB (Want To Buy) - enthusiast/collector language
         '"WTB" -RT -is:retweet lang:en',
-        '"want to purchase" -RT -is:retweet lang:en',
 
-        # Frustrated buyers (high intent)
-        '"can\'t find" (buy OR seller OR stock) -RT -is:retweet lang:en',
-        '"out of stock" (need OR want) -RT -is:retweet lang:en',
-        '"sold out" (looking OR need) -RT -is:retweet lang:en',
+        # Product-specific searches (higher volume, targeted)
+        'want iphone -RT -is:retweet lang:en',
+        'want macbook -RT -is:retweet lang:en',
+        'want ps5 -RT -is:retweet lang:en',
+        'want airpods -RT -is:retweet lang:en',
+        'buy laptop -RT -is:retweet lang:en',
+        'buy sneakers -RT -is:retweet lang:en',
+        'need new phone -RT -is:retweet lang:en',
 
-        # Recommendation seeking (trust signals)
-        '"recommend" (seller OR store OR shop) -RT -is:retweet lang:en',
-        '"trusted seller" -RT -is:retweet lang:en',
+        # Frustration signals (ready to buy)
+        '"out of stock" -RT -is:retweet lang:en',
+        '"sold out" need -RT -is:retweet lang:en',
+        '"can\'t find" buy -RT -is:retweet lang:en',
 
-        # Price shopping (ready to buy)
-        '"best price" (buy OR purchase) -RT -is:retweet lang:en',
-        '"cheapest place to buy" -RT -is:retweet lang:en'
+        # Recommendation seeking
+        'recommend laptop -RT -is:retweet lang:en',
+        'recommend headphones -RT -is:retweet lang:en',
+        'best phone to buy -RT -is:retweet lang:en'
     ]
 
     # PRODUCT CATEGORIES with price ranges
