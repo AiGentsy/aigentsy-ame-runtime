@@ -538,6 +538,241 @@ async def scrape_instagram_shopping_signals() -> List[Dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PERPLEXITY INTEGRATION - HIGH-QUALITY PURCHASE INTENT DETECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PERPLEXITY_AVAILABLE = False
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+
+if PERPLEXITY_API_KEY:
+    PERPLEXITY_AVAILABLE = True
+    print("✅ Perplexity: API key configured for high-quality signal detection")
+
+
+async def scrape_perplexity_purchase_signals(
+    categories: List[str] = None,
+    max_signals: int = 20
+) -> List[Dict[str, Any]]:
+    """
+    Use Perplexity AI to find HIGH-QUALITY purchase intent signals across the web.
+
+    Unlike Twitter's noisy firehose, Perplexity:
+    - Searches Reddit, forums, marketplaces in real-time
+    - Understands context and intent
+    - Returns structured, actionable leads
+    """
+    if not PERPLEXITY_AVAILABLE or not HTTPX_AVAILABLE:
+        return []
+
+    if categories is None:
+        categories = [
+            "electronics",      # Laptops, phones, cameras
+            "sneakers",         # High-value resale market
+            "gaming",           # Consoles, GPUs, collectibles
+            "watches",          # Luxury watches
+            "collectibles",     # Trading cards, vinyl, etc.
+        ]
+
+    # Structured prompts for each category
+    CATEGORY_PROMPTS = {
+        "electronics": """Find 5 recent "Want To Buy" or "ISO" posts from the last 24 hours where someone is actively looking to purchase electronics (laptops, phones, cameras, headphones).
+
+Search Reddit (r/hardwareswap, r/appleswap), forums, and marketplaces.
+
+For each post found, provide in this exact format:
+- Platform: (reddit/forum/marketplace)
+- User: (username if available)
+- Product: (specific item they want)
+- Budget: (price range if mentioned)
+- URL: (link to the post)
+- Quote: (exact text showing their intent)""",
+
+        "sneakers": """Find 5 recent "WTB" or "Looking For" posts from the last 24 hours for sneakers/shoes.
+
+Search Reddit (r/sneakermarket), StockX forums, sneaker communities.
+
+For each post found, provide in this exact format:
+- Platform: (reddit/stockx/forum)
+- User: (username if available)
+- Product: (specific sneaker model, size)
+- Budget: (price range if mentioned)
+- URL: (link to the post)
+- Quote: (exact text showing their intent)""",
+
+        "gaming": """Find 5 recent "Want To Buy" posts from the last 24 hours for gaming items (PS5, Xbox, Nintendo Switch, GPUs, gaming PCs).
+
+Search Reddit (r/hardwareswap, r/gamesale), gaming forums.
+
+For each post found, provide in this exact format:
+- Platform: (reddit/forum)
+- User: (username if available)
+- Product: (specific item)
+- Budget: (price range if mentioned)
+- URL: (link to the post)
+- Quote: (exact text showing their intent)""",
+
+        "watches": """Find 5 recent "WTB" or "Looking For" posts from the last 24 hours for watches.
+
+Search Reddit (r/watchexchange), Chrono24 forums, watch communities.
+
+For each post found, provide in this exact format:
+- Platform: (reddit/chrono24/forum)
+- User: (username if available)
+- Product: (specific watch model)
+- Budget: (price range if mentioned)
+- URL: (link to the post)
+- Quote: (exact text showing their intent)""",
+
+        "collectibles": """Find 5 recent "Want To Buy" posts from the last 24 hours for collectibles (Pokemon cards, sports cards, vinyl records, Funko Pops).
+
+Search Reddit (r/pkmntcgtrades, r/VinylCollectors), collector forums.
+
+For each post found, provide in this exact format:
+- Platform: (reddit/forum)
+- User: (username if available)
+- Product: (specific item)
+- Budget: (price range if mentioned)
+- URL: (link to the post)
+- Quote: (exact text showing their intent)"""
+    }
+
+    signals = []
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            for category in categories:
+                if category not in CATEGORY_PROMPTS:
+                    continue
+
+                prompt = CATEGORY_PROMPTS[category]
+
+                print(f"🔍 Perplexity: Searching for {category} purchase intent...")
+
+                response = await client.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-sonar-small-128k-online",
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
+                )
+
+                if response.status_code != 200:
+                    print(f"⚠️ Perplexity error for {category}: {response.status_code}")
+                    continue
+
+                data = response.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                citations = data.get("citations", [])
+
+                # Parse the structured response into signals
+                parsed_signals = _parse_perplexity_response(content, category, citations)
+                signals.extend(parsed_signals)
+
+                print(f"   ✅ Found {len(parsed_signals)} signals for {category}")
+
+                # Rate limit between categories
+                await asyncio.sleep(1)
+
+                if len(signals) >= max_signals:
+                    break
+
+        print(f"✅ Perplexity: Total {len(signals)} high-quality purchase signals found")
+        return signals[:max_signals]
+
+    except Exception as e:
+        print(f"❌ Error in Perplexity signal detection: {e}")
+        return []
+
+
+def _parse_perplexity_response(
+    content: str,
+    category: str,
+    citations: List[str]
+) -> List[Dict[str, Any]]:
+    """Parse Perplexity's structured response into signal format"""
+    signals = []
+
+    # Price ranges by category
+    CATEGORY_PRICES = {
+        "electronics": [200, 2000],
+        "sneakers": [100, 500],
+        "gaming": [300, 800],
+        "watches": [200, 5000],
+        "collectibles": [20, 500],
+    }
+
+    # Split by entries (look for "- Platform:" markers)
+    entries = content.split("- Platform:")
+
+    for entry in entries[1:]:  # Skip first empty split
+        try:
+            lines = entry.strip().split("\n")
+
+            signal = {
+                "source": "perplexity",
+                "category": category,
+                "platform": lines[0].strip() if lines else "unknown",
+                "product_intent": category,
+                "price_range": CATEGORY_PRICES.get(category, [100, 1000]),
+                "conversion_prob_override": 0.15,  # Higher prob for Perplexity signals
+                "text": "",
+                "url": "",
+                "user_id": "",
+            }
+
+            for line in lines:
+                line_lower = line.lower().strip()
+                if line_lower.startswith("- user:") or line_lower.startswith("user:"):
+                    signal["user_id"] = f"perplexity_{line.split(':', 1)[1].strip()}"
+                elif line_lower.startswith("- product:") or line_lower.startswith("product:"):
+                    signal["product_intent"] = line.split(":", 1)[1].strip()
+                elif line_lower.startswith("- budget:") or line_lower.startswith("budget:"):
+                    budget_str = line.split(":", 1)[1].strip()
+                    # Try to extract price range
+                    import re
+                    prices = re.findall(r'\$?(\d+)', budget_str)
+                    if len(prices) >= 2:
+                        signal["price_range"] = [int(prices[0]), int(prices[1])]
+                    elif len(prices) == 1:
+                        price = int(prices[0])
+                        signal["price_range"] = [int(price * 0.8), int(price * 1.2)]
+                elif line_lower.startswith("- url:") or line_lower.startswith("url:"):
+                    signal["url"] = line.split(":", 1)[1].strip()
+                elif line_lower.startswith("- quote:") or line_lower.startswith("quote:"):
+                    signal["text"] = line.split(":", 1)[1].strip()
+
+            # Only add if we have meaningful data
+            if signal.get("text") or signal.get("product_intent") != category:
+                signals.append(signal)
+
+        except Exception as e:
+            print(f"⚠️ Error parsing Perplexity entry: {e}")
+            continue
+
+    # Add citations as bonus context
+    for i, citation in enumerate(citations[:3]):
+        if citation and "reddit.com" in citation.lower():
+            # Citation is a real Reddit URL - high value
+            signals.append({
+                "source": "perplexity_citation",
+                "category": category,
+                "platform": "reddit",
+                "product_intent": category,
+                "price_range": CATEGORY_PRICES.get(category, [100, 1000]),
+                "conversion_prob_override": 0.12,
+                "text": f"Perplexity citation: Active WTB discussion",
+                "url": citation,
+                "user_id": f"perplexity_citation_{i}",
+            })
+
+    return signals
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK HANDLERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -869,6 +1104,50 @@ def include_v111_integrations(app):
             "sample_signals": signals[:5]  # Show first 5 for debugging
         }
 
+    @app.post("/integrations/perplexity/sync-signals")
+    async def manual_perplexity_sync(body: Dict = Body(default={})):
+        """
+        Manually trigger Perplexity high-quality signal detection.
+
+        Body params:
+        - categories: List of categories to search (default: all)
+          Options: electronics, sneakers, gaming, watches, collectibles
+        - max_signals: Maximum signals to return (default: 20)
+        """
+        if not PERPLEXITY_AVAILABLE:
+            raise HTTPException(status_code=503, detail="PERPLEXITY_API_KEY not configured")
+
+        categories = body.get("categories", None)
+        max_signals = body.get("max_signals", 20)
+
+        signals = await scrape_perplexity_purchase_signals(
+            categories=categories,
+            max_signals=max_signals
+        )
+
+        if not signals:
+            return {
+                "ok": True,
+                "signals_found": 0,
+                "note": "No purchase intent signals found. Try different categories."
+            }
+
+        from v111_gapharvester_ii import uacr_ingest_signals
+
+        result = await uacr_ingest_signals(
+            signals=signals,
+            source_type="perplexity"
+        )
+
+        return {
+            "ok": True,
+            "signals_found": len(signals),
+            "signals_ingested": result["signals_ingested"],
+            "categories_searched": categories or ["electronics", "sneakers", "gaming", "watches", "collectibles"],
+            "sample_signals": signals[:5],
+            "quality": "HIGH - Perplexity searches Reddit, forums, marketplaces with AI understanding"
+        }
+
     @app.post("/integrations/stripe/sync-invoices")
     async def manual_stripe_sync():
         """Manually trigger Stripe invoice sync"""
@@ -916,6 +1195,11 @@ def include_v111_integrations(app):
                 "twitter": {
                     "available": TWITTER_AVAILABLE,
                     "scraper_enabled": True
+                },
+                "perplexity": {
+                    "available": PERPLEXITY_AVAILABLE,
+                    "quality": "HIGH - AI-powered web search",
+                    "categories": ["electronics", "sneakers", "gaming", "watches", "collectibles"]
                 },
                 "instagram": {
                     "available": INSTAGRAM_AVAILABLE,
