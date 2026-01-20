@@ -286,16 +286,26 @@ async def get_shopify_invoice_details(order_id: str) -> Optional[Dict[str, Any]]
 # ═══════════════════════════════════════════════════════════════════════════════
 
 TWITTER_AVAILABLE = False
+twitter_client = None
 
 try:
     import tweepy
-    
+
+    # Option 1: Bearer Token (App-only auth - best for search)
+    TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+
+    # Option 2: OAuth 1.0a (User auth - needed for posting)
     TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
     TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
     TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
     TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
-    
-    if all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
+
+    # Prefer Bearer Token for search (simpler, higher rate limits)
+    if TWITTER_BEARER_TOKEN:
+        twitter_client = tweepy.Client(bearer_token=TWITTER_BEARER_TOKEN)
+        TWITTER_AVAILABLE = True
+        print("✅ Twitter: Using Bearer Token (App-only auth)")
+    elif all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
         twitter_client = tweepy.Client(
             consumer_key=TWITTER_API_KEY,
             consumer_secret=TWITTER_API_SECRET,
@@ -303,6 +313,9 @@ try:
             access_token_secret=TWITTER_ACCESS_SECRET
         )
         TWITTER_AVAILABLE = True
+        print("✅ Twitter: Using OAuth 1.0a (User auth)")
+    else:
+        print("⚠️ Twitter: No valid credentials (need TWITTER_BEARER_TOKEN or all 4 OAuth keys)")
 except ImportError:
     print("⚠️ tweepy not installed - run: pip install tweepy")
 
@@ -766,9 +779,32 @@ def include_v111_integrations(app):
         return {
             "ok": True,
             "signals_found": len(signals),
-            "signals_ingested": result["signals_ingested"]
+            "signals_ingested": result["signals_ingested"],
+            "sample_signals": signals[:5]  # Show first 5 for debugging
         }
-    
+
+    @app.post("/integrations/instagram/sync-signals")
+    async def manual_instagram_sync():
+        """Manually trigger Instagram signal scrape"""
+        signals = await scrape_instagram_shopping_signals()
+
+        if not signals:
+            return {"ok": True, "signals_found": 0, "note": "No shopping signals detected"}
+
+        from v111_gapharvester_ii import uacr_ingest_signals
+
+        result = await uacr_ingest_signals(
+            signals=signals,
+            source_type="social"
+        )
+
+        return {
+            "ok": True,
+            "signals_found": len(signals),
+            "signals_ingested": result["signals_ingested"],
+            "sample_signals": signals[:5]  # Show first 5 for debugging
+        }
+
     @app.post("/integrations/stripe/sync-invoices")
     async def manual_stripe_sync():
         """Manually trigger Stripe invoice sync"""
@@ -828,7 +864,44 @@ def include_v111_integrations(app):
                 "stripe_invoice_sync (every 60 min)"
             ]
         }
-    
+
+    @app.get("/integrations/signals/live")
+    async def get_live_signals():
+        """View all captured signals in memory (debug endpoint)"""
+        from v111_gapharvester_ii import UACR_SIGNALS, UACR_QUOTES
+
+        # Get last 24 hours of signals
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=24)
+
+        recent_signals = []
+        for signal_id, signal in UACR_SIGNALS.items():
+            ingested_at = signal.get("ingested_at", "")
+            if ingested_at:
+                try:
+                    signal_time = datetime.fromisoformat(ingested_at.replace("Z", "+00:00"))
+                    if signal_time > cutoff:
+                        recent_signals.append({
+                            "signal_id": signal_id,
+                            "source": signal.get("source"),
+                            "product_intent": signal.get("product_intent"),
+                            "text_preview": signal.get("text", "")[:100] + "..." if signal.get("text") else None,
+                            "price_range": signal.get("price_range"),
+                            "conversion_prob": signal.get("conversion_prob"),
+                            "status": signal.get("status"),
+                            "ingested_at": ingested_at
+                        })
+                except:
+                    pass
+
+        return {
+            "ok": True,
+            "total_signals_in_memory": len(UACR_SIGNALS),
+            "total_quotes_in_memory": len(UACR_QUOTES),
+            "signals_last_24h": len(recent_signals),
+            "recent_signals": sorted(recent_signals, key=lambda x: x.get("ingested_at", ""), reverse=True)[:20]
+        }
+
     # ===== START BACKGROUND TASKS =====
     
     @app.on_event("startup")
