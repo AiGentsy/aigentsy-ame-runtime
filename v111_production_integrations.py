@@ -418,9 +418,34 @@ async def scrape_twitter_purchase_signals(
                 for tweet in tweets.data:
                     text = tweet.text.lower()
 
-                    # Skip if looks like spam/bot
-                    spam_indicators = ["follow me", "dm me", "click here", "free money", "giveaway"]
+                    # AGGRESSIVE SPAM FILTERING
+                    # Skip bot/spam patterns we're seeing in the wild
+                    spam_indicators = [
+                        # Call to action spam
+                        "follow me", "dm me", "click here", "free money", "giveaway",
+                        "check my", "link in bio", "subscribe", "join now",
+                        # Crypto/airdrop spam
+                        "airdrop", "whitelist", "presale", "token launch", "nft drop",
+                        "web3", "crypto", "blockchain", "🚀" * 2,  # Multiple rockets = spam
+                        # Bot patterns (from sample data)
+                        "looped in", "on the list", "bonuses", "rewards", "surprises",
+                        "act on this", "get involved", "the squad", "the crew",
+                        "am looking forward to",  # Bot pattern we saw
+                        # Adult/dating spam
+                        "hookup", "nsfw", "single", "dating",
+                        # Generic spam
+                        "t.co/", "https://t.co",  # Links often = spam
+                    ]
+
                     if any(spam in text for spam in spam_indicators):
+                        continue
+
+                    # Also skip if too many @mentions (bot behavior)
+                    if text.count("@") > 2:
+                        continue
+
+                    # Skip very short tweets (usually spam)
+                    if len(text) < 30:
                         continue
 
                     # Extract product category and price range
