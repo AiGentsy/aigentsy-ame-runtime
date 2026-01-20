@@ -1041,6 +1041,17 @@ register_investor_routes(app)
 include_diagnostic_tracer(app)
 include_profit_engine(app)
 include_gap_harvesters(app)
+
+# === V107-V109: 20 REVENUE OVERLAYS (60+ endpoints) ===
+try:
+    from v107_v108_v109_complete import include_all_overlays
+    include_all_overlays(app)
+    print("✅ V107-V109: 20 revenue overlays registered (Intent Clearinghouse, Reinsurance, IP-as-Yield, BNPL, Creator Network, Agent AppStore, RFP Autopilot, Agent Ad Network, etc.)")
+except ImportError as e:
+    print(f"⚠️ V107-V109 not available: {e}")
+except Exception as e:
+    print(f"⚠️ V107-V109 registration failed: {e}")
+
 include_v97_cash_endpoints(app)
 include_overlay(app)
 create_apex_upgrade_routes(app)
@@ -29266,9 +29277,57 @@ async def autonomous_discover_and_execute(body: Dict = Body(...)):
                     "status": "queued",
                     "win_probability": win_prob
                 }
+
+                # === NEW: ACTUALLY EXECUTE HIGH-CONFIDENCE OPPORTUNITIES ===
+                if win_prob >= 0.80:  # 80%+ confidence = auto-execute
+                    print(f"\n🚀 AUTO-EXECUTING (win_prob={win_prob:.2f}): {opp.get('title', 'Unknown')[:60]}...")
+
+                    try:
+                        from execution_orchestrator import ExecutionOrchestrator
+
+                        orchestrator = ExecutionOrchestrator()
+
+                        # Map opportunity fields for execution
+                        execution_opp = {
+                            "id": opp.get("id", f"opp_{int(time.time())}"),
+                            "title": opp.get("title", "Opportunity"),
+                            "description": opp.get("description", ""),
+                            "platform": opp.get("source", opp.get("platform", "unknown")),
+                            "type": opp.get("type", "service"),
+                            "value": opp.get("estimated_value", opp.get("value", 0)),
+                            "estimated_cost": opp.get("estimated_cost", 0),
+                            "win_probability": win_prob,
+                            "contact": opp.get("contact", {}),
+                            "url": opp.get("url", ""),
+                        }
+
+                        execution_result = await orchestrator.execute_opportunity(
+                            opportunity=execution_opp,
+                            capability={"confidence": win_prob, "method": "autonomous"},
+                            user_data={"username": "wade", "is_aigentsy": True}
+                        )
+
+                        exec_result["status"] = execution_result.get("status", "executed")
+                        exec_result["execution_id"] = execution_result.get("execution_id")
+                        exec_result["revenue"] = execution_result.get("payment", {}).get("amount", 0)
+                        print(f"   ✅ Execution complete: {exec_result['status']}")
+
+                    except ImportError as ie:
+                        print(f"   ⚠️ ExecutionOrchestrator not available: {ie}")
+                        exec_result["status"] = "queued_no_executor"
+                    except Exception as e:
+                        print(f"   ⚠️ Execution failed: {str(e)[:100]}")
+                        exec_result["status"] = "execution_failed"
+                        exec_result["error"] = str(e)[:100]
+
                 executed.append(exec_result)
-        
+
+        # === AUTO-EXECUTION SUMMARY ===
+        auto_executed = [e for e in executed if e.get("status") not in ["queued", "queued_no_executor"]]
+        print(f"\n✅ AUTO-EXECUTION COMPLETE: {len(auto_executed)}/{len(executed)} opportunities executed")
+
         results["executions"]["count"] = len(executed)
+        results["executions"]["auto_executed"] = len(auto_executed)
         results["executions"]["results"] = executed
         
         if not results["message"]:

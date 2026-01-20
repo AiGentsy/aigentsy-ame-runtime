@@ -526,39 +526,60 @@ class AlphaDiscoveryEngine:
         # Dimension 1: Explicit marketplace scrapers (REAL SCRAPERS - KEEP!)
         from explicit_marketplace_scrapers import ExplicitMarketplaceScrapers
         self.scrapers = ExplicitMarketplaceScrapers()
-        
+
         # ===================================================================
-        # DIMENSIONS 2-7 DISABLED - PLACEHOLDER GENERATORS
-        # Uncomment when you build real implementations
+        # DIMENSIONS 2-7: ALL ENABLED
         # ===================================================================
-        
-        # # Dimension 2: Pain point detector
-        # from pain_point_detector import PainPointDetector
-        # self.pain_detector = PainPointDetector()
-        
-        # # Dimension 3: Flow arbitrage detector
-        # from flow_arbitrage_detector import FlowArbitrageDetector
-        # self.arbitrage_detector = FlowArbitrageDetector()
-        
-        # # Dimensions 4-7: Advanced discovery
-        # from advanced_discovery_dimensions import (
-        #     PredictiveIntelligenceEngine,
-        #     NetworkAmplificationEngine,
-        #     OpportunityCreationEngine,
-        #     EmergentPatternDetector
-        # )
-        # self.predictive_engine = PredictiveIntelligenceEngine()
-        # self.network_amplifier = NetworkAmplificationEngine()
-        # self.opportunity_creator = OpportunityCreationEngine()
-        # self.emergent_detector = EmergentPatternDetector()
-        
-        # Set placeholder None values
-        self.pain_detector = None
-        self.arbitrage_detector = None
-        self.predictive_engine = None
-        self.network_amplifier = None
-        self.opportunity_creator = None
-        self.emergent_detector = None
+
+        # Dimension 2: Pain point detector
+        try:
+            from pain_point_detector import PainPointDetector
+            self.pain_detector = PainPointDetector()
+            print("   ✅ Dimension 2: Pain Point Detector ENABLED")
+        except ImportError as e:
+            print(f"   ⚠️ Dimension 2: Pain Point Detector not available: {e}")
+            self.pain_detector = None
+        except Exception as e:
+            print(f"   ⚠️ Dimension 2: Error initializing: {e}")
+            self.pain_detector = None
+
+        # Dimension 3: Flow arbitrage detector
+        try:
+            from flow_arbitrage_detector import FlowArbitrageDetector
+            self.arbitrage_detector = FlowArbitrageDetector()
+            print("   ✅ Dimension 3: Flow Arbitrage Detector ENABLED")
+        except ImportError as e:
+            print(f"   ⚠️ Dimension 3: Flow Arbitrage Detector not available: {e}")
+            self.arbitrage_detector = None
+        except Exception as e:
+            print(f"   ⚠️ Dimension 3: Error initializing: {e}")
+            self.arbitrage_detector = None
+
+        # Dimensions 4-7: Advanced discovery
+        try:
+            from advanced_discovery_dimensions import (
+                PredictiveIntelligenceEngine,
+                NetworkAmplificationEngine,
+                OpportunityCreationEngine,
+                EmergentPatternDetector
+            )
+            self.predictive_engine = PredictiveIntelligenceEngine()
+            self.network_amplifier = NetworkAmplificationEngine()
+            self.opportunity_creator = OpportunityCreationEngine()
+            self.emergent_detector = EmergentPatternDetector()
+            print("   ✅ Dimensions 4-7: Advanced Discovery ENABLED")
+        except ImportError as e:
+            print(f"   ⚠️ Dimensions 4-7: Advanced Discovery not available: {e}")
+            self.predictive_engine = None
+            self.network_amplifier = None
+            self.opportunity_creator = None
+            self.emergent_detector = None
+        except Exception as e:
+            print(f"   ⚠️ Dimensions 4-7: Error initializing: {e}")
+            self.predictive_engine = None
+            self.network_amplifier = None
+            self.opportunity_creator = None
+            self.emergent_detector = None
     
     async def discover_and_route(
         self, 
