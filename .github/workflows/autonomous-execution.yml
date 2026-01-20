@@ -1169,6 +1169,30 @@ jobs:
           # Underwriting status
           timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/underwriting/status" GET '' 15 | jq -c '{ok,policies,bonds,quotes}' || true
 
+          # ═══════════════════════════════════════════════════════════════════════
+          # Gap 5 Fix: Claims Processing (waterfall: equity → mezz → senior → bond)
+          # ═══════════════════════════════════════════════════════════════════════
+
+          # Check for pending claims and auto-resolve
+          CLAIMS=$(timeout 30s ./_curl.sh "${{ env.BACKEND_URL }}/claims/list" GET '?status=filed' 20 2>/dev/null || echo '{"claims":[]}')
+          PENDING_COUNT=$(echo "$CLAIMS" | jq -r '.count // 0')
+
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "📋 Found $PENDING_COUNT pending claims - processing..."
+
+            # Get first pending claim ID and resolve it
+            CLAIM_ID=$(echo "$CLAIMS" | jq -r '.claims[0].claim_id // ""')
+            if [ -n "$CLAIM_ID" ] && [ "$CLAIM_ID" != "null" ]; then
+              timeout 30s ./_curl.sh "${{ env.BACKEND_URL }}/claims/resolve" POST "{\"claim_id\":\"$CLAIM_ID\",\"approve\":true}" 20 | jq -c '{ok,waterfall}' || true
+            fi
+          fi
+
+          # Save market maker state to JSONBIN (prevent data loss on redeploy)
+          timeout 30s ./_curl.sh "${{ env.BACKEND_URL }}/ifx/save-state" POST '{}' 20 | jq -c '{ok,orders,quotes,bonds}' || true
+
+          # Get IFX state status
+          timeout 15s ./_curl.sh "${{ env.BACKEND_URL }}/ifx/state-status" GET '' 10 | jq -c '{ok,ifx_orderbook_count,tranche_quotes_count}' || true
+
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 31d: CREDIT & AMM EXPANSION (v104+ hyper-accretive)
       # OCV credits, dynamic bundles, creator profit-share, ad AMM, LP yields

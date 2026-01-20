@@ -1874,7 +1874,8 @@ async def ifx_auto_quote(body: dict = Body(...)):
         }
         quotes.append(quote)
         IFX_ORDERBOOK.append(quote)
-    
+
+    _mark_mm_state_dirty()  # Gap 1: Persist state
     return {
         "ok": True,
         "quotes_created": len(quotes),
@@ -1884,15 +1885,25 @@ async def ifx_auto_quote(body: dict = Body(...)):
 
 @app.post("/ifx/mark-to-market")
 async def ifx_mark_to_market(body: dict = Body(...)):
-    """Reprice all quotes in orderbook with current pricing rules"""
+    """
+    Reprice all quotes in orderbook with current pricing rules.
+    Gap 2 Fix: Now includes VaR (Value at Risk) calculation.
+    """
     repriced = 0
-    
+    confidence_level = body.get("confidence_level", 0.95)  # 95% VaR default
+    time_horizon_days = body.get("time_horizon_days", 1)  # 1-day VaR default
+
+    # Track positions for VaR calculation
+    positions = []
+
     for quote in IFX_ORDERBOOK:
         if quote["status"] != "quoted":
             continue
-        
+
         ev = quote["expected_value"]
-        
+        win_prob = quote.get("win_probability", 0.35)
+        inventory = quote.get("inventory_commitment_usd", 0)
+
         # Get fresh price
         try:
             pricing = await _call("POST", "/pricing/arm", {
@@ -1903,15 +1914,99 @@ async def ifx_mark_to_market(body: dict = Body(...)):
             new_price = pricing.get("price", ev * 0.7)
         except:
             new_price = round(ev * 0.65, 2)
-        
+
         quote["oaa_price"] = new_price
         quote["repriced_at"] = datetime.now(timezone.utc).isoformat()
         repriced += 1
-    
+
+        # Track position for VaR
+        positions.append({
+            "quote_id": quote.get("quote_id"),
+            "ev": ev,
+            "price": new_price,
+            "win_prob": win_prob,
+            "inventory": inventory,
+            "potential_loss": inventory * (1 - win_prob)  # Loss if deal fails
+        })
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # VaR CALCULATION (Gap 2 Fix)
+    # Using parametric VaR with loss distribution based on win probabilities
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    import math
+
+    # Calculate portfolio-level statistics
+    total_exposure = sum(p["inventory"] for p in positions)
+    total_ev = sum(p["ev"] for p in positions)
+
+    if positions:
+        # Weighted average win probability
+        weighted_win_prob = sum(p["win_prob"] * p["inventory"] for p in positions) / total_exposure if total_exposure > 0 else 0.35
+
+        # Expected loss (portfolio level)
+        expected_loss = sum(p["potential_loss"] for p in positions)
+
+        # Variance of loss (assuming independence between positions)
+        # For each position: Var = p(1-p) * inventory^2
+        variance_sum = sum(
+            p["win_prob"] * (1 - p["win_prob"]) * (p["inventory"] ** 2)
+            for p in positions
+        )
+        portfolio_std = math.sqrt(variance_sum) if variance_sum > 0 else 0
+
+        # Z-score for confidence level (95% = 1.645, 99% = 2.326)
+        z_scores = {0.90: 1.282, 0.95: 1.645, 0.99: 2.326}
+        z_score = z_scores.get(confidence_level, 1.645)
+
+        # Parametric VaR = Expected Loss + Z * Std Dev
+        # Adjusted for time horizon (sqrt of time scaling for std dev)
+        time_adjusted_std = portfolio_std * math.sqrt(time_horizon_days)
+        var_value = expected_loss + (z_score * time_adjusted_std)
+
+        # Conditional VaR (Expected Shortfall) - average loss beyond VaR
+        # Approximate: CVaR ≈ VaR * (1 + some factor based on distribution)
+        cvar_value = var_value * 1.25  # Simplified approximation
+
+        # Stress test: worst-case scenario (all deals fail)
+        worst_case_loss = total_exposure
+
+        var_metrics = {
+            "var": round(var_value, 2),
+            "var_pct_of_exposure": round((var_value / total_exposure * 100), 2) if total_exposure > 0 else 0,
+            "cvar_expected_shortfall": round(cvar_value, 2),
+            "confidence_level": confidence_level,
+            "time_horizon_days": time_horizon_days,
+            "total_exposure": round(total_exposure, 2),
+            "total_expected_value": round(total_ev, 2),
+            "weighted_win_probability": round(weighted_win_prob, 4),
+            "expected_loss": round(expected_loss, 2),
+            "portfolio_std_dev": round(portfolio_std, 2),
+            "worst_case_loss": round(worst_case_loss, 2),
+            "position_count": len(positions),
+            "risk_assessment": "HIGH" if var_value > total_exposure * 0.3 else "MEDIUM" if var_value > total_exposure * 0.15 else "LOW"
+        }
+    else:
+        var_metrics = {
+            "var": 0,
+            "var_pct_of_exposure": 0,
+            "cvar_expected_shortfall": 0,
+            "confidence_level": confidence_level,
+            "time_horizon_days": time_horizon_days,
+            "total_exposure": 0,
+            "position_count": 0,
+            "risk_assessment": "NONE"
+        }
+
+    if repriced > 0:
+        _mark_mm_state_dirty()  # Gap 1: Persist state after repricing
+
     return {
         "ok": True,
         "repriced": repriced,
-        "orderbook_size": len(IFX_ORDERBOOK)
+        "orderbook_size": len(IFX_ORDERBOOK),
+        "var_metrics": var_metrics,
+        "ts": datetime.now(timezone.utc).isoformat()
     }
 
 @app.post("/oaa/market-make")
@@ -2146,22 +2241,23 @@ async def underwriting_quote(body: dict = Body(...)):
     }
     
     TRANCHE_QUOTES[quote_id] = quote
-    
+    _mark_mm_state_dirty()  # Gap 1: Persist state
     return {"ok": True, "quote": quote}
 
 @app.post("/insurance/bind")
 async def insurance_bind(body: dict = Body(...)):
     """
     Bind insurance policy to pool.
-    Uses insurance_pool module if available, else safe fallback.
+    Gap 3 Fix: Flows premium through contract_payment_engine and revenue_reconciliation_engine.
     """
     quote_id = body.get("quote_id")
     deal_id = body.get("deal_id", f"deal_{uuid.uuid4().hex[:8]}")
     coverage = body.get("coverage", 1000)
     premium = body.get("premium", 50)
-    
+    payer_email = body.get("payer_email")
+
     policy_id = f"pol_{uuid.uuid4().hex[:10]}"
-    
+
     # Try to bind through insurance_pool module
     pool_bound = False
     try:
@@ -2174,7 +2270,45 @@ async def insurance_bind(body: dict = Body(...)):
         pool_bound = pool_result.get("ok", False)
     except:
         pass
-    
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Gap 3 Fix: Flow premium through contract_payment_engine
+    # ═══════════════════════════════════════════════════════════════════════════
+    contract_generated = False
+    payment_link = None
+    try:
+        if CONTRACT_ENGINE_AVAILABLE and payer_email:
+            from contract_payment_engine import generate_contract, send_stripe_link
+            contract_result = generate_contract(
+                intent_id=deal_id,
+                amount=premium,
+                client_email=payer_email,
+                service_type="insurance_premium",
+                metadata={"policy_id": policy_id, "coverage": coverage}
+            )
+            if contract_result.get("ok"):
+                contract_generated = True
+                payment_link = contract_result.get("payment_link")
+    except Exception as e:
+        print(f"⚠️ contract_payment_engine failed for insurance premium: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Gap 3 Fix: Record premium in revenue_reconciliation_engine
+    # ═══════════════════════════════════════════════════════════════════════════
+    reconciled = False
+    try:
+        recon_result = await _call("POST", "/revenue/reconcile", {
+            "source": "insurance_premium",
+            "amount": premium,
+            "deal_id": deal_id,
+            "policy_id": policy_id,
+            "basis": "insurance_premium",
+            "ts": datetime.now(timezone.utc).isoformat()
+        })
+        reconciled = recon_result.get("ok", False)
+    except Exception as e:
+        print(f"⚠️ revenue reconciliation failed for insurance premium: {e}")
+
     policy = {
         "policy_id": policy_id,
         "quote_id": quote_id,
@@ -2182,13 +2316,16 @@ async def insurance_bind(body: dict = Body(...)):
         "coverage": coverage,
         "premium": premium,
         "pool_bound": pool_bound,
+        "contract_generated": contract_generated,
+        "payment_link": payment_link,
+        "revenue_reconciled": reconciled,
         "status": "active",
         "bound_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
     }
-    
+
     INSURANCE_POLICIES[policy_id] = policy
-    
+    _mark_mm_state_dirty()  # Gap 1: Persist state
     return {"ok": True, "policy_id": policy_id, "policy": policy}
 
 @app.post("/bonds/issue")
@@ -2231,7 +2368,7 @@ async def bonds_issue(body: dict = Body(...)):
     }
     
     PERFORMANCE_BONDS[bond_id] = bond
-    
+    _mark_mm_state_dirty()  # Gap 1: Persist state
     return {"ok": True, "bond_id": bond_id, "bond": bond}
 
 @app.post("/revenue/reconcile-tranche")
@@ -2279,6 +2416,211 @@ async def underwriting_status():
         "tranches_defined": list(TRANCHES.keys()),
         "ts": datetime.now(timezone.utc).isoformat()
     }
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CLAIMS ENDPOINTS (Gap 4 Fix)
+# File and resolve claims with waterfall: equity → mezzanine → senior → bond
+# ════════════════════════════════════════════════════════════════════════════════
+
+CLAIMS_LEDGER = []  # All filed claims
+
+@app.post("/claims/file")
+async def claims_file(body: dict = Body(...)):
+    """
+    File a claim against a deal/policy.
+    Claims are processed through the waterfall when resolved.
+    """
+    deal_id = body.get("deal_id")
+    policy_id = body.get("policy_id")
+    claim_amount = body.get("amount", 0)
+    reason = body.get("reason", "dispute")
+    claimant = body.get("claimant", "unknown")
+    evidence = body.get("evidence", [])
+
+    if not deal_id and not policy_id:
+        return {"ok": False, "error": "deal_id or policy_id required"}
+
+    if claim_amount <= 0:
+        return {"ok": False, "error": "claim amount must be positive"}
+
+    # Look up related policy and deal info
+    policy = INSURANCE_POLICIES.get(policy_id, {}) if policy_id else {}
+    deal_value = policy.get("coverage", claim_amount)
+
+    # Find related tranche quote
+    tranche_quote = None
+    for qid, quote in TRANCHE_QUOTES.items():
+        if quote.get("deal_id") == deal_id:
+            tranche_quote = quote
+            break
+
+    claim_id = f"clm_{uuid.uuid4().hex[:10]}"
+    claim = {
+        "claim_id": claim_id,
+        "deal_id": deal_id,
+        "policy_id": policy_id,
+        "claim_amount": claim_amount,
+        "deal_value": deal_value,
+        "reason": reason,
+        "claimant": claimant,
+        "evidence": evidence,
+        "status": "filed",
+        "filed_at": datetime.now(timezone.utc).isoformat(),
+        "tranche_info": tranche_quote.get("tranches") if tranche_quote else None,
+        "waterfall_applied": False,
+        "resolution": None
+    }
+
+    CLAIMS_LEDGER.append(claim)
+    _mark_mm_state_dirty()  # Persist claims
+
+    return {
+        "ok": True,
+        "claim_id": claim_id,
+        "claim": claim,
+        "message": f"Claim filed for ${claim_amount:.2f}. Use /claims/resolve to process waterfall."
+    }
+
+@app.post("/claims/resolve")
+async def claims_resolve(body: dict = Body(...)):
+    """
+    Resolve a claim using the waterfall: equity → mezzanine → senior → bond.
+    Each layer absorbs losses up to its capacity before passing to the next.
+    """
+    claim_id = body.get("claim_id")
+    approve = body.get("approve", True)
+    admin_override = body.get("admin_override", False)
+
+    if not claim_id:
+        return {"ok": False, "error": "claim_id required"}
+
+    # Find the claim
+    claim = None
+    for c in CLAIMS_LEDGER:
+        if c.get("claim_id") == claim_id:
+            claim = c
+            break
+
+    if not claim:
+        return {"ok": False, "error": "claim not found"}
+
+    if claim.get("status") == "resolved":
+        return {"ok": False, "error": "claim already resolved", "resolution": claim.get("resolution")}
+
+    if not approve:
+        claim["status"] = "denied"
+        claim["resolution"] = {
+            "outcome": "denied",
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "reason": body.get("denial_reason", "Claim denied by reviewer")
+        }
+        _mark_mm_state_dirty()
+        return {"ok": True, "claim": claim}
+
+    # Apply waterfall: equity → mezzanine → senior → bond
+    claim_amount = claim.get("claim_amount", 0)
+    deal_value = claim.get("deal_value", claim_amount)
+    remaining_claim = claim_amount
+
+    waterfall_result = {
+        "layers": [],
+        "total_absorbed": 0,
+        "unabsorbed": 0
+    }
+
+    # Waterfall order: equity first (takes first loss), then mezz, then senior
+    waterfall_order = ["equity", "mezzanine", "senior"]
+
+    for layer_name in waterfall_order:
+        if remaining_claim <= 0:
+            break
+
+        layer_config = TRANCHES.get(layer_name, {})
+        layer_size = deal_value * (layer_config.get("detachment", 0) - layer_config.get("attachment", 0))
+
+        # Layer absorbs losses up to its size
+        absorbed = min(remaining_claim, layer_size)
+        remaining_claim -= absorbed
+
+        waterfall_result["layers"].append({
+            "layer": layer_name,
+            "capacity": round(layer_size, 2),
+            "absorbed": round(absorbed, 2),
+            "exhausted": absorbed >= layer_size
+        })
+        waterfall_result["total_absorbed"] += absorbed
+
+    # If still remaining, hit the performance bond
+    if remaining_claim > 0:
+        # Find related bond
+        bond_id = claim.get("policy_id")  # Often linked
+        bond = PERFORMANCE_BONDS.get(bond_id, {})
+        bond_amount = bond.get("amount", 0)
+
+        bond_absorbed = min(remaining_claim, bond_amount)
+        remaining_claim -= bond_absorbed
+
+        waterfall_result["layers"].append({
+            "layer": "performance_bond",
+            "capacity": round(bond_amount, 2),
+            "absorbed": round(bond_absorbed, 2),
+            "exhausted": bond_absorbed >= bond_amount
+        })
+        waterfall_result["total_absorbed"] += bond_absorbed
+
+        # Mark bond as used if any amount was absorbed
+        if bond_absorbed > 0 and bond_id in PERFORMANCE_BONDS:
+            PERFORMANCE_BONDS[bond_id]["remaining"] = max(0, bond_amount - bond_absorbed)
+            PERFORMANCE_BONDS[bond_id]["claims_paid"] = PERFORMANCE_BONDS[bond_id].get("claims_paid", 0) + bond_absorbed
+
+    waterfall_result["unabsorbed"] = round(remaining_claim, 2)
+    waterfall_result["total_absorbed"] = round(waterfall_result["total_absorbed"], 2)
+    waterfall_result["fully_covered"] = remaining_claim <= 0
+
+    # Update claim
+    claim["status"] = "resolved"
+    claim["waterfall_applied"] = True
+    claim["resolution"] = {
+        "outcome": "approved",
+        "waterfall": waterfall_result,
+        "payout": waterfall_result["total_absorbed"],
+        "shortfall": waterfall_result["unabsorbed"],
+        "resolved_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    _mark_mm_state_dirty()
+
+    return {
+        "ok": True,
+        "claim_id": claim_id,
+        "claim": claim,
+        "waterfall": waterfall_result,
+        "message": f"Claim resolved. ${waterfall_result['total_absorbed']:.2f} absorbed through waterfall." +
+                   (f" ${waterfall_result['unabsorbed']:.2f} unabsorbed (shortfall)." if waterfall_result['unabsorbed'] > 0 else "")
+    }
+
+@app.get("/claims/list")
+async def claims_list(status: str = None):
+    """List all claims, optionally filtered by status"""
+    if status:
+        filtered = [c for c in CLAIMS_LEDGER if c.get("status") == status]
+    else:
+        filtered = CLAIMS_LEDGER
+
+    return {
+        "ok": True,
+        "claims": filtered,
+        "count": len(filtered),
+        "total_filed": len(CLAIMS_LEDGER)
+    }
+
+@app.get("/claims/{claim_id}")
+async def claims_get(claim_id: str):
+    """Get details of a specific claim"""
+    for c in CLAIMS_LEDGER:
+        if c.get("claim_id") == claim_id:
+            return {"ok": True, "claim": c}
+    return {"ok": False, "error": "claim not found"}
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DEALGRAPH ORCHESTRATION ENDPOINTS (v104 gap closure)
@@ -5404,8 +5746,11 @@ async def auto_release_escrows_job():
 async def startup_event():
     """Start background tasks"""
     asyncio.create_task(auto_bid_background())
-    asyncio.create_task(auto_release_escrows_job())  # ADD THIS
-    print("Background tasks started: auto-bid, auto-release")
+    asyncio.create_task(auto_release_escrows_job())
+    # Gap 1 Fix: Load market maker state from JSONBIN and start autosave
+    await _load_market_maker_state()
+    asyncio.create_task(_mm_state_autosave_job())
+    print("Background tasks started: auto-bid, auto-release, mm-state-autosave")
     
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
@@ -5532,7 +5877,166 @@ async def metrics_summary_get(username: str):
 # ---- Env ----
 JSONBIN_URL     = os.getenv("JSONBIN_URL")
 JSONBIN_SECRET  = os.getenv("JSONBIN_SECRET")
+JSONBIN_MM_URL  = os.getenv("JSONBIN_MM_URL")  # Dedicated bin for market maker state (optional)
 PROPOSAL_WEBHOOK_URL = os.getenv("PROPOSAL_WEBHOOK_URL")  # used by /contacts/send webhook
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKET MAKER STATE PERSISTENCE (Gap 1 Fix)
+# Persists IFX_ORDERBOOK, TRANCHE_QUOTES, PERFORMANCE_BONDS, INSURANCE_POLICIES
+# Uses JSONBIN_MM_URL if set, otherwise stores in main JSONBIN as reserved record
+# ═══════════════════════════════════════════════════════════════════════════════
+MM_STATE_RECORD_ID = "__market_maker_state__"
+_mm_state_dirty = False  # Track if state needs saving
+
+async def _load_market_maker_state():
+    """Load market maker state from JSONBIN on startup"""
+    global IFX_ORDERBOOK, TRANCHE_QUOTES, PERFORMANCE_BONDS, INSURANCE_POLICIES, CLAIMS_LEDGER
+
+    if not JSONBIN_SECRET:
+        print("⚠️ JSONBIN_SECRET not set - market maker state will not persist")
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Try dedicated bin first
+            if JSONBIN_MM_URL:
+                r = await client.get(JSONBIN_MM_URL, headers={"X-Master-Key": JSONBIN_SECRET})
+                if r.status_code == 200:
+                    data = r.json()
+                    state = data.get("record", {})
+                    IFX_ORDERBOOK = state.get("ifx_orderbook", [])
+                    TRANCHE_QUOTES = state.get("tranche_quotes", {})
+                    PERFORMANCE_BONDS = state.get("performance_bonds", {})
+                    INSURANCE_POLICIES = state.get("insurance_policies", {})
+                    CLAIMS_LEDGER = state.get("claims_ledger", [])
+                    print(f"✅ Market maker state loaded from dedicated bin: {len(IFX_ORDERBOOK)} orders, {len(TRANCHE_QUOTES)} quotes, {len(PERFORMANCE_BONDS)} bonds, {len(CLAIMS_LEDGER)} claims")
+                    return
+
+            # Fallback: Look for reserved record in main JSONBIN
+            if JSONBIN_URL:
+                r = await client.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET})
+                if r.status_code == 200:
+                    data = r.json()
+                    users = data.get("record", [])
+                    for u in users:
+                        if u.get("id") == MM_STATE_RECORD_ID or u.get("username") == MM_STATE_RECORD_ID:
+                            state = u.get("market_maker_state", {})
+                            IFX_ORDERBOOK = state.get("ifx_orderbook", [])
+                            TRANCHE_QUOTES = state.get("tranche_quotes", {})
+                            PERFORMANCE_BONDS = state.get("performance_bonds", {})
+                            INSURANCE_POLICIES = state.get("insurance_policies", {})
+                            CLAIMS_LEDGER = state.get("claims_ledger", [])
+                            print(f"✅ Market maker state loaded from main bin: {len(IFX_ORDERBOOK)} orders, {len(TRANCHE_QUOTES)} quotes, {len(PERFORMANCE_BONDS)} bonds, {len(CLAIMS_LEDGER)} claims")
+                            return
+                    print("ℹ️ No existing market maker state found - starting fresh")
+    except Exception as e:
+        print(f"⚠️ Failed to load market maker state: {e}")
+
+async def _save_market_maker_state():
+    """Save market maker state to JSONBIN"""
+    global _mm_state_dirty
+
+    if not JSONBIN_SECRET:
+        return {"ok": False, "error": "JSONBIN_SECRET not set"}
+
+    state = {
+        "ifx_orderbook": IFX_ORDERBOOK,
+        "tranche_quotes": TRANCHE_QUOTES,
+        "performance_bonds": PERFORMANCE_BONDS,
+        "insurance_policies": INSURANCE_POLICIES,
+        "claims_ledger": CLAIMS_LEDGER,
+        "saved_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Try dedicated bin first
+            if JSONBIN_MM_URL:
+                r = await client.put(
+                    JSONBIN_MM_URL,
+                    headers={"X-Master-Key": JSONBIN_SECRET, "Content-Type": "application/json"},
+                    json={"record": state}
+                )
+                r.raise_for_status()
+                _mm_state_dirty = False
+                return {"ok": True, "location": "dedicated_bin", "orders": len(IFX_ORDERBOOK), "quotes": len(TRANCHE_QUOTES), "bonds": len(PERFORMANCE_BONDS)}
+
+            # Fallback: Store as reserved record in main JSONBIN
+            if JSONBIN_URL:
+                # Load existing users
+                r = await client.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET})
+                r.raise_for_status()
+                data = r.json()
+                users = data.get("record", [])
+
+                # Find or create reserved record
+                found = False
+                for i, u in enumerate(users):
+                    if u.get("id") == MM_STATE_RECORD_ID or u.get("username") == MM_STATE_RECORD_ID:
+                        users[i]["market_maker_state"] = state
+                        users[i]["updated_at"] = datetime.now(timezone.utc).isoformat()
+                        found = True
+                        break
+
+                if not found:
+                    users.append({
+                        "id": MM_STATE_RECORD_ID,
+                        "username": MM_STATE_RECORD_ID,
+                        "market_maker_state": state,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+
+                # Save back
+                r = await client.put(
+                    JSONBIN_URL,
+                    headers={"X-Master-Key": JSONBIN_SECRET, "Content-Type": "application/json"},
+                    json={"record": users}
+                )
+                r.raise_for_status()
+                _mm_state_dirty = False
+                return {"ok": True, "location": "main_bin_reserved", "orders": len(IFX_ORDERBOOK), "quotes": len(TRANCHE_QUOTES), "bonds": len(PERFORMANCE_BONDS)}
+
+        return {"ok": False, "error": "No JSONBIN configured"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _mark_mm_state_dirty():
+    """Mark market maker state as needing to be saved"""
+    global _mm_state_dirty
+    _mm_state_dirty = True
+
+async def _mm_state_autosave_job():
+    """Background job to auto-save market maker state every 5 minutes if dirty"""
+    while True:
+        await asyncio.sleep(300)  # 5 minutes
+        if _mm_state_dirty:
+            result = await _save_market_maker_state()
+            if result.get("ok"):
+                print(f"✅ Market maker state auto-saved: {result}")
+            else:
+                print(f"⚠️ Market maker state auto-save failed: {result}")
+
+# Endpoint to manually save market maker state
+@app.post("/ifx/save-state")
+async def ifx_save_state():
+    """Manually save market maker state to JSONBIN"""
+    result = await _save_market_maker_state()
+    return result
+
+@app.get("/ifx/state-status")
+async def ifx_state_status():
+    """Get current market maker state status"""
+    return {
+        "ok": True,
+        "ifx_orderbook_count": len(IFX_ORDERBOOK),
+        "tranche_quotes_count": len(TRANCHE_QUOTES),
+        "performance_bonds_count": len(PERFORMANCE_BONDS),
+        "insurance_policies_count": len(INSURANCE_POLICIES),
+        "state_dirty": _mm_state_dirty,
+        "jsonbin_mm_url_configured": bool(JSONBIN_MM_URL),
+        "jsonbin_url_configured": bool(JSONBIN_URL)
+    }
+# ═══════════════════════════════════════════════════════════════════════════════
 POL_SECRET      = os.getenv("POL_SECRET", "dev-secret")   # for signed Offer Links
 CANONICAL_SCHEMA_VERSION = "v1.1"  # bumped
 SELF_URL        = os.getenv("SELF_URL")  # optional, e.g. https://your-service.onrender.com
