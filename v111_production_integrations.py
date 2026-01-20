@@ -334,33 +334,19 @@ async def scrape_twitter_purchase_signals(
     if not TWITTER_AVAILABLE:
         return []
     
-    # HIGH-QUALITY PURCHASE INTENT QUERIES
-    # Mix of specific intent + product-targeted queries for better results
+    # PURCHASE INTENT QUERIES - BALANCED FOR VOLUME + QUALITY
     search_queries = [
-        # Direct purchase intent (high quality but low volume)
-        '"want to buy" -RT -is:retweet lang:en',
-        '"looking to buy" -RT -is:retweet lang:en',
-        '"anyone selling" -RT -is:retweet lang:en',
-        '"WTB" -RT -is:retweet lang:en',
-
-        # Product-specific searches (higher volume, targeted)
-        'want iphone -RT -is:retweet lang:en',
-        'want macbook -RT -is:retweet lang:en',
-        'want ps5 -RT -is:retweet lang:en',
-        'want airpods -RT -is:retweet lang:en',
-        'buy laptop -RT -is:retweet lang:en',
-        'buy sneakers -RT -is:retweet lang:en',
-        'need new phone -RT -is:retweet lang:en',
-
-        # Frustration signals (ready to buy)
-        '"out of stock" -RT -is:retweet lang:en',
-        '"sold out" need -RT -is:retweet lang:en',
-        '"can\'t find" buy -RT -is:retweet lang:en',
-
-        # Recommendation seeking
-        'recommend laptop -RT -is:retweet lang:en',
-        'recommend headphones -RT -is:retweet lang:en',
-        'best phone to buy -RT -is:retweet lang:en'
+        # Simple, high-volume queries that work with Twitter Basic API
+        'want to buy lang:en -is:retweet',
+        'looking to buy lang:en -is:retweet',
+        'need to buy lang:en -is:retweet',
+        'WTB lang:en -is:retweet',
+        'ISO lang:en -is:retweet',
+        'anyone selling lang:en -is:retweet',
+        'where to buy lang:en -is:retweet',
+        'recommend me lang:en -is:retweet',
+        'looking for suggestions lang:en -is:retweet',
+        'best place to buy lang:en -is:retweet',
     ]
 
     # PRODUCT CATEGORIES with price ranges
