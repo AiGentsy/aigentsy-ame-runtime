@@ -33339,13 +33339,14 @@ async def pain_points_detect():
 
 @app.post("/discovery/alpha")
 async def discovery_alpha():
-    """Run AlphaDiscoveryEngine with multi-AI enhancement"""
+    """Run AlphaDiscoveryEngine - D1 only (real marketplace data)"""
     try:
         from alpha_discovery_engine import AlphaDiscoveryEngine
         engine = AlphaDiscoveryEngine()
-        # Correct method: discover_and_route
+        # D1 ONLY: Explicit marketplaces (GitHub, Reddit, HackerNews)
+        # D2-7 disabled: contain placeholder/simulated data when APIs not configured
         results = await engine.discover_and_route(
-            dimensions=[1, 2, 3, 4, 5, 6, 7],
+            dimensions=[1],  # Real data only
             score_opportunities=True,
             auto_execute=False
         )
