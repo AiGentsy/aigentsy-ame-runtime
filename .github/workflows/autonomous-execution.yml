@@ -954,6 +954,61 @@ jobs:
           ./_curl.sh "${{ env.BACKEND_URL }}/payments/status" GET '' 30 | tee json/payment-status.json | jq -c '{ok,totals,summary}' 2>/dev/null || true
 
       # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19i: MASTER AUTONOMOUS CYCLE
+      # Complete end-to-end: Discovery → Communication → Contract → Fulfillment → Payment
+      # All 7 Dimensions | All 27+ Platforms | All Communication Channels
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🚀 MASTER AUTONOMOUS CYCLE (Full E2E)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo "🚀 MASTER AUTONOMOUS CYCLE - COMPLETE END-TO-END AUTOMATION"
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "PHASE 1: Discovery (All 7 Dimensions)"
+          echo "  - Explicit Marketplaces: GitHub, Upwork, Fiverr, Freelancer, etc."
+          echo "  - Pain Point Detection: Reddit, HN, Twitter, ProductHunt"
+          echo "  - Flow Arbitrage: Pricing inefficiencies"
+          echo "  - Predictive Intelligence: Trend forecasting"
+          echo "  - Network Amplification: Referrals, viral loops"
+          echo "  - Opportunity Creation: Proactive outreach"
+          echo "  - Emergent Patterns: New market detection"
+          echo ""
+          echo "PHASE 2: Communication (Multi-Channel)"
+          echo "  - Email: Postmark/SendGrid"
+          echo "  - DM: Twitter, LinkedIn, Platform"
+          echo "  - SMS: Twilio"
+          echo "  - Platform: GitHub, Reddit, HN"
+          echo ""
+          echo "PHASE 3: Contract & Agreement"
+          echo "  - Contract generation"
+          echo "  - Digital signatures"
+          echo "  - Deposit collection"
+          echo ""
+          echo "PHASE 4: Fulfillment"
+          echo "  - Code generation"
+          echo "  - Content creation"
+          echo "  - Graphics/Audio/Video"
+          echo ""
+          echo "PHASE 5: Payment Collection"
+          echo "  - Stripe invoices"
+          echo "  - Escrow releases"
+          echo "  - Bounty claims"
+          echo "═══════════════════════════════════════════════════════════════════════════"
+
+          # Run the complete autonomous cycle
+          MASTER_RESULT=$(./_curl.sh "${{ env.BACKEND_URL }}/autonomous/full-cycle" POST '{}' 900 2>/dev/null)
+          echo "$MASTER_RESULT" | tee json/master-autonomous-cycle.json | jq '.' 2>/dev/null || echo "$MASTER_RESULT"
+
+          # Extract and display summary
+          echo ""
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo "MASTER CYCLE SUMMARY:"
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo "$MASTER_RESULT" | jq -r '.summary | to_entries | .[] | "  \(.key): \(.value)"' 2>/dev/null || true
+          echo "═══════════════════════════════════════════════════════════════════════════"
+
+      # ═══════════════════════════════════════════════════════════════════════
       # PHASE 20: AI GENERATION
       # ═══════════════════════════════════════════════════════════════════════
       - name: 🤖 AI Generation
