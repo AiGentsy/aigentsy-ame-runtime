@@ -1069,6 +1069,40 @@ app.include_router(actionization_router)
 app.include_router(execution_router)
 app.include_router(autonomous_router)
 
+# ============================================================================
+# FULFILLMENT FABRIC (Universal Connector Bus + COI Runtime)
+# ============================================================================
+try:
+    from fulfillment_fabric_routes import include_fulfillment_fabric
+    include_fulfillment_fabric(app)
+    print("=" * 80)
+    print("FULFILLMENT FABRIC LOADED - Universal Outcome Execution")
+    print("=" * 80)
+    print("  Connectors: HTTP, Email, SMS, Slack, Shopify, Stripe, Storage, Airtable, Headless")
+    print("  PDL Catalog: 15+ Protocol Descriptors")
+    print("  COI Runtime: Contract-based outcome execution with SLAs & proofs")
+    print("  Endpoints: /fabric/execute, /fabric/execute-pdl/{name}, /fabric/capabilities")
+    print("=" * 80)
+except Exception as e:
+    print(f"Fulfillment Fabric load error: {e}")
+
+# ============================================================================
+# AIGENTSY UNIFIED FABRIC (All Systems + COI Integration)
+# ============================================================================
+try:
+    from aigentsy_fabric_routes import include_aigentsy_fabric
+    include_aigentsy_fabric(app)
+    print("=" * 80)
+    print("AIGENTSY UNIFIED FABRIC LOADED - Full System Integration")
+    print("=" * 80)
+    print("  INTELLIGENCE: AI Family Brain (Claude, GPT-4, Gemini, Perplexity)")
+    print("  FULFILLMENT: COI Runtime with Resend (email), Stripe, Shopify, etc.")
+    print("  BUSINESS: AME, AMG, MetaBridge, JV Mesh, MetaHive")
+    print("  Endpoints: /fabric-unified/execute, /fabric-unified/status")
+    print("=" * 80)
+except Exception as e:
+    print(f"AiGentsy Unified Fabric load error: {e}")
+
 async def auto_bid_background():
     """Runs in background forever"""
     base_url = os.getenv("SELF_URL", "http://localhost:8000")
@@ -33577,13 +33611,41 @@ async def discovery_scrape_all():
 
 @app.post("/discovery/github/bounties")
 async def discovery_github_bounties(body: Dict = Body(default={})):
-    """GitHub bounties discovery - wires to existing scrape logic"""
+    """GitHub bounties discovery - wires to existing scrape logic with value extraction"""
+    import re
     limit = body.get("limit", 50)
     result = await discovery_scrape_github(body)
     opportunities = result.get("opportunities", [])[:limit]
+
+    # Value extraction patterns for bounty amounts
+    value_patterns = [
+        r'\[\$(\d{1,6}(?:,\d{3})*)\]',      # [$250] or [$1,000]
+        r'\$(\d{1,6}(?:,\d{3})*)\s*bounty',  # $500 bounty
+        r'bounty[:\s]*\$(\d{1,6}(?:,\d{3})*)', # bounty: $500
+        r'\$(\d{1,6}(?:,\d{3})*)',            # Any $XXX
+    ]
+
     for opp in opportunities:
         opp["platform"] = "github"
         opp["source"] = "github_bounties"
+
+        # Extract value from title
+        title = opp.get("title", "")
+        extracted_value = 0
+        for pattern in value_patterns:
+            match = re.search(pattern, title, re.IGNORECASE)
+            if match:
+                val_str = match.group(1).replace(",", "")
+                extracted_value = float(val_str)
+                break
+
+        # Check labels for bounty hints
+        labels = opp.get("labels", [])
+        if not extracted_value and any("bounty" in str(l).lower() for l in labels):
+            extracted_value = 100.0  # Default bounty assumption
+
+        opp["estimated_value"] = extracted_value
+
     return {"ok": True, "opportunities": opportunities}
 
 
