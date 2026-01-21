@@ -43,6 +43,30 @@ from connectors import ConnectorRegistry, execute_outcome as connector_execute
 from connectors.base import ConnectorResult
 from pdl_catalog import PDLCatalog, PDLSpec
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MONETIZATION FABRIC INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    from monetization.pricing_arm import suggest as monetization_price_suggest
+    from monetization.revenue_router import split as monetization_revenue_split
+    from monetization.ledger import post_entry as monetization_ledger_post
+    from monetization.proof_badges import mint_badge as monetization_mint_badge
+    from monetization.referrals import allocate_referrals as monetization_ref_alloc
+    from monetization.subscriptions import check_quota, record_usage
+    from monetization.fee_schedule import calculate_platform_fee
+    MONETIZATION_AVAILABLE = True
+except ImportError as e:
+    MONETIZATION_AVAILABLE = False
+    # Fallbacks
+    def monetization_price_suggest(base, **kwargs): return base
+    def monetization_revenue_split(gross, **kwargs): return {"platform": 0, "user": gross}
+    def monetization_ledger_post(*args, **kwargs): return {"ok": True}
+    def monetization_mint_badge(att): return {"badge_id": None}
+    def monetization_ref_alloc(gross, chain, **kwargs): return {"splits": {}, "remainder": gross}
+    def check_quota(user, calls=1): return {"ok": True, "within_quota": True}
+    def record_usage(user, calls=1): return {"ok": True}
+    def calculate_platform_fee(amount): return {"fee": 0, "net": amount}
+
 logger = logging.getLogger("coi_runtime")
 
 
@@ -381,7 +405,7 @@ class COIRuntime:
         return len(errors) == 0, errors
 
     async def _quote_outcome(self, contract: COIContract) -> Dict[str, Any]:
-        """Generate price quote for outcome"""
+        """Generate price quote for outcome with monetization fabric integration"""
         base_price = contract.pricing.get("amount_usd", 0)
 
         # Find capable connectors and get cost estimates
@@ -401,6 +425,28 @@ class COIRuntime:
         # Calculate quote with margin
         margin_pct = self.config.get("default_margin_pct", 0.30)
         quoted_price = max(base_price, min_cost * (1 + margin_pct))
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # MONETIZATION: Dynamic price uplift via Pricing ARM
+        # ═══════════════════════════════════════════════════════════════════════
+        if MONETIZATION_AVAILABLE:
+            try:
+                # Get pricing context from config/inputs
+                fx_rate = contract.inputs.get("fx_rate", 1.0)
+                load_pct = self.config.get("system_load_pct", 0.3)
+                wave_score = contract.inputs.get("wave_score", 0.2)
+
+                # Apply monetization pricing uplift
+                quoted_price = monetization_price_suggest(
+                    quoted_price,
+                    fx_rate=fx_rate,
+                    load_pct=load_pct,
+                    wave_score=wave_score,
+                    cogs=min_cost,
+                    min_margin=margin_pct
+                )
+            except Exception as e:
+                logger.warning(f"Monetization pricing uplift failed: {e}")
 
         # Calculate bond
         bond = contract.risk.get("bond_usd", quoted_price * 0.2)
@@ -530,6 +576,121 @@ class COIRuntime:
                     callback(contract)
             except Exception as e:
                 logger.error(f"Callback error: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # MONETIZATION: Finalize sale on successful completion
+        # ═══════════════════════════════════════════════════════════════════════
+        if contract.status == "completed" and MONETIZATION_AVAILABLE:
+            await self._monetization_finalize(contract)
+
+    async def _monetization_finalize(self, contract: COIContract):
+        """
+        Monetization Fabric finalization:
+        1. Mint proof badge from attestation
+        2. Split revenue (platform/user/pool/partner)
+        3. Process referral chain allocation
+        4. Post to double-entry ledger
+        5. Record API usage
+        """
+        try:
+            gross = contract.quoted_price
+            outcome_id = contract.outcome_id
+
+            # 1. Mint proof badge from collected proofs
+            attestation = {
+                "outcome_id": outcome_id,
+                "outcome_type": contract.outcome_type,
+                "outcome_hash": hashlib.sha256(json.dumps(contract.to_dict(), default=str).encode()).hexdigest(),
+                "sla_verdict": "pass" if not any(
+                    v.outcome_id == outcome_id for v in self._sla_violations
+                ) else "fail",
+                "proofs": contract.proofs_collected,
+                "entity": contract.inputs.get("entity", "system")
+            }
+            badge = monetization_mint_badge(attestation)
+
+            # 2. Revenue split (platform gets 6%, remainder split user/pool/partner)
+            entity = contract.inputs.get("entity", "system")
+            referral_chain = contract.inputs.get("referral_chain", [])
+
+            splits = monetization_revenue_split(
+                gross,
+                user_pct=0.70,
+                pool_pct=0.10,
+                partner_pct=0.05
+            )
+
+            # 3. Referral chain allocation
+            ref_alloc = {"splits": {}, "total_allocated": 0}
+            if referral_chain:
+                ref_alloc = monetization_ref_alloc(gross, referral_chain)
+                splits["referrals"] = ref_alloc.get("splits", {})
+
+            # 4. Post to double-entry ledger
+            # Gross sale entry
+            monetization_ledger_post(
+                "coi_sale",
+                f"coi:{contract.idempotency_key}",
+                debit=0,
+                credit=gross,
+                meta={
+                    "outcome_type": contract.outcome_type,
+                    "entity": entity,
+                    "connector": contract.connector_used,
+                    "latency_ms": contract.latency_ms,
+                    "badge_id": badge.get("badge_id")
+                }
+            )
+
+            # Platform fee entry
+            platform_fee = splits.get("platform", 0)
+            if platform_fee > 0:
+                monetization_ledger_post(
+                    "platform_fee",
+                    "entity:aigentsy_platform",
+                    debit=0,
+                    credit=platform_fee,
+                    meta={"source_coi": outcome_id}
+                )
+
+            # User payout entry
+            user_payout = splits.get("user", 0)
+            if user_payout > 0:
+                monetization_ledger_post(
+                    "user_payout",
+                    f"entity:{entity}",
+                    debit=0,
+                    credit=user_payout,
+                    meta={"source_coi": outcome_id}
+                )
+
+            # Referral payouts
+            for referrer, amount in ref_alloc.get("splits", {}).items():
+                monetization_ledger_post(
+                    "referral_payout",
+                    f"entity:{referrer}",
+                    debit=0,
+                    credit=amount,
+                    meta={"source_coi": outcome_id, "source_user": entity}
+                )
+
+            # 5. Record API usage
+            record_usage(entity, calls=1)
+
+            # Store monetization result on contract
+            contract.result = contract.result or {}
+            contract.result["monetization"] = {
+                "badge": badge,
+                "splits": splits,
+                "referral_allocation": ref_alloc,
+                "gross": gross,
+                "platform_fee": platform_fee
+            }
+
+            logger.info(f"Monetization finalized: {outcome_id} - gross=${gross:.2f}, platform=${platform_fee:.2f}")
+
+        except Exception as e:
+            logger.error(f"Monetization finalization failed for {contract.outcome_id}: {e}")
 
     # ========================================================================
     # PUBLIC API

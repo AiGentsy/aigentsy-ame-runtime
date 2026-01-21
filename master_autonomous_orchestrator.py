@@ -78,6 +78,42 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# MONETIZATION FABRIC INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    from monetization import MonetizationFabric
+    from monetization.pricing_arm import suggest as monetization_price_suggest
+    from monetization.revenue_router import split as monetization_revenue_split
+    from monetization.ledger import post_entry as monetization_ledger_post, record_sale
+    from monetization.proof_badges import mint_badge as monetization_mint_badge
+    from monetization.referrals import allocate_referrals, register_chain
+    from monetization.subscriptions import check_quota, record_usage, subscribe
+    from monetization.fee_schedule import get_fee, calculate_platform_fee
+    from monetization.arbitrage_engine import detect_spread_opportunity
+    from monetization.settlements import initiate_payout
+    MONETIZATION_AVAILABLE = True
+    logger.info("✅ Monetization Fabric loaded")
+except ImportError as e:
+    MONETIZATION_AVAILABLE = False
+    logger.warning(f"Monetization Fabric not available: {e}")
+    # Fallbacks
+    def monetization_price_suggest(base, **kwargs): return base
+    def monetization_revenue_split(gross, **kwargs): return {"platform": 0, "user": gross}
+    def monetization_ledger_post(*args, **kwargs): return {"ok": True}
+    def monetization_mint_badge(att): return {"badge_id": None}
+    def allocate_referrals(gross, chain, **kwargs): return {"splits": {}, "remainder": gross}
+    def register_chain(user, chain): return {"ok": True}
+    def check_quota(user, calls=1): return {"ok": True, "within_quota": True}
+    def record_usage(user, calls=1): return {"ok": True}
+    def subscribe(user, tier, **kwargs): return {"ok": True}
+    def get_fee(key, default): return default
+    def calculate_platform_fee(amount): return {"fee": 0, "net": amount}
+    def detect_spread_opportunity(bids, asks, **kwargs): return {"ok": False}
+    def initiate_payout(entity, **kwargs): return {"ok": False}
+    def record_sale(coi_id, gross, splits, **kwargs): return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CONSENT & SUPPRESSION LIST
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -197,6 +233,15 @@ class MasterAutonomousOrchestrator:
             self.coi_runtime = get_coi_runtime()
             logger.info("COI Runtime initialized - Fulfillment Fabric connected")
 
+        # Monetization Fabric - Revenue generation overlay
+        self.monetization_fabric = None
+        if MONETIZATION_AVAILABLE:
+            try:
+                self.monetization_fabric = MonetizationFabric()
+                logger.info("✅ Monetization Fabric initialized - Revenue overlay connected")
+            except Exception as e:
+                logger.warning(f"Monetization Fabric init failed: {e}")
+
         # Concurrency limits per platform type
         self.semaphores = {
             "email": asyncio.Semaphore(20),
@@ -223,7 +268,13 @@ class MasterAutonomousOrchestrator:
                 "calls_succeeded": 0,
                 "calls_failed": 0,
                 "retries": 0,
-                "circuit_opens": 0
+                "circuit_opens": 0,
+                # Monetization metrics
+                "gross_revenue": 0.0,
+                "platform_fees": 0.0,
+                "referral_payouts": 0.0,
+                "badges_minted": 0,
+                "arbitrage_captured": 0.0
             }
         }
 
@@ -959,8 +1010,34 @@ class MasterAutonomousOrchestrator:
                     results["contracts_generated"] += 1
                     contract_id = contract.get("contract_id")
 
+                    # ═══════════════════════════════════════════════════════════════
+                    # MONETIZATION: Apply dynamic pricing uplift
+                    # ═══════════════════════════════════════════════════════════════
+                    base_value = opportunity.get("value", 0)
+                    if MONETIZATION_AVAILABLE and base_value > 0:
+                        try:
+                            # Dynamic pricing based on EV, load, wave score
+                            adjusted_value = monetization_price_suggest(
+                                base_value,
+                                load_pct=0.3,  # System load estimate
+                                wave_score=min(opportunity.get("_ev", 0) / 100, 1.0),
+                                cogs=opportunity.get("cogs_estimate", base_value * 0.3),
+                                min_margin=0.25
+                            )
+                            opportunity["adjusted_value"] = adjusted_value
+                            _log_structured(self._run_id(), "monetization", "price_uplift", {
+                                "base": base_value,
+                                "adjusted": adjusted_value,
+                                "uplift_pct": round((adjusted_value - base_value) / base_value * 100, 1) if base_value > 0 else 0
+                            })
+                        except Exception as e:
+                            adjusted_value = base_value
+                            _log_structured(self._run_id(), "monetization", "price_error", {"error": str(e)})
+                    else:
+                        adjusted_value = base_value
+
                     # 50% deposit via COI Fabric (Stripe connector)
-                    deposit_amount = opportunity.get("value", 0) * 0.5
+                    deposit_amount = adjusted_value * 0.5
                     payment_link = await self._create_payment_link_fabric(
                         amount=deposit_amount,
                         description=f"Deposit: {opportunity.get('title', 'Project')}",
@@ -1073,16 +1150,80 @@ class MasterAutonomousOrchestrator:
 
                     if delivery_result.get("success"):
                         results["delivered"] += 1
-                        results["total_delivered_value"] += opportunity.get("value", 0)
+                        gross_value = opportunity.get("adjusted_value", opportunity.get("value", 0))
+                        results["total_delivered_value"] += gross_value
 
                         # Final payment link (remaining 50%) via COI Fabric
-                        remaining = opportunity.get("value", 0) * 0.5
+                        remaining = gross_value * 0.5
                         payment_result = await self._create_payment_link_fabric(
                             amount=remaining,
                             description=f"Final payment: {opportunity.get('title', 'Work')}",
                             metadata={"contract_id": contract_id, "type": "final"},
                             idempotency_key=f"{idem_base}|final_pay"
                         )
+
+                        # ═══════════════════════════════════════════════════════════════
+                        # MONETIZATION: Finalize sale - revenue split, badge, ledger
+                        # ═══════════════════════════════════════════════════════════════
+                        monetization_result = {}
+                        if MONETIZATION_AVAILABLE and gross_value > 0:
+                            try:
+                                # Revenue split (AiGentsy platform fee + user/pool/partner)
+                                splits = monetization_revenue_split(
+                                    gross_value,
+                                    user_pct=0.70,
+                                    pool_pct=0.10,
+                                    partner_pct=0.05
+                                )
+
+                                # Referral chain allocation
+                                ref_chain = opportunity.get("referral_chain", [])
+                                if ref_chain:
+                                    ref_alloc = allocate_referrals(gross_value, ref_chain)
+                                    splits["referrals"] = ref_alloc.get("splits", {})
+                                    self.current_run["metrics"]["referral_payouts"] += ref_alloc.get("total_allocated", 0)
+
+                                # Mint proof badge
+                                badge = monetization_mint_badge({
+                                    "outcome_id": contract_id,
+                                    "outcome_type": opportunity.get("type", "fulfillment"),
+                                    "outcome_hash": hashlib.sha1(f"{contract_id}:{gross_value}".encode()).hexdigest(),
+                                    "sla_verdict": "pass",
+                                    "proofs": delivery_result.get("proofs", []),
+                                    "entity": opportunity.get("contact", {}).get("name", "client")
+                                })
+                                self.current_run["metrics"]["badges_minted"] += 1
+
+                                # Record in ledger
+                                record_sale(
+                                    coi_id=contract_id,
+                                    gross=gross_value,
+                                    splits=splits,
+                                    badge=badge
+                                )
+
+                                # Update run metrics
+                                self.current_run["metrics"]["gross_revenue"] += gross_value
+                                self.current_run["metrics"]["platform_fees"] += splits.get("platform", 0)
+
+                                monetization_result = {
+                                    "splits": splits,
+                                    "badge": badge,
+                                    "gross": gross_value
+                                }
+
+                                _log_structured(self._run_id(), "monetization", "sale_recorded", {
+                                    "contract_id": contract_id,
+                                    "gross": gross_value,
+                                    "platform_fee": splits.get("platform", 0),
+                                    "badge_id": badge.get("badge_id")
+                                })
+
+                            except Exception as e:
+                                _log_structured(self._run_id(), "monetization", "finalize_error", {
+                                    "contract_id": contract_id,
+                                    "error": str(e)
+                                })
 
                         # Post-delivery upsell sequence
                         upsell = await self._call("POST", "/upsell/trigger-sequence", {
@@ -1099,8 +1240,9 @@ class MasterAutonomousOrchestrator:
                             "opportunity_id": opportunity.get("id"),
                             "delivery_url": delivery_result.get("delivery_url"),
                             "payment_link": payment_result.get("payment_link"),
-                            "value": opportunity.get("value", 0),
-                            "ev_score": opportunity.get("_ev", 0)
+                            "value": gross_value,
+                            "ev_score": opportunity.get("_ev", 0),
+                            "monetization": monetization_result
                         })
 
             except Exception as e:
@@ -1537,7 +1679,15 @@ AiGentsy Autonomous Fulfillment
                 "contracts_value": final_results.get("contract", {}).get("total_contract_value", 0),
                 "delivered_value": final_results.get("fulfillment", {}).get("total_delivered_value", 0),
                 "collected": final_results.get("payment_collection", {}).get("total_collected", 0),
-                "pending": final_results.get("payment_collection", {}).get("total_pending", 0)
+                "pending": final_results.get("payment_collection", {}).get("total_pending", 0),
+                # Monetization summary
+                "monetization": {
+                    "gross_revenue": self.current_run["metrics"]["gross_revenue"],
+                    "platform_fees": self.current_run["metrics"]["platform_fees"],
+                    "referral_payouts": self.current_run["metrics"]["referral_payouts"],
+                    "badges_minted": self.current_run["metrics"]["badges_minted"],
+                    "arbitrage_captured": self.current_run["metrics"]["arbitrage_captured"]
+                }
             }
 
             final_results["completed_at"] = datetime.now(timezone.utc).isoformat()

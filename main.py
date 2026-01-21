@@ -194,6 +194,27 @@ try:
 except ImportError as e:
     AIGENTSY_PAYMENTS_AVAILABLE = False
 
+# Monetization Fabric - Revenue Overlay for AiGentsy/Wade
+try:
+    from monetization import MonetizationFabric
+    from monetization.fee_schedule import get_fee, calculate_platform_fee
+    from monetization.pricing_arm import suggest as monetization_price_suggest
+    from monetization.revenue_router import split as monetization_revenue_split
+    from monetization.ledger import post_entry as monetization_ledger_post
+    from monetization.proof_badges import mint_badge as monetization_mint_badge
+    MONETIZATION_FABRIC_AVAILABLE = True
+    print("✅ monetization fabric loaded (12 modules)")
+except ImportError as e:
+    MONETIZATION_FABRIC_AVAILABLE = False
+    print(f"⚠️ monetization fabric not available: {e}")
+    # Fallbacks
+    def get_fee(key, default): return default
+    def calculate_platform_fee(amount): return {"fee": 0, "net": amount}
+    def monetization_price_suggest(base, **kwargs): return base
+    def monetization_revenue_split(gross, **kwargs): return {"platform": 0, "user": gross}
+    def monetization_ledger_post(*args, **kwargs): return {"ok": True}
+    def monetization_mint_badge(att): return {"badge_id": None}
+
 # OpenAI Agent Deployer
 try:
     from openai_agent_deployer import deploy_ai_agents, AGENT_CONFIGS
@@ -1102,6 +1123,25 @@ try:
     print("=" * 80)
 except Exception as e:
     print(f"AiGentsy Unified Fabric load error: {e}")
+
+# ============================================================================
+# MONETIZATION FABRIC (Revenue Overlay for AiGentsy/Wade)
+# ============================================================================
+try:
+    from monetization_routes import router as monetization_router
+    app.include_router(monetization_router)
+    print("=" * 80)
+    print("MONETIZATION FABRIC LOADED - Revenue Generation Overlay")
+    print("=" * 80)
+    print("  FEE SCHEDULE: 6% platform, 2% insurance, 3% market maker")
+    print("  PRICING ARM: Surge, FX, wave uplift, margin floor")
+    print("  REVENUE: Splits (70% user, 10% pool, 5% partner, 6% platform)")
+    print("  LEDGER: Double-entry accounting with JSONBin persistence")
+    print("  PRODUCTS: Subscriptions, licensing, data packs, proof badges")
+    print("  Endpoints: /money/capabilities, /money/quote/*, /money/badge/*")
+    print("=" * 80)
+except Exception as e:
+    print(f"Monetization Fabric load error: {e}")
 
 async def auto_bid_background():
     """Runs in background forever"""
