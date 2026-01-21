@@ -35,7 +35,7 @@ USAGE:
     include_v111_integrations(app)
 """
 
-from fastapi import HTTPException, Request, BackgroundTasks, Header
+from fastapi import HTTPException, Request, BackgroundTasks, Header, Body
 from typing import Dict, Any, List, Optional
 import os
 import hmac
