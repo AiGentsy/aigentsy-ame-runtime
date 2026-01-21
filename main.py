@@ -1818,6 +1818,31 @@ def _mark_mm_state_dirty():
     global _mm_state_dirty
     _mm_state_dirty = True
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# IDEMPOTENCY KEY GENERATION (Must be defined before endpoints that use it)
+# ═══════════════════════════════════════════════════════════════════════════════
+MM_STATE_RECORD_ID = "__market_maker_state__"
+MM_STATE_VERSION = 0  # Optimistic locking version
+MM_IDEMPOTENCY_CACHE = set()  # Track processed idempotency keys (in-memory cache)
+
+# Import event bus for emissions
+try:
+    from event_bus import publish as event_publish
+    EVENT_BUS_AVAILABLE = True
+except ImportError:
+    def event_publish(event_type, data): pass
+    EVENT_BUS_AVAILABLE = False
+
+def _generate_idempotency_key(prefix: str, *args) -> str:
+    """Generate idempotency key from prefix and arguments"""
+    import hashlib
+    key_data = f"{prefix}:{':'.join(str(a) for a in args)}"
+    return hashlib.sha256(key_data.encode()).hexdigest()[:16]
+
+def _check_idempotency(key: str, existing_keys: set) -> bool:
+    """Check if idempotency key already exists. Returns True if duplicate."""
+    return key in existing_keys or key in MM_IDEMPOTENCY_CACHE
+
 @app.post("/ifx/auto-quote")
 async def ifx_auto_quote(body: dict = Body(...)):
     """
@@ -5913,30 +5938,9 @@ JSONBIN_MM_URL  = os.getenv("JSONBIN_MM_URL")  # Dedicated bin for market maker 
 PROPOSAL_WEBHOOK_URL = os.getenv("PROPOSAL_WEBHOOK_URL")  # used by /contacts/send webhook
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# DURABLE MARKET MAKER STATE PERSISTENCE
-# Atomic JSONBIN operations with optimistic locking, idempotency, and event emissions
+# DURABLE MARKET MAKER STATE PERSISTENCE - ASYNC ATOMIC OPERATIONS
+# (Sync helpers defined earlier near _mark_mm_state_dirty)
 # ═══════════════════════════════════════════════════════════════════════════════
-MM_STATE_RECORD_ID = "__market_maker_state__"
-MM_STATE_VERSION = 0  # Optimistic locking version
-MM_IDEMPOTENCY_CACHE = set()  # Track processed idempotency keys (in-memory cache)
-
-# Import event bus for emissions
-try:
-    from event_bus import publish as event_publish
-    EVENT_BUS_AVAILABLE = True
-except ImportError:
-    def event_publish(event_type, data): pass
-    EVENT_BUS_AVAILABLE = False
-
-def _generate_idempotency_key(prefix: str, *args) -> str:
-    """Generate idempotency key from prefix and arguments"""
-    import hashlib
-    key_data = f"{prefix}:{':'.join(str(a) for a in args)}"
-    return hashlib.sha256(key_data.encode()).hexdigest()[:16]
-
-def _check_idempotency(key: str, existing_keys: set) -> bool:
-    """Check if idempotency key already exists. Returns True if duplicate."""
-    return key in existing_keys or key in MM_IDEMPOTENCY_CACHE
 
 async def _load_mm_state_atomic() -> tuple:
     """
