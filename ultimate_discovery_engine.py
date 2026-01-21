@@ -267,6 +267,30 @@ async def scrape_github(user_profile: Dict[str, Any]) -> List[Dict]:
                         if is_opportunity_cached("github", issue_id):
                             continue
                         
+                        # Estimate value based on labels and description length
+                        labels = [label["name"].lower() for label in issue.get("labels", [])]
+                        desc_len = len(issue.get("body") or "")
+
+                        # Value estimation heuristics
+                        est_value = 100  # Base value
+                        if any(l in labels for l in ["bug", "fix", "typo", "documentation"]):
+                            est_value = 150
+                        if any(l in labels for l in ["enhancement", "feature", "improvement"]):
+                            est_value = 300
+                        if any(l in labels for l in ["help wanted", "good first issue"]):
+                            est_value = 200
+                        if any(l in labels for l in ["priority", "urgent", "critical"]):
+                            est_value += 200
+                        if desc_len > 1000:
+                            est_value += 100  # More detailed = more complex
+
+                        # Check for bounty/reward in title or body
+                        text = f"{issue['title']} {issue.get('body', '')}".lower()
+                        if "bounty" in text or "reward" in text or "$" in text:
+                            extracted = extract_budget_from_text(text)
+                            if extracted > 0:
+                                est_value = extracted
+
                         opportunities.append({
                             "id": f"github_{issue_id}",
                             "source": "github",
@@ -275,7 +299,7 @@ async def scrape_github(user_profile: Dict[str, Any]) -> List[Dict]:
                             "description": (issue.get("body") or "")[:500],
                             "url": issue["html_url"],
                             "type": "open_source",
-                            "estimated_value": 0,
+                            "estimated_value": est_value,
                             "created_at": issue["created_at"],
                             "tags": [label["name"] for label in issue.get("labels", [])],
                             "author": issue.get("user", {}).get("login", ""),  # GitHub username
