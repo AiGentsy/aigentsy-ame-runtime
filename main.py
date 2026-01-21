@@ -34850,21 +34850,35 @@ async def stripe_send_invoices():
 @app.get("/payments/status")
 async def payments_status():
     """
-    Get comprehensive payment status across all workflows.
-    Shows what's been delivered, invoiced, and paid.
+    Get comprehensive payment status across all 27+ platform workflows.
+    Tracks: bounties, escrow, job offers, design work, community contracts, invoices.
     """
     try:
         status = {
-            "delivered_awaiting_invoice": [],
-            "invoiced_awaiting_payment": [],
+            # BOUNTY PLATFORMS (github, devpost, stackoverflow)
             "pending_bounty_payout": [],
+            # ESCROW PLATFORMS (upwork, fiverr, freelancer, etc.)
             "pending_escrow_release": [],
+            # JOB BOARDS (remoteok, indeed, linkedin, etc.)
+            "pending_hire_payment": [],
+            # DESIGN PLATFORMS (dribbble, behance)
+            "pending_client_payment": [],
+            # COMMUNITY PLATFORMS (reddit, hackernews, producthunt)
+            "pending_direct_payment": [],
+            # STRIPE INVOICES
+            "invoiced_awaiting_payment": [],
+            # AWAITING INVOICE CREATION
+            "delivered_awaiting_invoice": [],
+            # COMPLETED
             "paid": [],
             "totals": {
-                "awaiting_invoice": 0,
+                "bounty": 0,
+                "escrow": 0,
+                "hire": 0,
+                "client": 0,
+                "direct": 0,
                 "invoiced": 0,
-                "pending_bounty": 0,
-                "pending_escrow": 0,
+                "awaiting_invoice": 0,
                 "paid": 0
             }
         }
@@ -34889,11 +34903,21 @@ async def payments_status():
                     status["totals"]["paid"] += amount
                 elif stage == "delivered":
                     if pr_status == "pending_bounty_payout":
+                        entry["payout_source"] = payment_req.get("payout_source", "Platform bounty")
                         status["pending_bounty_payout"].append(entry)
-                        status["totals"]["pending_bounty"] += amount
+                        status["totals"]["bounty"] += amount
                     elif pr_status == "pending_escrow_release":
                         status["pending_escrow_release"].append(entry)
-                        status["totals"]["pending_escrow"] += amount
+                        status["totals"]["escrow"] += amount
+                    elif pr_status == "pending_hire_payment":
+                        status["pending_hire_payment"].append(entry)
+                        status["totals"]["hire"] += amount
+                    elif pr_status == "pending_client_payment":
+                        status["pending_client_payment"].append(entry)
+                        status["totals"]["client"] += amount
+                    elif pr_status == "pending_direct_payment":
+                        status["pending_direct_payment"].append(entry)
+                        status["totals"]["direct"] += amount
                     elif pr_status == "invoice_created":
                         entry["invoice_url"] = payment_req.get("invoice_url") or payment_req.get("payment_link_url")
                         status["invoiced_awaiting_payment"].append(entry)
@@ -34902,13 +34926,24 @@ async def payments_status():
                         status["delivered_awaiting_invoice"].append(entry)
                         status["totals"]["awaiting_invoice"] += amount
 
+        total_pending = sum(v for k, v in status["totals"].items() if k != "paid")
         return {
             "ok": True,
+            "platforms_tracked": 27,
             **status,
             "summary": {
                 "total_delivered_value": sum(status["totals"].values()),
                 "total_paid": status["totals"]["paid"],
-                "total_pending": sum(status["totals"].values()) - status["totals"]["paid"]
+                "total_pending": total_pending,
+                "by_category": {
+                    "bounty_platforms": status["totals"]["bounty"],
+                    "escrow_platforms": status["totals"]["escrow"],
+                    "job_boards": status["totals"]["hire"],
+                    "design_platforms": status["totals"]["client"],
+                    "community_platforms": status["totals"]["direct"],
+                    "stripe_invoiced": status["totals"]["invoiced"],
+                    "awaiting_invoice": status["totals"]["awaiting_invoice"]
+                }
             }
         }
 

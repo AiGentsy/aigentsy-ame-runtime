@@ -1705,10 +1705,29 @@ Let me know if you need anything else!"""
         """
         Create payment request after successful delivery.
 
-        Routes to appropriate payment method based on platform:
-        - Bounty platforms (GitHub/Algora): Track pending bounty payout
-        - Freelance platforms (Upwork): Track escrow release
-        - Direct contracts: Create Stripe invoice
+        Routes to appropriate payment method based on platform (27+ platforms):
+
+        BOUNTY PLATFORMS (track pending payout):
+        - github, github_bounties → Algora/GitHub Sponsors
+        - devpost → Hackathon prizes
+        - stackoverflow → Bounty system
+
+        ESCROW PLATFORMS (track pending release):
+        - upwork, freelancer, fiverr, peopleperhour, guru, 99designs → Platform escrow
+        - toptal, flexjobs → Direct platform payment
+
+        JOB BOARDS (payment upon hire):
+        - remoteok, weworkremotely, dice, simplyhired, indeed, glassdoor, linkedin_jobs → Direct hire payment
+        - angellist, ycombinator → Equity + cash offers
+
+        DESIGN PLATFORMS (milestone payments):
+        - dribbble, behance → Direct client payment
+
+        COMMUNITY PLATFORMS (tips/donations/contracts):
+        - reddit, hackernews, indiehackers, producthunt → Community engagement, direct contracts
+        - craigslist → Direct payment
+
+        DIRECT/INBOUND → Stripe invoice
         """
         opportunity = workflow.get('opportunity', {})
         platform = opportunity.get('source', opportunity.get('platform', 'unknown'))
@@ -1730,25 +1749,70 @@ Let me know if you need anything else!"""
                 'platform': platform
             }
 
-        # Route based on platform
-        if platform in ['github', 'github_bounties']:
-            # Bounty platforms - track pending payout from Algora/GitHub
+        # ===================================================================
+        # PAYMENT ROUTING BY PLATFORM CATEGORY (27+ platforms)
+        # ===================================================================
+
+        # BOUNTY PLATFORMS - Track pending payout
+        BOUNTY_PLATFORMS = ['github', 'github_bounties', 'devpost', 'stackoverflow']
+        if platform in BOUNTY_PLATFORMS:
+            payout_source = {
+                'github': 'Algora/GitHub Sponsors',
+                'github_bounties': 'Algora bounty system',
+                'devpost': 'Hackathon prize pool',
+                'stackoverflow': 'Stack Overflow bounty'
+            }.get(platform, 'Platform bounty')
             return {
                 'status': 'pending_bounty_payout',
-                'platform': 'algora',
+                'platform': platform,
+                'payout_source': payout_source,
                 'amount': amount,
-                'message': 'Work delivered - awaiting bounty payout from Algora after PR merge',
-                'next_action': 'Monitor for bounty claim confirmation'
+                'message': f'Work delivered - awaiting payout from {payout_source}',
+                'next_action': 'Monitor for bounty/prize claim confirmation'
             }
 
-        elif platform in ['upwork', 'freelancer']:
-            # Freelance platforms - track escrow release
+        # ESCROW PLATFORMS - Track pending escrow release
+        ESCROW_PLATFORMS = ['upwork', 'freelancer', 'fiverr', 'peopleperhour', 'guru', '99designs', 'toptal', 'flexjobs']
+        if platform in ESCROW_PLATFORMS:
             return {
                 'status': 'pending_escrow_release',
                 'platform': platform,
                 'amount': amount,
                 'message': f'Work delivered via {platform} - awaiting escrow release',
-                'next_action': 'Client approval triggers escrow release'
+                'next_action': 'Client approval triggers escrow release to connected bank/PayPal'
+            }
+
+        # JOB BOARD PLATFORMS - Track pending hire payment
+        JOB_BOARDS = ['remoteok', 'weworkremotely', 'dice', 'simplyhired', 'indeed', 'glassdoor', 'linkedin_jobs', 'angellist', 'ycombinator']
+        if platform in JOB_BOARDS:
+            return {
+                'status': 'pending_hire_payment',
+                'platform': platform,
+                'amount': amount,
+                'message': f'Job application/proposal delivered via {platform}',
+                'next_action': 'Await hiring decision and payment terms'
+            }
+
+        # DESIGN PLATFORMS - Track milestone payment
+        DESIGN_PLATFORMS = ['dribbble', 'behance']
+        if platform in DESIGN_PLATFORMS:
+            return {
+                'status': 'pending_client_payment',
+                'platform': platform,
+                'amount': amount,
+                'message': f'Design work delivered via {platform}',
+                'next_action': 'Invoice client directly or await milestone payment'
+            }
+
+        # COMMUNITY PLATFORMS - Track engagement/contract
+        COMMUNITY_PLATFORMS = ['reddit', 'hackernews', 'indiehackers', 'producthunt', 'craigslist']
+        if platform in COMMUNITY_PLATFORMS:
+            return {
+                'status': 'pending_direct_payment',
+                'platform': platform,
+                'amount': amount,
+                'message': f'Work delivered via {platform} community engagement',
+                'next_action': 'Send Stripe invoice or receive direct payment'
             }
 
         else:
