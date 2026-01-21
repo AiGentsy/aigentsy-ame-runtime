@@ -1,0 +1,17 @@
+{
+  "_comment": "Sale/Contract Policy - PSP-only, no custody",
+  "contract_type": "clickwrap",
+  "acceptance": "pay_link_click",
+  "payment_processors": ["stripe", "paypal", "shopify", "upwork"],
+  "fund_flow": "direct_to_processor",
+  "refunds": "processor_native",
+  "warranty": {
+    "type": "service_credit",
+    "cap_pct_of_price": 20,
+    "dispute_proof_required": true
+  },
+  "escrow": {
+    "enabled": false,
+    "note": "All funds flow directly through PSP - no custody"
+  }
+}

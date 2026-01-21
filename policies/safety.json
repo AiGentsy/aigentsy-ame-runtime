@@ -1,0 +1,30 @@
+{
+  "_comment": "Safety & Compliance Policy",
+  "platform_pacing": {
+    "twitter_dm_per_hr": 8,
+    "reddit_comments_per_hr": 6,
+    "linkedin_messages_per_hr": 5,
+    "email_cold_per_hr": 20
+  },
+  "sla_targets": {
+    "on_time_pct": 0.97,
+    "quality_score_min": 4.0,
+    "response_time_max_hours": 4
+  },
+  "ban_avoid": {
+    "health_gate_required": true,
+    "pause_on_warning": true,
+    "cooldown_hours": 24
+  },
+  "data_consent": {
+    "default": "opt_in_with_controls",
+    "anonymization": "always",
+    "retention_days": 90
+  },
+  "compliance": {
+    "no_custody": true,
+    "no_securities_language": true,
+    "no_roi_promises": true,
+    "service_credits_only": true
+  }
+}

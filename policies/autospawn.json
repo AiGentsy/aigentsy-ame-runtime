@@ -1,0 +1,27 @@
+{
+  "_comment": "Auto-Spawn Governor Policy - budgeted, observable, reversible",
+  "enabled": true,
+  "signals": {
+    "demand_z": {"min": 2.0},
+    "fill_rate_7d": {"max": 0.82},
+    "opportunity_score": {"min": 65}
+  },
+  "kelly_budget_cap_usd": 1500,
+  "trial_horizon_hours": 72,
+  "stop_loss": {
+    "max_cash_loss": 350,
+    "min_csat": 4.3,
+    "max_late_deliveries": 3
+  },
+  "fallback": "LOX_resale",
+  "proof_required": true,
+  "publish_to_catalog": true,
+  "max_concurrent_spawns": 10,
+  "lifecycle": {
+    "incubation_hours": 24,
+    "kill_threshold_conversion": 0.01,
+    "scale_threshold_conversion": 0.05,
+    "zombie_revival_enabled": true,
+    "franchise_clone_enabled": true
+  }
+}

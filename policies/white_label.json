@@ -1,0 +1,16 @@
+{
+  "_comment": "White-Label Partner Policy",
+  "brand_mode": "white_label",
+  "brand_surface": ["domain", "logo", "from_email", "widget_theme", "storefront"],
+  "proof_branding": "partner_brand",
+  "price_markup_pct": 12,
+  "revshare_partner_pct": 20,
+  "publish_in_partner_catalog": true,
+  "partner_tiers": {
+    "referral": {"commission_pct": 10, "min_volume": 0},
+    "integration": {"commission_pct": 15, "min_volume": 1000},
+    "white_label": {"commission_pct": 20, "min_volume": 10000},
+    "strategic": {"commission_pct": 25, "min_volume": 50000}
+  },
+  "mesh_coordination_fee_pct": 0.5
+}

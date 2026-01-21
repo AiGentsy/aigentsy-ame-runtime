@@ -1,0 +1,32 @@
+{
+  "_comment": "Subscription & Retainer Policy",
+  "default_enabled": true,
+  "tiers": {
+    "starter": {
+      "credits_per_month": 10,
+      "price_monthly": 99,
+      "priority_level": 1,
+      "rollover_months": 2
+    },
+    "professional": {
+      "credits_per_month": 30,
+      "price_monthly": 249,
+      "priority_level": 2,
+      "rollover_months": 3
+    },
+    "business": {
+      "credits_per_month": 100,
+      "price_monthly": 699,
+      "priority_level": 3,
+      "rollover_months": 3
+    },
+    "enterprise": {
+      "credits_per_month": 500,
+      "price_monthly": 2499,
+      "priority_level": 4,
+      "rollover_months": 6
+    }
+  },
+  "processing_fee_pct": 2,
+  "credit_decay_days": 90
+}

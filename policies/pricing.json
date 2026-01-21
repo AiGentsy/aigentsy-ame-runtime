@@ -1,0 +1,17 @@
+{
+  "_comment": "Default Pricing Policy - OAA-aware dynamic pricing",
+  "min_price_usd": 79,
+  "target_margin": 0.45,
+  "ocs_uplift_pct": {
+    "gold": 0.20,
+    "silver": 0.10,
+    "bronze": 0.00
+  },
+  "cheap_window_discount_pct": 0.08,
+  "bundle_discount_pct": 0.12,
+  "surge_sensitivity": 0.5,
+  "price_slope": 0.20,
+  "kelly_cap": 0.35,
+  "min_margin": 0.28,
+  "pg_attach_logit": 1.5
+}

@@ -1,0 +1,13 @@
+{
+  "_comment": "Lead Overflow Exchange (LOX) Policy",
+  "enabled": true,
+  "idle_threshold_minutes": 15,
+  "take_rate_pct": 15,
+  "proof_required": true,
+  "settlement": "processor_link_only",
+  "min_discount_pct": 10,
+  "max_discount_pct": 50,
+  "min_taker_ocs": 60,
+  "auto_list_on_sla_miss": true,
+  "referral_cut_to_original_pct": 15
+}
