@@ -898,9 +898,60 @@ jobs:
           echo "═══════════════════════════════════════════════════════════════"
           echo "🔄 V99 FULL AUTONOMOUS CYCLE"
           echo "═══════════════════════════════════════════════════════════════"
-          
+
           # Run the complete v99 pipeline in one call
           ./_curl.sh "${{ env.BACKEND_URL }}/autonomous/full-cycle-v99" POST '{}' 300 | tee json/v99-cycle.json | jq -c '{ok,summary}' 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19g: WADE FULLY AUTONOMOUS EXECUTION
+      # Discovery → Execution → Delivery → Payment Link → Platform Dialogue
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 🤖 Wade Fully Autonomous (Discovery→Payment)
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🤖 WADE FULLY AUTONOMOUS EXECUTION"
+          echo "Discovery → Execution → Delivery → Payment → Dialogue"
+          echo "═══════════════════════════════════════════════════════════════"
+
+          # Full loop: Discovery → Auto-approve → Execute → Deliver → Payment link → Post dialogue
+          WADE_RESULT=$(./_curl.sh "${{ env.BACKEND_URL }}/wade/autonomous-discovery-to-payment" POST '{"limit":10,"min_confidence":0.7}' 600 2>/dev/null)
+          echo "$WADE_RESULT" | tee json/wade-autonomous.json | jq -c '{ok,discovery,execution}' 2>/dev/null || echo "{}"
+
+          # Extract key metrics
+          DISCOVERED=$(echo "$WADE_RESULT" | jq -r '.discovery.found // 0')
+          EXECUTED=$(echo "$WADE_RESULT" | jq -r '.execution.executed // 0')
+          DELIVERED=$(echo "$WADE_RESULT" | jq -r '.execution.delivered // 0')
+          PAYMENT_LINKS=$(echo "$WADE_RESULT" | jq -r '.execution.payment_links_created // 0')
+          DIALOGUES=$(echo "$WADE_RESULT" | jq -r '.execution.dialogues_posted // 0')
+          TOTAL_VALUE=$(echo "$WADE_RESULT" | jq -r '.execution.total_value // 0')
+
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "AUTONOMOUS RESULTS:"
+          echo "  Discovered: $DISCOVERED"
+          echo "  Executed: $EXECUTED"
+          echo "  Delivered: $DELIVERED"
+          echo "  Payment Links Created: $PAYMENT_LINKS"
+          echo "  Dialogues Posted: $DIALOGUES"
+          echo "  Total Value: \$$TOTAL_VALUE"
+          echo "═══════════════════════════════════════════════════════════════"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PHASE 19h: AUTONOMOUS PAYMENT COLLECTION
+      # Create Stripe payment links + send invoices for delivered work
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: 💰 Autonomous Payment Collection
+        continue-on-error: true
+        run: |
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "💰 AUTONOMOUS PAYMENT COLLECTION"
+          echo "═══════════════════════════════════════════════════════════════"
+
+          # Send invoices for all delivered work
+          ./_curl.sh "${{ env.BACKEND_URL }}/stripe/send-invoices" POST '{}' 120 | tee json/stripe-invoices.json | jq -c '{ok,invoiced,failed}' 2>/dev/null || true
+
+          # Check payment status across all platforms
+          ./_curl.sh "${{ env.BACKEND_URL }}/payments/status" GET '' 30 | tee json/payment-status.json | jq -c '{ok,totals,summary}' 2>/dev/null || true
 
       # ═══════════════════════════════════════════════════════════════════════
       # PHASE 20: AI GENERATION

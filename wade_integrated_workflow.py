@@ -24,6 +24,22 @@ except ImportError:
     PAYMENT_COLLECTOR_AVAILABLE = False
     print("⚠️ PaymentCollector not available - invoice creation disabled")
 
+# Import Stripe for autonomous payment links
+try:
+    import stripe
+    import os
+    stripe.api_key = os.getenv("STRIPE_SECRET")
+    STRIPE_AVAILABLE = bool(stripe.api_key)
+except ImportError:
+    STRIPE_AVAILABLE = False
+
+# Import httpx for autonomous platform dialogue
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+
 
 class WorkflowStage(str, Enum):
     """Stages in Wade's fulfillment workflow"""
@@ -1703,35 +1719,20 @@ Let me know if you need anything else!"""
 
     async def _create_payment_request(self, workflow: Dict[str, Any], delivery_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create payment request after successful delivery.
+        AUTONOMOUS PAYMENT COLLECTION
 
-        Routes to appropriate payment method based on platform (27+ platforms):
+        Creates Stripe payment links and posts them to platforms automatically.
+        No manual intervention required.
 
-        BOUNTY PLATFORMS (track pending payout):
-        - github, github_bounties → Algora/GitHub Sponsors
-        - devpost → Hackathon prizes
-        - stackoverflow → Bounty system
-
-        ESCROW PLATFORMS (track pending release):
-        - upwork, freelancer, fiverr, peopleperhour, guru, 99designs → Platform escrow
-        - toptal, flexjobs → Direct platform payment
-
-        JOB BOARDS (payment upon hire):
-        - remoteok, weworkremotely, dice, simplyhired, indeed, glassdoor, linkedin_jobs → Direct hire payment
-        - angellist, ycombinator → Equity + cash offers
-
-        DESIGN PLATFORMS (milestone payments):
-        - dribbble, behance → Direct client payment
-
-        COMMUNITY PLATFORMS (tips/donations/contracts):
-        - reddit, hackernews, indiehackers, producthunt → Community engagement, direct contracts
-        - craigslist → Direct payment
-
-        DIRECT/INBOUND → Stripe invoice
+        Flow:
+        1. Create Stripe payment link for any amount > 0
+        2. Post payment request dialogue to platform (GitHub comment, Upwork message, etc.)
+        3. Track status for reconciliation
         """
         opportunity = workflow.get('opportunity', {})
         platform = opportunity.get('source', opportunity.get('platform', 'unknown'))
         amount = opportunity.get('estimated_value', opportunity.get('value', 0))
+        workflow_id = workflow.get('workflow_id', 'unknown')
 
         # Skip if delivery failed
         if not delivery_result.get('success'):
@@ -1750,10 +1751,52 @@ Let me know if you need anything else!"""
             }
 
         # ===================================================================
-        # PAYMENT ROUTING BY PLATFORM CATEGORY (27+ platforms)
+        # STEP 1: AUTONOMOUS STRIPE PAYMENT LINK CREATION
         # ===================================================================
+        payment_link_url = None
+        payment_link_id = None
 
-        # BOUNTY PLATFORMS - Track pending payout
+        if STRIPE_AVAILABLE and amount > 0:
+            try:
+                title = opportunity.get('title', 'Freelance Work')[:100]
+                product = stripe.Product.create(
+                    name=f"Wade Fulfillment: {title}",
+                    metadata={
+                        "workflow_id": workflow_id,
+                        "platform": platform,
+                        "opportunity_url": opportunity.get('url', '')
+                    }
+                )
+                price = stripe.Price.create(
+                    unit_amount=int(amount * 100),
+                    currency="usd",
+                    product=product.id
+                )
+                payment_link = stripe.PaymentLink.create(
+                    line_items=[{"price": price.id, "quantity": 1}],
+                    metadata={
+                        "workflow_id": workflow_id,
+                        "platform": platform,
+                        "auto_generated": "true"
+                    },
+                    after_completion={
+                        "type": "redirect",
+                        "redirect": {"url": "https://aigentsy.com/thank-you"}
+                    }
+                )
+                payment_link_url = payment_link.url
+                payment_link_id = payment_link.id
+                workflow['payment_link'] = payment_link_url
+                workflow['payment_link_id'] = payment_link_id
+            except Exception as e:
+                print(f"⚠️ Stripe payment link creation failed: {e}")
+
+        # ===================================================================
+        # STEP 2: AUTONOMOUS PLATFORM DIALOGUE
+        # ===================================================================
+        dialogue_result = None
+
+        # BOUNTY PLATFORMS
         BOUNTY_PLATFORMS = ['github', 'github_bounties', 'devpost', 'stackoverflow']
         if platform in BOUNTY_PLATFORMS:
             payout_source = {
@@ -1762,97 +1805,299 @@ Let me know if you need anything else!"""
                 'devpost': 'Hackathon prize pool',
                 'stackoverflow': 'Stack Overflow bounty'
             }.get(platform, 'Platform bounty')
+
+            if platform in ['github', 'github_bounties']:
+                dialogue_result = await self._post_payment_dialogue_github(
+                    opportunity, workflow_id, amount, payment_link_url, 'bounty_claim'
+                )
+
             return {
                 'status': 'pending_bounty_payout',
                 'platform': platform,
                 'payout_source': payout_source,
                 'amount': amount,
-                'message': f'Work delivered - awaiting payout from {payout_source}',
-                'next_action': 'Monitor for bounty/prize claim confirmation'
+                'payment_link': payment_link_url,
+                'dialogue_posted': dialogue_result.get('success') if dialogue_result else False,
+                'dialogue_url': dialogue_result.get('comment_url') if dialogue_result else None,
+                'autonomous': True
             }
 
-        # ESCROW PLATFORMS - Track pending escrow release
+        # ESCROW PLATFORMS
         ESCROW_PLATFORMS = ['upwork', 'freelancer', 'fiverr', 'peopleperhour', 'guru', '99designs', 'toptal', 'flexjobs']
         if platform in ESCROW_PLATFORMS:
+            dialogue_result = await self._post_payment_dialogue_escrow(
+                platform, opportunity, workflow_id, amount, payment_link_url
+            )
             return {
                 'status': 'pending_escrow_release',
                 'platform': platform,
                 'amount': amount,
-                'message': f'Work delivered via {platform} - awaiting escrow release',
-                'next_action': 'Client approval triggers escrow release to connected bank/PayPal'
+                'payment_link': payment_link_url,
+                'dialogue_posted': dialogue_result.get('success') if dialogue_result else False,
+                'autonomous': True
             }
 
-        # JOB BOARD PLATFORMS - Track pending hire payment
+        # JOB BOARDS
         JOB_BOARDS = ['remoteok', 'weworkremotely', 'dice', 'simplyhired', 'indeed', 'glassdoor', 'linkedin_jobs', 'angellist', 'ycombinator']
         if platform in JOB_BOARDS:
             return {
                 'status': 'pending_hire_payment',
                 'platform': platform,
                 'amount': amount,
-                'message': f'Job application/proposal delivered via {platform}',
-                'next_action': 'Await hiring decision and payment terms'
+                'payment_link': payment_link_url,
+                'autonomous': True
             }
 
-        # DESIGN PLATFORMS - Track milestone payment
+        # DESIGN PLATFORMS
         DESIGN_PLATFORMS = ['dribbble', 'behance']
         if platform in DESIGN_PLATFORMS:
             return {
                 'status': 'pending_client_payment',
                 'platform': platform,
                 'amount': amount,
-                'message': f'Design work delivered via {platform}',
-                'next_action': 'Invoice client directly or await milestone payment'
+                'payment_link': payment_link_url,
+                'autonomous': True
             }
 
-        # COMMUNITY PLATFORMS - Track engagement/contract
+        # COMMUNITY PLATFORMS
         COMMUNITY_PLATFORMS = ['reddit', 'hackernews', 'indiehackers', 'producthunt', 'craigslist']
         if platform in COMMUNITY_PLATFORMS:
+            dialogue_result = await self._post_payment_dialogue_community(
+                platform, opportunity, workflow_id, amount, payment_link_url
+            )
             return {
                 'status': 'pending_direct_payment',
                 'platform': platform,
                 'amount': amount,
-                'message': f'Work delivered via {platform} community engagement',
-                'next_action': 'Send Stripe invoice or receive direct payment'
+                'payment_link': payment_link_url,
+                'dialogue_posted': dialogue_result.get('success') if dialogue_result else False,
+                'autonomous': True
             }
 
+        # DIRECT/INBOUND - Auto-invoice if email available
         else:
-            # Direct contracts - create Stripe invoice
-            if not PAYMENT_COLLECTOR_AVAILABLE:
-                return {
-                    'status': 'invoice_unavailable',
-                    'reason': 'PaymentCollector not available',
-                    'amount': amount
-                }
+            contact = opportunity.get('contact', {})
+            client_email = contact.get('email')
 
-            try:
-                collector = get_payment_collector()
+            if client_email and STRIPE_AVAILABLE:
+                try:
+                    customers = stripe.Customer.list(email=client_email, limit=1)
+                    if customers.data:
+                        customer = customers.data[0]
+                    else:
+                        customer = stripe.Customer.create(
+                            email=client_email,
+                            metadata={"source": "wade_autonomous"}
+                        )
+                    invoice = stripe.Invoice.create(
+                        customer=customer.id,
+                        auto_advance=True,
+                        collection_method="send_invoice",
+                        days_until_due=7,
+                        metadata={"workflow_id": workflow_id}
+                    )
+                    stripe.InvoiceItem.create(
+                        customer=customer.id,
+                        invoice=invoice.id,
+                        amount=int(amount * 100),
+                        currency="usd",
+                        description=f"Wade Fulfillment: {opportunity.get('title', 'Work')[:100]}"
+                    )
+                    invoice = stripe.Invoice.finalize_invoice(invoice.id)
+                    stripe.Invoice.send_invoice(invoice.id)
+                    return {
+                        'status': 'invoice_sent',
+                        'platform': 'stripe',
+                        'amount': amount,
+                        'invoice_id': invoice.id,
+                        'invoice_url': invoice.hosted_invoice_url,
+                        'client_email': client_email,
+                        'autonomous': True
+                    }
+                except Exception as e:
+                    print(f"⚠️ Invoice creation failed: {e}")
 
-                # Try to get client email from contact info
-                contact = opportunity.get('contact', {})
-                client_email = contact.get('email')
+            return {
+                'status': 'payment_link_created',
+                'platform': platform,
+                'amount': amount,
+                'payment_link': payment_link_url,
+                'payment_link_id': payment_link_id,
+                'autonomous': True
+            }
 
-                # Create payment request (invoice if email, payment link if not)
-                payment_result = await collector.create_payment_request(
-                    execution_id=workflow.get('workflow_id'),
-                    opportunity=opportunity,
-                    delivery=delivery_result,
-                    amount=amount,
-                    client_email=client_email
+    # =========================================================================
+    # AUTONOMOUS PLATFORM DIALOGUE METHODS
+    # =========================================================================
+
+    async def _post_payment_dialogue_github(
+        self, opportunity: Dict[str, Any], workflow_id: str,
+        amount: float, payment_link: Optional[str], dialogue_type: str
+    ) -> Dict[str, Any]:
+        """Post payment dialogue to GitHub issue/PR"""
+        if not HTTPX_AVAILABLE:
+            return {'success': False, 'error': 'httpx not available'}
+
+        github_token = os.getenv("GITHUB_TOKEN")
+        if not github_token:
+            return {'success': False, 'error': 'GITHUB_TOKEN not set'}
+
+        try:
+            url = opportunity.get('url', '')
+            url_parts = url.split('/')
+            if len(url_parts) < 5:
+                return {'success': False, 'error': 'Invalid GitHub URL'}
+
+            owner = url_parts[-4]
+            repo = url_parts[-3]
+            issue_number = url_parts[-1]
+
+            if dialogue_type == 'bounty_claim':
+                message = f"""## 💰 Work Completed - Ready for Bounty Payout
+
+The solution has been delivered above. This submission is ready for bounty review.
+
+**Estimated Value:** ${amount:.2f}
+
+---
+*Fulfilled by [Wade](https://aigentsy.com) - Autonomous AI Agent*
+"""
+            else:
+                message = f"""## 💳 Payment Request
+
+Work has been completed and delivered.
+
+**Amount Due:** ${amount:.2f}
+"""
+                if payment_link:
+                    message += f"\n**Pay Now:** {payment_link}\n"
+                message += "\n---\n*Fulfilled by [Wade](https://aigentsy.com) - Autonomous AI Agent*"
+
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    api_url,
+                    headers={
+                        "Authorization": f"token {github_token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    },
+                    json={"body": message},
+                    timeout=15
                 )
 
-                return {
-                    'status': 'invoice_created' if payment_result.get('success') else 'invoice_failed',
-                    'platform': 'stripe',
-                    'amount': amount,
-                    **payment_result
-                }
+                if response.status_code == 201:
+                    data = response.json()
+                    return {'success': True, 'comment_url': data['html_url'], 'comment_id': data['id']}
+                else:
+                    return {'success': False, 'error': f'GitHub API {response.status_code}'}
 
-            except Exception as e:
-                return {
-                    'status': 'error',
-                    'error': str(e),
-                    'amount': amount
-                }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def _post_payment_dialogue_escrow(
+        self, platform: str, opportunity: Dict[str, Any],
+        workflow_id: str, amount: float, payment_link: Optional[str]
+    ) -> Dict[str, Any]:
+        """Request escrow release on platform"""
+        if platform == 'upwork':
+            return await self._upwork_release_request(opportunity, amount)
+        elif platform == 'fiverr':
+            return {'success': True, 'method': 'fiverr_auto', 'message': 'Fiverr auto-releases after delivery'}
+        elif platform == 'freelancer':
+            return await self._freelancer_release_request(opportunity, amount)
+        else:
+            return {'success': True, 'method': 'tracked'}
+
+    async def _upwork_release_request(self, opportunity: Dict[str, Any], amount: float) -> Dict[str, Any]:
+        """Send milestone release request via Upwork API"""
+        upwork_token = os.getenv("UPWORK_ACCESS_TOKEN")
+        if not upwork_token:
+            return {'success': False, 'error': 'UPWORK_ACCESS_TOKEN not set'}
+
+        try:
+            contract_id = opportunity.get('contract_id') or opportunity.get('job_id')
+            if not contract_id:
+                return {'success': False, 'error': 'No contract_id'}
+
+            message = f"Work completed and delivered. Please review and release payment of ${amount:.2f}. Thank you!"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://www.upwork.com/api/messages/v3/rooms/{contract_id}/stories.json",
+                    headers={"Authorization": f"Bearer {upwork_token}"},
+                    json={"message": message},
+                    timeout=15
+                )
+                return {'success': response.status_code in [200, 201], 'method': 'upwork_api'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def _freelancer_release_request(self, opportunity: Dict[str, Any], amount: float) -> Dict[str, Any]:
+        """Request milestone release via Freelancer API"""
+        freelancer_token = os.getenv("FREELANCER_ACCESS_TOKEN")
+        if not freelancer_token:
+            return {'success': False, 'error': 'FREELANCER_ACCESS_TOKEN not set'}
+
+        try:
+            project_id = opportunity.get('project_id') or opportunity.get('job_id')
+            if not project_id:
+                return {'success': False, 'error': 'No project_id'}
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://www.freelancer.com/api/projects/0.1/milestones/{project_id}/request_release/",
+                    headers={"Freelancer-OAuth-V1": freelancer_token},
+                    timeout=15
+                )
+                return {'success': response.status_code in [200, 201], 'method': 'freelancer_api'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def _post_payment_dialogue_community(
+        self, platform: str, opportunity: Dict[str, Any],
+        workflow_id: str, amount: float, payment_link: Optional[str]
+    ) -> Dict[str, Any]:
+        """Post payment request to community platforms"""
+        if platform == 'reddit':
+            return await self._reddit_payment_reply(opportunity, amount, payment_link)
+        elif platform == 'hackernews':
+            return {'success': True, 'method': 'hn_tracked', 'message': 'HN tracked - no direct API'}
+        else:
+            return {'success': True, 'method': 'tracked'}
+
+    async def _reddit_payment_reply(self, opportunity: Dict[str, Any], amount: float, payment_link: Optional[str]) -> Dict[str, Any]:
+        """Post payment reply to Reddit"""
+        reddit_token = os.getenv("REDDIT_ACCESS_TOKEN")
+        if not reddit_token:
+            return {'success': False, 'error': 'REDDIT_ACCESS_TOKEN not set'}
+
+        try:
+            url = opportunity.get('url', '')
+            parts = url.split('/')
+            thread_id = None
+            for i, p in enumerate(parts):
+                if p == 'comments' and i + 1 < len(parts):
+                    thread_id = parts[i + 1]
+                    break
+
+            if not thread_id:
+                return {'success': False, 'error': 'Could not extract thread ID'}
+
+            message = f"Work completed! "
+            if payment_link:
+                message += f"Payment: {payment_link}"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://oauth.reddit.com/api/comment",
+                    headers={"Authorization": f"Bearer {reddit_token}"},
+                    data={"thing_id": f"t3_{thread_id}", "text": message},
+                    timeout=15
+                )
+                return {'success': response.status_code == 200, 'method': 'reddit_api'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
     
     async def track_payment(self, workflow_id: str, amount: float, proof: str = "") -> Dict[str, Any]:
         """

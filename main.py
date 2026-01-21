@@ -35956,6 +35956,181 @@ async def get_wade_dashboard():
     }
 
 
+@app.post("/wade/autonomous-execute")
+async def wade_autonomous_execute(body: Dict = Body(default={})):
+    """
+    FULLY AUTONOMOUS EXECUTION
+
+    Runs the complete autonomous loop:
+    1. Discovery → Find opportunities across 27+ platforms
+    2. Auto-approve high-confidence opportunities
+    3. Execute fulfillment (code gen, content, graphics)
+    4. Deliver to platform (GitHub PR, Upwork submission, etc.)
+    5. Create Stripe payment link
+    6. Post payment dialogue to platform
+
+    Called by GitHub Actions autonomous-execution.yml
+
+    Body params:
+    - limit: Max opportunities to process (default 10)
+    - min_confidence: Minimum confidence threshold (default 0.7)
+    - auto_approve: Auto-approve all discovered (default True)
+    - platforms: List of platforms to process (default: all)
+    """
+    limit = body.get('limit', 10)
+    min_confidence = body.get('min_confidence', 0.7)
+    auto_approve = body.get('auto_approve', True)
+    platforms = body.get('platforms', None)  # None = all
+
+    results = {
+        'discovered': 0,
+        'approved': 0,
+        'executed': 0,
+        'delivered': 0,
+        'payment_links_created': 0,
+        'dialogues_posted': 0,
+        'total_value': 0,
+        'workflows': [],
+        'errors': []
+    }
+
+    try:
+        # Get integrated workflow
+        from wade_integrated_workflow import IntegratedFulfillmentWorkflow
+        ifw = IntegratedFulfillmentWorkflow()
+
+        # Step 1: Get pending opportunities from queue
+        from wade_approval_dashboard import fulfillment_queue
+        pending = fulfillment_queue.get_pending_queue()
+
+        # Filter by platform if specified
+        if platforms:
+            pending = [p for p in pending if p['opportunity'].get('platform') in platforms]
+
+        # Filter by confidence
+        pending = [p for p in pending if p.get('confidence', 0.8) >= min_confidence]
+
+        # Limit
+        pending = pending[:limit]
+        results['discovered'] = len(pending)
+
+        # Step 2-6: Process each opportunity autonomously
+        for item in pending:
+            opp = item['opportunity']
+            fulfillment_id = item['id']
+
+            try:
+                # Auto-approve if enabled
+                if auto_approve:
+                    fulfillment_queue.approve_fulfillment(fulfillment_id)
+                    results['approved'] += 1
+
+                # Create workflow
+                workflow_result = await ifw.process_discovered_opportunity(opp)
+
+                if workflow_result.get('stage') == 'skipped':
+                    continue
+
+                workflow_id = workflow_result.get('workflow_id')
+
+                # Force client approval for autonomous mode
+                workflow = ifw.workflows.get(workflow_id)
+                if workflow:
+                    workflow['stage'] = 'client_approved'
+
+                    # Execute
+                    exec_result = await ifw._execute_fulfillment(workflow)
+                    if exec_result.get('success'):
+                        results['executed'] += 1
+
+                        # Deliver
+                        delivery_result = await ifw._deliver_work(workflow)
+                        if delivery_result.get('success'):
+                            results['delivered'] += 1
+
+                            # Payment request creates link + posts dialogue
+                            payment_result = workflow.get('payment_request', {})
+                            if payment_result.get('payment_link'):
+                                results['payment_links_created'] += 1
+                            if payment_result.get('dialogue_posted'):
+                                results['dialogues_posted'] += 1
+
+                            results['total_value'] += opp.get('value', 0)
+
+                            results['workflows'].append({
+                                'id': workflow_id,
+                                'title': opp.get('title'),
+                                'platform': opp.get('platform'),
+                                'value': opp.get('value'),
+                                'payment_link': payment_result.get('payment_link'),
+                                'dialogue_url': payment_result.get('dialogue_url'),
+                                'stage': workflow.get('stage')
+                            })
+
+            except Exception as e:
+                results['errors'].append({
+                    'fulfillment_id': fulfillment_id,
+                    'error': str(e)
+                })
+
+        results['ok'] = True
+        results['autonomous'] = True
+
+    except Exception as e:
+        results['ok'] = False
+        results['error'] = str(e)
+
+    return results
+
+
+@app.post("/wade/autonomous-discovery-to-payment")
+async def wade_full_autonomous_loop(body: Dict = Body(default={})):
+    """
+    COMPLETE AUTONOMOUS LOOP: Discovery → Payment Collection
+
+    Single endpoint that runs the entire pipeline:
+    1. Discover opportunities (all 7 dimensions, 27+ platforms)
+    2. Auto-approve high-value opportunities
+    3. Execute work
+    4. Deliver to platform
+    5. Create payment link
+    6. Post payment dialogue
+    7. Return summary
+
+    This is the "set it and forget it" endpoint.
+    """
+    # Run discovery first
+    discovery_results = []
+
+    try:
+        # Trigger discovery across all engines
+        from ultimate_discovery_engine import UltimateDiscoveryEngine
+        ude = UltimateDiscoveryEngine()
+        discovered = await ude.discover_all(limit=body.get('discovery_limit', 50))
+        discovery_results = discovered.get('opportunities', [])
+    except Exception as e:
+        print(f"Discovery error: {e}")
+
+    # Now run autonomous execution on discovered opportunities
+    exec_body = {
+        'limit': body.get('limit', 10),
+        'min_confidence': body.get('min_confidence', 0.7),
+        'auto_approve': True
+    }
+
+    execution_results = await wade_autonomous_execute(exec_body)
+
+    return {
+        'ok': True,
+        'discovery': {
+            'found': len(discovery_results),
+            'platforms': list(set(o.get('platform') for o in discovery_results))
+        },
+        'execution': execution_results,
+        'fully_autonomous': True
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # END RECONCILIATION + WADE DASHBOARD
 # ═══════════════════════════════════════════════════════════════════════════════
