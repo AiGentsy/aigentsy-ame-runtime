@@ -22727,22 +22727,22 @@ async def get_arbitrage_stats():
 
 
 # ============================================================
-# COMBINED: FULL AUTONOMOUS PIPELINE
+# COMBINED: FULL AUTONOMOUS PIPELINE (LEGACY - use /autonomous/full-cycle instead)
 # ============================================================
 
-@app.post("/autonomous/full-cycle")
-async def run_full_autonomous_cycle():
+@app.post("/autonomous/full-cycle-signals")
+async def run_full_autonomous_cycle_signals():
     """
-    Run the complete autonomous money-making cycle:
-    
+    LEGACY: Signal-based autonomous cycle.
+
+    For the full E2E pipeline with 7 dimensions, use POST /autonomous/full-cycle instead.
+
+    This endpoint focuses on:
     1. Ingest signals (predict opportunities)
     2. Detect arbitrage (from flow_arbitrage_detector)
     3. Execute arbitrage opportunities
     4. Record deals in relationship graph
     5. Find new intro opportunities
-    
-    This is the "make money overnight" endpoint.
-    Returns valid JSON even if subsystems are unavailable.
     """
     results = {
         "signals": {"opportunities_found": 0, "by_source": {}},
