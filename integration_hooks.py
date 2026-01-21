@@ -169,9 +169,8 @@ class IntegrationHooks:
         if features:
             try:
                 entity_id = opportunity.get("entity_id") or opportunity.get("user_id") or "unknown"
-                features.upsert(
-                    actor_id=entity_id,
-                    sku_id=opportunity.get("sku_id", "discovery"),
+                features.set(
+                    keys={"actor_id": entity_id, "sku_id": opportunity.get("sku_id", "discovery")},
                     features={
                         "last_discovery": _now_iso(),
                         "discovery_confidence": confidence,
@@ -202,7 +201,7 @@ class IntegrationHooks:
             try:
                 entity_id = opportunity.get("entity_id") or opportunity.get("provider_id")
                 if entity_id:
-                    ocs_data = ocs.get_ocs(entity_id)
+                    ocs_data = ocs.get_entity_details(entity_id)
                     result["provider_ocs"] = ocs_data.get("ocs", 50)
             except Exception as e:
                 logger.error(f"OCS lookup failed: {e}")
@@ -231,7 +230,7 @@ class IntegrationHooks:
             ocs_score = 50
             if ocs and entity_id:
                 try:
-                    ocs_data = ocs.get_ocs(entity_id)
+                    ocs_data = ocs.get_entity_details(entity_id)
                     ocs_score = ocs_data.get("ocs", 50)
                 except:
                     pass
@@ -460,7 +459,7 @@ class IntegrationHooks:
         policy = _get_policy()
         if policy and connector:
             try:
-                rec = policy.get_policy("connector", {"connector_id": connector})
+                rec = policy.suggest("connector.ucb", {"connector_id": connector})
                 if rec:
                     result["connector_recommendation"] = rec
             except Exception as e:
@@ -555,16 +554,15 @@ class IntegrationHooks:
         ocs = _get_ocs()
         if ocs and entity_id:
             try:
-                if success:
-                    ocs.record_sla_hit(entity_id)
-                    if proofs:
-                        for proof in proofs:
-                            ocs.record_proof(entity_id, proof)
-                else:
-                    ocs.record_dispute(entity_id)
-
+                ocs_result = ocs.record_outcome(
+                    entity_id=entity_id,
+                    success=success,
+                    sla_met=success,
+                    proofs=len(proofs) if proofs else 0,
+                    dispute=not success
+                )
                 result["ocs_updated"] = True
-                result["new_ocs"] = ocs.get_ocs(entity_id).get("ocs")
+                result["new_ocs"] = ocs_result.get("ocs")
             except Exception as e:
                 logger.error(f"OCS update failed: {e}")
 
@@ -575,12 +573,11 @@ class IntegrationHooks:
                 # Post to ledger
                 from monetization.ledger import post_entry
                 post_entry(
-                    account="revenue:execution",
-                    amount=revenue,
-                    currency="USD",
-                    ref_type="coi",
-                    ref_id=coi_id,
-                    meta={"success": success, "connector": connector}
+                    entry_type="revenue",
+                    ref=f"coi:{coi_id}",
+                    debit=revenue,
+                    credit=0,
+                    meta={"success": success, "connector": connector, "entity_id": entity_id}
                 )
                 result["ledger_posted"] = True
 
@@ -590,10 +587,13 @@ class IntegrationHooks:
 
                 # Consider badge minting
                 if success and proofs:
-                    from monetization.proof_badges import consider_badge
-                    badge_result = consider_badge(entity_id, coi_id, proofs)
-                    if badge_result.get("badge_minted"):
-                        result["badge"] = badge_result.get("badge")
+                    try:
+                        from monetization.proof_badges import consider_badge
+                        badge_result = consider_badge(entity_id, coi_id, proofs)
+                        if badge_result.get("badge_minted"):
+                            result["badge"] = badge_result.get("badge")
+                    except ImportError:
+                        pass
 
             except Exception as e:
                 logger.error(f"Revenue recording failed: {e}")
@@ -627,19 +627,15 @@ class IntegrationHooks:
         if ocs:
             try:
                 # Map external reputation delta to OCS impact
-                # Positive delta = SLA hits, negative = disputes
-                if delta > 0:
-                    # Scale: 1 reputation point = 0.1 SLA hits equivalent
-                    hits = max(1, int(delta * 0.1))
-                    for _ in range(hits):
-                        ocs.record_sla_hit(entity_id)
-                else:
-                    disputes = max(1, int(abs(delta) * 0.1))
-                    for _ in range(disputes):
-                        ocs.record_dispute(entity_id)
-
+                ocs_result = ocs.record_outcome(
+                    entity_id=entity_id,
+                    success=delta > 0,
+                    sla_met=delta > 0,
+                    proofs=max(0, int(delta * 0.1)) if delta > 0 else 0,
+                    dispute=delta < 0
+                )
                 result["ocs_updated"] = True
-                result["new_ocs"] = ocs.get_ocs(entity_id).get("ocs")
+                result["new_ocs"] = ocs_result.get("ocs")
             except Exception as e:
                 logger.error(f"OCS update failed: {e}")
 
@@ -692,12 +688,11 @@ class IntegrationHooks:
                 # Post to ledger
                 from monetization.ledger import post_entry
                 post_entry(
-                    account="revenue:payments",
-                    amount=amount,
-                    currency=currency,
-                    ref_type=ref_type or "payment",
-                    ref_id=ref_id or "unknown",
-                    meta={"payer_id": payer_id}
+                    entry_type="payment",
+                    ref=f"{ref_type or 'payment'}:{ref_id or 'unknown'}",
+                    debit=amount,
+                    credit=0,
+                    meta={"payer_id": payer_id, "currency": currency}
                 )
                 result["ledger_posted"] = True
 
@@ -706,14 +701,17 @@ class IntegrationHooks:
                 result["revenue_split"] = splits
 
                 # Queue settlement for provider share
-                from monetization.settlements import queue_settlement
-                if payer_id:
-                    queue_settlement(
-                        entity_id=payer_id,
-                        amount=splits.get("user", 0),
-                        currency=currency
-                    )
-                    result["settlement_queued"] = True
+                try:
+                    from monetization.settlements import queue_settlement
+                    if payer_id:
+                        queue_settlement(
+                            entity_id=payer_id,
+                            amount=splits.get("user", 0),
+                            currency=currency
+                        )
+                        result["settlement_queued"] = True
+                except ImportError:
+                    pass
 
             except Exception as e:
                 logger.error(f"Payment processing failed: {e}")
@@ -743,7 +741,7 @@ class IntegrationHooks:
         """Get OCS data for an entity"""
         ocs = _get_ocs()
         if ocs:
-            return ocs.get_ocs(entity_id)
+            return ocs.get_entity_details(entity_id)
         return {"ocs": 50, "tier": "standard"}
 
     def get_price_suggestion(
@@ -762,7 +760,7 @@ class IntegrationHooks:
             if entity_id:
                 ocs = _get_ocs()
                 if ocs:
-                    ocs_data = ocs.get_ocs(entity_id)
+                    ocs_data = ocs.get_entity_details(entity_id)
                     tier = ocs_data.get("tier", "standard")
                     # Higher OCS = slight premium pricing
                     ocs_multiplier = {
@@ -784,7 +782,7 @@ class IntegrationHooks:
         """Get policy recommendation"""
         policy = _get_policy()
         if policy:
-            return policy.get_policy(policy_name, context or {})
+            return policy.suggest(policy_name, context or {})
         return {}
 
     def register_callback(self, event_type: str, callback: Callable):
