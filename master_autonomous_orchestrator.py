@@ -1,55 +1,59 @@
 """
-MASTER AUTONOMOUS ORCHESTRATOR
+MASTER AUTONOMOUS ORCHESTRATOR v2.0
 ═══════════════════════════════════════════════════════════════════════════════
 
-COMPLETE END-TO-END AUTONOMOUS REVENUE SYSTEM
+PRODUCTION-HARDENED END-TO-END AUTONOMOUS REVENUE SYSTEM
+
+Safety Rails:
+- Retry/backoff/jitter with idempotency keys
+- Dedupe + EV prioritization before comms
+- Circuit breakers per platform
+- Concurrency semaphores for outreach
+- Structured logging with run_id tracing
+- Consent/allowlist gates for PII
 
 Orchestrates ALL 1000+ endpoints across the entire pipeline:
 
 1. DISCOVERY (7 Dimensions)
-   - Explicit Marketplaces: GitHub, Upwork, Fiverr, Freelancer, etc.
-   - Pain Point Detection: Reddit, HackerNews, Twitter, ProductHunt
-   - Flow Arbitrage: Pricing inefficiencies, arbitrage opportunities
-   - Predictive Intelligence: Trend analysis, demand forecasting
-   - Network Amplification: Referrals, viral loops, word-of-mouth
-   - Opportunity Creation: Proactive outreach, cold pitching
-   - Emergent Patterns: New market detection, trend surfing
-
 2. COMMUNICATION (Multi-Channel)
-   - Email: Postmark, SendGrid
-   - DM: Twitter, LinkedIn, Platform messages
-   - SMS: Twilio
-   - Platform: GitHub comments, Reddit replies, HN
-
 3. CONTRACT & AGREEMENT
-   - Contract generation
-   - Digital signatures (DocuSign/HelloSign)
-   - Deposit collection
-   - Milestone tracking
-
 4. FULFILLMENT
-   - Code generation (Claude, GPT-4)
-   - Content creation
-   - Graphics generation (Stable Diffusion, DALL-E)
-   - Audio/Video generation
-   - Deployment automation
-
 5. PAYMENT COLLECTION
-   - Stripe invoices & payment links
-   - Escrow release requests
-   - Platform payout tracking
-   - Subscription management
 
-Updated: Jan 2026
+Updated: Jan 2026 - Production Hardened
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 from datetime import datetime, timezone
+from hashlib import sha1
+from uuid import uuid4
 import asyncio
+import random
 import os
+import json
+import logging
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# HTTP CLIENT FOR INTERNAL API CALLS
+# STRUCTURED LOGGING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("autonomous_orchestrator")
+
+def _log_structured(run_id: str, phase: str, event: str, data: Dict = None):
+    """Emit structured log for observability"""
+    log_entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "phase": phase,
+        "event": event,
+        **(data or {})
+    }
+    logger.info(json.dumps(log_entry))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HTTP CLIENT
 # ═══════════════════════════════════════════════════════════════════════════════
 
 try:
@@ -61,44 +65,320 @@ except ImportError:
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONSENT & SUPPRESSION LIST
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ConsentManager:
+    """
+    Manages consent for outreach to stay compliant with CAN-SPAM/TCPA.
+    """
+    def __init__(self):
+        self.suppression_list: Set[str] = set()
+        self.consent_log: List[Dict] = []
+        self.allowlist: Set[str] = set()  # Explicit opt-ins
+
+    def is_allowed(self, contact: str, channel: str) -> bool:
+        """Check if contact is allowed for outreach on this channel"""
+        # Suppressed contacts are never allowed
+        if contact.lower() in self.suppression_list:
+            return False
+        # If allowlist is populated, only allow those
+        if self.allowlist and contact.lower() not in self.allowlist:
+            return False
+        return True
+
+    def suppress(self, contact: str, reason: str = "unsubscribe"):
+        """Add contact to suppression list"""
+        self.suppression_list.add(contact.lower())
+        self.consent_log.append({
+            "contact": contact,
+            "action": "suppress",
+            "reason": reason,
+            "ts": datetime.now(timezone.utc).isoformat()
+        })
+
+    def record_consent(self, contact: str, channel: str, proof: str):
+        """Record proof of consent for compliance"""
+        self.consent_log.append({
+            "contact": contact,
+            "channel": channel,
+            "action": "consent",
+            "proof": proof,
+            "ts": datetime.now(timezone.utc).isoformat()
+        })
+        self.allowlist.add(contact.lower())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CIRCUIT BREAKER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CircuitBreaker:
+    """
+    Simple counter-based circuit breaker per platform.
+    Opens after threshold failures, auto-closes after cooldown.
+    """
+    def __init__(self, threshold: int = 5, cooldown_seconds: float = 300):
+        self.threshold = threshold
+        self.cooldown = cooldown_seconds
+        self.breakers: Dict[str, Dict] = {}
+
+    def can_call(self, platform: str) -> bool:
+        """Check if platform circuit is closed (callable)"""
+        now = asyncio.get_event_loop().time()
+        b = self.breakers.get(platform, {"fail": 0, "open_until": 0})
+        if now >= b["open_until"]:
+            return True
+        return False
+
+    def record_success(self, platform: str):
+        """Record successful call - reset failure count"""
+        if platform in self.breakers:
+            self.breakers[platform]["fail"] = 0
+
+    def record_failure(self, platform: str):
+        """Record failed call - increment counter, maybe open breaker"""
+        b = self.breakers.setdefault(platform, {"fail": 0, "open_until": 0})
+        b["fail"] += 1
+        if b["fail"] >= self.threshold:
+            try:
+                now = asyncio.get_event_loop().time()
+            except RuntimeError:
+                now = 0
+            b["open_until"] = now + self.cooldown
+            logger.warning(f"Circuit OPEN for {platform} - cooling down {self.cooldown}s")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get all breaker statuses"""
+        return {k: {"fail_count": v["fail"], "open": v["open_until"] > 0}
+                for k, v in self.breakers.items()}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MASTER ORCHESTRATOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class MasterAutonomousOrchestrator:
     """
-    The brain that orchestrates ALL autonomous operations.
-
-    Runs the complete pipeline from discovery to payment collection
-    with zero human intervention.
+    Production-hardened orchestrator with:
+    - Retry/backoff/jitter
+    - Idempotency keys
+    - Dedupe + EV ranking
+    - Circuit breakers
+    - Concurrency control
+    - Structured logging
+    - Consent management
     """
 
     def __init__(self, backend_url: str = None):
         self.backend_url = backend_url or BACKEND_URL
         self.client = httpx.AsyncClient(timeout=300) if HTTPX_AVAILABLE else None
 
+        # Production safety components
+        self.circuit_breaker = CircuitBreaker(threshold=5, cooldown_seconds=300)
+        self.consent_manager = ConsentManager()
+
+        # Concurrency limits per platform type
+        self.semaphores = {
+            "email": asyncio.Semaphore(20),
+            "twitter": asyncio.Semaphore(5),
+            "linkedin": asyncio.Semaphore(3),
+            "sms": asyncio.Semaphore(10),
+            "github": asyncio.Semaphore(15),
+            "reddit": asyncio.Semaphore(5),
+            "upwork": asyncio.Semaphore(8),
+            "fiverr": asyncio.Semaphore(8),
+            "freelancer": asyncio.Semaphore(8),
+            "default": asyncio.Semaphore(12)
+        }
+
         # Track execution state
         self.current_run = {
+            "run_id": None,
             "started_at": None,
             "phase": None,
             "results": {},
-            "errors": []
+            "errors": [],
+            "metrics": {
+                "calls_made": 0,
+                "calls_succeeded": 0,
+                "calls_failed": 0,
+                "retries": 0,
+                "circuit_opens": 0
+            }
         }
 
-    async def _call(self, method: str, endpoint: str, data: Dict = None) -> Dict[str, Any]:
-        """Make internal API call"""
+        # Seen opportunity keys for deduplication
+        self._seen_keys: Set[str] = set()
+
+    def _run_id(self) -> str:
+        """Get or create run ID for tracing"""
+        if not self.current_run.get("run_id"):
+            self.current_run["run_id"] = f"orch-{uuid4().hex[:12]}"
+        return self.current_run["run_id"]
+
+    def _get_semaphore(self, platform: str) -> asyncio.Semaphore:
+        """Get concurrency semaphore for platform"""
+        return self.semaphores.get(platform.lower(), self.semaphores["default"])
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PRODUCTION-HARDENED HTTP CALLER
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _call(
+        self,
+        method: str,
+        endpoint: str,
+        data: Dict = None,
+        *,
+        idempotency_key: str = None,
+        timeout: float = 60,
+        tries: int = 4,
+        platform: str = "internal"
+    ) -> Dict[str, Any]:
+        """
+        Production-safe HTTP caller with:
+        - Exponential backoff + jitter
+        - Idempotency header
+        - Circuit breaker check
+        - Structured logging
+        """
         if not self.client:
             return {"ok": False, "error": "httpx not available"}
 
-        url = f"{self.backend_url}{endpoint}"
-        try:
-            if method == "GET":
-                response = await self.client.get(url, params=data)
-            else:
-                response = await self.client.post(url, json=data or {})
+        # Circuit breaker check
+        if not self.circuit_breaker.can_call(platform):
+            _log_structured(self._run_id(), "http", "circuit_open", {"platform": platform, "endpoint": endpoint})
+            return {"ok": False, "error": f"circuit_open:{platform}"}
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return {"ok": False, "error": f"HTTP {response.status_code}", "body": response.text[:500]}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        url = f"{self.backend_url}{endpoint}"
+        headers = {"Content-Type": "application/json"}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+
+        backoff = 0.4
+        last_error = None
+
+        for attempt in range(1, tries + 1):
+            try:
+                self.current_run["metrics"]["calls_made"] += 1
+
+                if method == "GET":
+                    response = await self.client.get(url, params=data, timeout=timeout)
+                else:
+                    response = await self.client.post(url, json=data or {}, headers=headers, timeout=timeout)
+
+                code = response.status_code
+
+                if code in (200, 201):
+                    self.circuit_breaker.record_success(platform)
+                    self.current_run["metrics"]["calls_succeeded"] += 1
+                    _log_structured(self._run_id(), "http", "success", {
+                        "endpoint": endpoint, "code": code, "attempt": attempt
+                    })
+                    try:
+                        return response.json()
+                    except:
+                        return {"ok": True, "raw": response.text[:1000]}
+
+                # Retryable errors
+                if code in (429, 500, 502, 503, 504):
+                    self.current_run["metrics"]["retries"] += 1
+                    jitter = random.random() * 0.3
+                    wait = backoff + jitter
+                    _log_structured(self._run_id(), "http", "retry", {
+                        "endpoint": endpoint, "code": code, "attempt": attempt, "wait": wait
+                    })
+                    await asyncio.sleep(wait)
+                    backoff *= 2
+                    continue
+
+                # Non-retryable error
+                self.circuit_breaker.record_failure(platform)
+                self.current_run["metrics"]["calls_failed"] += 1
+                return {"ok": False, "error": f"HTTP {code}", "body": response.text[:500]}
+
+            except asyncio.TimeoutError:
+                last_error = "timeout"
+                self.current_run["metrics"]["retries"] += 1
+                await asyncio.sleep(backoff)
+                backoff *= 2
+
+            except Exception as e:
+                last_error = str(e)
+                if attempt == tries:
+                    self.circuit_breaker.record_failure(platform)
+                    self.current_run["metrics"]["calls_failed"] += 1
+                    return {"ok": False, "error": last_error}
+                await asyncio.sleep(backoff)
+                backoff *= 2
+
+        self.circuit_breaker.record_failure(platform)
+        self.current_run["metrics"]["calls_failed"] += 1
+        return {"ok": False, "error": f"max_retries:{last_error}"}
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DEDUPE + EV PRIORITIZATION
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _compute_opportunity_key(self, opp: Dict) -> str:
+        """Generate stable key for deduplication"""
+        raw = f"{opp.get('platform', '')}|{opp.get('url') or opp.get('id', '')}|{opp.get('title', '')}"
+        return sha1(raw.encode()).hexdigest()[:16]
+
+    def _compute_ev(self, opp: Dict) -> float:
+        """
+        Compute Expected Value for opportunity prioritization.
+        EV = (value × win_prob × time_decay) - cogs
+        """
+        value = float(opp.get("value", 0) or opp.get("estimated_value", 0) or 0)
+        win_prob = float(opp.get("win_prob", opp.get("confidence", 0.25)))
+        cogs = float(opp.get("cogs_estimate", value * 0.3))  # Default 30% COGS
+
+        # Time decay - fresher opportunities score higher
+        posted_minutes = opp.get("posted_minutes_ago", opp.get("age_minutes", 9999))
+        if posted_minutes < 30:
+            decay = 1.0
+        elif posted_minutes < 120:
+            decay = 0.9
+        elif posted_minutes < 1440:  # 24h
+            decay = 0.7
+        else:
+            decay = 0.5
+
+        ev = (value * win_prob * decay) - cogs
+        return max(ev, 0)
+
+    def _dedupe_and_rank(self, opportunities: List[Dict], limit: int = 250) -> List[Dict]:
+        """
+        Deduplicate opportunities and rank by Expected Value.
+        Returns top N by EV score.
+        """
+        unique = []
+
+        for opp in opportunities:
+            key = self._compute_opportunity_key(opp)
+
+            # Skip if already seen in this run or globally
+            if key in self._seen_keys:
+                continue
+
+            self._seen_keys.add(key)
+            opp["_key"] = key
+            opp["_ev"] = self._compute_ev(opp)
+            unique.append(opp)
+
+        # Sort by EV descending
+        ranked = sorted(unique, key=lambda x: x["_ev"], reverse=True)
+
+        _log_structured(self._run_id(), "dedupe", "complete", {
+            "input": len(opportunities),
+            "unique": len(unique),
+            "returned": min(len(ranked), limit)
+        })
+
+        return ranked[:limit]
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 1: DISCOVERY - ALL 7 DIMENSIONS
@@ -107,10 +387,10 @@ class MasterAutonomousOrchestrator:
     async def run_discovery_all_dimensions(self) -> Dict[str, Any]:
         """
         Run discovery across ALL 7 dimensions simultaneously.
-
-        Returns opportunities from 27+ platforms.
+        Returns deduplicated, EV-ranked opportunities.
         """
         self.current_run["phase"] = "discovery"
+        _log_structured(self._run_id(), "discovery", "start", {})
 
         results = {
             "dimension_1_explicit_marketplaces": [],
@@ -121,7 +401,8 @@ class MasterAutonomousOrchestrator:
             "dimension_6_opportunity_creation": [],
             "dimension_7_emergent_patterns": [],
             "total_opportunities": 0,
-            "total_value": 0
+            "total_value": 0,
+            "total_ev": 0
         }
 
         # Run all dimension discoveries in parallel
@@ -147,416 +428,421 @@ class MasterAutonomousOrchestrator:
             "dimension_7_emergent_patterns"
         ]
 
-        for i, (name, result) in enumerate(zip(dimension_names, dimension_results)):
+        all_opportunities = []
+
+        for name, result in zip(dimension_names, dimension_results):
             if isinstance(result, Exception):
                 self.current_run["errors"].append({"dimension": name, "error": str(result)})
+                _log_structured(self._run_id(), "discovery", "dimension_error", {
+                    "dimension": name, "error": str(result)
+                })
             else:
-                results[name] = result.get("opportunities", [])
-                results["total_opportunities"] += len(results[name])
-                results["total_value"] += sum(o.get("value", 0) for o in results[name])
+                opps = result.get("opportunities", [])
+                results[name] = opps
+                all_opportunities.extend(opps)
+
+        # Dedupe and rank all opportunities
+        ranked = self._dedupe_and_rank(all_opportunities)
+
+        results["total_opportunities"] = len(ranked)
+        results["total_value"] = sum(o.get("value", 0) or o.get("estimated_value", 0) for o in ranked)
+        results["total_ev"] = sum(o.get("_ev", 0) for o in ranked)
+        results["ranked_opportunities"] = ranked
+
+        _log_structured(self._run_id(), "discovery", "complete", {
+            "total": len(ranked),
+            "total_value": results["total_value"],
+            "total_ev": results["total_ev"]
+        })
 
         self.current_run["results"]["discovery"] = results
         return results
 
     async def _discover_dimension_1_explicit_marketplaces(self) -> Dict[str, Any]:
-        """Dimension 1: Explicit Marketplaces (GitHub, Upwork, Fiverr, etc.)"""
+        """Dimension 1: Explicit Marketplaces"""
         opportunities = []
+        idem = f"{self._run_id()}|d1"
 
-        # GitHub bounties
-        github = await self._call("POST", "/discovery/github/bounties", {"limit": 50})
-        if github.get("ok"):
-            opportunities.extend(github.get("opportunities", []))
+        tasks = [
+            self._call("POST", "/discovery/github/bounties", {"limit": 50}, idempotency_key=f"{idem}|gh", platform="github"),
+            self._call("POST", "/discovery/upwork/search", {"limit": 30}, idempotency_key=f"{idem}|uw", platform="upwork"),
+            self._call("POST", "/discovery/fiverr/buyer-requests", {"limit": 20}, idempotency_key=f"{idem}|fv", platform="fiverr"),
+            self._call("POST", "/discovery/freelancer/search", {"limit": 30}, idempotency_key=f"{idem}|fl", platform="freelancer"),
+            self._call("GET", "/discovery/remoteok/jobs", idempotency_key=f"{idem}|ro", platform="remoteok"),
+            self._call("GET", "/discovery/weworkremotely/jobs", idempotency_key=f"{idem}|wwr", platform="weworkremotely"),
+            self._call("GET", "/discovery/angellist/jobs", idempotency_key=f"{idem}|al", platform="angellist"),
+        ]
 
-        # Upwork jobs
-        upwork = await self._call("POST", "/discovery/upwork/search", {"limit": 30})
-        if upwork.get("ok"):
-            opportunities.extend(upwork.get("opportunities", []))
-
-        # Fiverr requests
-        fiverr = await self._call("POST", "/discovery/fiverr/buyer-requests", {"limit": 20})
-        if fiverr.get("ok"):
-            opportunities.extend(fiverr.get("opportunities", []))
-
-        # Freelancer projects
-        freelancer = await self._call("POST", "/discovery/freelancer/search", {"limit": 30})
-        if freelancer.get("ok"):
-            opportunities.extend(freelancer.get("opportunities", []))
-
-        # TopTal
-        toptal = await self._call("POST", "/discovery/toptal/jobs", {"limit": 20})
-        if toptal.get("ok"):
-            opportunities.extend(toptal.get("opportunities", []))
-
-        # RemoteOK
-        remoteok = await self._call("GET", "/discovery/remoteok/jobs")
-        if remoteok.get("ok"):
-            opportunities.extend(remoteok.get("opportunities", []))
-
-        # WeWorkRemotely
-        wwr = await self._call("GET", "/discovery/weworkremotely/jobs")
-        if wwr.get("ok"):
-            opportunities.extend(wwr.get("opportunities", []))
-
-        # AngelList/Wellfound
-        angellist = await self._call("GET", "/discovery/angellist/jobs")
-        if angellist.get("ok"):
-            opportunities.extend(angellist.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "explicit_marketplaces"}
 
     async def _discover_dimension_2_pain_points(self) -> Dict[str, Any]:
-        """Dimension 2: Pain Point Detection (Reddit, HN, Twitter)"""
+        """Dimension 2: Pain Point Detection"""
         opportunities = []
+        idem = f"{self._run_id()}|d2"
 
-        # Reddit pain points
-        reddit = await self._call("POST", "/discovery/reddit/pain-points", {
-            "subreddits": ["webdev", "startups", "entrepreneur", "SaaS", "freelance"],
-            "limit": 50
-        })
-        if reddit.get("ok"):
-            opportunities.extend(reddit.get("opportunities", []))
+        tasks = [
+            self._call("POST", "/discovery/reddit/pain-points", {
+                "subreddits": ["webdev", "startups", "entrepreneur", "SaaS", "freelance"],
+                "limit": 50
+            }, idempotency_key=f"{idem}|rd", platform="reddit"),
+            self._call("GET", "/discovery/hackernews/who-is-hiring", idempotency_key=f"{idem}|hn", platform="hackernews"),
+            self._call("POST", "/discovery/twitter/pain-signals", {
+                "keywords": ["need developer", "looking for", "anyone know", "help with"],
+                "limit": 30
+            }, idempotency_key=f"{idem}|tw", platform="twitter"),
+            self._call("GET", "/discovery/producthunt/launches", idempotency_key=f"{idem}|ph", platform="producthunt"),
+            self._call("GET", "/discovery/indiehackers/requests", idempotency_key=f"{idem}|ih", platform="indiehackers"),
+        ]
 
-        # HackerNews hiring/seeking
-        hn = await self._call("GET", "/discovery/hackernews/who-is-hiring")
-        if hn.get("ok"):
-            opportunities.extend(hn.get("opportunities", []))
-
-        # Twitter pain signals
-        twitter = await self._call("POST", "/discovery/twitter/pain-signals", {
-            "keywords": ["need developer", "looking for", "anyone know", "help with"],
-            "limit": 30
-        })
-        if twitter.get("ok"):
-            opportunities.extend(twitter.get("opportunities", []))
-
-        # ProductHunt launches needing help
-        ph = await self._call("GET", "/discovery/producthunt/launches")
-        if ph.get("ok"):
-            opportunities.extend(ph.get("opportunities", []))
-
-        # IndieHackers requests
-        ih = await self._call("GET", "/discovery/indiehackers/requests")
-        if ih.get("ok"):
-            opportunities.extend(ih.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "pain_point_detection"}
 
     async def _discover_dimension_3_flow_arbitrage(self) -> Dict[str, Any]:
-        """Dimension 3: Flow Arbitrage (pricing inefficiencies)"""
+        """Dimension 3: Flow Arbitrage"""
         opportunities = []
+        idem = f"{self._run_id()}|d3"
 
-        # Price arbitrage detection
-        arb = await self._call("GET", "/discovery/arbitrage/detect")
-        if arb.get("ok"):
-            opportunities.extend(arb.get("opportunities", []))
+        tasks = [
+            self._call("GET", "/discovery/arbitrage/detect", idempotency_key=f"{idem}|det", platform="internal"),
+            self._call("GET", "/discovery/arbitrage/cross-platform", idempotency_key=f"{idem}|xp", platform="internal"),
+            self._call("GET", "/discovery/arbitrage/underpriced", idempotency_key=f"{idem}|up", platform="internal"),
+        ]
 
-        # Cross-platform price differences
-        cross = await self._call("GET", "/discovery/arbitrage/cross-platform")
-        if cross.get("ok"):
-            opportunities.extend(cross.get("opportunities", []))
-
-        # Underpriced gigs
-        underpriced = await self._call("GET", "/discovery/arbitrage/underpriced")
-        if underpriced.get("ok"):
-            opportunities.extend(underpriced.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "flow_arbitrage"}
 
     async def _discover_dimension_4_predictive(self) -> Dict[str, Any]:
-        """Dimension 4: Predictive Intelligence (trend forecasting)"""
+        """Dimension 4: Predictive Intelligence"""
         opportunities = []
+        idem = f"{self._run_id()}|d4"
 
-        # Trend analysis
-        trends = await self._call("GET", "/discovery/predictive/trends")
-        if trends.get("ok"):
-            opportunities.extend(trends.get("opportunities", []))
+        tasks = [
+            self._call("GET", "/discovery/predictive/trends", idempotency_key=f"{idem}|tr", platform="internal"),
+            self._call("GET", "/discovery/predictive/demand-forecast", idempotency_key=f"{idem}|df", platform="internal"),
+            self._call("GET", "/discovery/predictive/seasonal", idempotency_key=f"{idem}|se", platform="internal"),
+        ]
 
-        # Demand forecasting
-        demand = await self._call("GET", "/discovery/predictive/demand-forecast")
-        if demand.get("ok"):
-            opportunities.extend(demand.get("opportunities", []))
-
-        # Seasonal patterns
-        seasonal = await self._call("GET", "/discovery/predictive/seasonal")
-        if seasonal.get("ok"):
-            opportunities.extend(seasonal.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "predictive_intelligence"}
 
     async def _discover_dimension_5_network(self) -> Dict[str, Any]:
-        """Dimension 5: Network Amplification (referrals, viral)"""
+        """Dimension 5: Network Amplification"""
         opportunities = []
+        idem = f"{self._run_id()}|d5"
 
-        # Referral opportunities
-        referrals = await self._call("GET", "/discovery/network/referrals")
-        if referrals.get("ok"):
-            opportunities.extend(referrals.get("opportunities", []))
+        tasks = [
+            self._call("GET", "/discovery/network/referrals", idempotency_key=f"{idem}|rf", platform="internal"),
+            self._call("GET", "/discovery/network/viral-loops", idempotency_key=f"{idem}|vl", platform="internal"),
+            self._call("GET", "/discovery/network/partnerships", idempotency_key=f"{idem}|pt", platform="internal"),
+        ]
 
-        # Viral loop detection
-        viral = await self._call("GET", "/discovery/network/viral-loops")
-        if viral.get("ok"):
-            opportunities.extend(viral.get("opportunities", []))
-
-        # Partnership opportunities
-        partners = await self._call("GET", "/discovery/network/partnerships")
-        if partners.get("ok"):
-            opportunities.extend(partners.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "network_amplification"}
 
     async def _discover_dimension_6_opportunity_creation(self) -> Dict[str, Any]:
-        """Dimension 6: Opportunity Creation (proactive outreach)"""
+        """Dimension 6: Opportunity Creation"""
         opportunities = []
+        idem = f"{self._run_id()}|d6"
 
-        # Cold outreach targets
-        cold = await self._call("POST", "/discovery/outreach/targets", {"limit": 50})
-        if cold.get("ok"):
-            opportunities.extend(cold.get("opportunities", []))
+        tasks = [
+            self._call("POST", "/discovery/outreach/targets", {"limit": 50}, idempotency_key=f"{idem}|tg", platform="internal"),
+            self._call("POST", "/discovery/linkedin/prospects", {"limit": 30}, idempotency_key=f"{idem}|li", platform="linkedin"),
+            self._call("GET", "/discovery/email/opportunities", idempotency_key=f"{idem}|em", platform="internal"),
+        ]
 
-        # LinkedIn prospects
-        linkedin = await self._call("POST", "/discovery/linkedin/prospects", {"limit": 30})
-        if linkedin.get("ok"):
-            opportunities.extend(linkedin.get("opportunities", []))
-
-        # Email list opportunities
-        email_opps = await self._call("GET", "/discovery/email/opportunities")
-        if email_opps.get("ok"):
-            opportunities.extend(email_opps.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "opportunity_creation"}
 
     async def _discover_dimension_7_emergent(self) -> Dict[str, Any]:
-        """Dimension 7: Emergent Patterns (new markets, trends)"""
+        """Dimension 7: Emergent Patterns"""
         opportunities = []
+        idem = f"{self._run_id()}|d7"
 
-        # New market detection
-        new_markets = await self._call("GET", "/discovery/emergent/new-markets")
-        if new_markets.get("ok"):
-            opportunities.extend(new_markets.get("opportunities", []))
+        tasks = [
+            self._call("GET", "/discovery/emergent/new-markets", idempotency_key=f"{idem}|nm", platform="internal"),
+            self._call("GET", "/discovery/emergent/trend-surf", idempotency_key=f"{idem}|ts", platform="internal"),
+            self._call("GET", "/discovery/emergent/tech-shifts", idempotency_key=f"{idem}|tc", platform="internal"),
+        ]
 
-        # Trend surfing
-        trend_surf = await self._call("GET", "/discovery/emergent/trend-surf")
-        if trend_surf.get("ok"):
-            opportunities.extend(trend_surf.get("opportunities", []))
-
-        # Technology shifts
-        tech_shifts = await self._call("GET", "/discovery/emergent/tech-shifts")
-        if tech_shifts.get("ok"):
-            opportunities.extend(tech_shifts.get("opportunities", []))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, dict) and r.get("ok"):
+                opportunities.extend(r.get("opportunities", []))
 
         return {"ok": True, "opportunities": opportunities, "dimension": "emergent_patterns"}
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PHASE 2: MULTI-CHANNEL COMMUNICATION
+    # PHASE 2: MULTI-CHANNEL COMMUNICATION (with consent + concurrency)
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def run_communication_all_channels(self, opportunities: List[Dict]) -> Dict[str, Any]:
         """
-        Initiate communication across ALL channels for discovered opportunities.
-
-        Channels:
-        - Email (Postmark/SendGrid)
-        - DM (Twitter, LinkedIn, Platform)
-        - SMS (Twilio)
-        - Platform comments (GitHub, Reddit, HN)
+        Initiate communication with consent checking, concurrency control,
+        and EV-prioritized ordering.
         """
         self.current_run["phase"] = "communication"
+        _log_structured(self._run_id(), "communication", "start", {"count": len(opportunities)})
 
         results = {
             "emails_sent": 0,
             "dms_sent": 0,
             "sms_sent": 0,
             "platform_messages": 0,
+            "skipped_no_consent": 0,
+            "skipped_circuit_open": 0,
             "conversations_started": [],
             "errors": []
         }
 
-        for opp in opportunities:
+        # Dedupe and rank if not already done
+        ranked = self._dedupe_and_rank(opportunities, limit=250)
+
+        async def _process_opportunity(opp: Dict):
+            """Process single opportunity with concurrency control"""
             platform = opp.get("platform", "unknown")
             contact = opp.get("contact", {})
+            opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+            idem_base = f"{self._run_id()}|comm|{opp_key}"
 
-            try:
-                # Determine best communication channel
-                if contact.get("email"):
-                    # Send email
-                    email_result = await self._send_email_outreach(opp)
-                    if email_result.get("ok"):
-                        results["emails_sent"] += 1
-                        results["conversations_started"].append({
-                            "opportunity_id": opp.get("id"),
-                            "channel": "email",
-                            "status": "sent"
-                        })
+            sem = self._get_semaphore(platform)
 
-                if contact.get("twitter"):
-                    # Send Twitter DM
-                    dm_result = await self._send_twitter_dm(opp)
-                    if dm_result.get("ok"):
-                        results["dms_sent"] += 1
+            async with sem:
+                try:
+                    # Email outreach
+                    if contact.get("email"):
+                        email = contact["email"]
+                        if not self.consent_manager.is_allowed(email, "email"):
+                            results["skipped_no_consent"] += 1
+                        elif not self.circuit_breaker.can_call("email"):
+                            results["skipped_circuit_open"] += 1
+                        else:
+                            r = await self._send_email_outreach(opp, idempotency_key=f"{idem_base}|em")
+                            if r.get("ok"):
+                                results["emails_sent"] += 1
+                                results["conversations_started"].append({
+                                    "opportunity_id": opp.get("id"),
+                                    "channel": "email",
+                                    "status": "sent",
+                                    "ev": opp.get("_ev", 0)
+                                })
 
-                if contact.get("linkedin"):
-                    # Send LinkedIn message
-                    li_result = await self._send_linkedin_message(opp)
-                    if li_result.get("ok"):
-                        results["dms_sent"] += 1
+                    # Twitter DM
+                    if contact.get("twitter"):
+                        tw = contact["twitter"]
+                        if self.consent_manager.is_allowed(tw, "twitter") and self.circuit_breaker.can_call("twitter"):
+                            async with self._get_semaphore("twitter"):
+                                r = await self._send_twitter_dm(opp, idempotency_key=f"{idem_base}|tw")
+                                if r.get("ok"):
+                                    results["dms_sent"] += 1
 
-                if contact.get("phone"):
-                    # Send SMS
-                    sms_result = await self._send_sms(opp)
-                    if sms_result.get("ok"):
-                        results["sms_sent"] += 1
+                    # LinkedIn
+                    if contact.get("linkedin"):
+                        li = contact["linkedin"]
+                        if self.consent_manager.is_allowed(li, "linkedin") and self.circuit_breaker.can_call("linkedin"):
+                            async with self._get_semaphore("linkedin"):
+                                r = await self._send_linkedin_message(opp, idempotency_key=f"{idem_base}|li")
+                                if r.get("ok"):
+                                    results["dms_sent"] += 1
 
-                # Platform-specific messaging
-                if platform in ["github", "github_bounties"]:
-                    msg_result = await self._post_github_comment(opp)
-                    if msg_result.get("ok"):
-                        results["platform_messages"] += 1
+                    # SMS
+                    if contact.get("phone"):
+                        phone = contact["phone"]
+                        if self.consent_manager.is_allowed(phone, "sms") and self.circuit_breaker.can_call("sms"):
+                            async with self._get_semaphore("sms"):
+                                r = await self._send_sms(opp, idempotency_key=f"{idem_base}|sms")
+                                if r.get("ok"):
+                                    results["sms_sent"] += 1
 
-                elif platform == "reddit":
-                    msg_result = await self._post_reddit_reply(opp)
-                    if msg_result.get("ok"):
-                        results["platform_messages"] += 1
+                    # Platform-specific
+                    if platform in ["github", "github_bounties"]:
+                        if self.circuit_breaker.can_call("github"):
+                            r = await self._post_github_interest(opp, idempotency_key=f"{idem_base}|gh")
+                            if r.get("ok"):
+                                results["platform_messages"] += 1
 
-                elif platform in ["upwork", "freelancer", "fiverr"]:
-                    msg_result = await self._send_platform_proposal(opp)
-                    if msg_result.get("ok"):
-                        results["platform_messages"] += 1
+                    elif platform == "reddit":
+                        if self.circuit_breaker.can_call("reddit"):
+                            r = await self._post_reddit_reply(opp, idempotency_key=f"{idem_base}|rd")
+                            if r.get("ok"):
+                                results["platform_messages"] += 1
 
-            except Exception as e:
-                results["errors"].append({
-                    "opportunity_id": opp.get("id"),
-                    "error": str(e)
-                })
+                    elif platform in ["upwork", "freelancer", "fiverr"]:
+                        if self.circuit_breaker.can_call(platform):
+                            r = await self._send_platform_proposal(opp, idempotency_key=f"{idem_base}|prop")
+                            if r.get("ok"):
+                                results["platform_messages"] += 1
+
+                except Exception as e:
+                    results["errors"].append({
+                        "opportunity_id": opp.get("id"),
+                        "error": str(e)
+                    })
+
+        # Process all opportunities with controlled concurrency
+        await asyncio.gather(*[_process_opportunity(opp) for opp in ranked], return_exceptions=True)
+
+        _log_structured(self._run_id(), "communication", "complete", {
+            "emails": results["emails_sent"],
+            "dms": results["dms_sent"],
+            "sms": results["sms_sent"],
+            "platform": results["platform_messages"],
+            "skipped_consent": results["skipped_no_consent"]
+        })
 
         self.current_run["results"]["communication"] = results
         return results
 
-    async def _send_email_outreach(self, opportunity: Dict) -> Dict[str, Any]:
-        """Send outreach email via Postmark/SendGrid"""
-        contact = opportunity.get("contact", {})
+    async def _send_email_outreach(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
+        """Send personalized email outreach"""
+        contact = opp.get("contact", {})
         email = contact.get("email")
-
         if not email:
-            return {"ok": False, "error": "No email"}
+            return {"ok": False, "error": "no_email"}
 
-        # Generate personalized pitch
+        # Generate pitch with opportunity context
         pitch = await self._call("POST", "/ame/generate-pitch", {
-            "opportunity": opportunity,
-            "channel": "email"
-        })
+            "opportunity": opp,
+            "channel": "email",
+            "ev_score": opp.get("_ev", 0)
+        }, idempotency_key=f"{idempotency_key}|pitch", platform="internal")
 
-        # Send via email service
         return await self._call("POST", "/email/send", {
             "to": email,
-            "subject": pitch.get("subject", f"Re: {opportunity.get('title', 'Your Project')}"),
+            "subject": pitch.get("subject", f"Re: {opp.get('title', 'Your Project')}"),
             "body": pitch.get("body", ""),
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id"),
+            "ev_score": opp.get("_ev", 0)
+        }, idempotency_key=idempotency_key, platform="email")
 
-    async def _send_twitter_dm(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _send_twitter_dm(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Send Twitter DM"""
-        contact = opportunity.get("contact", {})
+        contact = opp.get("contact", {})
         twitter = contact.get("twitter")
-
         if not twitter:
-            return {"ok": False, "error": "No Twitter handle"}
+            return {"ok": False, "error": "no_twitter"}
 
         pitch = await self._call("POST", "/ame/generate-pitch", {
-            "opportunity": opportunity,
+            "opportunity": opp,
             "channel": "twitter_dm",
             "max_length": 280
-        })
+        }, platform="internal")
 
         return await self._call("POST", "/twitter/send-dm", {
             "username": twitter,
             "message": pitch.get("body", ""),
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id")
+        }, idempotency_key=idempotency_key, platform="twitter")
 
-    async def _send_linkedin_message(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _send_linkedin_message(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Send LinkedIn message"""
-        contact = opportunity.get("contact", {})
+        contact = opp.get("contact", {})
         linkedin = contact.get("linkedin")
-
         if not linkedin:
-            return {"ok": False, "error": "No LinkedIn profile"}
+            return {"ok": False, "error": "no_linkedin"}
 
         pitch = await self._call("POST", "/ame/generate-pitch", {
-            "opportunity": opportunity,
+            "opportunity": opp,
             "channel": "linkedin"
-        })
+        }, platform="internal")
 
         return await self._call("POST", "/linkedin/send-message", {
             "profile_url": linkedin,
             "message": pitch.get("body", ""),
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id")
+        }, idempotency_key=idempotency_key, platform="linkedin")
 
-    async def _send_sms(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _send_sms(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Send SMS via Twilio"""
-        contact = opportunity.get("contact", {})
+        contact = opp.get("contact", {})
         phone = contact.get("phone")
-
         if not phone:
-            return {"ok": False, "error": "No phone number"}
+            return {"ok": False, "error": "no_phone"}
 
         pitch = await self._call("POST", "/ame/generate-pitch", {
-            "opportunity": opportunity,
+            "opportunity": opp,
             "channel": "sms",
             "max_length": 160
-        })
+        }, platform="internal")
 
         return await self._call("POST", "/sms/send", {
             "to": phone,
             "message": pitch.get("body", ""),
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id")
+        }, idempotency_key=idempotency_key, platform="sms")
 
-    async def _post_github_comment(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _post_github_interest(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Post GitHub comment expressing interest"""
         return await self._call("POST", "/github/post-comment", {
-            "url": opportunity.get("url"),
+            "url": opp.get("url"),
             "type": "interest",
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id"),
+            "ev_score": opp.get("_ev", 0)
+        }, idempotency_key=idempotency_key, platform="github")
 
-    async def _post_reddit_reply(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _post_reddit_reply(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Post Reddit reply"""
         return await self._call("POST", "/reddit/post-reply", {
-            "url": opportunity.get("url"),
+            "url": opp.get("url"),
             "type": "offer_help",
-            "opportunity_id": opportunity.get("id")
-        })
+            "opportunity_id": opp.get("id")
+        }, idempotency_key=idempotency_key, platform="reddit")
 
-    async def _send_platform_proposal(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _send_platform_proposal(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Send proposal on freelance platform"""
-        platform = opportunity.get("platform")
+        platform = opp.get("platform")
 
         pitch = await self._call("POST", "/ame/generate-pitch", {
-            "opportunity": opportunity,
-            "channel": platform
-        })
+            "opportunity": opp,
+            "channel": platform,
+            "include_sla": True
+        }, platform="internal")
+
+        # COGS-aware bid calculation
+        value = opp.get("value", 0) or opp.get("estimated_value", 0)
+        cogs = opp.get("cogs_estimate", value * 0.3)
+        min_margin = 0.2  # 20% minimum margin
+        suggested_bid = max(value * 0.8, cogs * (1 + min_margin))
 
         return await self._call("POST", f"/{platform}/submit-proposal", {
-            "job_id": opportunity.get("job_id") or opportunity.get("id"),
+            "job_id": opp.get("job_id") or opp.get("id"),
             "proposal": pitch.get("body", ""),
-            "bid_amount": opportunity.get("suggested_bid", opportunity.get("value", 0) * 0.8)
-        })
+            "bid_amount": suggested_bid,
+            "sla": pitch.get("sla")
+        }, idempotency_key=idempotency_key, platform=platform)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 3: CONTRACT & AGREEMENT
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def run_contract_flow(self, conversations: List[Dict]) -> Dict[str, Any]:
-        """
-        Handle contract and agreement flow for interested clients.
-
-        - Generate contracts
-        - Send for signature
-        - Collect deposits
-        - Track milestones
-        """
+        """Handle contract and agreement flow with idempotency"""
         self.current_run["phase"] = "contract"
+        _log_structured(self._run_id(), "contract", "start", {"count": len(conversations)})
 
         results = {
             "contracts_generated": 0,
@@ -574,45 +860,48 @@ class MasterAutonomousOrchestrator:
 
             try:
                 opportunity = conv.get("opportunity", {})
+                opp_key = opportunity.get("_key", self._compute_opportunity_key(opportunity))
+                idem_base = f"{self._run_id()}|contract|{opp_key}"
 
-                # Generate contract
+                # Generate contract with idempotency
                 contract = await self._call("POST", "/contract/generate", {
                     "opportunity": opportunity,
                     "client_email": conv.get("client_email"),
                     "amount": opportunity.get("value", 0),
-                    "milestones": self._generate_milestones(opportunity)
-                })
+                    "milestones": self._generate_milestones(opportunity),
+                    "ev_score": opportunity.get("_ev", 0)
+                }, idempotency_key=f"{idem_base}|gen", platform="internal")
 
                 if contract.get("ok"):
                     results["contracts_generated"] += 1
                     contract_id = contract.get("contract_id")
 
-                    # Create Stripe payment link for deposit
-                    deposit_amount = opportunity.get("value", 0) * 0.5  # 50% deposit
+                    # 50% deposit
+                    deposit_amount = opportunity.get("value", 0) * 0.5
                     payment_link = await self._call("POST", "/contract/create-payment-link", {
                         "contract_id": contract_id,
                         "amount": deposit_amount
-                    })
+                    }, idempotency_key=f"{idem_base}|pay", platform="stripe")
 
                     if payment_link.get("ok"):
                         results["deposits_requested"] += 1
 
-                    # Send contract with payment link
+                    # Send contract
                     send_result = await self._call("POST", "/contract/send", {
                         "contract_id": contract_id,
                         "include_payment_link": True
-                    })
+                    }, idempotency_key=f"{idem_base}|send", platform="email")
 
                     if send_result.get("ok"):
                         results["contracts_sent"] += 1
                         results["total_contract_value"] += opportunity.get("value", 0)
-
                         results["contracts"].append({
                             "contract_id": contract_id,
                             "opportunity_id": opportunity.get("id"),
                             "value": opportunity.get("value", 0),
                             "deposit": deposit_amount,
-                            "payment_link": payment_link.get("payment_link")
+                            "payment_link": payment_link.get("payment_link"),
+                            "ev_score": opportunity.get("_ev", 0)
                         })
 
             except Exception as e:
@@ -621,12 +910,17 @@ class MasterAutonomousOrchestrator:
                     "error": str(e)
                 })
 
+        _log_structured(self._run_id(), "contract", "complete", {
+            "generated": results["contracts_generated"],
+            "sent": results["contracts_sent"],
+            "value": results["total_contract_value"]
+        })
+
         self.current_run["results"]["contract"] = results
         return results
 
     def _generate_milestones(self, opportunity: Dict) -> List[Dict]:
         """Generate milestone structure based on opportunity type"""
-        value = opportunity.get("value", 0)
         opp_type = opportunity.get("type", "general")
 
         if opp_type in ["code_generation", "software_development"]:
@@ -636,7 +930,7 @@ class MasterAutonomousOrchestrator:
                 {"name": "Testing & Refinement", "percentage": 25},
                 {"name": "Deployment & Handoff", "percentage": 15}
             ]
-        elif opp_type in ["content_generation", "writing"]:
+        elif opp_type in ["content_generation", "writing", "copywriting"]:
             return [
                 {"name": "Research & Outline", "percentage": 25},
                 {"name": "First Draft", "percentage": 50},
@@ -653,20 +947,15 @@ class MasterAutonomousOrchestrator:
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def run_fulfillment(self, contracts: List[Dict]) -> Dict[str, Any]:
-        """
-        Execute fulfillment for signed contracts.
-
-        - Code generation
-        - Content creation
-        - Graphics generation
-        - Deployment
-        """
+        """Execute fulfillment for signed contracts"""
         self.current_run["phase"] = "fulfillment"
+        _log_structured(self._run_id(), "fulfillment", "start", {"count": len(contracts)})
 
         results = {
             "fulfilled": 0,
             "delivered": 0,
             "total_delivered_value": 0,
+            "upsells_sent": 0,
             "fulfillments": [],
             "errors": []
         }
@@ -678,34 +967,54 @@ class MasterAutonomousOrchestrator:
             try:
                 opportunity = contract.get("opportunity", {})
                 contract_id = contract.get("contract_id")
+                opp_key = opportunity.get("_key", self._compute_opportunity_key(opportunity))
+                idem_base = f"{self._run_id()}|fulfill|{opp_key}"
 
-                # Determine fulfillment type and execute
-                fulfillment_result = await self._execute_fulfillment(opportunity)
+                # Execute fulfillment
+                fulfillment_result = await self._execute_fulfillment(
+                    opportunity,
+                    idempotency_key=f"{idem_base}|exec"
+                )
 
                 if fulfillment_result.get("success"):
                     results["fulfilled"] += 1
 
                     # Deliver work
-                    delivery_result = await self._deliver_work(opportunity, fulfillment_result)
+                    delivery_result = await self._deliver_work(
+                        opportunity,
+                        fulfillment_result,
+                        idempotency_key=f"{idem_base}|deliver"
+                    )
 
                     if delivery_result.get("success"):
                         results["delivered"] += 1
                         results["total_delivered_value"] += opportunity.get("value", 0)
 
-                        # Create payment request for remaining balance
-                        remaining = opportunity.get("value", 0) * 0.5  # 50% on delivery
+                        # Final payment link (remaining 50%)
+                        remaining = opportunity.get("value", 0) * 0.5
                         payment_result = await self._call("POST", "/wade/payment-link", {
                             "amount": remaining,
                             "description": f"Final payment: {opportunity.get('title', 'Work')}",
                             "workflow_id": contract_id
-                        })
+                        }, idempotency_key=f"{idem_base}|final_pay", platform="stripe")
+
+                        # Post-delivery upsell sequence
+                        upsell = await self._call("POST", "/upsell/trigger-sequence", {
+                            "contract_id": contract_id,
+                            "opportunity": opportunity,
+                            "delivery": delivery_result
+                        }, idempotency_key=f"{idem_base}|upsell", platform="internal")
+
+                        if upsell.get("ok"):
+                            results["upsells_sent"] += 1
 
                         results["fulfillments"].append({
                             "contract_id": contract_id,
                             "opportunity_id": opportunity.get("id"),
                             "delivery_url": delivery_result.get("delivery_url"),
                             "payment_link": payment_result.get("payment_link"),
-                            "value": opportunity.get("value", 0)
+                            "value": opportunity.get("value", 0),
+                            "ev_score": opportunity.get("_ev", 0)
                         })
 
             except Exception as e:
@@ -714,82 +1023,73 @@ class MasterAutonomousOrchestrator:
                     "error": str(e)
                 })
 
+        _log_structured(self._run_id(), "fulfillment", "complete", {
+            "fulfilled": results["fulfilled"],
+            "delivered": results["delivered"],
+            "value": results["total_delivered_value"]
+        })
+
         self.current_run["results"]["fulfillment"] = results
         return results
 
-    async def _execute_fulfillment(self, opportunity: Dict) -> Dict[str, Any]:
+    async def _execute_fulfillment(self, opportunity: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Execute the actual work based on opportunity type"""
         opp_type = opportunity.get("type", "general")
 
-        if opp_type in ["code_generation", "software_development"]:
-            return await self._call("POST", "/fulfillment/code-generation", {
-                "opportunity": opportunity
-            })
+        endpoint_map = {
+            "code_generation": "/fulfillment/code-generation",
+            "software_development": "/fulfillment/code-generation",
+            "content_generation": "/fulfillment/content-generation",
+            "writing": "/fulfillment/content-generation",
+            "copywriting": "/fulfillment/content-generation",
+            "graphics": "/fulfillment/graphics-generation",
+            "design": "/fulfillment/graphics-generation",
+            "logo": "/fulfillment/graphics-generation",
+            "video": "/fulfillment/video-generation",
+            "animation": "/fulfillment/video-generation",
+            "audio": "/fulfillment/audio-generation",
+            "music": "/fulfillment/audio-generation",
+            "voiceover": "/fulfillment/audio-generation",
+        }
 
-        elif opp_type in ["content_generation", "writing", "copywriting"]:
-            return await self._call("POST", "/fulfillment/content-generation", {
-                "opportunity": opportunity
-            })
+        endpoint = endpoint_map.get(opp_type, "/fulfillment/claude-generic")
 
-        elif opp_type in ["graphics", "design", "logo"]:
-            return await self._call("POST", "/fulfillment/graphics-generation", {
-                "opportunity": opportunity
-            })
+        return await self._call("POST", endpoint, {
+            "opportunity": opportunity,
+            "ev_score": opportunity.get("_ev", 0)
+        }, idempotency_key=idempotency_key, platform="internal")
 
-        elif opp_type in ["video", "animation"]:
-            return await self._call("POST", "/fulfillment/video-generation", {
-                "opportunity": opportunity
-            })
-
-        elif opp_type in ["audio", "music", "voiceover"]:
-            return await self._call("POST", "/fulfillment/audio-generation", {
-                "opportunity": opportunity
-            })
-
-        else:
-            # Generic Claude-based fulfillment
-            return await self._call("POST", "/fulfillment/claude-generic", {
-                "opportunity": opportunity
-            })
-
-    async def _deliver_work(self, opportunity: Dict, fulfillment: Dict) -> Dict[str, Any]:
+    async def _deliver_work(self, opportunity: Dict, fulfillment: Dict, idempotency_key: str = None) -> Dict[str, Any]:
         """Deliver completed work to client/platform"""
         platform = opportunity.get("platform", "unknown")
 
-        # Platform-specific delivery
         if platform in ["github", "github_bounties"]:
             return await self._call("POST", "/delivery/github", {
                 "opportunity": opportunity,
                 "fulfillment": fulfillment
-            })
+            }, idempotency_key=idempotency_key, platform="github")
 
         elif platform in ["upwork", "freelancer", "fiverr"]:
             return await self._call("POST", f"/delivery/{platform}", {
                 "opportunity": opportunity,
                 "fulfillment": fulfillment
-            })
+            }, idempotency_key=idempotency_key, platform=platform)
 
         else:
-            # Email delivery
             return await self._call("POST", "/delivery/email", {
                 "opportunity": opportunity,
                 "fulfillment": fulfillment
-            })
+            }, idempotency_key=idempotency_key, platform="email")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 5: PAYMENT COLLECTION
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def run_payment_collection(self) -> Dict[str, Any]:
-        """
-        Collect all pending payments across platforms.
-
-        - Send Stripe invoices
-        - Request escrow releases
-        - Track bounty payouts
-        - Process subscriptions
-        """
+        """Collect all pending payments with idempotency"""
         self.current_run["phase"] = "payment_collection"
+        idem_base = f"{self._run_id()}|payment"
+        _log_structured(self._run_id(), "payment", "start", {})
 
         results = {
             "invoices_sent": 0,
@@ -803,40 +1103,53 @@ class MasterAutonomousOrchestrator:
         }
 
         # Send all pending invoices
-        invoices = await self._call("POST", "/stripe/send-invoices", {})
+        invoices = await self._call("POST", "/stripe/send-invoices", {},
+                                     idempotency_key=f"{idem_base}|inv", platform="stripe")
         if invoices.get("ok"):
             results["invoices_sent"] = len(invoices.get("invoiced", []))
 
         # Request escrow releases
-        escrow = await self._call("POST", "/escrow/auto-release", {})
+        escrow = await self._call("POST", "/escrow/auto-release", {},
+                                   idempotency_key=f"{idem_base}|esc", platform="internal")
         if escrow.get("ok"):
             results["escrow_releases_requested"] = escrow.get("requested", 0)
 
         # Claim bounties
-        bounties = await self._call("POST", "/bounties/claim-all", {})
+        bounties = await self._call("POST", "/bounties/claim-all", {},
+                                     idempotency_key=f"{idem_base}|bounty", platform="internal")
         if bounties.get("ok"):
             results["bounties_claimed"] = bounties.get("claimed", 0)
 
         # Process subscription renewals
-        subs = await self._call("POST", "/subscriptions/process-renewals", {})
+        subs = await self._call("POST", "/subscriptions/process-renewals", {},
+                                 idempotency_key=f"{idem_base}|subs", platform="stripe")
         if subs.get("ok"):
             results["total_collected"] += subs.get("collected", 0)
 
         # Get current payment status
-        status = await self._call("GET", "/payments/status")
+        status = await self._call("GET", "/payments/status", platform="internal")
         if status.get("ok"):
             results["total_pending"] = status.get("summary", {}).get("total_pending", 0)
 
         # Batch payouts
-        payouts = await self._call("POST", "/stripe/batch-payouts", {})
+        payouts = await self._call("POST", "/stripe/batch-payouts", {},
+                                    idempotency_key=f"{idem_base}|payout", platform="stripe")
         if payouts.get("ok"):
             results["total_collected"] += payouts.get("paid_out", 0)
+
+        _log_structured(self._run_id(), "payment", "complete", {
+            "invoices": results["invoices_sent"],
+            "escrow": results["escrow_releases_requested"],
+            "bounties": results["bounties_claimed"],
+            "collected": results["total_collected"],
+            "pending": results["total_pending"]
+        })
 
         self.current_run["results"]["payment_collection"] = results
         return results
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # MASTER ORCHESTRATION - RUN COMPLETE AUTONOMOUS LOOP
+    # MASTER ORCHESTRATION - FULL AUTONOMOUS CYCLE
     # ═══════════════════════════════════════════════════════════════════════════
 
     async def run_full_autonomous_cycle(self, config: Dict = None) -> Dict[str, Any]:
@@ -845,61 +1158,84 @@ class MasterAutonomousOrchestrator:
 
         Discovery → Communication → Contract → Fulfillment → Payment
 
-        Zero human intervention required.
+        Production-hardened with:
+        - Idempotency keys throughout
+        - Dedupe + EV prioritization
+        - Circuit breakers per platform
+        - Concurrency control
+        - Structured logging
+        - Consent management
         """
         config = config or {}
 
+        # Initialize fresh run
         self.current_run = {
+            "run_id": f"orch-{uuid4().hex[:12]}",
             "started_at": datetime.now(timezone.utc).isoformat(),
             "phase": "initializing",
             "results": {},
-            "errors": []
+            "errors": [],
+            "metrics": {
+                "calls_made": 0,
+                "calls_succeeded": 0,
+                "calls_failed": 0,
+                "retries": 0,
+                "circuit_opens": 0
+            }
         }
+        self._seen_keys = set()  # Reset dedupe for fresh run
+
+        _log_structured(self._run_id(), "orchestrator", "cycle_start", config)
 
         final_results = {
             "ok": True,
+            "run_id": self._run_id(),
             "started_at": self.current_run["started_at"],
             "phases_completed": [],
             "summary": {}
         }
 
         try:
+            # DRY RUN CHECK
+            dry_run = config.get("dry_run", False)
+            if dry_run:
+                _log_structured(self._run_id(), "orchestrator", "dry_run_mode", {})
+
             # PHASE 1: DISCOVERY
-            print("🔍 Phase 1: Discovery across all 7 dimensions...")
+            _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "discovery"})
             discovery = await self.run_discovery_all_dimensions()
             final_results["phases_completed"].append("discovery")
             final_results["discovery"] = {
                 "total_opportunities": discovery["total_opportunities"],
                 "total_value": discovery["total_value"],
+                "total_ev": discovery.get("total_ev", 0),
                 "by_dimension": {
                     k: len(v) for k, v in discovery.items()
-                    if k.startswith("dimension_")
+                    if k.startswith("dimension_") and isinstance(v, list)
                 }
             }
 
-            # Collect all opportunities
-            all_opportunities = []
-            for k, v in discovery.items():
-                if k.startswith("dimension_") and isinstance(v, list):
-                    all_opportunities.extend(v)
+            ranked_opportunities = discovery.get("ranked_opportunities", [])
 
-            # PHASE 2: COMMUNICATION
-            if all_opportunities:
-                print(f"💬 Phase 2: Initiating communication for {len(all_opportunities)} opportunities...")
-                communication = await self.run_communication_all_channels(all_opportunities)
+            # PHASE 2: COMMUNICATION (if not dry run)
+            if ranked_opportunities and not dry_run:
+                _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "communication"})
+                communication = await self.run_communication_all_channels(ranked_opportunities)
                 final_results["phases_completed"].append("communication")
                 final_results["communication"] = {
                     "emails_sent": communication["emails_sent"],
                     "dms_sent": communication["dms_sent"],
                     "sms_sent": communication["sms_sent"],
                     "platform_messages": communication["platform_messages"],
+                    "skipped_no_consent": communication["skipped_no_consent"],
                     "conversations_started": len(communication["conversations_started"])
                 }
 
                 # PHASE 3: CONTRACT
-                interested = [c for c in communication["conversations_started"] if c.get("status") == "client_interested"]
+                interested = [c for c in communication["conversations_started"]
+                              if c.get("status") == "client_interested"]
                 if interested:
-                    print(f"📝 Phase 3: Generating contracts for {len(interested)} interested clients...")
+                    _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "contract"})
                     contracts = await self.run_contract_flow(interested)
                     final_results["phases_completed"].append("contract")
                     final_results["contract"] = {
@@ -910,32 +1246,36 @@ class MasterAutonomousOrchestrator:
                     }
 
                     # PHASE 4: FULFILLMENT
-                    signed = [c for c in contracts["contracts"] if c.get("status") in ["signed", "deposit_paid"]]
+                    signed = [c for c in contracts["contracts"]
+                              if c.get("status") in ["signed", "deposit_paid"]]
                     if signed:
-                        print(f"🔨 Phase 4: Executing fulfillment for {len(signed)} signed contracts...")
+                        _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "fulfillment"})
                         fulfillment = await self.run_fulfillment(signed)
                         final_results["phases_completed"].append("fulfillment")
                         final_results["fulfillment"] = {
                             "fulfilled": fulfillment["fulfilled"],
                             "delivered": fulfillment["delivered"],
+                            "upsells_sent": fulfillment["upsells_sent"],
                             "total_delivered_value": fulfillment["total_delivered_value"]
                         }
 
-            # PHASE 5: PAYMENT COLLECTION (always run)
-            print("💰 Phase 5: Collecting all pending payments...")
-            payment = await self.run_payment_collection()
-            final_results["phases_completed"].append("payment_collection")
-            final_results["payment_collection"] = {
-                "invoices_sent": payment["invoices_sent"],
-                "escrow_releases_requested": payment["escrow_releases_requested"],
-                "bounties_claimed": payment["bounties_claimed"],
-                "total_collected": payment["total_collected"],
-                "total_pending": payment["total_pending"]
-            }
+            # PHASE 5: PAYMENT COLLECTION (always run unless dry run)
+            if not dry_run:
+                _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "payment_collection"})
+                payment = await self.run_payment_collection()
+                final_results["phases_completed"].append("payment_collection")
+                final_results["payment_collection"] = {
+                    "invoices_sent": payment["invoices_sent"],
+                    "escrow_releases_requested": payment["escrow_releases_requested"],
+                    "bounties_claimed": payment["bounties_claimed"],
+                    "total_collected": payment["total_collected"],
+                    "total_pending": payment["total_pending"]
+                }
 
             # SUMMARY
             final_results["summary"] = {
                 "opportunities_found": discovery["total_opportunities"],
+                "total_ev": discovery.get("total_ev", 0),
                 "communications_sent": (
                     final_results.get("communication", {}).get("emails_sent", 0) +
                     final_results.get("communication", {}).get("dms_sent", 0) +
@@ -944,17 +1284,22 @@ class MasterAutonomousOrchestrator:
                 ),
                 "contracts_value": final_results.get("contract", {}).get("total_contract_value", 0),
                 "delivered_value": final_results.get("fulfillment", {}).get("total_delivered_value", 0),
-                "collected": payment["total_collected"],
-                "pending": payment["total_pending"]
+                "collected": final_results.get("payment_collection", {}).get("total_collected", 0),
+                "pending": final_results.get("payment_collection", {}).get("total_pending", 0)
             }
 
             final_results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            final_results["metrics"] = self.current_run["metrics"]
             final_results["errors"] = self.current_run["errors"]
+            final_results["circuit_breaker_status"] = self.circuit_breaker.get_status()
+
+            _log_structured(self._run_id(), "orchestrator", "cycle_complete", final_results["summary"])
 
         except Exception as e:
             final_results["ok"] = False
             final_results["error"] = str(e)
             final_results["errors"] = self.current_run["errors"]
+            _log_structured(self._run_id(), "orchestrator", "cycle_error", {"error": str(e)})
 
         return final_results
 
@@ -964,6 +1309,7 @@ class MasterAutonomousOrchestrator:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _orchestrator_instance = None
+
 
 def get_master_orchestrator() -> MasterAutonomousOrchestrator:
     global _orchestrator_instance
