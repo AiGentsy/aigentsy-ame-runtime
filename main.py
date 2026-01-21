@@ -35621,45 +35621,47 @@ async def approve_all_wade_workflows():
     Approve ALL pending workflows in one click
     This is what the dashboard's "Approve All" button calls
     """
-    
+
     try:
-        workflows = reconciliation_state.get("wade_workflows", {})
-        
+        # Use integrated_workflow.workflows (the actual workflow store)
+        workflows = integrated_workflow.workflows
+
         pending = [
             wf_id for wf_id, wf in workflows.items()
             if wf.get("stage") == "pending_wade_approval"
         ]
-        
+
         if not pending:
             return {
                 "ok": False,
                 "error": "No pending workflows to approve",
-                "approved_count": 0
+                "approved_count": 0,
+                "total_workflows": len(workflows)
             }
-        
+
         approved = []
         failed = []
-        
+
         for wf_id in pending:
             try:
-                workflow = reconciliation_state["wade_workflows"][wf_id]
+                workflow = integrated_workflow.workflows[wf_id]
                 workflow["stage"] = "wade_approved"
                 workflow["approved_at"] = datetime.utcnow().isoformat()
-                
+
                 if "history" not in workflow:
                     workflow["history"] = []
-                
+
                 workflow["history"].append({
                     "stage": "wade_approved",
                     "timestamp": datetime.utcnow().isoformat(),
                     "action": "Bulk approved via approve-all button"
                 })
-                
+
                 approved.append(wf_id)
-                
+
             except Exception as e:
                 failed.append({"id": wf_id, "error": str(e)})
-        
+
         return {
             "ok": True,
             "approved_count": len(approved),
@@ -35668,7 +35670,7 @@ async def approve_all_wade_workflows():
             "failed": failed,
             "message": f"Successfully approved {len(approved)} workflows"
         }
-        
+
     except Exception as e:
         import traceback
         return {
@@ -35684,10 +35686,11 @@ async def approve_wade_workflow(workflow_id: str):
     """
     Wade approves a single workflow (individual checkmark button)
     """
-    
+
     try:
-        workflows = reconciliation_state.get("wade_workflows", {})
-        
+        # Use integrated_workflow.workflows (the actual workflow store)
+        workflows = integrated_workflow.workflows
+
         # Try exact match first
         if workflow_id not in workflows:
             # Try partial match
@@ -35696,31 +35699,32 @@ async def approve_wade_workflow(workflow_id: str):
                 workflow_id = matching[0]
             else:
                 return {
-                    "ok": False, 
+                    "ok": False,
                     "error": f"Workflow not found: {workflow_id}",
-                    "total_workflows": len(workflows)
+                    "total_workflows": len(workflows),
+                    "available_ids": list(workflows.keys())[:5]
                 }
-        
+
         workflow = workflows[workflow_id]
         workflow["stage"] = "wade_approved"
         workflow["approved_at"] = datetime.utcnow().isoformat()
-        
+
         if "history" not in workflow:
             workflow["history"] = []
-        
+
         workflow["history"].append({
             "stage": "wade_approved",
             "timestamp": datetime.utcnow().isoformat(),
             "action": "Wade approved via checkmark button"
         })
-        
+
         return {
             "ok": True,
             "workflow_id": workflow_id,
             "stage": "wade_approved",
             "message": "Workflow approved successfully"
         }
-        
+
     except Exception as e:
         import traceback
         return {
