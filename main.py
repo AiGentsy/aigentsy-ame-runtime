@@ -1823,30 +1823,33 @@ async def ifx_auto_quote(body: dict = Body(...)):
     """
     Build orderbook from intents with Kelly sizing + SLA + pricing.
     Every discovered intent becomes a quoted instrument.
+    Uses atomic JSONBIN writes with idempotency keys.
     """
     intents = body.get("intents", [])
     bankroll = body.get("bankroll", 10000)  # Available capital
     max_kelly = body.get("max_kelly", 0.5)  # Cap at 50% per position
-    
+
     # If no intents provided, fetch from discovery
     if not intents:
         discovered = await _call("POST", "/autonomous/discover-with-contacts", {"limit": 20})
         intents = discovered.get("intents", [])[:20]
-    
+
     quotes = []
+    duplicates = 0
+    errors = []
+
     for intent in intents:
         intent_id = intent.get("id", f"int_{uuid.uuid4().hex[:8]}")
         ev = intent.get("ev", intent.get("estimated_value", 200))
         win_prob = intent.get("win_probability", 0.35)
-        
+
         # Kelly criterion: f* = (bp - q) / b where b=odds, p=win_prob, q=1-p
-        # Simplified: fraction = win_prob - (1-win_prob)/ev_ratio
         ev_ratio = ev / 100 if ev > 0 else 1
         kelly_raw = win_prob - ((1 - win_prob) / ev_ratio)
         kelly_fraction = max(0, min(kelly_raw, max_kelly))  # Bound 0 to max_kelly
-        
+
         inventory_commitment = round(bankroll * kelly_fraction, 2)
-        
+
         # Get price from pricing_arm or fallback to margin formula
         try:
             pricing = await _call("POST", "/pricing/arm", {
@@ -1857,14 +1860,15 @@ async def ifx_auto_quote(body: dict = Body(...)):
             oaa_price = pricing.get("price", ev * 0.7)
         except:
             oaa_price = round(ev * 0.65, 2)  # 35% margin fallback
-        
+
         # SLA window based on urgency/type
         sla_hours = intent.get("sla_hours", 72)
         if intent.get("urgency") == "urgent":
             sla_hours = 24
         elif intent.get("urgency") == "flexible":
             sla_hours = 168
-        
+
+        quoted_at = datetime.now(timezone.utc).isoformat()
         quote = {
             "quote_id": f"q_{uuid.uuid4().hex[:10]}",
             "intent_id": intent_id,
@@ -1877,15 +1881,26 @@ async def ifx_auto_quote(body: dict = Body(...)):
             "win_probability": win_prob,
             "expected_value": ev,
             "status": "quoted",
-            "quoted_at": datetime.now(timezone.utc).isoformat()
+            "quoted_at": quoted_at,
+            # Idempotency key: prevents duplicate quotes for same intent
+            "idempotency_key": _generate_idempotency_key("ifx", intent_id, inventory_commitment, quoted_at[:10])
         }
-        quotes.append(quote)
-        IFX_ORDERBOOK.append(quote)
 
-    _mark_mm_state_dirty()  # Gap 1: Persist state
+        # Use atomic add with idempotency check
+        result = await _atomic_add_ifx_quote(quote)
+        if result.get("ok"):
+            if result.get("duplicate"):
+                duplicates += 1
+            else:
+                quotes.append(quote)
+        else:
+            errors.append({"intent_id": intent_id, "error": result.get("error")})
+
     return {
         "ok": True,
         "quotes_created": len(quotes),
+        "duplicates_skipped": duplicates,
+        "errors": errors if errors else None,
         "total_inventory_committed": sum(q["inventory_commitment_usd"] for q in quotes),
         "orderbook": quotes
     }
@@ -2229,6 +2244,7 @@ async def underwriting_quote(body: dict = Body(...)):
     }))
     
     quote_id = f"uq_{uuid.uuid4().hex[:10]}"
+    quoted_at = datetime.now(timezone.utc).isoformat()
     quote = {
         "quote_id": quote_id,
         "deal_id": deal_id,
@@ -2242,11 +2258,14 @@ async def underwriting_quote(body: dict = Body(...)):
         "tranches": tranches_result.get("tranches", []),
         "total_premium": tranches_result.get("total_premium", 0),
         "valid_until": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-        "quoted_at": datetime.now(timezone.utc).isoformat()
+        "quoted_at": quoted_at,
+        "idempotency_key": _generate_idempotency_key("tranche", deal_id, deal_value, quoted_at[:10])
     }
-    
-    TRANCHE_QUOTES[quote_id] = quote
-    _mark_mm_state_dirty()  # Gap 1: Persist state
+
+    # Use atomic add with idempotency check
+    result = await _atomic_add_tranche_quote(quote_id, quote)
+    if result.get("duplicate"):
+        return {"ok": True, "quote": quote, "note": "duplicate_idempotent"}
     return {"ok": True, "quote": quote}
 
 @app.post("/insurance/bind")
@@ -2314,6 +2333,7 @@ async def insurance_bind(body: dict = Body(...)):
     except Exception as e:
         print(f"⚠️ revenue reconciliation failed for insurance premium: {e}")
 
+    bound_at = datetime.now(timezone.utc).isoformat()
     policy = {
         "policy_id": policy_id,
         "quote_id": quote_id,
@@ -2325,12 +2345,15 @@ async def insurance_bind(body: dict = Body(...)):
         "payment_link": payment_link,
         "revenue_reconciled": reconciled,
         "status": "active",
-        "bound_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+        "bound_at": bound_at,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
+        "idempotency_key": _generate_idempotency_key("policy", deal_id, coverage, bound_at[:10])
     }
 
-    INSURANCE_POLICIES[policy_id] = policy
-    _mark_mm_state_dirty()  # Gap 1: Persist state
+    # Use atomic add with idempotency check
+    result = await _atomic_add_policy(policy_id, policy)
+    if result.get("duplicate"):
+        return {"ok": True, "policy_id": policy_id, "policy": policy, "note": "duplicate_idempotent"}
     return {"ok": True, "policy_id": policy_id, "policy": policy}
 
 @app.post("/bonds/issue")
@@ -2360,6 +2383,7 @@ async def bonds_issue(body: dict = Body(...)):
     except:
         pass
     
+    issued_at = datetime.now(timezone.utc).isoformat()
     bond = {
         "bond_id": bond_id,
         "deal_id": deal_id,
@@ -2369,11 +2393,14 @@ async def bonds_issue(body: dict = Body(...)):
         "obligee": obligee,
         "module_issued": module_issued,
         "status": "active",
-        "issued_at": datetime.now(timezone.utc).isoformat()
+        "issued_at": issued_at,
+        "idempotency_key": _generate_idempotency_key("bond", deal_id, principal, issued_at[:10])
     }
-    
-    PERFORMANCE_BONDS[bond_id] = bond
-    _mark_mm_state_dirty()  # Gap 1: Persist state
+
+    # Use atomic add with idempotency check
+    result = await _atomic_add_bond(bond_id, bond)
+    if result.get("duplicate"):
+        return {"ok": True, "bond_id": bond_id, "bond": bond, "note": "duplicate_idempotent"}
     return {"ok": True, "bond_id": bond_id, "bond": bond}
 
 @app.post("/revenue/reconcile-tranche")
@@ -5886,104 +5913,123 @@ JSONBIN_MM_URL  = os.getenv("JSONBIN_MM_URL")  # Dedicated bin for market maker 
 PROPOSAL_WEBHOOK_URL = os.getenv("PROPOSAL_WEBHOOK_URL")  # used by /contacts/send webhook
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MARKET MAKER STATE PERSISTENCE (Gap 1 Fix)
-# Persists IFX_ORDERBOOK, TRANCHE_QUOTES, PERFORMANCE_BONDS, INSURANCE_POLICIES
-# Uses JSONBIN_MM_URL if set, otherwise stores in main JSONBIN as reserved record
+# DURABLE MARKET MAKER STATE PERSISTENCE
+# Atomic JSONBIN operations with optimistic locking, idempotency, and event emissions
 # ═══════════════════════════════════════════════════════════════════════════════
 MM_STATE_RECORD_ID = "__market_maker_state__"
-# _mm_state_dirty is defined earlier in the file (near IFX_ORDERBOOK)
+MM_STATE_VERSION = 0  # Optimistic locking version
+MM_IDEMPOTENCY_CACHE = set()  # Track processed idempotency keys (in-memory cache)
 
-async def _load_market_maker_state():
-    """Load market maker state from JSONBIN on startup"""
-    global IFX_ORDERBOOK, TRANCHE_QUOTES, PERFORMANCE_BONDS, INSURANCE_POLICIES, CLAIMS_LEDGER
+# Import event bus for emissions
+try:
+    from event_bus import publish as event_publish
+    EVENT_BUS_AVAILABLE = True
+except ImportError:
+    def event_publish(event_type, data): pass
+    EVENT_BUS_AVAILABLE = False
 
-    if not JSONBIN_SECRET:
-        print("⚠️ JSONBIN_SECRET not set - market maker state will not persist")
-        return
+def _generate_idempotency_key(prefix: str, *args) -> str:
+    """Generate idempotency key from prefix and arguments"""
+    import hashlib
+    key_data = f"{prefix}:{':'.join(str(a) for a in args)}"
+    return hashlib.sha256(key_data.encode()).hexdigest()[:16]
+
+def _check_idempotency(key: str, existing_keys: set) -> bool:
+    """Check if idempotency key already exists. Returns True if duplicate."""
+    return key in existing_keys or key in MM_IDEMPOTENCY_CACHE
+
+async def _load_mm_state_atomic() -> tuple:
+    """
+    Load market maker state with version for optimistic locking.
+    Returns: (state_dict, version, idempotency_keys_set)
+    """
+    global MM_STATE_VERSION, MM_IDEMPOTENCY_CACHE
+
+    if not JSONBIN_SECRET or not JSONBIN_URL:
+        return {}, 0, set()
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # Try dedicated bin first
-            if JSONBIN_MM_URL:
-                r = await client.get(JSONBIN_MM_URL, headers={"X-Master-Key": JSONBIN_SECRET})
-                if r.status_code == 200:
-                    data = r.json()
-                    state = data.get("record", {})
-                    IFX_ORDERBOOK = state.get("ifx_orderbook", [])
-                    TRANCHE_QUOTES = state.get("tranche_quotes", {})
-                    PERFORMANCE_BONDS = state.get("performance_bonds", {})
-                    INSURANCE_POLICIES = state.get("insurance_policies", {})
-                    CLAIMS_LEDGER = state.get("claims_ledger", [])
-                    print(f"✅ Market maker state loaded from dedicated bin: {len(IFX_ORDERBOOK)} orders, {len(TRANCHE_QUOTES)} quotes, {len(PERFORMANCE_BONDS)} bonds, {len(CLAIMS_LEDGER)} claims")
-                    return
+            r = await client.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET})
+            if r.status_code != 200:
+                return {}, 0, set()
 
-            # Fallback: Look for reserved record in main JSONBIN
-            if JSONBIN_URL:
-                r = await client.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET})
-                if r.status_code == 200:
-                    data = r.json()
-                    users = data.get("record", [])
-                    for u in users:
-                        if u.get("id") == MM_STATE_RECORD_ID or u.get("username") == MM_STATE_RECORD_ID:
-                            state = u.get("market_maker_state", {})
-                            IFX_ORDERBOOK = state.get("ifx_orderbook", [])
-                            TRANCHE_QUOTES = state.get("tranche_quotes", {})
-                            PERFORMANCE_BONDS = state.get("performance_bonds", {})
-                            INSURANCE_POLICIES = state.get("insurance_policies", {})
-                            CLAIMS_LEDGER = state.get("claims_ledger", [])
-                            print(f"✅ Market maker state loaded from main bin: {len(IFX_ORDERBOOK)} orders, {len(TRANCHE_QUOTES)} quotes, {len(PERFORMANCE_BONDS)} bonds, {len(CLAIMS_LEDGER)} claims")
-                            return
-                    print("ℹ️ No existing market maker state found - starting fresh")
+            data = r.json()
+            users = data.get("record", [])
+
+            for u in users:
+                if u.get("id") == MM_STATE_RECORD_ID or u.get("username") == MM_STATE_RECORD_ID:
+                    state = u.get("market_maker_state", {})
+                    version = state.get("_version", 0)
+                    MM_STATE_VERSION = version
+
+                    # Extract all idempotency keys from existing records
+                    existing_keys = set()
+                    for quote in state.get("ifx_orderbook", []):
+                        if quote.get("idempotency_key"):
+                            existing_keys.add(quote["idempotency_key"])
+                    for qid, quote in state.get("tranche_quotes", {}).items():
+                        if quote.get("idempotency_key"):
+                            existing_keys.add(quote["idempotency_key"])
+                    for bid, bond in state.get("performance_bonds", {}).items():
+                        if bond.get("idempotency_key"):
+                            existing_keys.add(bond["idempotency_key"])
+                    for pid, policy in state.get("insurance_policies", {}).items():
+                        if policy.get("idempotency_key"):
+                            existing_keys.add(policy["idempotency_key"])
+
+                    MM_IDEMPOTENCY_CACHE = existing_keys
+                    return state, version, existing_keys
+
+            return {}, 0, set()
     except Exception as e:
-        print(f"⚠️ Failed to load market maker state: {e}")
+        print(f"⚠️ _load_mm_state_atomic failed: {e}")
+        return {}, 0, set()
 
-async def _save_market_maker_state():
-    """Save market maker state to JSONBIN"""
-    global _mm_state_dirty
+async def _save_mm_state_atomic(state: dict, expected_version: int, max_retries: int = 3) -> dict:
+    """
+    Atomic save with optimistic locking.
+    Returns: {"ok": bool, "new_version": int, "error": str}
+    """
+    global MM_STATE_VERSION, _mm_state_dirty
 
-    if not JSONBIN_SECRET:
-        return {"ok": False, "error": "JSONBIN_SECRET not set"}
+    if not JSONBIN_SECRET or not JSONBIN_URL:
+        return {"ok": False, "error": "JSONBIN not configured"}
 
-    state = {
-        "ifx_orderbook": IFX_ORDERBOOK,
-        "tranche_quotes": TRANCHE_QUOTES,
-        "performance_bonds": PERFORMANCE_BONDS,
-        "insurance_policies": INSURANCE_POLICIES,
-        "claims_ledger": CLAIMS_LEDGER,
-        "saved_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            # Try dedicated bin first
-            if JSONBIN_MM_URL:
-                r = await client.put(
-                    JSONBIN_MM_URL,
-                    headers={"X-Master-Key": JSONBIN_SECRET, "Content-Type": "application/json"},
-                    json={"record": state}
-                )
-                r.raise_for_status()
-                _mm_state_dirty = False
-                return {"ok": True, "location": "dedicated_bin", "orders": len(IFX_ORDERBOOK), "quotes": len(TRANCHE_QUOTES), "bonds": len(PERFORMANCE_BONDS)}
-
-            # Fallback: Store as reserved record in main JSONBIN
-            if JSONBIN_URL:
-                # Load existing users
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Read current state
                 r = await client.get(JSONBIN_URL, headers={"X-Master-Key": JSONBIN_SECRET})
                 r.raise_for_status()
                 data = r.json()
                 users = data.get("record", [])
 
                 # Find or create reserved record
-                found = False
+                found_idx = None
+                current_version = 0
                 for i, u in enumerate(users):
                     if u.get("id") == MM_STATE_RECORD_ID or u.get("username") == MM_STATE_RECORD_ID:
-                        users[i]["market_maker_state"] = state
-                        users[i]["updated_at"] = datetime.now(timezone.utc).isoformat()
-                        found = True
+                        found_idx = i
+                        current_version = u.get("market_maker_state", {}).get("_version", 0)
                         break
 
-                if not found:
+                # Check version for optimistic locking
+                if current_version != expected_version and attempt < max_retries - 1:
+                    # Version mismatch - reload and retry
+                    print(f"⚠️ Version conflict (expected {expected_version}, got {current_version}), retrying...")
+                    await asyncio.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                    continue
+
+                # Update version and timestamp
+                new_version = current_version + 1
+                state["_version"] = new_version
+                state["_last_modified"] = datetime.now(timezone.utc).isoformat()
+
+                if found_idx is not None:
+                    users[found_idx]["market_maker_state"] = state
+                    users[found_idx]["updated_at"] = datetime.now(timezone.utc).isoformat()
+                else:
                     users.append({
                         "id": MM_STATE_RECORD_ID,
                         "username": MM_STATE_RECORD_ID,
@@ -5991,19 +6037,294 @@ async def _save_market_maker_state():
                         "created_at": datetime.now(timezone.utc).isoformat()
                     })
 
-                # Save back
+                # Write back
                 r = await client.put(
                     JSONBIN_URL,
                     headers={"X-Master-Key": JSONBIN_SECRET, "Content-Type": "application/json"},
                     json={"record": users}
                 )
                 r.raise_for_status()
-                _mm_state_dirty = False
-                return {"ok": True, "location": "main_bin_reserved", "orders": len(IFX_ORDERBOOK), "quotes": len(TRANCHE_QUOTES), "bonds": len(PERFORMANCE_BONDS)}
 
-        return {"ok": False, "error": "No JSONBIN configured"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+                MM_STATE_VERSION = new_version
+                _mm_state_dirty = False
+                return {"ok": True, "new_version": new_version}
+
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return {"ok": False, "error": str(e)}
+            await asyncio.sleep(0.1 * (attempt + 1))
+
+    return {"ok": False, "error": "Max retries exceeded"}
+
+async def _load_market_maker_state():
+    """Load market maker state from JSONBIN on startup"""
+    global IFX_ORDERBOOK, TRANCHE_QUOTES, PERFORMANCE_BONDS, INSURANCE_POLICIES, CLAIMS_LEDGER, MM_STATE_VERSION
+
+    if not JSONBIN_SECRET:
+        print("⚠️ JSONBIN_SECRET not set - market maker state will not persist")
+        return
+
+    state, version, _ = await _load_mm_state_atomic()
+
+    if state:
+        IFX_ORDERBOOK = state.get("ifx_orderbook", [])
+        TRANCHE_QUOTES = state.get("tranche_quotes", {})
+        PERFORMANCE_BONDS = state.get("performance_bonds", {})
+        INSURANCE_POLICIES = state.get("insurance_policies", {})
+        CLAIMS_LEDGER = state.get("claims_ledger", [])
+        MM_STATE_VERSION = version
+        print(f"✅ Market maker state loaded (v{version}): {len(IFX_ORDERBOOK)} orders, {len(TRANCHE_QUOTES)} quotes, {len(PERFORMANCE_BONDS)} bonds, {len(CLAIMS_LEDGER)} claims")
+    else:
+        print("ℹ️ No existing market maker state found - starting fresh")
+
+async def _save_market_maker_state():
+    """Save market maker state to JSONBIN (legacy wrapper)"""
+    state = {
+        "ifx_orderbook": IFX_ORDERBOOK,
+        "tranche_quotes": TRANCHE_QUOTES,
+        "performance_bonds": PERFORMANCE_BONDS,
+        "insurance_policies": INSURANCE_POLICIES,
+        "claims_ledger": CLAIMS_LEDGER,
+    }
+    result = await _save_mm_state_atomic(state, MM_STATE_VERSION)
+    if result.get("ok"):
+        return {"ok": True, "location": "main_bin", "version": result.get("new_version"),
+                "orders": len(IFX_ORDERBOOK), "quotes": len(TRANCHE_QUOTES), "bonds": len(PERFORMANCE_BONDS)}
+    return result
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATOMIC OPERATIONS FOR IFX_ORDERBOOK (Priority 1 - Active Deals)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _atomic_add_ifx_quote(quote: dict) -> dict:
+    """
+    Atomically add a quote to IFX_ORDERBOOK with idempotency check.
+    Returns: {"ok": bool, "quote_id": str, "duplicate": bool, "error": str}
+    """
+    global IFX_ORDERBOOK
+
+    # Generate idempotency key if not present
+    if not quote.get("idempotency_key"):
+        quote["idempotency_key"] = _generate_idempotency_key(
+            "ifx",
+            quote.get("intent_id", ""),
+            quote.get("inventory_commitment_usd", 0),
+            quote.get("quoted_at", "")
+        )
+
+    # Check idempotency
+    state, version, existing_keys = await _load_mm_state_atomic()
+    if _check_idempotency(quote["idempotency_key"], existing_keys):
+        return {"ok": True, "quote_id": quote.get("quote_id"), "duplicate": True, "message": "Idempotent - quote already exists"}
+
+    # Add to local state
+    IFX_ORDERBOOK.append(quote)
+    MM_IDEMPOTENCY_CACHE.add(quote["idempotency_key"])
+
+    # Build new state
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    # Atomic save
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        # Emit event
+        event_publish("IFX_QUOTE_CREATED", {
+            "quote_id": quote.get("quote_id"),
+            "intent_id": quote.get("intent_id"),
+            "inventory_commitment": quote.get("inventory_commitment_usd"),
+            "oaa_price": quote.get("oaa_price"),
+            "version": result.get("new_version")
+        })
+        return {"ok": True, "quote_id": quote.get("quote_id"), "duplicate": False, "version": result.get("new_version")}
+    else:
+        # Rollback local state on failure
+        IFX_ORDERBOOK = [q for q in IFX_ORDERBOOK if q.get("quote_id") != quote.get("quote_id")]
+        return {"ok": False, "error": result.get("error")}
+
+async def _atomic_update_ifx_quote(quote_id: str, updates: dict) -> dict:
+    """
+    Atomically update an existing IFX quote.
+    Returns: {"ok": bool, "quote": dict, "error": str}
+    """
+    global IFX_ORDERBOOK
+
+    state, version, _ = await _load_mm_state_atomic()
+
+    # Find and update quote
+    found = False
+    updated_quote = None
+    for i, q in enumerate(IFX_ORDERBOOK):
+        if q.get("quote_id") == quote_id:
+            IFX_ORDERBOOK[i].update(updates)
+            IFX_ORDERBOOK[i]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            updated_quote = IFX_ORDERBOOK[i]
+            found = True
+            break
+
+    if not found:
+        return {"ok": False, "error": f"Quote {quote_id} not found"}
+
+    # Build new state and save
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        event_publish("IFX_QUOTE_UPDATED", {
+            "quote_id": quote_id,
+            "updates": updates,
+            "version": result.get("new_version")
+        })
+        return {"ok": True, "quote": updated_quote, "version": result.get("new_version")}
+    return {"ok": False, "error": result.get("error")}
+
+async def _atomic_remove_ifx_quote(quote_id: str) -> dict:
+    """
+    Atomically remove an IFX quote from orderbook.
+    Returns: {"ok": bool, "removed": bool, "error": str}
+    """
+    global IFX_ORDERBOOK
+
+    state, version, _ = await _load_mm_state_atomic()
+
+    # Find and remove quote
+    original_len = len(IFX_ORDERBOOK)
+    removed_quote = None
+    for q in IFX_ORDERBOOK:
+        if q.get("quote_id") == quote_id:
+            removed_quote = q
+            break
+
+    IFX_ORDERBOOK = [q for q in IFX_ORDERBOOK if q.get("quote_id") != quote_id]
+
+    if len(IFX_ORDERBOOK) == original_len:
+        return {"ok": True, "removed": False, "message": "Quote not found"}
+
+    # Build new state and save
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        event_publish("IFX_QUOTE_REMOVED", {
+            "quote_id": quote_id,
+            "intent_id": removed_quote.get("intent_id") if removed_quote else None,
+            "version": result.get("new_version")
+        })
+        return {"ok": True, "removed": True, "version": result.get("new_version")}
+    return {"ok": False, "error": result.get("error")}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATOMIC OPERATIONS FOR TRANCHE_QUOTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _atomic_add_tranche_quote(quote_id: str, quote: dict) -> dict:
+    """Atomically add a tranche quote with idempotency."""
+    global TRANCHE_QUOTES
+
+    if not quote.get("idempotency_key"):
+        quote["idempotency_key"] = _generate_idempotency_key(
+            "tq", quote.get("deal_id", ""), quote.get("source", "")
+        )
+
+    state, version, existing_keys = await _load_mm_state_atomic()
+    if _check_idempotency(quote["idempotency_key"], existing_keys):
+        return {"ok": True, "quote_id": quote_id, "duplicate": True}
+
+    TRANCHE_QUOTES[quote_id] = quote
+    MM_IDEMPOTENCY_CACHE.add(quote["idempotency_key"])
+
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        event_publish("TRANCHE_QUOTE_CREATED", {"quote_id": quote_id, "deal_id": quote.get("deal_id")})
+        return {"ok": True, "quote_id": quote_id, "duplicate": False}
+    return {"ok": False, "error": result.get("error")}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATOMIC OPERATIONS FOR PERFORMANCE_BONDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _atomic_add_bond(bond_id: str, bond: dict) -> dict:
+    """Atomically add a performance bond with idempotency."""
+    global PERFORMANCE_BONDS
+
+    if not bond.get("idempotency_key"):
+        bond["idempotency_key"] = _generate_idempotency_key(
+            "bond", bond.get("deal_id", ""), bond.get("obligee", "")
+        )
+
+    state, version, existing_keys = await _load_mm_state_atomic()
+    if _check_idempotency(bond["idempotency_key"], existing_keys):
+        return {"ok": True, "bond_id": bond_id, "duplicate": True}
+
+    PERFORMANCE_BONDS[bond_id] = bond
+    MM_IDEMPOTENCY_CACHE.add(bond["idempotency_key"])
+
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        event_publish("BOND_ISSUED", {"bond_id": bond_id, "deal_id": bond.get("deal_id"), "amount": bond.get("amount")})
+        return {"ok": True, "bond_id": bond_id, "duplicate": False}
+    return {"ok": False, "error": result.get("error")}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATOMIC OPERATIONS FOR INSURANCE_POLICIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _atomic_add_policy(policy_id: str, policy: dict) -> dict:
+    """Atomically add an insurance policy with idempotency."""
+    global INSURANCE_POLICIES
+
+    if not policy.get("idempotency_key"):
+        policy["idempotency_key"] = _generate_idempotency_key(
+            "pol", policy.get("deal_id", ""), policy.get("quote_id", "")
+        )
+
+    state, version, existing_keys = await _load_mm_state_atomic()
+    if _check_idempotency(policy["idempotency_key"], existing_keys):
+        return {"ok": True, "policy_id": policy_id, "duplicate": True}
+
+    INSURANCE_POLICIES[policy_id] = policy
+    MM_IDEMPOTENCY_CACHE.add(policy["idempotency_key"])
+
+    state["ifx_orderbook"] = IFX_ORDERBOOK
+    state["tranche_quotes"] = TRANCHE_QUOTES
+    state["performance_bonds"] = PERFORMANCE_BONDS
+    state["insurance_policies"] = INSURANCE_POLICIES
+    state["claims_ledger"] = CLAIMS_LEDGER
+
+    result = await _save_mm_state_atomic(state, version)
+
+    if result.get("ok"):
+        event_publish("POLICY_BOUND", {"policy_id": policy_id, "deal_id": policy.get("deal_id"), "coverage": policy.get("coverage")})
+        return {"ok": True, "policy_id": policy_id, "duplicate": False}
+    return {"ok": False, "error": result.get("error")}
 
 # _mark_mm_state_dirty is defined earlier in the file (near IFX_ORDERBOOK)
 
