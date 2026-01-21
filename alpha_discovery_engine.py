@@ -393,7 +393,10 @@ class AlphaDiscoveryRouter:
     async def route_opportunity(self, opportunity: Dict) -> Dict:
         """
         Route opportunity to best fulfillment method
-        
+
+        UPDATED: ALL opportunities go to Wade/AiGentsy for direct fulfillment.
+        Wade keeps 100% of revenue (no user routing).
+
         Returns:
             {
                 'fulfillment_method': FulfillmentMethod,
@@ -403,65 +406,36 @@ class AlphaDiscoveryRouter:
                 'economics': {...}
             }
         """
-        
-        # PRIORITY 1: Check if existing user can fulfill
-        for user in self.user_database:
-            user_capability = self.matcher.check_user_capability(opportunity, user)
-            
-            if user_capability['can_fulfill'] and user_capability['confidence'] > 0.7:
-                # Route to user
-                opp_value = opportunity.get('value', 0)
-                aigentsy_fee = opp_value * 0.028  # 2.8%
-                user_revenue = opp_value - aigentsy_fee
-                
-                return {
-                    'fulfillment_method': FulfillmentMethod.USER,
-                    'routed_to': user['username'],
-                    'confidence': user_capability['confidence'],
-                    'reasoning': user_capability['reasoning'],
-                    'economics': {
-                        'opportunity_value': opp_value,
-                        'user_revenue': user_revenue,
-                        'aigentsy_fee': aigentsy_fee,
-                        'aigentsy_margin': 0.028
-                    },
-                    'user_data': user_capability
-                }
-        
-        # PRIORITY 2: Check if AiGentsy can fulfill
+
+        # ALL OPPORTUNITIES GO TO WADE/AIGENTSY
+        # Wade fulfills everything directly and keeps 100% revenue
         aigentsy_capability = self.matcher.check_aigentsy_capability(opportunity)
-        
-        if aigentsy_capability['can_fulfill']:
-            # Route to AiGentsy (requires Wade approval)
-            return {
-                'fulfillment_method': FulfillmentMethod.AIGENTSY,
-                'routed_to': 'aigentsy',
-                'confidence': aigentsy_capability['confidence'],
-                'reasoning': "AiGentsy can fulfill via " + ", ".join(aigentsy_capability['ai_models']),
-                'economics': {
-                    'opportunity_value': opportunity.get('value', 0),
-                    'estimated_cost': aigentsy_capability['estimated_cost'],
-                    'estimated_profit': aigentsy_capability['estimated_profit'],
-                    'margin': aigentsy_capability['margin'],
-                    'estimated_days': aigentsy_capability['estimated_days']
-                },
-                'capability': aigentsy_capability,
-                'requires_wade_approval': True
-            }
-        
-        # PRIORITY 3: Hold for user recruitment
-        opp_type = opportunity.get('type', 'unknown')
-        
+        opp_value = opportunity.get('value', opportunity.get('estimated_value', 0))
+
+        # Always route to AiGentsy/Wade - even if capability check fails, Wade can still fulfill
+        estimated_cost = aigentsy_capability.get('estimated_cost', opp_value * 0.3)  # 30% cost default
+        estimated_profit = opp_value - estimated_cost
+
         return {
-            'fulfillment_method': FulfillmentMethod.HOLD,
-            'routed_to': None,
-            'confidence': 0.0,
-            'reasoning': f"No existing capability - recruit user for {opp_type}",
-            'recommendation': 'recruit_user',
-            'opportunity_type_needed': opp_type,
+            'fulfillment_method': FulfillmentMethod.AIGENTSY,
+            'routed_to': 'wade',
+            'confidence': max(aigentsy_capability.get('confidence', 0.8), 0.8),  # High confidence - Wade handles all
+            'reasoning': "Routed to Wade for direct fulfillment (100% revenue)",
             'economics': {
-                'opportunity_value': opportunity.get('value', 0),
-                'potential_aigentsy_fee': opportunity.get('value', 0) * 0.028
+                'opportunity_value': opp_value,
+                'estimated_cost': estimated_cost,
+                'estimated_profit': estimated_profit,
+                'margin': estimated_profit / opp_value if opp_value > 0 else 0.7,
+                'estimated_days': aigentsy_capability.get('estimated_days', 3),
+                'wade_revenue': opp_value,  # Wade keeps 100%
+                'aigentsy_fee': 0  # No platform fee for Wade
+            },
+            'capability': aigentsy_capability,
+            'requires_wade_approval': True,
+            'fulfillability': {
+                'can_wade_fulfill': True,
+                'fulfillment_system': 'claude',
+                'capability': aigentsy_capability.get('capability', 'generic_claude')
             }
         }
 
