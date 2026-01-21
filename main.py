@@ -34631,6 +34631,113 @@ async def stripe_batch_payouts():
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/test/simulate-delivery")
+async def test_simulate_delivery(body: Dict = Body(...)):
+    """
+    TEST ENDPOINT: Simulate workflow delivery for testing payment flow.
+
+    Body: {
+        "workflow_id": "...",  # optional - uses first pending workflow if not provided
+        "value": 500,  # optional - simulated value
+        "platform": "direct",  # platform type: direct, github, upwork
+        "force_success": true  # bypass actual delivery - just test payment flow
+    }
+
+    This advances a workflow to DELIVERED stage and triggers payment request creation.
+    """
+    try:
+        if not WADE_WORKFLOW_AVAILABLE:
+            return {"ok": False, "error": "Workflow system not available"}
+
+        workflow_id = body.get("workflow_id")
+
+        # If no workflow_id, find or create one
+        if not workflow_id:
+            # Get first pending workflow
+            pending = [w for w in integrated_workflow.workflows.values()
+                       if w.get("stage") in ["pending_wade_approval", "client_approved", "in_progress"]]
+            if pending:
+                workflow_id = pending[0].get("workflow_id")
+            else:
+                # Create a test workflow
+                import uuid
+                workflow_id = f"test_{uuid.uuid4().hex[:8]}"
+                test_opp = {
+                    "id": workflow_id,
+                    "title": "Test Delivery for Payment Flow",
+                    "platform": body.get("platform", "direct"),
+                    "source": body.get("platform", "direct"),
+                    "estimated_value": body.get("value", 500),
+                    "value": body.get("value", 500),
+                    "description": "Simulated delivery for testing Stripe payment flow",
+                    "contact": body.get("contact", {})
+                }
+                integrated_workflow.workflows[workflow_id] = {
+                    "workflow_id": workflow_id,
+                    "opportunity": test_opp,
+                    "stage": "in_progress",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "history": [],
+                    "timeline": []
+                }
+
+        if workflow_id not in integrated_workflow.workflows:
+            return {"ok": False, "error": f"Workflow {workflow_id} not found"}
+
+        workflow = integrated_workflow.workflows[workflow_id]
+
+        # Simulate execution result
+        workflow["execution_result"] = {
+            "success": True,
+            "output": "Simulated execution completed successfully",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        workflow["stage"] = "executed"
+
+        # Check if we should bypass delivery (for testing payment flow only)
+        force_success = body.get("force_success", False)
+
+        if force_success:
+            # Bypass actual delivery - directly simulate successful delivery
+            from wade_integrated_workflow import WorkflowStage
+            delivery_result = {
+                "success": True,
+                "method": "simulated",
+                "message": "Delivery bypassed for testing",
+                "platform": body.get("platform", "direct")
+            }
+            workflow["delivery_result"] = delivery_result
+            workflow["stage"] = WorkflowStage.DELIVERED
+            workflow["history"].append({
+                "stage": WorkflowStage.DELIVERED,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "action": "Simulated delivery for testing"
+            })
+
+            # Manually trigger payment request creation
+            payment_result = await integrated_workflow._create_payment_request(workflow, delivery_result)
+            workflow["payment_request"] = payment_result
+            delivery_result["payment_request"] = payment_result
+            result = delivery_result
+        else:
+            # Normal delivery flow (which triggers payment request creation)
+            result = await integrated_workflow.deliver_work(workflow_id)
+
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "stage": workflow.get("stage"),
+            "delivery_result": result,
+            "payment_request": workflow.get("payment_request", {}),
+            "opportunity_value": workflow.get("opportunity", {}).get("estimated_value", 0)
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/stripe/send-invoices")
 async def stripe_send_invoices():
     """
@@ -39598,10 +39705,11 @@ except ImportError as e:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 try:
-    from v107_v108_v109_complete import include_revenue_optimization
-    include_revenue_optimization(app)
+    # V107-V109 routes already registered at startup via include_all_overlays
+    # Just verify the module is available and print status
+    from v107_v108_v109_complete import include_all_overlays
     print("=" * 80)
-    print("🚀 V107-V109 REVENUE OPTIMIZATION LOADED")
+    print("🚀 V107-V109 REVENUE OPTIMIZATION ACTIVE")
     print("=" * 80)
     print("20 Overlays Active:")
     print("  v107: IFX Options, ORE, Counterparty Router, Auto-SKU, Proof-First,")

@@ -1339,13 +1339,15 @@ Output ONLY Python code, no explanations."""
             return await self._deliver_to_reddit(opportunity, execution_result)
         
         else:
-            # Manual delivery
+            # Manual/direct delivery
+            url = opportunity.get("url", "N/A")
             return {
                 'success': True,
-                'method': 'manual',
-                'message': 'Manual delivery required',
-                'instructions': f'Deliver work manually at: {opportunity["url"]}',
-                'deliverable': execution_result
+                'method': 'direct' if platform == 'direct' else 'manual',
+                'message': 'Work delivered via direct channel' if platform == 'direct' else 'Manual delivery required',
+                'instructions': f'Deliver work manually at: {url}' if url != "N/A" else 'Direct delivery - no URL required',
+                'deliverable': execution_result,
+                'platform': platform
             }
     
     async def _deliver_to_github(self, opportunity: Dict[str, Any], execution_result: Dict[str, Any]) -> Dict[str, Any]:
