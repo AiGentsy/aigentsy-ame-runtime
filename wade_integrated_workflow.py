@@ -1764,17 +1764,22 @@ Let me know if you need anything else!"""
         
         active = []
         for workflow in self.workflows.values():
-            if workflow['stage'] in active_stages:
-                active.append({
-                    'workflow_id': workflow['workflow_id'],
-                    'stage': workflow['stage'],
-                    'title': workflow['opportunity']['title'],
-                    'platform': workflow['opportunity']['source'],
-                    'value': workflow['opportunity']['estimated_value'],
-                    'next_action': self._get_next_action(workflow),
-                    'created_at': workflow['created_at']
-                })
-        
+            if workflow.get('stage') in active_stages:
+                opp = workflow.get('opportunity', {})
+                try:
+                    active.append({
+                        'workflow_id': workflow.get('workflow_id', 'unknown'),
+                        'stage': workflow.get('stage', 'unknown'),
+                        'title': opp.get('title', opp.get('name', 'Untitled')),
+                        'platform': opp.get('source', opp.get('platform', 'Unknown')),
+                        'value': opp.get('estimated_value', opp.get('value', 0)),
+                        'next_action': self._get_next_action(workflow),
+                        'created_at': workflow.get('created_at', '')
+                    })
+                except Exception as e:
+                    print(f"⚠️ Error processing workflow {workflow.get('workflow_id')}: {e}")
+                    continue
+
         return active
 
 
