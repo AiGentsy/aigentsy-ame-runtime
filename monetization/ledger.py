@@ -19,6 +19,15 @@ try:
 except ImportError:
     JSONBIN_AVAILABLE = False
 
+# MetaHive integration for collective learning
+try:
+    from metahive_brain import contribute_to_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+    async def contribute_to_hive(*args, **kwargs):
+        return {"ok": False, "error": "not_available"}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat() + "Z"
@@ -236,6 +245,37 @@ class Ledger:
                     credit=ref_amt,
                     meta={"coi_id": coi_id, "type": "referral"}
                 )
+
+        # Contribute successful pattern to MetaHive for collective learning
+        if METAHIVE_AVAILABLE and gross > 0:
+            try:
+                import asyncio
+                margin_pct = (gross - splits.get("platform", 0)) / gross if gross > 0 else 0
+
+                asyncio.create_task(contribute_to_hive(
+                    username=splits.get("username", "system"),
+                    pattern_type="monetization_strategy",
+                    context={
+                        "coi_id": coi_id,
+                        "gross": gross,
+                        "splits": splits,
+                        "badge": badge
+                    },
+                    action={
+                        "type": "coi_sale",
+                        "platform_fee_pct": splits.get("platform", 0) / gross if gross > 0 else 0,
+                        "has_referrals": bool(splits.get("referrals")),
+                        "has_badge": bool(badge and badge.get("badge_id"))
+                    },
+                    outcome={
+                        "roas": 1 + margin_pct,  # Return on ad spend proxy
+                        "quality_score": 0.8 if badge else 0.6,
+                        "revenue": gross
+                    },
+                    anonymize=True
+                ))
+            except Exception:
+                pass  # Don't fail sale recording on hive contribution error
 
         return {"ok": True, "coi_id": coi_id, "entries_created": True}
 

@@ -57,6 +57,15 @@ try:
     MONETIZATION_AVAILABLE = True
 except ImportError as e:
     MONETIZATION_AVAILABLE = False
+
+# MetaHive integration for collective AI learning
+try:
+    from metahive_brain import contribute_to_hive, query_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+    async def contribute_to_hive(*args, **kwargs): return {"ok": False}
+    async def query_hive(*args, **kwargs): return {"ok": True, "patterns": []}
     # Fallbacks
     def monetization_price_suggest(base, **kwargs): return base
     def monetization_revenue_split(gross, **kwargs): return {"platform": 0, "user": gross}
@@ -688,6 +697,39 @@ class COIRuntime:
             }
 
             logger.info(f"Monetization finalized: {outcome_id} - gross=${gross:.2f}, platform=${platform_fee:.2f}")
+
+            # ═══════════════════════════════════════════════════════════════════
+            # METAHIVE: Contribute successful pattern for collective AI learning
+            # ═══════════════════════════════════════════════════════════════════
+            if METAHIVE_AVAILABLE:
+                try:
+                    margin_pct = (gross - contract.actual_cost) / gross if gross > 0 else 0
+                    await contribute_to_hive(
+                        username=entity,
+                        pattern_type="pricing_insight",
+                        context={
+                            "outcome_type": contract.outcome_type,
+                            "base_price": contract.pricing.get("amount_usd", 0),
+                            "quoted_price": gross,
+                            "actual_cost": contract.actual_cost,
+                            "connector": contract.connector_used
+                        },
+                        action={
+                            "pricing_model": contract.pricing.get("model", "dynamic"),
+                            "sla_met": attestation["sla_verdict"] == "pass",
+                            "proof_count": len(contract.proofs_collected),
+                            "latency_ms": contract.latency_ms
+                        },
+                        outcome={
+                            "roas": 1 + margin_pct,
+                            "quality_score": 0.9 if attestation["sla_verdict"] == "pass" else 0.5,
+                            "revenue": gross,
+                            "margin": contract.margin
+                        },
+                        anonymize=True
+                    )
+                except Exception as hive_err:
+                    logger.debug(f"MetaHive contribution failed: {hive_err}")
 
         except Exception as e:
             logger.error(f"Monetization finalization failed for {contract.outcome_id}: {e}")

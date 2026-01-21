@@ -10,6 +10,14 @@ from datetime import datetime, timezone
 
 from .fee_schedule import get_fee
 
+# MetaHive integration for collective learning
+try:
+    from metahive_brain import contribute_to_hive
+    METAHIVE_AVAILABLE = True
+except ImportError:
+    METAHIVE_AVAILABLE = False
+    async def contribute_to_hive(*args, **kwargs): return {"ok": False}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat() + "Z"
@@ -97,6 +105,34 @@ class ArbitrageEngine:
         }
 
         self._opportunities.append(opportunity)
+
+        # Contribute to MetaHive for collective learning
+        if METAHIVE_AVAILABLE and net_profit >= self.config["min_profit_usd"]:
+            try:
+                import asyncio
+                asyncio.create_task(contribute_to_hive(
+                    username="arbitrage_engine",
+                    pattern_type="market_maker_spread",
+                    context={
+                        "buy_market": best_ask[1],
+                        "sell_market": best_bid[1],
+                        "spread_pct": round(spread_pct, 4)
+                    },
+                    action={
+                        "type": "spread_capture",
+                        "buy_price": best_ask[0],
+                        "sell_price": best_bid[0]
+                    },
+                    outcome={
+                        "roas": 1 + (net_profit / best_ask[0]) if best_ask[0] > 0 else 1,
+                        "quality_score": min(spread_pct * 5, 1.0),  # Higher spread = higher quality
+                        "revenue": net_profit
+                    },
+                    anonymize=True
+                ))
+            except Exception:
+                pass
+
         return opportunity
 
     def fx_arbitrage(
