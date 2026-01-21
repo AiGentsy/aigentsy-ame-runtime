@@ -6669,7 +6669,7 @@ def _find_user(users, username: str):
             return u
     return None
 
-def _require_key(users, username: str, provided: str | None):
+def _require_key(users, username: str, provided: Optional[str]):
     if provided and provided == os.getenv("ADMIN_TOKEN",""):
         return True
     u = _find_user(users, username)
@@ -7916,7 +7916,7 @@ async def wallet_connect(body: Dict = Body(...)):
         return {"ok": True, "wallet": safe}
 
 @app.post("/payout/request")
-async def payout_request(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key'), idemp: str | None = Header(None, alias='Idempotency-Key')):
+async def payout_request(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key'), idemp: Optional[str] = Header(None, alias='Idempotency-Key')):
     body = await request.json()
     """
     Body: { username, amount, method?: "stripe"|"crypto" }
@@ -8349,7 +8349,7 @@ async def algo_schedule_plan(body: Dict = Body(...)):
 
 # ---------- DISTRIBUTION REGISTRY + PUSH ----------
 @app.post("/distribution/register")
-async def distribution_register(request: Request, x_api_key: str | None = Header(None, alias="X-API-Key")):
+async def distribution_register(request: Request, x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     body = await request.json()
     """
     Body: { username, channel, endpoint_url, token }
@@ -8380,7 +8380,7 @@ async def distribution_register(request: Request, x_api_key: str | None = Header
         return {"ok": True}
 
 @app.post("/distribution/push")
-async def distribution_push(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def distribution_push(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     """
     Body: { username, listingId, channels?:[] }
@@ -8557,7 +8557,7 @@ async def send_invite(request: Request):
         
 # ---------- REVENUE SPLITTER (JV mesh) ----------
 @app.post("/revenue/split")
-async def revenue_split(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def revenue_split(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     """
     Body: { username, amount, currency:'USD', ref, jvId? }
@@ -8636,7 +8636,7 @@ async def creative_render(body: Dict = Body(...)):
 
 # ---- POST: Contacts (privacy-first) opt-in + counts ----
 @app.post("/contacts/optin")
-async def contacts_optin(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_optin(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     """
     Body: { username, sources: [{source:"upload/csv/gmail/phone", count:int}] }
     We store counts only (privacy-first). Send actual outreach via /contacts/send -> webhook.
@@ -8740,7 +8740,7 @@ async def contacts_send(request: Request):
 
 # ---- POST: JV Mesh (MetaBridge 2.0 cap-table stub) ----
 @app.post("/jv/create")
-async def jv_create(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def jv_create(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     """
     Body: { a: "userA", b: "userB", title, split: {"a":0.6,"b":0.4}, terms }
     Appends JV entry to both users' jvMesh; settlement handled by MetaBridge runtime.
@@ -9658,7 +9658,7 @@ async def pay_link(body: Dict = Body(...)):
         return {"ok": True, "checkout_url": checkout_url, "payment": payment}
 
 @app.post("/revenue/recognize")
-async def revenue_recognize(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def revenue_recognize(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     username = body.get("username")
     inv_id = body.get("invoiceId")
@@ -10104,7 +10104,7 @@ async def meeting_notes(body: Dict = Body(...)):
 
 # ---------- 5) CRM-LITE ----------
 @app.post("/contacts/import")
-async def contacts_import(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_import(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     username = body.get("username")
     if not username: return {"error":"username required"}
@@ -10128,7 +10128,7 @@ async def contacts_import(request: Request, x_api_key: str | None = Header(None,
         return {"ok": True, "added": len(new_contacts)}
 
 @app.post("/contacts/segment")
-async def contacts_segment(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_segment(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     username = body.get("username"); ids = body.get("ids", []); tags = body.get("tags", [])
     if not (username and ids and tags): return {"error":"username, ids, tags required"}
@@ -10145,7 +10145,7 @@ async def contacts_segment(request: Request, x_api_key: str | None = Header(None
         return {"ok": True}
 
 @app.post("/contacts/optout")
-async def contacts_optout(request: Request, x_api_key: str | None = Header(None, alias='X-API-Key')):
+async def contacts_optout(request: Request, x_api_key: Optional[str] = Header(None, alias='X-API-Key')):
     body = await request.json()
     username = body.get("username"); email = (body.get("email") or "").lower()
     if not (username and email): return {"error":"username & email required"}
@@ -34627,6 +34627,184 @@ async def stripe_batch_payouts():
             "pending_count": len(pending_payouts),
             "note": "Stripe payout batch processed" if processed else "No pending payouts"
         }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/stripe/send-invoices")
+async def stripe_send_invoices():
+    """
+    Send Stripe invoices for all delivered work awaiting payment.
+    Called by autonomous-execution.yml Phase 19f.
+
+    Creates invoices/payment links for delivered workflows that:
+    - Have no payment_request yet
+    - Are from non-bounty platforms (bounties use platform payout)
+    """
+    try:
+        from payment_collector import get_payment_collector
+        collector = get_payment_collector()
+
+        sent = []
+        skipped = []
+        failed = []
+
+        if WADE_WORKFLOW_AVAILABLE:
+            # Find delivered workflows without payment requests
+            delivered = [
+                w for w in integrated_workflow.workflows.values()
+                if w.get("stage") == "delivered"
+            ]
+
+            for workflow in delivered:
+                opp = workflow.get("opportunity", {})
+                platform = opp.get("source", opp.get("platform", "unknown"))
+                amount = opp.get("estimated_value", opp.get("value", 0))
+                workflow_id = workflow.get("workflow_id")
+
+                # Skip bounty platforms (they have their own payout)
+                if platform in ["github", "github_bounties"]:
+                    skipped.append({
+                        "id": workflow_id,
+                        "reason": "Bounty platform - awaiting Algora payout"
+                    })
+                    continue
+
+                # Skip if already has payment request
+                existing_pr = workflow.get("payment_request", {})
+                if existing_pr.get("status") in ["invoice_created", "pending_bounty_payout", "pending_escrow_release"]:
+                    skipped.append({
+                        "id": workflow_id,
+                        "reason": f"Already has payment request: {existing_pr.get('status')}"
+                    })
+                    continue
+
+                # Skip if no value
+                if amount <= 0:
+                    skipped.append({
+                        "id": workflow_id,
+                        "reason": "No payment value"
+                    })
+                    continue
+
+                try:
+                    # Get client email if available
+                    contact = opp.get("contact", {})
+                    client_email = contact.get("email")
+
+                    # Create payment request
+                    result = await collector.create_payment_request(
+                        execution_id=workflow_id,
+                        opportunity=opp,
+                        delivery=workflow.get("delivery_result", {}),
+                        amount=amount,
+                        client_email=client_email
+                    )
+
+                    if result.get("success"):
+                        workflow["payment_request"] = result
+                        sent.append({
+                            "id": workflow_id,
+                            "amount": amount,
+                            "method": result.get("method"),
+                            "url": result.get("invoice_url") or result.get("payment_link_url")
+                        })
+                    else:
+                        failed.append({
+                            "id": workflow_id,
+                            "error": result.get("error", "Unknown error")
+                        })
+
+                except Exception as e:
+                    failed.append({
+                        "id": workflow_id,
+                        "error": str(e)
+                    })
+
+        return {
+            "ok": True,
+            "invoices_sent": len(sent),
+            "skipped": len(skipped),
+            "failed": len(failed),
+            "details": {
+                "sent": sent[:10],
+                "skipped": skipped[:10],
+                "failed": failed[:10]
+            },
+            "total_value": sum(s.get("amount", 0) for s in sent)
+        }
+
+    except ImportError:
+        return {"ok": False, "error": "PaymentCollector not available"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/payments/status")
+async def payments_status():
+    """
+    Get comprehensive payment status across all workflows.
+    Shows what's been delivered, invoiced, and paid.
+    """
+    try:
+        status = {
+            "delivered_awaiting_invoice": [],
+            "invoiced_awaiting_payment": [],
+            "pending_bounty_payout": [],
+            "pending_escrow_release": [],
+            "paid": [],
+            "totals": {
+                "awaiting_invoice": 0,
+                "invoiced": 0,
+                "pending_bounty": 0,
+                "pending_escrow": 0,
+                "paid": 0
+            }
+        }
+
+        if WADE_WORKFLOW_AVAILABLE:
+            for w in integrated_workflow.workflows.values():
+                stage = w.get("stage")
+                opp = w.get("opportunity", {})
+                amount = opp.get("estimated_value", opp.get("value", 0))
+                payment_req = w.get("payment_request", {})
+                pr_status = payment_req.get("status", "")
+
+                entry = {
+                    "workflow_id": w.get("workflow_id"),
+                    "title": opp.get("title", "Untitled")[:50],
+                    "amount": amount,
+                    "platform": opp.get("source", opp.get("platform", "unknown"))
+                }
+
+                if stage == "paid":
+                    status["paid"].append(entry)
+                    status["totals"]["paid"] += amount
+                elif stage == "delivered":
+                    if pr_status == "pending_bounty_payout":
+                        status["pending_bounty_payout"].append(entry)
+                        status["totals"]["pending_bounty"] += amount
+                    elif pr_status == "pending_escrow_release":
+                        status["pending_escrow_release"].append(entry)
+                        status["totals"]["pending_escrow"] += amount
+                    elif pr_status == "invoice_created":
+                        entry["invoice_url"] = payment_req.get("invoice_url") or payment_req.get("payment_link_url")
+                        status["invoiced_awaiting_payment"].append(entry)
+                        status["totals"]["invoiced"] += amount
+                    else:
+                        status["delivered_awaiting_invoice"].append(entry)
+                        status["totals"]["awaiting_invoice"] += amount
+
+        return {
+            "ok": True,
+            **status,
+            "summary": {
+                "total_delivered_value": sum(status["totals"].values()),
+                "total_paid": status["totals"]["paid"],
+                "total_pending": sum(status["totals"].values()) - status["totals"]["paid"]
+            }
+        }
+
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

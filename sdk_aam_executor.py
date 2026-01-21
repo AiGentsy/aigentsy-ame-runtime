@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import os, requests
 
 # ---------- Optional types / imports (safe fallbacks) ----------
@@ -114,7 +114,7 @@ def _execute_mesh_actions(job: Dict[str, Any]) -> List[Dict[str, Any]]:
     return results
 
 # ========== Public entrypoints ==========
-def execute(job: Any) -> Dict[str, Any] | List[Dict[str, Any]]:
+def execute(job: Any) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
     """
     Backward compatible:
       - Legacy path: job is AAMJob(app, action_id, payload) → routes to *_adapter

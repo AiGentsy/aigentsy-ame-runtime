@@ -12,9 +12,17 @@ Flow:
 Updated: Dec 24, 2025
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from enum import Enum
+
+# Import payment collector for invoice creation
+try:
+    from payment_collector import get_payment_collector
+    PAYMENT_COLLECTOR_AVAILABLE = True
+except ImportError:
+    PAYMENT_COLLECTOR_AVAILABLE = False
+    print("⚠️ PaymentCollector not available - invoice creation disabled")
 
 
 class WorkflowStage(str, Enum):
@@ -1656,20 +1664,22 @@ Let me know if you need anything else!"""
     async def deliver_work(self, workflow_id: str) -> Dict[str, Any]:
         """
         Wrapper method: Deliver completed work
-        
+
         Called by: POST /wade/workflow/{id}/deliver
+
+        UPDATED: Now creates payment requests after successful delivery!
         """
         if workflow_id not in self.workflows:
             return {
                 'success': False,
                 'error': f'Workflow {workflow_id} not found'
             }
-        
+
         workflow = self.workflows[workflow_id]
-        
+
         # Deliver using existing method
         result = await self._deliver_work(workflow)
-        
+
         # Update workflow
         workflow['delivery_result'] = result
         workflow['stage'] = WorkflowStage.DELIVERED
@@ -1679,8 +1689,104 @@ Let me know if you need anything else!"""
             'action': 'Work delivered to client',
             'result': result
         })
-        
+
+        # =====================================================
+        # PAYMENT REQUEST CREATION (NEW!)
+        # =====================================================
+        payment_result = await self._create_payment_request(workflow, result)
+        workflow['payment_request'] = payment_result
+        result['payment_request'] = payment_result
+
         return result
+
+    async def _create_payment_request(self, workflow: Dict[str, Any], delivery_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create payment request after successful delivery.
+
+        Routes to appropriate payment method based on platform:
+        - Bounty platforms (GitHub/Algora): Track pending bounty payout
+        - Freelance platforms (Upwork): Track escrow release
+        - Direct contracts: Create Stripe invoice
+        """
+        opportunity = workflow.get('opportunity', {})
+        platform = opportunity.get('source', opportunity.get('platform', 'unknown'))
+        amount = opportunity.get('estimated_value', opportunity.get('value', 0))
+
+        # Skip if delivery failed
+        if not delivery_result.get('success'):
+            return {
+                'status': 'skipped',
+                'reason': 'Delivery not successful',
+                'platform': platform
+            }
+
+        # Skip if no value
+        if amount <= 0:
+            return {
+                'status': 'skipped',
+                'reason': 'No payment value specified',
+                'platform': platform
+            }
+
+        # Route based on platform
+        if platform in ['github', 'github_bounties']:
+            # Bounty platforms - track pending payout from Algora/GitHub
+            return {
+                'status': 'pending_bounty_payout',
+                'platform': 'algora',
+                'amount': amount,
+                'message': 'Work delivered - awaiting bounty payout from Algora after PR merge',
+                'next_action': 'Monitor for bounty claim confirmation'
+            }
+
+        elif platform in ['upwork', 'freelancer']:
+            # Freelance platforms - track escrow release
+            return {
+                'status': 'pending_escrow_release',
+                'platform': platform,
+                'amount': amount,
+                'message': f'Work delivered via {platform} - awaiting escrow release',
+                'next_action': 'Client approval triggers escrow release'
+            }
+
+        else:
+            # Direct contracts - create Stripe invoice
+            if not PAYMENT_COLLECTOR_AVAILABLE:
+                return {
+                    'status': 'invoice_unavailable',
+                    'reason': 'PaymentCollector not available',
+                    'amount': amount
+                }
+
+            try:
+                collector = get_payment_collector()
+
+                # Try to get client email from contact info
+                contact = opportunity.get('contact', {})
+                client_email = contact.get('email')
+
+                # Create payment request (invoice if email, payment link if not)
+                payment_result = await collector.create_payment_request(
+                    execution_id=workflow.get('workflow_id'),
+                    opportunity=opportunity,
+                    delivery=delivery_result,
+                    amount=amount,
+                    client_email=client_email
+                )
+
+                return {
+                    'status': 'invoice_created' if payment_result.get('success') else 'invoice_failed',
+                    'platform': 'stripe',
+                    'amount': amount,
+                    **payment_result
+                }
+
+            except Exception as e:
+                return {
+                    'status': 'error',
+                    'error': str(e),
+                    'amount': amount
+                }
     
     async def track_payment(self, workflow_id: str, amount: float, proof: str = "") -> Dict[str, Any]:
         """
