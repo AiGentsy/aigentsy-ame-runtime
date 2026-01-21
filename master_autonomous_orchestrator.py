@@ -66,6 +66,18 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# COI RUNTIME (FULFILLMENT FABRIC)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from coi_runtime import get_coi_runtime, COIRuntime
+    COI_AVAILABLE = True
+except ImportError:
+    COI_AVAILABLE = False
+    logger.warning("COI Runtime not available - fabric execution disabled")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CONSENT & SUPPRESSION LIST
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -178,6 +190,12 @@ class MasterAutonomousOrchestrator:
         # Production safety components
         self.circuit_breaker = CircuitBreaker(threshold=5, cooldown_seconds=300)
         self.consent_manager = ConsentManager()
+
+        # COI Runtime (Fulfillment Fabric) - Uses API keys from environment
+        self.coi_runtime = None
+        if COI_AVAILABLE:
+            self.coi_runtime = get_coi_runtime()
+            logger.info("COI Runtime initialized - Fulfillment Fabric connected")
 
         # Concurrency limits per platform type
         self.semaphores = {
@@ -331,21 +349,40 @@ class MasterAutonomousOrchestrator:
         """
         Compute Expected Value for opportunity prioritization.
         EV = (value × win_prob × time_decay) - cogs
+
+        For AI-automated fulfillment:
+        - COGS is mostly compute/API costs (~$5-20 per task)
+        - Win probability for bounties with clear specs is higher
         """
         value = float(opp.get("value", 0) or opp.get("estimated_value", 0) or 0)
-        win_prob = float(opp.get("win_prob", opp.get("confidence", 0.25)))
-        cogs = float(opp.get("cogs_estimate", value * 0.3))  # Default 30% COGS
+
+        # Source-aware win probability defaults
+        source = opp.get("source", "").lower()
+        platform = opp.get("platform", "").lower()
+        if "bounty" in source or "bounty" in str(opp.get("labels", [])).lower():
+            default_win_prob = 0.40  # Bounties have clearer specs
+        elif platform in ("github", "upwork", "freelancer"):
+            default_win_prob = 0.35  # Marketplace opportunities
+        else:
+            default_win_prob = 0.25  # General opportunities
+
+        win_prob = float(opp.get("win_prob", opp.get("confidence", default_win_prob)))
+
+        # COGS: For AI-automated work, use fixed cost estimate not percentage
+        # Typical API/compute costs: $5-20 depending on complexity
+        default_cogs = min(value * 0.10, 25.0) if value > 0 else 10.0
+        cogs = float(opp.get("cogs_estimate", default_cogs))
 
         # Time decay - fresher opportunities score higher
         posted_minutes = opp.get("posted_minutes_ago", opp.get("age_minutes", 9999))
         if posted_minutes < 30:
             decay = 1.0
         elif posted_minutes < 120:
-            decay = 0.9
+            decay = 0.95
         elif posted_minutes < 1440:  # 24h
-            decay = 0.7
+            decay = 0.85
         else:
-            decay = 0.5
+            decay = 0.70
 
         ev = (value * win_prob * decay) - cogs
         return max(ev, 0)
@@ -718,7 +755,7 @@ class MasterAutonomousOrchestrator:
         return results
 
     async def _send_email_outreach(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
-        """Send personalized email outreach"""
+        """Send personalized email outreach via COI Fabric or fallback to HTTP"""
         contact = opp.get("contact", {})
         email = contact.get("email")
         if not email:
@@ -731,10 +768,34 @@ class MasterAutonomousOrchestrator:
             "ev_score": opp.get("_ev", 0)
         }, idempotency_key=f"{idempotency_key}|pitch", platform="internal")
 
+        subject = pitch.get("subject", f"Re: {opp.get('title', 'Your Project')}")
+        body = pitch.get("body", "")
+
+        # Use COI Runtime if available (API keys in Render env)
+        if self.coi_runtime:
+            try:
+                await self.coi_runtime.initialize()
+                result = await self.coi_runtime.execute_from_pdl("email.send", {
+                    "to": email,
+                    "subject": subject,
+                    "body": body
+                }, idempotency_key=idempotency_key)
+
+                if result.get("ok"):
+                    _log_structured(self._run_id(), "fabric", "email_sent", {
+                        "to": email[:20] + "...",
+                        "connector": result.get("connector"),
+                        "proofs": len(result.get("proofs", []))
+                    })
+                return result
+            except Exception as e:
+                _log_structured(self._run_id(), "fabric", "email_fallback", {"error": str(e)})
+
+        # Fallback to HTTP endpoint
         return await self._call("POST", "/email/send", {
             "to": email,
-            "subject": pitch.get("subject", f"Re: {opp.get('title', 'Your Project')}"),
-            "body": pitch.get("body", ""),
+            "subject": subject,
+            "body": body,
             "opportunity_id": opp.get("id"),
             "ev_score": opp.get("_ev", 0)
         }, idempotency_key=idempotency_key, platform="email")
@@ -777,7 +838,7 @@ class MasterAutonomousOrchestrator:
         }, idempotency_key=idempotency_key, platform="linkedin")
 
     async def _send_sms(self, opp: Dict, idempotency_key: str = None) -> Dict[str, Any]:
-        """Send SMS via Twilio"""
+        """Send SMS via COI Fabric (Twilio connector) or fallback to HTTP"""
         contact = opp.get("contact", {})
         phone = contact.get("phone")
         if not phone:
@@ -789,9 +850,31 @@ class MasterAutonomousOrchestrator:
             "max_length": 160
         }, platform="internal")
 
+        message = pitch.get("body", "")
+
+        # Use COI Runtime if available (Twilio credentials in Render env)
+        if self.coi_runtime:
+            try:
+                await self.coi_runtime.initialize()
+                result = await self.coi_runtime.execute_from_pdl("sms.send", {
+                    "to": phone,
+                    "body": message
+                }, idempotency_key=idempotency_key)
+
+                if result.get("ok"):
+                    _log_structured(self._run_id(), "fabric", "sms_sent", {
+                        "to": phone[-4:],  # Last 4 digits only for privacy
+                        "connector": result.get("connector"),
+                        "proofs": len(result.get("proofs", []))
+                    })
+                return result
+            except Exception as e:
+                _log_structured(self._run_id(), "fabric", "sms_fallback", {"error": str(e)})
+
+        # Fallback to HTTP endpoint
         return await self._call("POST", "/sms/send", {
             "to": phone,
-            "message": pitch.get("body", ""),
+            "message": message,
             "opportunity_id": opp.get("id")
         }, idempotency_key=idempotency_key, platform="sms")
 
@@ -876,12 +959,14 @@ class MasterAutonomousOrchestrator:
                     results["contracts_generated"] += 1
                     contract_id = contract.get("contract_id")
 
-                    # 50% deposit
+                    # 50% deposit via COI Fabric (Stripe connector)
                     deposit_amount = opportunity.get("value", 0) * 0.5
-                    payment_link = await self._call("POST", "/contract/create-payment-link", {
-                        "contract_id": contract_id,
-                        "amount": deposit_amount
-                    }, idempotency_key=f"{idem_base}|pay", platform="stripe")
+                    payment_link = await self._create_payment_link_fabric(
+                        amount=deposit_amount,
+                        description=f"Deposit: {opportunity.get('title', 'Project')}",
+                        metadata={"contract_id": contract_id, "type": "deposit"},
+                        idempotency_key=f"{idem_base}|pay"
+                    )
 
                     if payment_link.get("ok"):
                         results["deposits_requested"] += 1
@@ -990,13 +1075,14 @@ class MasterAutonomousOrchestrator:
                         results["delivered"] += 1
                         results["total_delivered_value"] += opportunity.get("value", 0)
 
-                        # Final payment link (remaining 50%)
+                        # Final payment link (remaining 50%) via COI Fabric
                         remaining = opportunity.get("value", 0) * 0.5
-                        payment_result = await self._call("POST", "/wade/payment-link", {
-                            "amount": remaining,
-                            "description": f"Final payment: {opportunity.get('title', 'Work')}",
-                            "workflow_id": contract_id
-                        }, idempotency_key=f"{idem_base}|final_pay", platform="stripe")
+                        payment_result = await self._create_payment_link_fabric(
+                            amount=remaining,
+                            description=f"Final payment: {opportunity.get('title', 'Work')}",
+                            metadata={"contract_id": contract_id, "type": "final"},
+                            idempotency_key=f"{idem_base}|final_pay"
+                        )
 
                         # Post-delivery upsell sequence
                         upsell = await self._call("POST", "/upsell/trigger-sequence", {
@@ -1060,8 +1146,9 @@ class MasterAutonomousOrchestrator:
         }, idempotency_key=idempotency_key, platform="internal")
 
     async def _deliver_work(self, opportunity: Dict, fulfillment: Dict, idempotency_key: str = None) -> Dict[str, Any]:
-        """Deliver completed work to client/platform"""
+        """Deliver completed work to client/platform via COI Fabric or fallback"""
         platform = opportunity.get("platform", "unknown")
+        contact = opportunity.get("contact", {})
 
         if platform in ["github", "github_bounties"]:
             return await self._call("POST", "/delivery/github", {
@@ -1076,10 +1163,175 @@ class MasterAutonomousOrchestrator:
             }, idempotency_key=idempotency_key, platform=platform)
 
         else:
+            # Email delivery via COI Fabric
+            email = contact.get("email")
+            if email and self.coi_runtime:
+                try:
+                    await self.coi_runtime.initialize()
+
+                    # Generate delivery email content
+                    title = opportunity.get("title", "Your Project")
+                    delivery_url = fulfillment.get("delivery_url", fulfillment.get("artifact_url", ""))
+
+                    result = await self.coi_runtime.execute_from_pdl("email.send", {
+                        "to": email,
+                        "subject": f"Delivery Complete: {title}",
+                        "body": f"""Your work has been completed!
+
+Project: {title}
+
+{'Download your deliverable: ' + delivery_url if delivery_url else 'Please find your deliverable attached.'}
+
+Summary:
+{fulfillment.get('summary', 'Work completed as specified.')}
+
+If you have any questions or need revisions, please reply to this email.
+
+Best regards,
+AiGentsy Autonomous Fulfillment
+""",
+                        "html": f"""
+<h2>Your work has been completed!</h2>
+<p><strong>Project:</strong> {title}</p>
+{'<p><a href="' + delivery_url + '">Download your deliverable</a></p>' if delivery_url else ''}
+<h3>Summary</h3>
+<p>{fulfillment.get('summary', 'Work completed as specified.')}</p>
+<p>If you have any questions or need revisions, please reply to this email.</p>
+<p>Best regards,<br>AiGentsy Autonomous Fulfillment</p>
+"""
+                    }, idempotency_key=idempotency_key)
+
+                    if result.get("ok"):
+                        _log_structured(self._run_id(), "fabric", "delivery_email_sent", {
+                            "to": email[:20] + "...",
+                            "connector": result.get("connector"),
+                            "proofs": len(result.get("proofs", []))
+                        })
+                        return {
+                            "ok": True,
+                            "success": True,
+                            "delivery_method": "email_fabric",
+                            "message_id": result.get("data", {}).get("message_id"),
+                            "proofs": result.get("proofs", [])
+                        }
+                except Exception as e:
+                    _log_structured(self._run_id(), "fabric", "delivery_fallback", {"error": str(e)})
+
+            # Fallback to HTTP endpoint
             return await self._call("POST", "/delivery/email", {
                 "opportunity": opportunity,
                 "fulfillment": fulfillment
             }, idempotency_key=idempotency_key, platform="email")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PAYMENT HELPERS (COI Fabric Integration)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _create_payment_link_fabric(
+        self,
+        amount: float,
+        description: str,
+        metadata: Dict = None,
+        idempotency_key: str = None
+    ) -> Dict[str, Any]:
+        """
+        Create Stripe payment link via COI Fabric (uses STRIPE_SECRET_KEY from env).
+        Falls back to HTTP endpoint if COI not available.
+        """
+        if self.coi_runtime:
+            try:
+                await self.coi_runtime.initialize()
+                result = await self.coi_runtime.execute_from_pdl("stripe.payment_link", {
+                    "amount": amount,
+                    "currency": "usd",
+                    "description": description,
+                    "metadata": metadata or {}
+                }, idempotency_key=idempotency_key)
+
+                if result.get("ok"):
+                    data = result.get("data", {})
+                    _log_structured(self._run_id(), "fabric", "payment_link_created", {
+                        "amount": amount,
+                        "connector": result.get("connector"),
+                        "payment_link_id": data.get("payment_link_id"),
+                        "proofs": len(result.get("proofs", []))
+                    })
+                    return {
+                        "ok": True,
+                        "payment_link": data.get("url"),
+                        "payment_link_id": data.get("payment_link_id"),
+                        "amount": amount,
+                        "proofs": result.get("proofs", []),
+                        "via_fabric": True
+                    }
+                else:
+                    _log_structured(self._run_id(), "fabric", "payment_link_error", {
+                        "error": result.get("error")
+                    })
+            except Exception as e:
+                _log_structured(self._run_id(), "fabric", "payment_link_fallback", {"error": str(e)})
+
+        # Fallback to HTTP endpoint
+        return await self._call("POST", "/wade/payment-link", {
+            "amount": amount,
+            "description": description
+        }, idempotency_key=idempotency_key, platform="stripe")
+
+    async def _send_invoice_fabric(
+        self,
+        customer_email: str,
+        amount: float,
+        description: str,
+        idempotency_key: str = None
+    ) -> Dict[str, Any]:
+        """
+        Create and send Stripe invoice via COI Fabric.
+        """
+        if self.coi_runtime:
+            try:
+                await self.coi_runtime.initialize()
+
+                # First create customer if needed (via HTTP for now)
+                customer = await self._call("POST", "/stripe/get-or-create-customer", {
+                    "email": customer_email
+                }, platform="stripe")
+
+                customer_id = customer.get("customer_id")
+                if not customer_id:
+                    return {"ok": False, "error": "customer_creation_failed"}
+
+                result = await self.coi_runtime.execute_from_pdl("stripe.invoice", {
+                    "customer_id": customer_id,
+                    "amount": amount,
+                    "description": description,
+                    "send": True
+                }, idempotency_key=idempotency_key)
+
+                if result.get("ok"):
+                    data = result.get("data", {})
+                    _log_structured(self._run_id(), "fabric", "invoice_sent", {
+                        "customer": customer_email[:20] + "...",
+                        "amount": amount,
+                        "invoice_id": data.get("invoice_id"),
+                        "proofs": len(result.get("proofs", []))
+                    })
+                    return {
+                        "ok": True,
+                        "invoice_id": data.get("invoice_id"),
+                        "invoice_url": data.get("hosted_invoice_url"),
+                        "amount": amount,
+                        "proofs": result.get("proofs", []),
+                        "via_fabric": True
+                    }
+            except Exception as e:
+                _log_structured(self._run_id(), "fabric", "invoice_fallback", {"error": str(e)})
+
+        # Fallback to HTTP endpoint
+        return await self._call("POST", "/stripe/send-invoice", {
+            "email": customer_email,
+            "amount": amount,
+            "description": description
+        }, idempotency_key=idempotency_key, platform="stripe")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 5: PAYMENT COLLECTION
