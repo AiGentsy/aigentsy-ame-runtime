@@ -2261,12 +2261,12 @@ async def underwriting_quote(body: dict = Body(...)):
     risk_score = (outcome_risk + fraud_risk) / 2
     
     # Get tranches
-    tranches_result = await dealgraph_route_with_tranches(Body({
+    tranches_result = await dealgraph_route_with_tranches({
         "id": deal_id,
         "value": deal_value,
         "source": source,
         "risk_score": risk_score
-    }))
+    })
     
     quote_id = f"uq_{uuid.uuid4().hex[:10]}"
     quoted_at = datetime.now(timezone.utc).isoformat()
