@@ -10,7 +10,7 @@ import time as _time
 # AiGentsy Runtime (main.py)
 # Canonical mint + AMG/AL/JV/AIGx/Contacts + Business-in-a-Box rails
 # ============================
-import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64, urllib.parse
+import os, httpx, uuid, json, hmac, hashlib, csv, io, logging, base64, urllib.parse, math
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from mint_generator import get_mint_generator
@@ -1933,8 +1933,6 @@ async def ifx_mark_to_market(body: dict = Body(...)):
     # VaR CALCULATION (Gap 2 Fix)
     # Using parametric VaR with loss distribution based on win probabilities
     # ═══════════════════════════════════════════════════════════════════════════
-
-    import math
 
     # Calculate portfolio-level statistics
     total_exposure = sum(p["inventory"] for p in positions)
