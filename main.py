@@ -1811,6 +1811,13 @@ async def ifx_get_settlement(settlement_id: str):
 
 IFX_ORDERBOOK = []  # List of auto-quoted intents
 
+# Forward declaration for market maker state persistence (full implementation later)
+_mm_state_dirty = False
+def _mark_mm_state_dirty():
+    """Mark market maker state as needing to be saved"""
+    global _mm_state_dirty
+    _mm_state_dirty = True
+
 @app.post("/ifx/auto-quote")
 async def ifx_auto_quote(body: dict = Body(...)):
     """
@@ -5884,7 +5891,7 @@ PROPOSAL_WEBHOOK_URL = os.getenv("PROPOSAL_WEBHOOK_URL")  # used by /contacts/se
 # Uses JSONBIN_MM_URL if set, otherwise stores in main JSONBIN as reserved record
 # ═══════════════════════════════════════════════════════════════════════════════
 MM_STATE_RECORD_ID = "__market_maker_state__"
-_mm_state_dirty = False  # Track if state needs saving
+# _mm_state_dirty is defined earlier in the file (near IFX_ORDERBOOK)
 
 async def _load_market_maker_state():
     """Load market maker state from JSONBIN on startup"""
@@ -5998,10 +6005,7 @@ async def _save_market_maker_state():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-def _mark_mm_state_dirty():
-    """Mark market maker state as needing to be saved"""
-    global _mm_state_dirty
-    _mm_state_dirty = True
+# _mark_mm_state_dirty is defined earlier in the file (near IFX_ORDERBOOK)
 
 async def _mm_state_autosave_job():
     """Background job to auto-save market maker state every 5 minutes if dirty"""
