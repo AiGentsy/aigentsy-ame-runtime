@@ -28,9 +28,14 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # AiGentsy LLC Stripe Account
 AIGENTSY_ACCOUNT = os.getenv("AIGENTSY_STRIPE_ACCOUNT")  # Your connected account ID
 
-# Platform fee configuration
-PLATFORM_FEE_PERCENT = 0.028  # 2.8%
-PLATFORM_FEE_FIXED = 0.28     # 28¢
+# Platform fee configuration - use centralized fee schedule
+try:
+    from monetization.fee_schedule import get_fee
+    PLATFORM_FEE_PERCENT = get_fee("base_platform_pct", 0.028)
+    PLATFORM_FEE_FIXED = get_fee("base_platform_fixed", 0.28)
+except ImportError:
+    PLATFORM_FEE_PERCENT = 0.028  # 2.8%
+    PLATFORM_FEE_FIXED = 0.28     # 28¢
 
 
 def _now():

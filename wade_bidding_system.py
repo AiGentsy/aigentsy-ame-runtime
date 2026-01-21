@@ -19,6 +19,13 @@ from typing import Dict, Any, List
 import os
 from enum import Enum
 
+# Integration hooks for monetization + brain
+try:
+    from integration_hooks import IntegrationHooks
+    _hooks = IntegrationHooks("wade_bidding")
+except ImportError:
+    _hooks = None
+
 
 class OpportunityStatus(str, Enum):
     DISCOVERED = "discovered"

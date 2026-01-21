@@ -50,6 +50,18 @@ from bs4 import BeautifulSoup
 import feedparser
 from uuid import uuid4
 
+# Integration hooks for monetization + brain
+try:
+    from integration_hooks import IntegrationHooks, hook_discovery
+    from monetization.fee_schedule import get_fee
+    _hooks = IntegrationHooks("discovery_engine")
+    _PLATFORM_FEE_PCT = get_fee("base_platform_pct", 0.028)
+    _PLATFORM_FEE_FIXED = get_fee("base_platform_fixed", 0.28)
+except ImportError:
+    _hooks = None
+    _PLATFORM_FEE_PCT = 0.028
+    _PLATFORM_FEE_FIXED = 0.28
+
 
 # ============================================================
 # WADE CAPABILITIES - What AiGentsy Can Fulfill Autonomously
@@ -131,9 +143,9 @@ def calculate_fulfillability(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 "routing": "wade"
             }
     
-    # Route to user
+    # Route to user - use centralized fee schedule
     opp_value = opportunity.get('estimated_value', 0)
-    platform_fee = opp_value * 0.028 + 0.28
+    platform_fee = opp_value * _PLATFORM_FEE_PCT + _PLATFORM_FEE_FIXED
     user_net = opp_value - platform_fee
     
     return {
@@ -1238,14 +1250,26 @@ async def discover_all_opportunities(
     
     # WADE ROUTING
     print(f"\n🎯 Calculating Wade fulfillability routing...")
-    
+
     wade_opportunities = []
     user_opportunities = []
-    
+
     for opp in all_opportunities:
         fulfillability = calculate_fulfillability(opp)
         opp['fulfillability'] = fulfillability
-        
+
+        # Emit discovery event to brain/monetization
+        if _hooks:
+            try:
+                _hooks.on_discovery(
+                    opp,
+                    source=opp.get('source', 'unknown'),
+                    confidence=fulfillability.get('confidence', 0.5),
+                    estimated_value=opp.get('estimated_value', 0)
+                )
+            except Exception as e:
+                pass  # Don't fail discovery on hook errors
+
         if fulfillability['routing'] == 'wade':
             wade_opportunities.append(opp)
         else:

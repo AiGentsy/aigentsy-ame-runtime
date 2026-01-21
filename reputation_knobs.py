@@ -1,9 +1,22 @@
 """
 AiGentsy Reputation-Indexed Knobs
 Dynamic adjustment of OCL, factoring, pricing, and ranking based on reputation
+
+Now integrated with Brain Overlay OCS (Outcome Credit Score) for unified reputation.
 """
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
+
+# Integration with brain overlay OCS
+try:
+    from integration_hooks import IntegrationHooks
+    from brain_overlay.ocs import OCSEngine
+    _hooks = IntegrationHooks("reputation_knobs")
+    _ocs = OCSEngine()
+except ImportError:
+    _hooks = None
+    _ocs = None
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -67,27 +80,39 @@ def calculate_reputation_metrics(
     agent_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Calculate comprehensive reputation metrics from ledger
+    Calculate comprehensive reputation metrics from ledger.
+    Now synced with brain overlay OCS for unified reputation.
     """
+    entity_id = agent_user.get("username") or agent_user.get("id")
     ledger = agent_user.get("ownership", {}).get("ledger", [])
-    
+
     # Count outcomes
     completed_jobs = len([e for e in ledger if e.get("basis") == "revenue"])
     on_time_deliveries = len([e for e in ledger if e.get("basis") == "sla_bonus"])
     disputes = len([e for e in ledger if e.get("basis") == "bond_slash"])
-    
+
     # Count PoO verifications
     poo_count = len([e for e in ledger if e.get("basis") == "outcome_verified"])
-    
+
     # Calculate rates
     on_time_rate = (on_time_deliveries / completed_jobs) if completed_jobs > 0 else 0
     dispute_rate = (disputes / completed_jobs) if completed_jobs > 0 else 0
     quality_score = max(0, 1.0 - dispute_rate)  # Quality = inverse of disputes
-    
-    # Get outcome score
+
+    # Try to get OCS from brain overlay (unified score)
     outcome_score = int(agent_user.get("outcomeScore", 0))
+    ocs_synced = False
+    if _ocs and entity_id:
+        try:
+            ocs_data = _ocs.get_ocs(entity_id)
+            if ocs_data.get("ocs", 0) > 0:
+                outcome_score = ocs_data.get("ocs")
+                ocs_synced = True
+        except Exception:
+            pass
+
     tier = get_reputation_tier(outcome_score)
-    
+
     return {
         "outcome_score": outcome_score,
         "tier": tier,
@@ -96,7 +121,8 @@ def calculate_reputation_metrics(
         "poo_count": poo_count,
         "on_time_rate": round(on_time_rate, 3),
         "dispute_rate": round(dispute_rate, 3),
-        "quality_score": round(quality_score, 3)
+        "quality_score": round(quality_score, 3),
+        "ocs_synced": ocs_synced
     }
 
 

@@ -1,9 +1,22 @@
 """
 AiGentsy Reputation-Indexed Pricing (ARM Integration)
 Dynamic pricing based on OutcomeScore with fairness guardrails
+
+Now integrated with Brain Overlay OCS for unified reputation-based pricing.
 """
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
+
+# Integration with brain overlay OCS
+try:
+    from integration_hooks import IntegrationHooks
+    from brain_overlay.ocs import OCSEngine
+    _hooks = IntegrationHooks("reputation_pricing")
+    _ocs = OCSEngine()
+except ImportError:
+    _hooks = None
+    _ocs = None
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -280,4 +293,88 @@ def calculate_pricing_impact(
         "new_price": new_pricing["adjusted_price"],
         "price_change": round(price_change, 2),
         "price_change_pct": round((price_change / current_pricing["adjusted_price"]) * 100, 1) if current_pricing["adjusted_price"] > 0 else 0
+    }
+
+
+def get_ocs_price_recommendation(
+    entity_id: str,
+    base_price: float,
+    service_type: str = "custom"
+) -> Dict[str, Any]:
+    """
+    Get price recommendation using brain overlay OCS.
+    This is the preferred method for unified reputation-based pricing.
+    """
+    # Default to standard pricing
+    outcome_score = 50
+    ocs_source = "default"
+
+    # Try to get OCS from brain overlay
+    if _ocs and entity_id:
+        try:
+            ocs_data = _ocs.get_ocs(entity_id)
+            outcome_score = ocs_data.get("ocs", 50)
+            ocs_source = "brain_overlay"
+        except Exception:
+            pass
+
+    # Calculate price using OCS
+    pricing = calculate_reputation_price(base_price, outcome_score)
+    arm_range = calculate_arm_price_range(service_type, outcome_score)
+
+    # Emit pricing event to brain
+    if _hooks:
+        try:
+            _hooks.on_reputation_change(
+                entity_id,
+                delta=0,  # No change, just lookup
+                reason="pricing_lookup",
+                source_system="reputation_pricing"
+            )
+        except Exception:
+            pass
+
+    return {
+        "entity_id": entity_id,
+        "ocs": outcome_score,
+        "ocs_source": ocs_source,
+        "pricing": pricing,
+        "arm_range": arm_range
+    }
+
+
+def sync_outcome_to_ocs(
+    entity_id: str,
+    outcome_result: str,
+    current_score: int = 50
+) -> Dict[str, Any]:
+    """
+    Sync an outcome result to the brain overlay OCS system.
+    Call this after any job completion to update unified reputation.
+    """
+    # Calculate new score using weighted average
+    new_score = update_outcome_score_weighted(current_score, outcome_result)
+
+    # Calculate delta for hooks
+    delta = new_score - current_score
+
+    # Emit to OCS via hooks
+    if _hooks and delta != 0:
+        try:
+            _hooks.on_reputation_change(
+                entity_id,
+                delta=delta,
+                reason=f"outcome_{outcome_result}",
+                source_system="reputation_pricing"
+            )
+        except Exception:
+            pass
+
+    return {
+        "entity_id": entity_id,
+        "previous_score": current_score,
+        "new_score": new_score,
+        "delta": delta,
+        "outcome": outcome_result,
+        "ocs_synced": _hooks is not None
     }

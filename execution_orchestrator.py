@@ -17,6 +17,13 @@ import asyncio
 import json
 from revenue_flows import calculate_base_fee, ingest_service_payment
 
+# Integration hooks for monetization + brain
+try:
+    from integration_hooks import IntegrationHooks
+    _hooks = IntegrationHooks("execution_orchestrator")
+except ImportError:
+    _hooks = None
+
 # ===== CORE EXECUTION =====
 from execution_scorer import ExecutionScorer
 from opportunity_engagement import OpportunityEngagement

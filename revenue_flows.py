@@ -5,15 +5,21 @@ from log_to_jsonbin import get_user, log_agent_update, credit_aigx, append_inten
 from outcome_oracle_max import on_event
 from uuid import uuid4
 
-# Platform fee (2.8% + 28¢)
-PLATFORM_FEE = 0.028
-PLATFORM_FEE_FIXED = 0.28
-# Auto-reinvestment rate (20%)
-REINVEST_RATE = 0.20
-# Clone royalty rate (30%)
-CLONE_ROYALTY = 0.30
-# Staking return rate (10%)
-STAKING_RETURN = 0.10
+# Import centralized fee schedule
+try:
+    from monetization.fee_schedule import get_fee
+    PLATFORM_FEE = get_fee("base_platform_pct", 0.028)
+    PLATFORM_FEE_FIXED = get_fee("base_platform_fixed", 0.28)
+    REINVEST_RATE = get_fee("auto_reinvest_pct", 0.20)
+    CLONE_ROYALTY = get_fee("clone_royalty_pct", 0.30)
+    STAKING_RETURN = get_fee("staking_return_pct", 0.10)
+except ImportError:
+    # Fallback if monetization not available
+    PLATFORM_FEE = 0.028
+    PLATFORM_FEE_FIXED = 0.28
+    REINVEST_RATE = 0.20
+    CLONE_ROYALTY = 0.30
+    STAKING_RETURN = 0.10
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()

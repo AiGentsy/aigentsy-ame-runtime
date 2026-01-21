@@ -15,6 +15,14 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from enum import Enum
 
+# Integration hooks for monetization + brain
+try:
+    from integration_hooks import IntegrationHooks
+    from monetization.fee_schedule import get_fee
+    _hooks = IntegrationHooks("auto_bidding")
+except ImportError:
+    _hooks = None
+
 
 class BiddingChannel(str, Enum):
     API_AUTO = "api_auto"           # Full automation (GitHub, Upwork API)
@@ -514,7 +522,18 @@ async def auto_bid_on_opportunity(
     # Add submission timestamp
     if result["submitted"]:
         result["submitted_at"] = datetime.now(timezone.utc).isoformat()
-    
+
+        # Emit bid placed event to brain/monetization
+        if _hooks:
+            try:
+                _hooks.on_bid_placed(
+                    result,
+                    opportunity_id=opportunity.get('id'),
+                    bid_amount=opportunity.get('estimated_value', 0)
+                )
+            except Exception:
+                pass  # Don't fail bidding on hook errors
+
     return result
 
 

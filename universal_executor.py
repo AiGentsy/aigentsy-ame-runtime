@@ -26,6 +26,13 @@ from typing import Dict, Any, List, Optional
 from enum import Enum
 import json
 
+# Integration hooks for monetization + brain
+try:
+    from integration_hooks import IntegrationHooks
+    _hooks = IntegrationHooks("universal_executor")
+except ImportError:
+    _hooks = None
+
 # Import your existing infrastructure
 try:
     from aigentsy_conductor import AiGentsyConductor  # Fixed: capital G
@@ -202,8 +209,19 @@ class UniversalAutonomousExecutor:
             'attempts': 0,
             'max_attempts': 3
         }
-        
+
         self.active_executions[execution_id] = execution_state
+
+        # Emit execution start event to brain/monetization
+        if _hooks:
+            try:
+                _hooks.on_execution_start(
+                    {"coi_id": execution_id, "opportunity": opportunity},
+                    connector=opportunity.get('platform'),
+                    pdl_id=opportunity.get('type')
+                )
+            except Exception:
+                pass
         
         try:
             # STAGE 1: SCORING
@@ -699,7 +717,22 @@ Regenerate the solution addressing all feedback points.
         self.completed_executions.append(state)
         if state['execution_id'] in self.active_executions:
             del self.active_executions[state['execution_id']]
-        
+
+        # Emit execution complete event to brain/monetization
+        if _hooks:
+            try:
+                success = state.get('stage') == ExecutionStage.COMPLETED
+                opportunity = state.get('opportunity', {})
+                _hooks.on_execution_complete(
+                    {"coi_id": state.get('execution_id'), "entity_id": opportunity.get('id')},
+                    success=success,
+                    proofs=state.get('deliverables', []),
+                    revenue=opportunity.get('value', 0) if success else 0,
+                    connector=opportunity.get('platform')
+                )
+            except Exception:
+                pass
+
         return self._get_execution_status(state)
     
     
