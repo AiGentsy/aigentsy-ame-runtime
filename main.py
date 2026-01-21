@@ -34650,15 +34650,17 @@ async def test_simulate_delivery(body: Dict = Body(...)):
             return {"ok": False, "error": "Workflow system not available"}
 
         workflow_id = body.get("workflow_id")
+        create_new = body.get("create_new", False)
 
         # If no workflow_id, find or create one
-        if not workflow_id:
+        if not workflow_id and not create_new:
             # Get first pending workflow
             pending = [w for w in integrated_workflow.workflows.values()
                        if w.get("stage") in ["pending_wade_approval", "client_approved", "in_progress"]]
             if pending:
                 workflow_id = pending[0].get("workflow_id")
-            else:
+
+        if not workflow_id:
                 # Create a test workflow
                 import uuid
                 workflow_id = f"test_{uuid.uuid4().hex[:8]}"
