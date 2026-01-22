@@ -358,7 +358,12 @@ class FiverrConnector:
         if not self.engine:
             return []
         try:
-            return await self.engine.get_pending_orders()
+            # Use the correct method name
+            orders = await self.engine._check_for_new_orders()
+            # Handle both list and async generator returns
+            if hasattr(orders, '__aiter__'):
+                return [o async for o in orders]
+            return orders if isinstance(orders, list) else []
         except Exception as e:
             print(f"⚠️ Fiverr order check failed: {e}")
             return []
