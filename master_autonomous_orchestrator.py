@@ -1216,27 +1216,169 @@ class MasterAutonomousOrchestrator:
 
     async def _execute_conversational_flow(self, opportunities: List[Dict], results: Dict):
         """
-        Execute CONVERSATIONAL flow opportunities (LinkedIn, Reddit, Email).
+        Execute CONVERSATIONAL flow opportunities using platform-native methods.
 
-        These require relationship building before monetization.
-        Uses existing communication infrastructure.
+        Routes by platform:
+        - Reddit → /reddit/post-reply (comment on thread)
+        - LinkedIn → /linkedin/connect or /linkedin/send-message
+        - Twitter → /twitter/post-reply or /twitter/send-dm
+        - Email → existing email flow
+        - HackerNews → /hackernews/post-comment (if available)
         """
         _log_structured(self._run_id(), "conversational", "start", {"count": len(opportunities)})
 
-        # Use existing communication flow for conversational opportunities
-        comm_results = await self.run_communication_all_channels(opportunities)
+        for opp in opportunities:
+            try:
+                platform = opp.get("platform", "").lower()
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|conv|{opp_key}"
+                url = opp.get("url", "")
 
-        results["conversational_started"] += (
-            comm_results.get("emails_sent", 0) +
-            comm_results.get("dms_sent", 0) +
-            comm_results.get("sms_sent", 0) +
-            comm_results.get("platform_messages", 0)
-        )
+                # Clean opportunity for JSON serialization
+                clean_opp = {k: v for k, v in opp.items() if k != "_flow"}
+
+                sem = self._get_semaphore(platform)
+                async with sem:
+                    if not self.circuit_breaker.can_call(platform):
+                        _log_structured(self._run_id(), "conversational", "circuit_open", {
+                            "platform": platform
+                        })
+                        continue
+
+                    # Route by platform
+                    if platform == "reddit":
+                        # Post helpful reply to Reddit thread
+                        reply_result = await self._call("POST", "/reddit/post-reply", {
+                            "url": url,
+                            "opportunity": clean_opp,
+                            "type": "helpful"
+                        }, idempotency_key=f"{idem_base}|reply", platform=platform)
+
+                        if reply_result.get("ok"):
+                            results["conversational_started"] += 1
+                            results["by_mode"]["reddit_reply"] = results["by_mode"].get("reddit_reply", 0) + 1
+
+                            results["conversations_started"].append({
+                                "opportunity_id": opp.get("id"),
+                                "channel": "reddit",
+                                "status": "reply_posted" if not reply_result.get("queued") else "queued",
+                                "comment_url": reply_result.get("comment_url"),
+                                "ev": opp.get("_ev", 0)
+                            })
+
+                            _log_structured(self._run_id(), "conversational", "reddit_reply", {
+                                "subreddit": reply_result.get("subreddit"),
+                                "queued": reply_result.get("queued", False)
+                            })
+                        else:
+                            results["errors"].append({
+                                "opportunity_id": opp.get("id"),
+                                "platform": "reddit",
+                                "error": reply_result.get("error")
+                            })
+
+                    elif platform == "linkedin":
+                        # Send LinkedIn connection request
+                        connect_result = await self._call("POST", "/linkedin/connect", {
+                            "url": url,
+                            "opportunity": clean_opp
+                        }, idempotency_key=f"{idem_base}|connect", platform=platform)
+
+                        if connect_result.get("ok"):
+                            results["conversational_started"] += 1
+                            results["by_mode"]["linkedin_connect"] = results["by_mode"].get("linkedin_connect", 0) + 1
+
+                            results["conversations_started"].append({
+                                "opportunity_id": opp.get("id"),
+                                "channel": "linkedin",
+                                "status": "connection_sent" if not connect_result.get("queued") else "queued",
+                                "profile_id": connect_result.get("profile_id"),
+                                "ev": opp.get("_ev", 0)
+                            })
+
+                            _log_structured(self._run_id(), "conversational", "linkedin_connect", {
+                                "profile_id": connect_result.get("profile_id"),
+                                "queued": connect_result.get("queued", False)
+                            })
+                        else:
+                            results["errors"].append({
+                                "opportunity_id": opp.get("id"),
+                                "platform": "linkedin",
+                                "error": connect_result.get("error")
+                            })
+
+                    elif platform == "twitter":
+                        # Reply to tweet
+                        reply_result = await self._call("POST", "/twitter/post-reply", {
+                            "url": url,
+                            "opportunity": clean_opp
+                        }, idempotency_key=f"{idem_base}|reply", platform=platform)
+
+                        if reply_result.get("ok"):
+                            results["conversational_started"] += 1
+                            results["by_mode"]["twitter_reply"] = results["by_mode"].get("twitter_reply", 0) + 1
+
+                            results["conversations_started"].append({
+                                "opportunity_id": opp.get("id"),
+                                "channel": "twitter",
+                                "status": "reply_posted" if not reply_result.get("queued") else "queued",
+                                "tweet_url": reply_result.get("tweet_url"),
+                                "ev": opp.get("_ev", 0)
+                            })
+
+                            _log_structured(self._run_id(), "conversational", "twitter_reply", {
+                                "tweet_id": reply_result.get("tweet_id"),
+                                "queued": reply_result.get("queued", False)
+                            })
+                        else:
+                            results["errors"].append({
+                                "opportunity_id": opp.get("id"),
+                                "platform": "twitter",
+                                "error": reply_result.get("error")
+                            })
+
+                    elif platform == "hackernews":
+                        # HackerNews comment (queue for manual if no API)
+                        results["by_mode"]["hackernews_queued"] = results["by_mode"].get("hackernews_queued", 0) + 1
+                        results["conversations_started"].append({
+                            "opportunity_id": opp.get("id"),
+                            "channel": "hackernews",
+                            "status": "queued_manual",
+                            "url": url,
+                            "ev": opp.get("_ev", 0)
+                        })
+
+                    elif platform == "email" or opp.get("contact_email"):
+                        # Use existing email flow
+                        email = opp.get("contact_email") or opp.get("contact", {}).get("email")
+                        if email:
+                            email_result = await self._send_email_outreach(opp, f"{idem_base}|email")
+                            if email_result.get("ok"):
+                                results["conversational_started"] += 1
+                                results["by_mode"]["email_sent"] = results["by_mode"].get("email_sent", 0) + 1
+                        else:
+                            results["by_mode"]["email_no_contact"] = results["by_mode"].get("email_no_contact", 0) + 1
+
+                    else:
+                        # Unknown platform - queue for manual review
+                        results["by_mode"]["unknown_queued"] = results["by_mode"].get("unknown_queued", 0) + 1
+                        _log_structured(self._run_id(), "conversational", "unknown_platform", {
+                            "platform": platform,
+                            "url": url
+                        })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "platform": opp.get("platform"),
+                    "error": str(e)
+                })
 
         results["by_mode"]["conversational"] = results["conversational_started"]
-
-        # Pass through conversations for contract flow
-        results["conversations_started"].extend(comm_results.get("conversations_started", []))
+        _log_structured(self._run_id(), "conversational", "complete", {
+            "total": results["conversational_started"],
+            "by_mode": results["by_mode"]
+        })
 
     async def _execute_application_flow(self, opportunities: List[Dict], results: Dict):
         """

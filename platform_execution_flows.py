@@ -482,7 +482,7 @@ PLATFORM_FLOWS: Dict[str, ExecutionFlow] = {
             "close_deal"             # Move to contract
         ],
         requires_communication=True,
-        requires_approval=True,  # Review replies before posting
+        requires_approval=False,  # Auto-execute helpful replies (low risk)
         required_apis=["openrouter"],  # Reddit API is rate-limited
         optional_apis=["perplexity"],
         endpoints={
@@ -493,7 +493,7 @@ PLATFORM_FLOWS: Dict[str, ExecutionFlow] = {
             "close_deal": "/contract/generate"
         },
         estimated_time_minutes=1440,
-        auto_execute=False
+        auto_execute=True  # Helpful replies are low risk
     ),
 
     # ─────────────────────────────────────────────────────────────────────────

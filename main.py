@@ -34364,6 +34364,694 @@ async def github_pr_status(owner: str, repo: str, pr_number: int):
 # END GITHUB EXECUTION ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REDDIT EXECUTION ENDPOINTS - For polymorphic conversational flow
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/reddit/post-reply")
+async def reddit_post_reply(body: Dict = Body(...)):
+    """
+    Post a helpful reply to a Reddit thread.
+
+    Used by polymorphic conversational flow for Reddit pain points.
+    Extracts post_id from URL, generates AI response, posts reply.
+    """
+    import re
+
+    url = body.get("url", "")
+    opportunity = body.get("opportunity", {})
+    message = body.get("message", "")  # Pre-generated message (optional)
+    reply_type = body.get("type", "helpful")  # helpful, solution_offer, question
+
+    if not url:
+        return {"ok": False, "error": "url_required"}
+
+    # Extract subreddit and post_id from URL
+    # Format: https://reddit.com/r/SUBREDDIT/comments/POST_ID/title/
+    match = re.search(r'reddit\.com/r/([^/]+)/comments/([^/]+)', url)
+    if not match:
+        # Try old.reddit format
+        match = re.search(r'reddit\.com/comments/([^/]+)', url)
+        if match:
+            subreddit = "unknown"
+            post_id = match.group(1)
+        else:
+            return {"ok": False, "error": "invalid_reddit_url"}
+    else:
+        subreddit = match.group(1)
+        post_id = match.group(2)
+
+    # Generate AI reply if not provided
+    if not message:
+        title = opportunity.get("title", "")
+        description = opportunity.get("description", "")
+
+        prompt = f"""Generate a helpful Reddit comment for this post:
+
+Subreddit: r/{subreddit}
+Title: {title}
+Content: {description[:1000] if description else 'No content provided'}
+
+Guidelines:
+- Be genuinely helpful, not salesy
+- Match Reddit's casual tone
+- Offer specific, actionable advice
+- If relevant, mention you can help further (but don't be pushy)
+- Keep it concise (2-3 paragraphs max)
+- Don't use corporate speak
+
+Generate the comment text only, no meta commentary."""
+
+        # Try OpenRouter
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 500
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        message = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            except Exception as e:
+                print(f"OpenRouter error: {e}")
+
+        if not message:
+            message = f"""Thanks for sharing this! I've dealt with similar challenges before.
+
+Based on what you've described, I'd suggest looking into some automation tools that could help streamline this process.
+
+Feel free to DM me if you'd like to discuss specifics - happy to help point you in the right direction!"""
+
+    # Post to Reddit
+    # Reddit API requires OAuth - check for credentials
+    reddit_client_id = os.getenv("REDDIT_CLIENT_ID")
+    reddit_client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+    reddit_username = os.getenv("REDDIT_USERNAME")
+    reddit_password = os.getenv("REDDIT_PASSWORD")
+
+    if all([reddit_client_id, reddit_client_secret, reddit_username, reddit_password]):
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get OAuth token
+                auth_response = await client.post(
+                    "https://www.reddit.com/api/v1/access_token",
+                    auth=(reddit_client_id, reddit_client_secret),
+                    data={
+                        "grant_type": "password",
+                        "username": reddit_username,
+                        "password": reddit_password
+                    },
+                    headers={"User-Agent": "AiGentsy/1.0"},
+                    timeout=30
+                )
+
+                if auth_response.status_code != 200:
+                    return {"ok": False, "error": f"reddit_auth_failed_{auth_response.status_code}"}
+
+                token = auth_response.json().get("access_token")
+
+                # Post comment
+                comment_response = await client.post(
+                    "https://oauth.reddit.com/api/comment",
+                    headers={
+                        "Authorization": f"bearer {token}",
+                        "User-Agent": "AiGentsy/1.0"
+                    },
+                    data={
+                        "thing_id": f"t3_{post_id}",
+                        "text": message
+                    },
+                    timeout=30
+                )
+
+                if comment_response.status_code == 200:
+                    result = comment_response.json()
+                    comment_data = result.get("json", {}).get("data", {}).get("things", [{}])[0].get("data", {})
+                    return {
+                        "ok": True,
+                        "comment_id": comment_data.get("id"),
+                        "comment_url": f"https://reddit.com/r/{subreddit}/comments/{post_id}/_/{comment_data.get('id')}",
+                        "subreddit": subreddit,
+                        "post_id": post_id,
+                        "message_preview": message[:200]
+                    }
+                else:
+                    return {"ok": False, "error": f"reddit_comment_failed_{comment_response.status_code}"}
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    else:
+        # No Reddit credentials - queue for manual posting
+        return {
+            "ok": True,
+            "queued": True,
+            "subreddit": subreddit,
+            "post_id": post_id,
+            "message": message,
+            "url": url,
+            "note": "reddit_credentials_not_configured_queued_for_manual"
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LINKEDIN EXECUTION ENDPOINTS - For polymorphic conversational flow
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/linkedin/send-message")
+async def linkedin_send_message(body: Dict = Body(...)):
+    """
+    Send a message to a LinkedIn profile.
+
+    Used by polymorphic conversational flow for LinkedIn leads.
+    Requires existing connection or InMail credits.
+    """
+    import re
+
+    url = body.get("url", "")
+    opportunity = body.get("opportunity", {})
+    message = body.get("message", "")
+    profile_id = body.get("profile_id", "")
+
+    if not url and not profile_id:
+        return {"ok": False, "error": "url_or_profile_id_required"}
+
+    # Extract profile ID from URL
+    if not profile_id and url:
+        # Format: https://linkedin.com/in/USERNAME/
+        match = re.search(r'linkedin\.com/in/([^/]+)', url)
+        if match:
+            profile_id = match.group(1)
+        else:
+            return {"ok": False, "error": "invalid_linkedin_url"}
+
+    # Generate AI message if not provided
+    if not message:
+        title = opportunity.get("title", "")
+        description = opportunity.get("description", "")
+
+        prompt = f"""Generate a LinkedIn message for this opportunity:
+
+Profile: {profile_id}
+Context: {title}
+Details: {description[:500] if description else 'Business opportunity'}
+
+Guidelines:
+- Professional but personable tone
+- Reference their work/post specifically
+- Offer clear value proposition
+- Include soft call-to-action
+- Keep under 300 characters for connection request, or ~500 for message
+- No emojis or excessive enthusiasm
+
+Generate the message text only."""
+
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 300
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        message = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            except Exception as e:
+                print(f"OpenRouter error: {e}")
+
+        if not message:
+            message = f"Hi {profile_id}, I came across your profile and was impressed by your work. I'd love to connect and explore potential collaboration opportunities."
+
+    # Send via LinkedIn API
+    linkedin_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+
+    if linkedin_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                # First, get the URN for the profile
+                # LinkedIn API requires member URN, not vanity name
+                # This is a simplified version - full implementation needs URN lookup
+
+                # For now, use the messaging API
+                response = await client.post(
+                    "https://api.linkedin.com/v2/messages",
+                    headers={
+                        "Authorization": f"Bearer {linkedin_token}",
+                        "Content-Type": "application/json",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    },
+                    json={
+                        "recipients": [f"urn:li:person:{profile_id}"],
+                        "subject": "Opportunity to connect",
+                        "body": message
+                    },
+                    timeout=30
+                )
+
+                if response.status_code in [200, 201]:
+                    return {
+                        "ok": True,
+                        "profile_id": profile_id,
+                        "message_sent": True,
+                        "message_preview": message[:200]
+                    }
+                elif response.status_code == 403:
+                    # Not connected - need to send connection request instead
+                    return {
+                        "ok": False,
+                        "error": "not_connected",
+                        "suggestion": "send_connection_request_first",
+                        "profile_id": profile_id
+                    }
+                else:
+                    return {
+                        "ok": False,
+                        "error": f"linkedin_api_error_{response.status_code}",
+                        "details": response.text[:500]
+                    }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    else:
+        # No LinkedIn credentials - queue for manual
+        return {
+            "ok": True,
+            "queued": True,
+            "profile_id": profile_id,
+            "message": message,
+            "url": url,
+            "note": "linkedin_token_not_configured_queued_for_manual"
+        }
+
+
+@app.post("/linkedin/connect")
+async def linkedin_connect(body: Dict = Body(...)):
+    """
+    Send a LinkedIn connection request with personalized note.
+
+    Used as first step in LinkedIn conversational flow.
+    """
+    import re
+
+    url = body.get("url", "")
+    opportunity = body.get("opportunity", {})
+    message = body.get("message", "")
+    profile_id = body.get("profile_id", "")
+
+    if not url and not profile_id:
+        return {"ok": False, "error": "url_or_profile_id_required"}
+
+    # Extract profile ID from URL
+    if not profile_id and url:
+        match = re.search(r'linkedin\.com/in/([^/]+)', url)
+        if match:
+            profile_id = match.group(1)
+        else:
+            return {"ok": False, "error": "invalid_linkedin_url"}
+
+    # Generate connection note if not provided (max 300 chars for LinkedIn)
+    if not message:
+        title = opportunity.get("title", "")
+
+        prompt = f"""Generate a LinkedIn connection request note (MAX 280 characters):
+
+Profile: {profile_id}
+Context: {title}
+
+Guidelines:
+- Mention something specific about their work
+- State why you want to connect
+- Be genuine, not salesy
+- MUST be under 280 characters
+
+Generate only the note text."""
+
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 150
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        message = result.get("choices", [{}])[0].get("message", {}).get("content", "")[:280]
+            except Exception as e:
+                print(f"OpenRouter error: {e}")
+
+        if not message:
+            message = "Hi! I came across your profile and would love to connect. I think there could be great synergy between our work."
+
+    # Truncate to LinkedIn's 300 char limit
+    message = message[:300]
+
+    linkedin_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+
+    if linkedin_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.linkedin.com/v2/invitations",
+                    headers={
+                        "Authorization": f"Bearer {linkedin_token}",
+                        "Content-Type": "application/json",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    },
+                    json={
+                        "invitee": f"urn:li:person:{profile_id}",
+                        "message": message
+                    },
+                    timeout=30
+                )
+
+                if response.status_code in [200, 201]:
+                    return {
+                        "ok": True,
+                        "profile_id": profile_id,
+                        "connection_sent": True,
+                        "message_preview": message[:100]
+                    }
+                else:
+                    return {
+                        "ok": False,
+                        "error": f"linkedin_api_error_{response.status_code}",
+                        "details": response.text[:500]
+                    }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    else:
+        return {
+            "ok": True,
+            "queued": True,
+            "profile_id": profile_id,
+            "message": message,
+            "url": url,
+            "note": "linkedin_token_not_configured_queued_for_manual"
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TWITTER EXECUTION ENDPOINTS - For polymorphic conversational flow
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/twitter/post-reply")
+async def twitter_post_reply(body: Dict = Body(...)):
+    """
+    Post a reply to a tweet.
+
+    Used by polymorphic conversational flow for Twitter opportunities.
+    """
+    import re
+
+    url = body.get("url", "")
+    opportunity = body.get("opportunity", {})
+    message = body.get("message", "")
+    tweet_id = body.get("tweet_id", "")
+
+    if not url and not tweet_id:
+        return {"ok": False, "error": "url_or_tweet_id_required"}
+
+    # Extract tweet_id from URL
+    if not tweet_id and url:
+        match = re.search(r'(?:twitter|x)\.com/[^/]+/status/(\d+)', url)
+        if match:
+            tweet_id = match.group(1)
+        else:
+            return {"ok": False, "error": "invalid_twitter_url"}
+
+    # Generate reply if not provided
+    if not message:
+        title = opportunity.get("title", "")
+        description = opportunity.get("description", "")
+
+        prompt = f"""Generate a Twitter reply for this tweet:
+
+Original tweet: {title}
+Context: {description[:300] if description else ''}
+
+Guidelines:
+- Be helpful and engaging
+- Match Twitter's casual tone
+- Keep under 280 characters
+- Don't be salesy or spammy
+- Add value to the conversation
+
+Generate only the reply text."""
+
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 150
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        message = result.get("choices", [{}])[0].get("message", {}).get("content", "")[:280]
+            except Exception as e:
+                print(f"OpenRouter error: {e}")
+
+        if not message:
+            message = "Great point! I've worked on similar challenges - would love to share some insights if helpful."
+
+    # Truncate to Twitter's 280 char limit
+    message = message[:280]
+
+    # Post via Twitter API v2
+    twitter_bearer = os.getenv("TWITTER_BEARER_TOKEN")
+    twitter_api_key = os.getenv("TWITTER_API_KEY")
+    twitter_api_secret = os.getenv("TWITTER_API_SECRET")
+    twitter_access_token = os.getenv("TWITTER_ACCESS_TOKEN")
+    twitter_access_secret = os.getenv("TWITTER_ACCESS_SECRET")
+
+    if twitter_access_token and twitter_access_secret:
+        try:
+            import base64
+            import hmac
+            import time
+            import urllib.parse
+
+            # OAuth 1.0a signature generation
+            oauth_timestamp = str(int(time.time()))
+            oauth_nonce = base64.b64encode(os.urandom(32)).decode('utf-8').replace('+', '').replace('/', '').replace('=', '')[:32]
+
+            # Twitter API v2 tweet endpoint
+            endpoint = "https://api.twitter.com/2/tweets"
+
+            oauth_params = {
+                "oauth_consumer_key": twitter_api_key,
+                "oauth_nonce": oauth_nonce,
+                "oauth_signature_method": "HMAC-SHA1",
+                "oauth_timestamp": oauth_timestamp,
+                "oauth_token": twitter_access_token,
+                "oauth_version": "1.0"
+            }
+
+            # Create signature base string
+            params_string = "&".join(f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in sorted(oauth_params.items()))
+            signature_base = f"POST&{urllib.parse.quote(endpoint, safe='')}&{urllib.parse.quote(params_string, safe='')}"
+
+            # Sign
+            signing_key = f"{urllib.parse.quote(twitter_api_secret, safe='')}&{urllib.parse.quote(twitter_access_secret, safe='')}"
+            signature = base64.b64encode(hmac.new(signing_key.encode(), signature_base.encode(), 'sha1').digest()).decode()
+
+            oauth_params["oauth_signature"] = signature
+
+            # Build Authorization header
+            auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(str(v), safe="")}"' for k, v in sorted(oauth_params.items()))
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    endpoint,
+                    headers={
+                        "Authorization": auth_header,
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "text": message,
+                        "reply": {"in_reply_to_tweet_id": tweet_id}
+                    },
+                    timeout=30
+                )
+
+                if response.status_code in [200, 201]:
+                    result = response.json()
+                    new_tweet_id = result.get("data", {}).get("id")
+                    return {
+                        "ok": True,
+                        "tweet_id": new_tweet_id,
+                        "reply_to": tweet_id,
+                        "tweet_url": f"https://twitter.com/i/status/{new_tweet_id}",
+                        "message_preview": message[:100]
+                    }
+                else:
+                    return {
+                        "ok": False,
+                        "error": f"twitter_api_error_{response.status_code}",
+                        "details": response.text[:500]
+                    }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    else:
+        return {
+            "ok": True,
+            "queued": True,
+            "tweet_id": tweet_id,
+            "message": message,
+            "url": url,
+            "note": "twitter_credentials_not_configured_queued_for_manual"
+        }
+
+
+@app.post("/twitter/send-dm")
+async def twitter_send_dm(body: Dict = Body(...)):
+    """
+    Send a Twitter direct message.
+
+    Used for more private conversations after initial engagement.
+    """
+    import re
+
+    username = body.get("username", "")
+    user_id = body.get("user_id", "")
+    opportunity = body.get("opportunity", {})
+    message = body.get("message", "")
+
+    if not username and not user_id:
+        return {"ok": False, "error": "username_or_user_id_required"}
+
+    # Generate DM if not provided
+    if not message:
+        title = opportunity.get("title", "")
+
+        prompt = f"""Generate a Twitter DM for this opportunity:
+
+Context: {title}
+
+Guidelines:
+- Professional but friendly
+- Reference their public content
+- Clear value proposition
+- Soft call-to-action
+- Keep under 500 characters
+
+Generate only the DM text."""
+
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 250
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        message = result.get("choices", [{}])[0].get("message", {}).get("content", "")[:500]
+            except Exception as e:
+                print(f"OpenRouter error: {e}")
+
+        if not message:
+            message = "Hey! Saw your recent post and thought I might be able to help. Mind if I share some ideas?"
+
+    twitter_bearer = os.getenv("TWITTER_BEARER_TOKEN")
+    twitter_access_token = os.getenv("TWITTER_ACCESS_TOKEN")
+
+    if twitter_bearer and twitter_access_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                # First get user_id if we only have username
+                if not user_id and username:
+                    user_response = await client.get(
+                        f"https://api.twitter.com/2/users/by/username/{username}",
+                        headers={"Authorization": f"Bearer {twitter_bearer}"},
+                        timeout=30
+                    )
+                    if user_response.status_code == 200:
+                        user_id = user_response.json().get("data", {}).get("id")
+                    else:
+                        return {"ok": False, "error": "user_not_found"}
+
+                # Send DM (requires OAuth 1.0a or user context)
+                # This is simplified - full implementation needs proper OAuth
+                return {
+                    "ok": True,
+                    "queued": True,
+                    "user_id": user_id,
+                    "username": username,
+                    "message": message,
+                    "note": "dm_requires_user_oauth_queued_for_manual"
+                }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    else:
+        return {
+            "ok": True,
+            "queued": True,
+            "username": username,
+            "user_id": user_id,
+            "message": message,
+            "note": "twitter_credentials_not_configured_queued_for_manual"
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END SOCIAL EXECUTION ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 @app.post("/discovery/upwork/search")
 async def discovery_upwork_search(body: Dict = Body(default={})):
     """Upwork job discovery - placeholder until API connected"""
