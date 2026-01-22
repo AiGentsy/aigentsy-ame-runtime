@@ -1149,8 +1149,10 @@ class MasterAutonomousOrchestrator:
                         continue
 
                     # Step 2: Generate solution
+                    # Clean opportunity for JSON serialization (remove _flow object)
+                    clean_opp = {k: v for k, v in opp.items() if k != "_flow"}
                     solution = await self._call("POST", "/fulfillment/code-generation", {
-                        "opportunity": opp,
+                        "opportunity": clean_opp,
                         "analysis": analysis,
                         "ev_score": opp.get("_ev", 0)
                     }, idempotency_key=f"{idem_base}|solution", platform="internal")

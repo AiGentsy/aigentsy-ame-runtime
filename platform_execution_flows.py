@@ -38,6 +38,24 @@ class ExecutionMode(Enum):
     MANUAL_REVIEW = "manual_review"          # Queue for human review
 
 
+def flow_to_dict(flow: 'ExecutionFlow') -> Dict[str, Any]:
+    """Convert ExecutionFlow dataclass to JSON-serializable dict"""
+    if flow is None:
+        return None
+    return {
+        "platform": flow.platform,
+        "execution_mode": flow.execution_mode.value,
+        "steps": flow.steps,
+        "requires_communication": flow.requires_communication,
+        "requires_approval": flow.requires_approval,
+        "required_apis": flow.required_apis,
+        "optional_apis": flow.optional_apis,
+        "endpoints": flow.endpoints,
+        "estimated_time_minutes": flow.estimated_time_minutes,
+        "auto_execute": flow.auto_execute
+    }
+
+
 @dataclass
 class ExecutionFlow:
     """Configuration for a platform's execution flow"""
@@ -567,7 +585,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
     apis = get_configured_apis()
 
     result = {
-        "flow": None,
+        "flow": None,  # Will be set to flow dict (not object) for JSON serialization
         "flow_key": None,
         "can_execute": False,
         "missing_apis": [],
@@ -576,7 +594,9 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
         "execution_mode": None,
         "requires_communication": True,
         "requires_approval": True,
-        "auto_execute": False
+        "auto_execute": False,
+        "steps": [],
+        "endpoints": {}
     }
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -602,7 +622,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -611,6 +631,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute and len(missing) == 0
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = f"GitHub {'bounty' if is_bounty else 'issue'} - IMMEDIATE execution (PR submission)"
@@ -629,7 +651,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -638,6 +660,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "LinkedIn lead - CONVERSATIONAL flow (connection → qualify → close)"
@@ -659,7 +683,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -689,7 +713,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -698,6 +722,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = False  # Always manual for marketplaces
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = f"{platform.title()} - PROPOSAL flow (submit → hire → execute)"
@@ -716,7 +742,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -725,6 +751,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute and len(missing) == 0
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "Instagram - CONTENT POSTING flow (generate → post → track)"
@@ -743,7 +771,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -752,6 +780,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "Shopify - ARBITRAGE flow (source → list → fulfill)"
@@ -770,7 +800,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -779,6 +809,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute and len(missing) == 0
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "Stripe - PAYMENT COLLECTION flow (reminder → link → collect)"
@@ -797,7 +829,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -806,6 +838,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "Reddit - CONVERSATIONAL flow (helpful reply → engagement → offer)"
@@ -824,7 +858,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -833,6 +867,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "HackerNews - CONVERSATIONAL flow (technical reply → engagement)"
@@ -851,7 +887,7 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             missing = [api for api in flow.required_apis if not apis.get(api)]
             available = [api for api in flow.required_apis if apis.get(api)]
 
-            result["flow"] = flow
+            result["flow"] = flow_to_dict(flow)
             result["flow_key"] = flow_key
             result["missing_apis"] = missing
             result["available_apis"] = available
@@ -860,6 +896,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             result["requires_communication"] = flow.requires_communication
             result["requires_approval"] = flow.requires_approval
             result["auto_execute"] = flow.auto_execute
+            result["steps"] = flow.steps
+            result["endpoints"] = flow.endpoints
 
             if result["can_execute"]:
                 result["reason"] = "Email - CONVERSATIONAL flow (outreach → qualify → close)"
