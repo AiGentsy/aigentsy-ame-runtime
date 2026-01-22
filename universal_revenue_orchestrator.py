@@ -621,12 +621,25 @@ class UniversalRevenueOrchestrator:
         # PHASE 1: DISCOVERY & SPAWN
         print("\n🔍 PHASE 1: Discovery & Spawning")
         discovered_opportunities = []
+        spawn_results = {}
         if self.spawn_engine:
             spawn_results = await self.spawn_engine.run_full_cycle()
             results["phases"]["spawn"] = {"signals": spawn_results.get("phases", {}).get("trends", {}).get("found", 0), "spawned": len(spawn_results.get("phases", {}).get("spawned", []))}
             print(f"   ✅ {results['phases']['spawn']['signals']} signals, {results['phases']['spawn']['spawned']} spawned")
-            # Collect opportunities for polymorphic execution
-            discovered_opportunities = spawn_results.get("phases", {}).get("trends", {}).get("opportunities", [])
+
+        # Run master orchestrator discovery for polymorphic execution opportunities
+        if self.polymorphic_orchestrator:
+            try:
+                discovery_results = await self.polymorphic_orchestrator.run_discovery_all_dimensions()
+                discovered_opportunities = discovery_results.get("ranked_opportunities", [])
+                results["phases"]["discovery"] = {
+                    "total": discovery_results.get("total_opportunities", 0),
+                    "total_ev": discovery_results.get("total_ev", 0)
+                }
+                print(f"   ✅ Discovery: {len(discovered_opportunities)} opportunities, ${discovery_results.get('total_ev', 0):.0f} EV")
+            except Exception as e:
+                print(f"   ⚠️ Discovery error: {e}")
+                results["phases"]["discovery"] = {"error": str(e)}
 
         # PHASE 2: POLYMORPHIC EXECUTION (NEW)
         print("\n🔄 PHASE 2: Polymorphic Execution")
