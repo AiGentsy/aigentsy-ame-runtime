@@ -44,6 +44,11 @@ IMPACT_ACCOUNT_SID = os.getenv("IMPACT_ACCOUNT_SID")
 AMAZON_AVAILABLE = bool(AMAZON_AFFILIATE_TAG)
 SHAREASALE_AVAILABLE = bool(SHAREASALE_AFFILIATE_ID)
 
+# Auto-spawn storefront integration
+SPAWNS_URL = os.getenv("SPAWNS_URL", "https://spawns.aigentsy.com")
+AIGENTSY_URL = os.getenv("AIGENTSY_URL", "https://aigentsy.com")
+AUTO_SPAWN_ENABLED = os.getenv("AUTO_SPAWN_STOREFRONTS", "true").lower() == "true"
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat() + "Z"
@@ -190,6 +195,115 @@ CATEGORY_MAPPING = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AUTO-SPAWN STOREFRONT INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Category to auto-spawn niche mapping
+CATEGORY_TO_NICHE = {
+    "laptop": "tech_gear",
+    "phone": "mobile_tech",
+    "tablet": "mobile_tech",
+    "camera": "photo_video",
+    "headphones": "audio_gear",
+    "console": "gaming",
+    "gpu": "pc_builds",
+    "monitor": "workspace",
+    "sneakers": "streetwear",
+    "watch": "accessories",
+    "bag": "accessories",
+    "cards": "collectibles",
+    "vinyl": "collectibles",
+    "funko": "collectibles",
+    "furniture": "home_office",
+    "appliance": "home_tech",
+    "software": "digital_tools",
+    "tickets": "experiences",
+    "general": "curated_finds"
+}
+
+
+async def spawn_storefront_for_signal(
+    signal: Dict[str, Any],
+    product_intent: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Auto-spawn an AiGentsy storefront for a purchase intent signal.
+
+    Creates a dedicated micro-storefront with curated products for the niche,
+    instead of just sending to Amazon.
+
+    Returns storefront details or None if spawning disabled/failed.
+    """
+    if not AUTO_SPAWN_ENABLED:
+        return None
+
+    try:
+        # Import auto-spawn engine
+        from auto_spawn_engine import BusinessSpawner, TrendSignal, NicheCategory
+
+        signal_id = signal.get("signal_id", signal.get("id", "unknown"))
+        niche = CATEGORY_TO_NICHE.get(product_intent, "curated_finds")
+
+        # Map to auto-spawn category
+        niche_to_category = {
+            "tech_gear": NicheCategory.ECOMMERCE,
+            "mobile_tech": NicheCategory.ECOMMERCE,
+            "photo_video": NicheCategory.ECOMMERCE,
+            "audio_gear": NicheCategory.ECOMMERCE,
+            "gaming": NicheCategory.ECOMMERCE,
+            "pc_builds": NicheCategory.ECOMMERCE,
+            "workspace": NicheCategory.ECOMMERCE,
+            "streetwear": NicheCategory.ECOMMERCE,
+            "accessories": NicheCategory.ECOMMERCE,
+            "collectibles": NicheCategory.ECOMMERCE,
+            "home_office": NicheCategory.ECOMMERCE,
+            "home_tech": NicheCategory.ECOMMERCE,
+            "digital_tools": NicheCategory.SAAS_MICRO,
+            "experiences": NicheCategory.CONTENT,
+            "curated_finds": NicheCategory.ECOMMERCE
+        }
+
+        category = niche_to_category.get(niche, NicheCategory.ECOMMERCE)
+
+        # Create trend signal from purchase intent
+        trend_signal = TrendSignal(
+            signal_id=f"uacr_{signal_id}",
+            source="u-acr",
+            query=signal.get("text", product_intent)[:200],
+            category=category,
+            demand_score=85.0,
+            competition_score=40.0,
+            monetization_potential=90.0,
+            urgency=80.0,
+            viral_potential=60.0,
+            raw_data=signal,
+            detected_at=_now()
+        )
+
+        # Spawn the storefront
+        spawner = BusinessSpawner()
+        business = await spawner.spawn_from_signal(trend_signal)
+
+        return {
+            "spawned": True,
+            "storefront_url": business.landing_page_url,
+            "storefront_name": business.name,
+            "spawn_id": business.spawn_id,
+            "referral_code": business.referral_code,
+            "niche": niche,
+            "category": category.value,
+            "spawned_at": business.spawned_at
+        }
+
+    except ImportError:
+        # Auto-spawn engine not available
+        return None
+    except Exception as e:
+        print(f"Storefront spawn failed: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # AFFILIATE LINK GENERATORS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -232,18 +346,21 @@ def generate_shareasale_link(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def match_signal_to_affiliate(
-    signal: Dict[str, Any]
+    signal: Dict[str, Any],
+    spawn_storefront: bool = True
 ) -> Dict[str, Any]:
     """
-    Match a purchase intent signal to affiliate offer(s).
+    Match a purchase intent signal to affiliate offer(s) and optionally spawn an AiGentsy storefront.
 
     Args:
         signal: Signal from U-ACR with product_intent, text, price_range, etc.
+        spawn_storefront: If True, auto-spawn an AiGentsy storefront for this signal
 
     Returns:
         {
             "matched": True/False,
             "affiliate_links": [...],
+            "storefront": {...} or None,
             "outreach_template": "...",
             "expected_commission": float,
             "tracking_id": str
@@ -262,7 +379,15 @@ async def match_signal_to_affiliate(
     # Generate tracking ID
     tracking_id = _generate_tracking_id(signal_id, "amazon")
 
-    # Generate affiliate links
+    # Try to spawn AiGentsy storefront first (higher margin, owned channel)
+    storefront = None
+    storefront_url = None
+    if spawn_storefront and AUTO_SPAWN_ENABLED:
+        storefront = await spawn_storefront_for_signal(signal, product_intent)
+        if storefront and storefront.get("spawned"):
+            storefront_url = storefront.get("storefront_url")
+
+    # Generate affiliate links as backup/complement
     affiliate_links = []
 
     # Primary: Amazon search link
@@ -285,23 +410,33 @@ async def match_signal_to_affiliate(
         })
 
     # Calculate expected commission
+    # Storefront = higher margin (15-30% vs 3-8% affiliate)
     avg_price = sum(price_range) / 2 if price_range else category["avg_price"]
-    commission_rate = category["commission_rate"]
     conversion_prob = signal.get("conversion_prob", signal.get("conversion_prob_override", 0.05))
-    expected_commission = avg_price * commission_rate * conversion_prob
 
-    # Generate outreach template
+    if storefront:
+        # AiGentsy storefront: higher margin (avg 20%)
+        commission_rate = 0.20
+        expected_commission = avg_price * commission_rate * conversion_prob
+    else:
+        # Affiliate: standard rates
+        commission_rate = category["commission_rate"]
+        expected_commission = avg_price * commission_rate * conversion_prob
+
+    # Generate outreach template with storefront prioritized
     outreach_template = _generate_outreach_template(
         product_intent=product_intent,
         text=text,
         affiliate_link=affiliate_links[0]["url"] if affiliate_links else None,
-        source=source
+        source=source,
+        storefront_url=storefront_url
     )
 
     return {
-        "matched": len(affiliate_links) > 0,
+        "matched": len(affiliate_links) > 0 or storefront is not None,
         "signal_id": signal_id,
         "product_intent": product_intent,
+        "storefront": storefront,
         "affiliate_links": affiliate_links,
         "outreach_template": outreach_template,
         "expected_commission": round(expected_commission, 2),
@@ -309,6 +444,7 @@ async def match_signal_to_affiliate(
         "commission_rate": commission_rate,
         "conversion_prob": conversion_prob,
         "tracking_id": tracking_id,
+        "channel": "storefront" if storefront else "affiliate",
         "matched_at": _now()
     }
 
@@ -317,46 +453,104 @@ def _generate_outreach_template(
     product_intent: str,
     text: str,
     affiliate_link: str,
-    source: str
+    source: str,
+    storefront_url: str = None
 ) -> Dict[str, str]:
-    """Generate outreach templates for different channels"""
+    """
+    Generate cool, smart, inviting outreach templates for different channels.
 
-    # Extract what they're looking for
+    The vibe: helpful friend who found exactly what you need, not a salesperson.
+    """
+
+    # Extract what they're looking for with style
     looking_for = product_intent.replace("_", " ").title()
     if looking_for == "General":
-        looking_for = "what you're looking for"
+        looking_for = "what you mentioned"
 
-    # Twitter DM template (concise)
-    twitter_dm = f"""Hey! Saw you're looking for {looking_for}.
+    # Use storefront if available, otherwise affiliate link
+    main_link = storefront_url or affiliate_link
 
-Found some great deals that might help: {affiliate_link}
+    # Cool category-specific hooks
+    category_hooks = {
+        "laptop": "the perfect setup",
+        "phone": "that upgrade",
+        "camera": "gear that actually slaps",
+        "headphones": "audio that hits different",
+        "console": "the gaming setup",
+        "sneakers": "heat for the collection",
+        "watch": "that piece",
+        "cards": "some fire pulls",
+        "gpu": "the build upgrade",
+        "monitor": "screen real estate",
+        "furniture": "the space upgrade",
+        "software": "tools that actually work",
+        "general": "what you're after"
+    }
 
-Let me know if you need help finding something specific!"""
+    hook = category_hooks.get(product_intent, "exactly what you need")
 
-    # Email template (more detailed)
-    email_subject = f"Found deals on {looking_for} for you"
-    email_body = f"""Hi there,
+    # Twitter DM templates (rotate for variety) - casual, helpful vibe
+    twitter_templates = [
+        f"""yo - caught your post about {looking_for}
 
-I noticed you were looking for {looking_for} and wanted to help out.
+put together some options that might be exactly what you need: {main_link}
 
-I found some great options that match what you're looking for:
-{affiliate_link}
+lmk if you want me to dig deeper on specs or deals""",
 
-The link above has curated results based on your search. If you need something more specific, just reply and I'll help narrow it down.
+        f"""saw you're hunting for {hook}
 
-Happy shopping!
+curated a few solid picks here: {main_link}
 
-- AiGentsy"""
+hit me back if you need recs on specific features""",
 
-    # SMS template (very short)
-    sms = f"Hey! Found great deals on {looking_for}: {affiliate_link}"
+        f"""quick heads up - noticed you're looking for {looking_for}
+
+found some solid options worth checking: {main_link}
+
+always down to help narrow it down if needed"""
+    ]
+
+    # Pick based on product intent hash for consistency
+    import hashlib
+    template_idx = int(hashlib.md5(product_intent.encode()).hexdigest(), 16) % len(twitter_templates)
+    twitter_dm = twitter_templates[template_idx]
+
+    # Email template - helpful but not pushy
+    email_subject_options = [
+        f"Found {hook} for you",
+        f"Re: {looking_for} - options inside",
+        f"Quick find: {looking_for}"
+    ]
+    email_subject = email_subject_options[template_idx % len(email_subject_options)]
+
+    email_body = f"""Hey,
+
+Saw your post about {looking_for} and wanted to pass along some options I found.
+
+Here's what I put together: {main_link}
+
+The picks are curated based on what you mentioned - mix of value and quality. If any of those hit, let me know and I can dig into reviews, compare specs, or find better deals.
+
+No pressure either way - just figured I'd share since I was already looking.
+
+- A"""
+
+    # SMS template - super casual, value-first
+    sms_templates = [
+        f"found some solid {looking_for} options: {main_link} - lmk if you need help narrowing down",
+        f"yo - {hook} options here: {main_link}",
+        f"quick {looking_for} finds: {main_link} - hit me if you need more recs"
+    ]
+    sms = sms_templates[template_idx % len(sms_templates)]
 
     return {
         "twitter_dm": twitter_dm,
         "email_subject": email_subject,
         "email_body": email_body,
         "sms": sms,
-        "affiliate_link": affiliate_link
+        "affiliate_link": affiliate_link,
+        "storefront_url": storefront_url,
+        "main_link": main_link
     }
 
 
@@ -444,7 +638,13 @@ def get_affiliate_status() -> Dict[str, Any]:
     """Get affiliate matching engine status"""
     return {
         "ok": True,
-        "networks": {
+        "auto_spawn_storefronts": {
+            "enabled": AUTO_SPAWN_ENABLED,
+            "spawns_url": SPAWNS_URL,
+            "commission_rate": "15-30% (owned channel)",
+            "description": "Auto-spawns AiGentsy storefronts for purchase intent signals"
+        },
+        "affiliate_networks": {
             "amazon": {
                 "available": AMAZON_AVAILABLE,
                 "tag": AMAZON_AFFILIATE_TAG if AMAZON_AVAILABLE else None,
@@ -460,7 +660,16 @@ def get_affiliate_status() -> Dict[str, Any]:
             }
         },
         "categories_supported": list(CATEGORY_MAPPING.keys()),
+        "niche_mapping": CATEGORY_TO_NICHE,
         "conversion_stats": get_conversion_stats(),
+        "monetization_flow": [
+            "1. Capture purchase intent signal from Twitter/Instagram",
+            "2. Auto-spawn AiGentsy storefront for niche (15-30% margin)",
+            "3. Fallback to affiliate links (4-10% margin)",
+            "4. Generate cool outreach templates",
+            "5. Execute via Twitter DM / Email / SMS",
+            "6. Track conversions and optimize"
+        ],
         "status": "operational"
     }
 
@@ -551,7 +760,7 @@ if __name__ == "__main__":
 
     async def test():
         print("=" * 80)
-        print("AFFILIATE MATCHING ENGINE TEST")
+        print("U-ACR AFFILIATE + STOREFRONT MATCHING ENGINE")
         print("=" * 80)
 
         # Test signal
@@ -569,16 +778,50 @@ if __name__ == "__main__":
 
         result = await match_signal_to_affiliate(test_signal)
 
-        print(f"\nMatch Result:")
+        print(f"\n{'='*40}")
+        print("MATCH RESULT")
+        print(f"{'='*40}")
         print(f"  Matched: {result['matched']}")
+        print(f"  Channel: {result['channel']}")
         print(f"  Expected Commission: ${result['expected_commission']}")
+        print(f"  Commission Rate: {result['commission_rate']*100:.0f}%")
         print(f"  Tracking ID: {result['tracking_id']}")
-        print(f"\nAffiliate Link: {result['affiliate_links'][0]['url'][:80]}...")
-        print(f"\nTwitter DM Template:")
-        print(result['outreach_template']['twitter_dm'])
 
-        print("\n" + "=" * 80)
-        print("Status:")
-        print(get_affiliate_status())
+        if result.get('storefront'):
+            print(f"\n{'='*40}")
+            print("AUTO-SPAWNED STOREFRONT")
+            print(f"{'='*40}")
+            print(f"  Storefront URL: {result['storefront']['storefront_url']}")
+            print(f"  Name: {result['storefront']['storefront_name']}")
+            print(f"  Niche: {result['storefront']['niche']}")
+            print(f"  Spawn ID: {result['storefront']['spawn_id']}")
+
+        if result.get('affiliate_links'):
+            print(f"\n{'='*40}")
+            print("AFFILIATE FALLBACK")
+            print(f"{'='*40}")
+            print(f"  Amazon Link: {result['affiliate_links'][0]['url'][:60]}...")
+
+        print(f"\n{'='*40}")
+        print("OUTREACH TEMPLATES (cool, smart, inviting)")
+        print(f"{'='*40}")
+        print("\nTwitter DM:")
+        print("-" * 40)
+        print(result['outreach_template']['twitter_dm'])
+        print("\nEmail Subject:", result['outreach_template']['email_subject'])
+        print("\nSMS:")
+        print("-" * 40)
+        print(result['outreach_template']['sms'])
+
+        print(f"\n{'='*80}")
+        print("ENGINE STATUS")
+        print(f"{'='*80}")
+        status = get_affiliate_status()
+        print(f"Auto-Spawn Storefronts: {'ENABLED' if status['auto_spawn_storefronts']['enabled'] else 'DISABLED'}")
+        print(f"Spawns URL: {status['auto_spawn_storefronts']['spawns_url']}")
+        print(f"Storefront Commission: {status['auto_spawn_storefronts']['commission_rate']}")
+        print(f"\nMonetization Flow:")
+        for step in status['monetization_flow']:
+            print(f"  {step}")
 
     asyncio.run(test())
