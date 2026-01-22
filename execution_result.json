@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "OpenRouter API error: 400 - {\"error\":{\"message\":\"anthropic/claude-sonnet-4-20250514 is not a valid model ID\",\"code\":400},\"user_id\":\"user_2ySdjlkYuqknD7qSUcoUHhWeepo\"}"
+}

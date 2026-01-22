@@ -271,9 +271,30 @@ def check_eligibility(entity: str) -> Dict[str, Any]:
     return _default_settlements.check_payout_eligibility(entity)
 
 
-def queue_settlement(entity: str, stripe_account_id: str = None, method: str = "stripe") -> Dict[str, Any]:
-    """Queue a settlement/payout"""
-    return _default_settlements.schedule_payout(entity)
+def queue_settlement(
+    entity: str = None,
+    stripe_account_id: str = None,
+    method: str = "stripe",
+    *,
+    entity_id: str = None,
+    amount: float = None,
+    currency: str = "USD"
+) -> Dict[str, Any]:
+    """Queue a settlement/payout
+
+    Args:
+        entity: Entity identifier (legacy parameter name)
+        entity_id: Entity identifier (preferred parameter name)
+        amount: Amount to settle (optional, uses balance if not specified)
+        currency: Currency code
+        stripe_account_id: Stripe Connect account ID
+        method: Payment method (stripe, balance)
+    """
+    # Support both entity and entity_id parameter names
+    target_entity = entity or entity_id
+    if not target_entity:
+        return {"ok": False, "error": "entity_required"}
+    return _default_settlements.schedule_payout(target_entity)
 
 
 def get_pending_settlements() -> Dict[str, Any]:

@@ -20,7 +20,21 @@ import json
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    # Use replace to ensure clean 'Z' suffix without double timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    # Remove +00:00 if present and add Z for consistency
+    if ts.endswith('+00:00'):
+        ts = ts[:-6] + 'Z'
+    elif not ts.endswith('Z'):
+        ts += 'Z'
+    return ts
+
+
+def _parse_iso(ts: str) -> datetime:
+    """Parse ISO timestamp handling both Z and +00:00 formats"""
+    if ts.endswith('Z'):
+        ts = ts[:-1] + '+00:00'
+    return datetime.fromisoformat(ts)
 
 
 class FeatureStore:
@@ -101,7 +115,7 @@ class FeatureStore:
             return None
 
         # Check expiration
-        expires = datetime.fromisoformat(record["_expires_at"].replace("Z", "+00:00"))
+        expires = _parse_iso(record["_expires_at"])
         if expires < datetime.now(timezone.utc):
             del self._features[key]
             return None
@@ -132,7 +146,7 @@ class FeatureStore:
 
         for key, record in self._features.items():
             # Check expiration
-            expires = datetime.fromisoformat(record["_expires_at"].replace("Z", "+00:00"))
+            expires = _parse_iso(record["_expires_at"])
             if expires < now:
                 continue
 
@@ -170,7 +184,7 @@ class FeatureStore:
         expired = []
 
         for key, record in self._features.items():
-            expires = datetime.fromisoformat(record["_expires_at"].replace("Z", "+00:00"))
+            expires = _parse_iso(record["_expires_at"])
             if expires < now:
                 expired.append(key)
 
@@ -186,7 +200,7 @@ class FeatureStore:
         expired = 0
 
         for record in self._features.values():
-            expires = datetime.fromisoformat(record["_expires_at"].replace("Z", "+00:00"))
+            expires = _parse_iso(record["_expires_at"])
             if expires < now:
                 expired += 1
             else:

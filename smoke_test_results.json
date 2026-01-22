@@ -1,0 +1,152 @@
+[
+  {
+    "test": "Discovery Hook",
+    "success": true,
+    "details": {
+      "hooked": true,
+      "brain_event": true,
+      "suggested_price": 713.62,
+      "provider_ocs": 50
+    },
+    "timestamp": "2026-01-22T00:08:14.299353+00:00Z"
+  },
+  {
+    "test": "Fabric Quote",
+    "success": true,
+    "details": {
+      "base_price": 100.0,
+      "suggested_price": 128.92,
+      "platform_fee": 7.74,
+      "user_share": 84.83,
+      "pool_share": 12.12
+    },
+    "timestamp": "2026-01-22T00:08:14.299410+00:00Z"
+  },
+  {
+    "test": "Bidding Hooks",
+    "success": {
+      "gross": 450,
+      "platform": 27.0,
+      "net_after_platform": 423.0,
+      "user": 296.1,
+      "pool": 42.3,
+      "partner": 21.15,
+      "remainder": 63.45,
+      "splits_applied": {
+        "platform_pct": 0.06,
+        "user_pct": 0.7,
+        "pool_pct": 0.1,
+        "partner_pct": 0.05
+      }
+    },
+    "details": {
+      "bid_placed_hooked": true,
+      "bid_won_hooked": true,
+      "fees_calculated": true,
+      "revenue_split": true
+    },
+    "timestamp": "2026-01-22T00:08:14.299487+00:00Z"
+  },
+  {
+    "test": "Execution Hooks",
+    "success": true,
+    "details": {
+      "start_hooked": true,
+      "connector_rec": true,
+      "complete_hooked": true,
+      "ocs_updated": true,
+      "new_ocs": 8.69,
+      "ledger_posted": true
+    },
+    "timestamp": "2026-01-22T00:08:14.299885+00:00Z"
+  },
+  {
+    "test": "Payment Hook",
+    "success": {
+      "gross": 450,
+      "platform": 27.0,
+      "net_after_platform": 423.0,
+      "user": 296.1,
+      "pool": 42.3,
+      "partner": 21.15,
+      "remainder": 63.45,
+      "splits_applied": {
+        "platform_pct": 0.06,
+        "user_pct": 0.7,
+        "pool_pct": 0.1,
+        "partner_pct": 0.05
+      }
+    },
+    "details": {
+      "hooked": true,
+      "ledger_posted": true,
+      "platform_revenue": 27.0,
+      "user_revenue": 296.1
+    },
+    "timestamp": "2026-01-22T00:08:14.299927+00:00Z"
+  },
+  {
+    "test": "Reputation \u2192 OCS",
+    "success": true,
+    "details": {
+      "hooked": true,
+      "brain_event": true,
+      "ocs_updated": true,
+      "current_ocs": 10.79,
+      "tier": "restricted"
+    },
+    "timestamp": "2026-01-22T00:08:14.299967+00:00Z"
+  },
+  {
+    "test": "Brain Event Bus",
+    "success": true,
+    "details": {
+      "total_events": 1,
+      "by_type": {
+        "smoke_test": 1
+      }
+    },
+    "timestamp": "2026-01-22T00:08:14.300005+00:00Z"
+  },
+  {
+    "test": "Policy Engine",
+    "success": true,
+    "details": {
+      "pricing_action": "price",
+      "pricing_params": [
+        "price_slope",
+        "pg_attach_logit",
+        "kelly_cap",
+        "min_margin",
+        "surge_sensitivity"
+      ],
+      "connector_action": "select"
+    },
+    "timestamp": "2026-01-22T00:08:14.300037+00:00Z"
+  },
+  {
+    "test": "Ledger Integrity",
+    "success": true,
+    "details": {
+      "entry_posted": true,
+      "entry_type": "smoke_test",
+      "entry_ref": "test:run_1769040494",
+      "total_entries": 3,
+      "total_debit": null
+    },
+    "timestamp": "2026-01-22T00:08:14.300058+00:00Z"
+  },
+  {
+    "test": "Fee Schedule",
+    "success": true,
+    "details": {
+      "platform_fee_pct": 0.028,
+      "insurance_pct": 0.02,
+      "referral_pct": 0.12,
+      "fee_on_$1000": 28.28,
+      "effective_rate": 2.83,
+      "total_fees_defined": 35
+    },
+    "timestamp": "2026-01-22T00:08:14.300068+00:00Z"
+  }
+]

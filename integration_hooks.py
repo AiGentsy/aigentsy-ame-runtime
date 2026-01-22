@@ -169,7 +169,7 @@ class IntegrationHooks:
         if features:
             try:
                 entity_id = opportunity.get("entity_id") or opportunity.get("user_id") or "unknown"
-                features.set(
+                features.update(
                     keys={"actor_id": entity_id, "sku_id": opportunity.get("sku_id", "discovery")},
                     features={
                         "last_discovery": _now_iso(),

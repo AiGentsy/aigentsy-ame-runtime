@@ -24,7 +24,14 @@ from collections import defaultdict
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    # Use replace to ensure clean 'Z' suffix without double timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    # Remove +00:00 if present and add Z for consistency
+    if ts.endswith('+00:00'):
+        ts = ts[:-6] + 'Z'
+    elif not ts.endswith('Z'):
+        ts += 'Z'
+    return ts
 
 
 class OCSEngine:
@@ -85,8 +92,11 @@ class OCSEngine:
         sla_hits = record.get("sla_hits", 0)
         disputes = record.get("disputes", 0)
 
-        # Calculate age in days
-        created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
+        # Calculate age in days - handle both Z and +00:00 formats
+        created_str = record["created_at"]
+        if created_str.endswith('Z'):
+            created_str = created_str[:-1] + '+00:00'
+        created = datetime.fromisoformat(created_str)
         age_days = (datetime.now(timezone.utc) - created).days
 
         # Formula components
