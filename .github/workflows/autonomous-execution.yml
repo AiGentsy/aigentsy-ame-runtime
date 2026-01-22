@@ -2238,6 +2238,54 @@ jobs:
 
           ./_log.sh "v115_proof_page" "true" "$(($(date +%s) - PHASE_START))000"
 
+      - name: 🗺️ v115 Catalog Sitemap
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "🗺️ V115 CATALOG SITEMAP - Machine-Readable SKU Discovery"
+          echo "═══════════════════════════════════════════════════════════════"
+
+          # Get sitemap JSON
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/catalog/sitemap.json" GET '' 20 | jq -c '{ok,total,items:(.items|length)}' 2>/dev/null || true
+
+          # List categories
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/catalog/categories" GET '' 20 | jq -c '{ok,total_categories}' 2>/dev/null || true
+
+          ./_log.sh "v115_sitemap" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 📊 v115 SLO Dashboard
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📊 V115 SLO DASHBOARD - Trust Metrics & Badges"
+          echo "═══════════════════════════════════════════════════════════════"
+
+          # Get external SLO (public metrics)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/slo/external" GET '' 20 | jq -c '{ok,status,metrics,badges}' 2>/dev/null || true
+
+          # Get internal SLO (ops dashboard)
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/slo/internal" GET '' 20 | jq -c '{ok,delivery,csat,financials}' 2>/dev/null || true
+
+          ./_log.sh "v115_slo_dashboard" "true" "$(($(date +%s) - PHASE_START))000"
+
+      - name: 📋 v115 Runbook Status
+        continue-on-error: true
+        run: |
+          PHASE_START=$(date +%s)
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "📋 V115 RUNBOOK STATUS - Incident Response Health"
+          echo "═══════════════════════════════════════════════════════════════"
+
+          # Get runbook status
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/runbooks/status" GET '' 20 | jq -c '{ok,paused_categories,snapshot_count}' 2>/dev/null || true
+
+          # List recent snapshots
+          timeout 55s ./_curl.sh "${{ env.BACKEND_URL }}/runbooks/snapshots" GET '' 20 | jq -c '{ok,snapshots:(.snapshots|length)}' 2>/dev/null || true
+
+          ./_log.sh "v115_runbooks" "true" "$(($(date +%s) - PHASE_START))000"
+
       # ═══════════════════════════════════════════════════════════════════════
       # v115: TRILLION-TILT MODULES (10 Revenue Engines)
       # ═══════════════════════════════════════════════════════════════════════

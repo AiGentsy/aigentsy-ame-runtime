@@ -31,6 +31,77 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("apex_integration")
 
+# ============================================================================
+# OPERATIONAL SAFETY OVERLAYS (v115.1)
+# ============================================================================
+# Governor - Global spend caps with ND-JSON audit
+try:
+    from governors.governor_runtime import guard_spend, get_spend_status, get_degradation_level
+    GOVERNOR_ENABLED = True
+    logger.info("Governor runtime loaded")
+except ImportError:
+    GOVERNOR_ENABLED = False
+    def guard_spend(*args, **kwargs): return True
+    def get_spend_status(): return {}
+    def get_degradation_level(): return 0
+
+# PSP Enforcer - PSP-only fund flow
+try:
+    from dealgraph_overlays.psp_enforcer import enforce_psp, validate_payment_meta
+    PSP_ENABLED = True
+    logger.info("PSP enforcer loaded")
+except ImportError:
+    PSP_ENABLED = False
+    def enforce_psp(meta): return True, None
+
+# Health Breakers - Circuit breaker with backoff
+try:
+    from connectors.health_breakers import breaker, get_health_status, reset_breaker
+    BREAKERS_ENABLED = True
+    logger.info("Health breakers loaded")
+except ImportError:
+    BREAKERS_ENABLED = False
+    def breaker(key, healthy, **kwargs): return healthy
+    def get_health_status(): return {}
+
+# SLO Guard - Autospawn/white-label gate
+try:
+    from guards.slo_guard import allow_launch, check_partner_compliance
+    SLO_GUARD_ENABLED = True
+    logger.info("SLO guard loaded")
+except ImportError:
+    SLO_GUARD_ENABLED = False
+    def allow_launch(*args, **kwargs): return True, "guard_disabled"
+
+# Spawn vs Resale Arbiter
+try:
+    from arbiter.spawn_resale_arbiter import decide as arbiter_decide
+    ARBITER_ENABLED = True
+    logger.info("Spawn/resale arbiter loaded")
+except ImportError:
+    ARBITER_ENABLED = False
+    def arbiter_decide(*args, **kwargs): return "spawn", {"reason": "arbiter_disabled"}
+
+# Runbook Manager - Incident response
+try:
+    from runbooks import is_paused, pause_category, get_runbook_status
+    RUNBOOKS_ENABLED = True
+    logger.info("Runbooks loaded")
+except ImportError:
+    RUNBOOKS_ENABLED = False
+    def is_paused(cat): return False
+
+# SLO Dashboard - Metrics collection
+try:
+    from slo_dashboard import record_latency, record_delivery, record_margin
+    SLO_METRICS_ENABLED = True
+    logger.info("SLO metrics loaded")
+except ImportError:
+    SLO_METRICS_ENABLED = False
+    def record_latency(*args, **kwargs): pass
+    def record_delivery(*args, **kwargs): pass
+    def record_margin(*args, **kwargs): pass
+
 def _now():
     return datetime.now(timezone.utc).isoformat() + "Z"
 
@@ -191,11 +262,24 @@ class ApexEngine:
 
     def _check_safety_bounds(self, safety: Dict) -> bool:
         """Check if we're within safety policy bounds"""
-        max_daily_spend = safety.get("max_daily_ai_spend_usd", 500)
-        max_daily_bids = safety.get("max_daily_bids", 200)
+        # Check runbook pauses first
+        if RUNBOOKS_ENABLED and is_paused("all"):
+            logger.warning("Emergency stop active - all operations paused")
+            return False
 
-        # Would check actual daily totals against limits
-        # For now, always proceed
+        # Check governor degradation level
+        if GOVERNOR_ENABLED:
+            degradation = get_degradation_level()
+            if degradation >= 3:  # Level 3+ = pause non-critical
+                logger.warning(f"Governor degradation level {degradation} - restricting operations")
+                return False
+
+            # Check current spend status
+            spend_status = get_spend_status()
+            if spend_status.get("total_daily_spend_usd", 0) >= safety.get("max_daily_ai_spend_usd", 15000):
+                logger.warning("Daily spend cap reached")
+                return False
+
         return True
 
     async def _step_discovery(self) -> Dict[str, Any]:

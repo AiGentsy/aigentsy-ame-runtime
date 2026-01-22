@@ -1143,6 +1143,114 @@ try:
 except Exception as e:
     print(f"Monetization Fabric load error: {e}")
 
+# ============================================================================
+# PUBLIC PROOFS ROUTES (Merkle Root + Verification)
+# ============================================================================
+try:
+    from routes.public_proofs import router as proofs_router
+    app.include_router(proofs_router, tags=["Public Proofs"])
+    print("=" * 80)
+    print("PUBLIC PROOFS ROUTES LOADED - Trust Verification System")
+    print("=" * 80)
+    print("  Endpoints: /proofs, /proofs/root/today, /proofs/receipt/{id}")
+    print("  Features: Daily Merkle root, receipt verification, trust badges")
+    print("=" * 80)
+except Exception as e:
+    print(f"Public Proofs routes load error: {e}")
+
+# ============================================================================
+# CATALOG SITEMAP ROUTES (SKU Discovery)
+# ============================================================================
+try:
+    from routes.catalog_sitemap import router as sitemap_router
+    app.include_router(sitemap_router, tags=["Catalog Sitemap"])
+    print("=" * 80)
+    print("CATALOG SITEMAP ROUTES LOADED - SKU Discovery System")
+    print("=" * 80)
+    print("  Endpoints: /catalog/sitemap.json, /catalog/sitemap.xml, /catalog/skus")
+    print("  Features: Machine-readable SKU listing, SEO sitemap, category filtering")
+    print("=" * 80)
+except Exception as e:
+    print(f"Catalog Sitemap routes load error: {e}")
+
+# ============================================================================
+# SLO DASHBOARD (Internal + External Metrics)
+# ============================================================================
+try:
+    from slo_dashboard import get_external_slo, get_internal_slo, get_badges
+
+    @app.get("/slo/external", tags=["SLO Dashboard"])
+    async def slo_external():
+        """Public-facing SLO metrics"""
+        return get_external_slo()
+
+    @app.get("/slo/internal", tags=["SLO Dashboard"])
+    async def slo_internal():
+        """Internal ops dashboard data"""
+        return get_internal_slo()
+
+    @app.get("/slo/badges", tags=["SLO Dashboard"])
+    async def slo_badges():
+        """Badge data for widget embedding"""
+        return get_badges()
+
+    print("=" * 80)
+    print("SLO DASHBOARD LOADED - Trust Metrics System")
+    print("=" * 80)
+    print("  Endpoints: /slo/external, /slo/internal, /slo/badges")
+    print("  Metrics: Delivery rate, SLA compliance, CSAT, margin, latency")
+    print("=" * 80)
+except Exception as e:
+    print(f"SLO Dashboard load error: {e}")
+
+# ============================================================================
+# RUNBOOKS API (Incident Response + Rollback)
+# ============================================================================
+try:
+    from runbooks import (
+        pause_category, resume_category, get_runbook_status,
+        create_snapshot, list_snapshots, rollback_to_manifest
+    )
+
+    @app.post("/runbooks/pause/{category}", tags=["Runbooks"])
+    async def runbooks_pause(category: str, reason: str = None):
+        """Pause a category of operations"""
+        return pause_category(category, reason=reason)
+
+    @app.post("/runbooks/resume/{category}", tags=["Runbooks"])
+    async def runbooks_resume(category: str):
+        """Resume a paused category"""
+        return resume_category(category)
+
+    @app.get("/runbooks/status", tags=["Runbooks"])
+    async def runbooks_status():
+        """Get current runbook status"""
+        return get_runbook_status()
+
+    @app.post("/runbooks/snapshot", tags=["Runbooks"])
+    async def runbooks_snapshot(description: str = None):
+        """Create configuration snapshot"""
+        return create_snapshot(description)
+
+    @app.get("/runbooks/snapshots", tags=["Runbooks"])
+    async def runbooks_list():
+        """List available snapshots"""
+        return {"ok": True, "snapshots": list_snapshots()}
+
+    @app.post("/runbooks/rollback/{snapshot_id}", tags=["Runbooks"])
+    async def runbooks_rollback(snapshot_id: str):
+        """Rollback to snapshot"""
+        return rollback_to_manifest(snapshot_id)
+
+    print("=" * 80)
+    print("RUNBOOKS API LOADED - Incident Response System")
+    print("=" * 80)
+    print("  Endpoints: /runbooks/pause, /runbooks/resume, /runbooks/rollback")
+    print("  Features: Category pause, config snapshots, one-click rollback")
+    print("=" * 80)
+except Exception as e:
+    print(f"Runbooks API load error: {e}")
+
 async def auto_bid_background():
     """Runs in background forever"""
     base_url = os.getenv("SELF_URL", "http://localhost:8000")

@@ -10,6 +10,15 @@ try:
 except Exception:
     def publish(*a, **k): pass
 
+# PSP enforcer for fund flow validation
+try:
+    from dealgraph_overlays.psp_enforcer import enforce_psp, validate_payment_meta
+    PSP_ENFORCER_ENABLED = True
+except ImportError:
+    PSP_ENFORCER_ENABLED = False
+    def enforce_psp(meta): return True, None
+    def validate_payment_meta(meta): return True, None, None
+
 router = APIRouter()
 
 # In-memory cache (replace with Redis/DB for production)

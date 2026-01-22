@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "description": "SLO enforcement for autospawn and white-label operations",
+  "sku_min_margin_pct": 0.22,
+  "sku_min_csat": 4.4,
+  "sku_max_late_7d": 0.08,
+  "sku_max_dispute_rate": 0.03,
+  "sku_min_completion_rate": 0.92,
+  "cooldown_hours_on_breach": 24,
+  "partner_tiers": {
+    "platinum": {
+      "min_margin_pct": 0.18,
+      "min_csat": 4.2,
+      "max_late_7d": 0.10,
+      "cooldown_hours": 12
+    },
+    "gold": {
+      "min_margin_pct": 0.20,
+      "min_csat": 4.3,
+      "max_late_7d": 0.09,
+      "cooldown_hours": 18
+    },
+    "silver": {
+      "min_margin_pct": 0.22,
+      "min_csat": 4.4,
+      "max_late_7d": 0.08,
+      "cooldown_hours": 24
+    },
+    "bronze": {
+      "min_margin_pct": 0.25,
+      "min_csat": 4.5,
+      "max_late_7d": 0.06,
+      "cooldown_hours": 48
+    }
+  },
+  "auto_actions": {
+    "on_margin_breach": ["pause_sku", "notify_partner", "route_to_review"],
+    "on_csat_breach": ["pause_sku", "trigger_quality_audit"],
+    "on_late_breach": ["pause_sku", "increase_sla_buffer"],
+    "on_dispute_breach": ["pause_sku", "enable_enhanced_verification"]
+  },
+  "jurisdictions": {
+    "US": {"min_creator_payout_pct": 0.50, "max_platform_take_pct": 0.30},
+    "EU": {"min_creator_payout_pct": 0.55, "max_platform_take_pct": 0.25},
+    "UK": {"min_creator_payout_pct": 0.55, "max_platform_take_pct": 0.25},
+    "default": {"min_creator_payout_pct": 0.50, "max_platform_take_pct": 0.30}
+  }
+}

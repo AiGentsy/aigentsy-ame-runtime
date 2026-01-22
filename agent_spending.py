@@ -3,6 +3,14 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from log_to_jsonbin import get_user, credit_aigx, append_intent_ledger
 
+# Governor integration for global spend caps
+try:
+    from governors.governor_runtime import guard_spend as governor_guard_spend
+    GOVERNOR_ENABLED = True
+except ImportError:
+    GOVERNOR_ENABLED = False
+    def governor_guard_spend(*args, **kwargs): return True
+
 # Daily spending limits by autonomy level
 AL_LIMITS = {
     "AL0": 0,      # No autonomous spending
@@ -58,11 +66,20 @@ async def check_spending_capacity(username: str, amount_usd: float) -> Dict[str,
 async def execute_agent_spend(username: str, amount_usd: float, basis: str, ref: str = None) -> Dict[str, Any]:
     """Execute agent spending (checks limits first)"""
     try:
+        # Check global governor caps first
+        if GOVERNOR_ENABLED:
+            if not governor_guard_spend("agent_spend", amount_usd, module="agent_spending"):
+                return {
+                    "ok": False,
+                    "error": "governor_cap_exceeded",
+                    "message": "Global spend cap reached for agent operations"
+                }
+
         # Check capacity
         check = await check_spending_capacity(username, amount_usd)
         if not check.get("ok"):
             return check
-        
+
         if not check.get("can_spend"):
             return {
                 "ok": False,

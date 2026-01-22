@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "description": "Global spend caps and risk governors with automatic degradation",
+  "caps": {
+    "bids_usd_day": 2500,
+    "autospawn_usd_day": 1500,
+    "assurance_exposure_usd_day": 5000,
+    "fx_notional_day": 20000,
+    "total_daily_spend_usd": 15000,
+    "max_single_transaction_usd": 2500
+  },
+  "module_caps": {
+    "auto_hedge": {"daily_usd": 3000, "max_position_usd": 1000},
+    "securitization_desk": {"daily_usd": 5000, "max_tranche_usd": 2000},
+    "idle_time_arbitrage": {"daily_usd": 1000, "max_booking_usd": 200},
+    "lead_overflow_exchange": {"daily_usd": 2000, "max_listing_usd": 500},
+    "partner_mesh": {"daily_usd": 1500, "max_jv_usd": 750}
+  },
+  "actions": {
+    "on_cap_hit": ["pause", "route_to_LOX", "notify_ops"],
+    "on_soft_cap_80pct": ["warn", "degrade_to_low_cost_channels"],
+    "on_critical_cap_95pct": ["force_resale", "pause_new_acquisitions"]
+  },
+  "degradation_cascade": [
+    {"threshold_pct": 80, "action": "disable_premium_channels"},
+    {"threshold_pct": 90, "action": "disable_paid_discovery"},
+    {"threshold_pct": 95, "action": "route_all_to_LOX"},
+    {"threshold_pct": 100, "action": "full_pause"}
+  ],
+  "exemptions": {
+    "whitelisted_partners": [],
+    "critical_cois": []
+  }
+}
