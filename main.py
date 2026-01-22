@@ -34407,21 +34407,29 @@ async def reddit_post_reply(body: Dict = Body(...)):
         title = opportunity.get("title", "")
         description = opportunity.get("description", "")
 
-        prompt = f"""Generate a helpful Reddit comment for this post:
+        prompt = f"""Generate a Reddit comment for this post. Be cool, smart, and approachable.
 
 Subreddit: r/{subreddit}
 Title: {title}
 Content: {description[:1000] if description else 'No content provided'}
 
-Guidelines:
-- Be genuinely helpful, not salesy
-- Match Reddit's casual tone
-- Offer specific, actionable advice
-- If relevant, mention you can help further (but don't be pushy)
-- Keep it concise (2-3 paragraphs max)
-- Don't use corporate speak
+TONE: Like a sharp friend who's been there - confident but not arrogant, helpful but not preachy.
 
-Generate the comment text only, no meta commentary."""
+RULES:
+- Lead with ONE specific, concrete insight they can use immediately
+- If suggesting a solution, explain WHY it works (the logic/ROI)
+- No fluff, no "great question!", no corporate speak
+- Write like you text - short sentences, casual punctuation
+- If you can help further, drop a subtle hook (not "DM me!" but "happy to dig deeper if useful")
+- Max 2-3 short paragraphs
+
+AVOID:
+- Starting with "Hey there!" or "Great post!"
+- Bullet points or numbered lists
+- Sounding like a LinkedIn influencer
+- Generic advice they could Google
+
+Generate ONLY the comment text."""
 
         # Try OpenRouter
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
@@ -34561,21 +34569,28 @@ async def linkedin_send_message(body: Dict = Body(...)):
         title = opportunity.get("title", "")
         description = opportunity.get("description", "")
 
-        prompt = f"""Generate a LinkedIn message for this opportunity:
+        prompt = f"""Generate a LinkedIn message. Smart, direct, zero fluff.
 
 Profile: {profile_id}
 Context: {title}
 Details: {description[:500] if description else 'Business opportunity'}
 
-Guidelines:
-- Professional but personable tone
-- Reference their work/post specifically
-- Offer clear value proposition
-- Include soft call-to-action
-- Keep under 300 characters for connection request, or ~500 for message
-- No emojis or excessive enthusiasm
+TONE: Like emailing a busy exec who respects your time if you respect theirs.
 
-Generate the message text only."""
+RULES:
+- Open with something specific about THEIR work (shows you did homework)
+- State the concrete value/opportunity in one sentence
+- Give a logical reason why this makes sense for THEM (ROI, efficiency, growth)
+- End with low-friction next step ("worth a 10-min call?" not "let's connect!")
+- Max 3-4 sentences, ~400 characters
+
+AVOID:
+- "I hope this message finds you well"
+- "I'd love to pick your brain"
+- Vague promises, buzzwords, exclamation marks
+- Anything that sounds templated
+
+Generate ONLY the message text."""
 
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         if openrouter_key:
@@ -34694,18 +34709,19 @@ async def linkedin_connect(body: Dict = Body(...)):
     if not message:
         title = opportunity.get("title", "")
 
-        prompt = f"""Generate a LinkedIn connection request note (MAX 280 characters):
+        prompt = f"""LinkedIn connection note. MAX 280 chars. Be sharp.
 
 Profile: {profile_id}
 Context: {title}
 
-Guidelines:
-- Mention something specific about their work
-- State why you want to connect
-- Be genuine, not salesy
-- MUST be under 280 characters
+Write like a smart peer, not a salesperson:
+- Reference ONE specific thing about their work
+- State the mutual benefit in connecting (logic, not flattery)
+- No "I'd love to connect" or "great work!"
 
-Generate only the note text."""
+Example good: "Your take on [X] was spot-on. Working on similar problems in [Y] - think there's overlap worth exploring."
+
+Generate ONLY the note (under 280 chars)."""
 
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         if openrouter_key:
@@ -34816,19 +34832,20 @@ async def twitter_post_reply(body: Dict = Body(...)):
         title = opportunity.get("title", "")
         description = opportunity.get("description", "")
 
-        prompt = f"""Generate a Twitter reply for this tweet:
+        prompt = f"""Twitter reply. Max 280 chars. Sound like a smart person, not a bot.
 
 Original tweet: {title}
 Context: {description[:300] if description else ''}
 
-Guidelines:
-- Be helpful and engaging
-- Match Twitter's casual tone
-- Keep under 280 characters
-- Don't be salesy or spammy
-- Add value to the conversation
+RULES:
+- Add ONE concrete insight, counterpoint, or useful fact
+- If you can help, say it straight ("built something for this" > "happy to help!")
+- Match their energy - if they're frustrated, be empathetic; if curious, be informative
+- No "Great point!" or "This is so true!"
 
-Generate only the reply text."""
+AVOID: hashtags, @mentions, emojis, anything that screams "engagement farming"
+
+Generate ONLY the reply text (under 280 chars)."""
 
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         if openrouter_key:
@@ -34967,18 +34984,19 @@ async def twitter_send_dm(body: Dict = Body(...)):
     if not message:
         title = opportunity.get("title", "")
 
-        prompt = f"""Generate a Twitter DM for this opportunity:
+        prompt = f"""Twitter DM. Max 500 chars. Get to the point fast.
 
 Context: {title}
 
-Guidelines:
-- Professional but friendly
-- Reference their public content
-- Clear value proposition
-- Soft call-to-action
-- Keep under 500 characters
+RULES:
+- First sentence: reference their specific tweet/work (shows you're not mass-DMing)
+- Second sentence: the concrete opportunity/value (numbers if possible)
+- Third sentence: low-friction ask ("quick call?" or "want me to send details?")
+- Sound like a busy person respecting another busy person's time
 
-Generate only the DM text."""
+AVOID: "Hey!" openers, vague pitches, anything that sounds copy-pasted
+
+Generate ONLY the DM text."""
 
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         if openrouter_key:
