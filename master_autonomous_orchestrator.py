@@ -53,6 +53,28 @@ except ImportError as e:
     logging.warning(f"Platform execution flows not available: {e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PDL CATALOG & UNIVERSAL FABRIC
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from pdl_polymorphic_catalog import get_pdl_catalog, get_pdl, PDL
+    PDL_CATALOG_AVAILABLE = True
+except ImportError as e:
+    PDL_CATALOG_AVAILABLE = False
+    logging.warning(f"PDL Catalog not available: {e}")
+    def get_pdl_catalog(): return None
+    def get_pdl(name): return None
+
+try:
+    from universal_fulfillment_fabric import fabric_execute, get_fabric_status
+    UNIVERSAL_FABRIC_AVAILABLE = True
+except ImportError as e:
+    UNIVERSAL_FABRIC_AVAILABLE = False
+    logging.warning(f"Universal Fulfillment Fabric not available: {e}")
+    async def fabric_execute(pdl_name, params, ev_estimate=0, dry_run=False):
+        return {"ok": False, "error": "Universal Fabric not available"}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STRUCTURED LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -405,6 +427,90 @@ class MasterAutonomousOrchestrator:
         self.circuit_breaker.record_failure(platform)
         self.current_run["metrics"]["calls_failed"] += 1
         return {"ok": False, "error": f"max_retries:{last_error}"}
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # FABRIC EXECUTION - Routes through PDL catalog and Universal Fabric
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _fabric_execute(
+        self,
+        pdl_name: str,
+        params: Dict[str, Any],
+        opportunity: Dict[str, Any] = None,
+        fallback_endpoint: str = None
+    ) -> Dict[str, Any]:
+        """
+        Execute an action through the Universal Fulfillment Fabric.
+
+        Routing logic:
+        1. Check if PDL exists and can execute via API
+        2. If yes, call the API endpoint directly
+        3. If no API but browser URL available, use Universal Fabric
+        4. If neither, fall back to specified endpoint or queue for manual
+
+        Args:
+            pdl_name: PDL name (e.g., "github.submit_pr")
+            params: Parameters for the PDL
+            opportunity: Original opportunity for EV calculation
+            fallback_endpoint: Fallback API endpoint if fabric not available
+
+        Returns:
+            Execution result dict
+        """
+        ev_estimate = opportunity.get("_ev", 0) if opportunity else 0
+        platform = pdl_name.split(".")[0] if "." in pdl_name else "unknown"
+
+        # Check circuit breaker
+        if not self.circuit_breaker.can_call(platform):
+            return {"ok": False, "error": f"circuit_open:{platform}"}
+
+        # Try PDL Catalog first
+        if PDL_CATALOG_AVAILABLE:
+            pdl = get_pdl(pdl_name)
+            if pdl:
+                # Check if API is available
+                if pdl.can_execute() and pdl.endpoint:
+                    # Use direct API call
+                    result = await self._call(
+                        "POST",
+                        pdl.endpoint,
+                        params,
+                        platform=platform
+                    )
+                    if result.get("ok"):
+                        self.circuit_breaker.record_success(platform)
+                    return result
+
+                # Try Universal Fabric for browser automation
+                if UNIVERSAL_FABRIC_AVAILABLE and (pdl.browser_url_template or pdl.fabric_endpoint):
+                    try:
+                        result = await fabric_execute(
+                            pdl_name=pdl_name,
+                            params=params,
+                            ev_estimate=ev_estimate,
+                            dry_run=False
+                        )
+                        if result.get("ok"):
+                            self.circuit_breaker.record_success(platform)
+                            _log_structured(self._run_id(), "fabric", "executed", {
+                                "pdl": pdl_name,
+                                "method": "universal_fabric"
+                            })
+                        return result
+                    except Exception as e:
+                        logger.warning(f"Fabric execution failed for {pdl_name}: {e}")
+
+        # Fall back to direct endpoint call
+        if fallback_endpoint:
+            return await self._call("POST", fallback_endpoint, params, platform=platform)
+
+        # Queue for manual if nothing else works
+        return {
+            "ok": False,
+            "queued": True,
+            "reason": f"No execution path available for {pdl_name}",
+            "pdl_name": pdl_name
+        }
 
     # ═══════════════════════════════════════════════════════════════════════════
     # DEDUPE + EV PRIORITIZATION
@@ -1133,12 +1239,18 @@ class MasterAutonomousOrchestrator:
                         })
                         continue
 
-                    # Step 1: Analyze the issue
-                    analysis = await self._call("POST", "/github/analyze-issue", {
-                        "url": opp.get("url"),
-                        "title": opp.get("title"),
-                        "description": opp.get("description", "")
-                    }, idempotency_key=f"{idem_base}|analyze", platform=platform)
+                    # Step 1: Analyze the issue (via Fabric)
+                    flow_info = opp.get("_flow", {})
+                    analysis = await self._fabric_execute(
+                        pdl_name="github.analyze_issue",
+                        params={
+                            "issue_url": opp.get("url"),
+                            "title": opp.get("title"),
+                            "description": opp.get("description", "")
+                        },
+                        opportunity=opp,
+                        fallback_endpoint="/github/analyze-issue"
+                    )
 
                     if not analysis.get("ok"):
                         results["errors"].append({
@@ -1148,16 +1260,21 @@ class MasterAutonomousOrchestrator:
                         })
                         continue
 
-                    # Step 2: Generate solution
+                    # Step 2: Generate solution (via Fabric)
                     # Clean opportunity for JSON serialization (remove _flow object)
                     clean_opp = {k: v for k, v in opp.items() if k != "_flow"}
-                    solution = await self._call("POST", "/fulfillment/code-generation", {
-                        "opportunity": clean_opp,
-                        "analysis": analysis,
-                        "ev_score": opp.get("_ev", 0)
-                    }, idempotency_key=f"{idem_base}|solution", platform="internal")
+                    solution = await self._fabric_execute(
+                        pdl_name="ai.generate_code",
+                        params={
+                            "opportunity": clean_opp,
+                            "analysis": analysis,
+                            "context": {"ev_score": opp.get("_ev", 0)}
+                        },
+                        opportunity=opp,
+                        fallback_endpoint="/fulfillment/code-generation"
+                    )
 
-                    if not solution.get("success"):
+                    if not solution.get("success") and not solution.get("ok"):
                         results["errors"].append({
                             "opportunity_id": opp.get("id"),
                             "step": "generate_solution",
@@ -1165,15 +1282,20 @@ class MasterAutonomousOrchestrator:
                         })
                         continue
 
-                    # Step 3: Submit PR (or post comment for non-bounties)
-                    flow_info = opp.get("_flow", {})
+                    # Step 3: Submit PR (or post comment for non-bounties) - via Fabric
                     if flow_info.get("flow_key") == "github_bounty":
-                        # Submit actual PR
-                        pr_result = await self._call("POST", "/github/submit-pr", {
-                            "url": opp.get("url"),
-                            "solution": solution,
-                            "opportunity": opp
-                        }, idempotency_key=f"{idem_base}|pr", platform=platform)
+                        # Submit actual PR via Fabric
+                        pr_result = await self._fabric_execute(
+                            pdl_name="github.submit_pr",
+                            params={
+                                "repo_url": opp.get("url"),
+                                "title": f"Fix: {opp.get('title', 'Issue fix')[:50]}",
+                                "body": solution.get("summary", solution.get("code", ""))[:2000],
+                                "solution": solution
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/github/submit-pr"
+                        )
 
                         if pr_result.get("ok"):
                             results["immediate_executed"] += 1
@@ -1193,19 +1315,24 @@ class MasterAutonomousOrchestrator:
                                 "pr_url": pr_result.get("pr_url")
                             })
                     else:
-                        # Post interest comment
-                        comment_result = await self._call("POST", "/github/post-comment", {
-                            "url": opp.get("url"),
-                            "type": "solution_offer",
-                            "solution_preview": solution.get("summary", "")[:500]
-                        }, idempotency_key=f"{idem_base}|comment", platform=platform)
+                        # Post interest comment via Fabric
+                        comment_result = await self._fabric_execute(
+                            pdl_name="github.post_comment",
+                            params={
+                                "issue_url": opp.get("url"),
+                                "comment": solution.get("summary", "")[:500]
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/github/post-comment"
+                        )
 
                         if comment_result.get("ok"):
                             results["immediate_executed"] += 1
                             results["by_mode"]["github_issue"] = results["by_mode"].get("github_issue", 0) + 1
 
                             _log_structured(self._run_id(), "immediate", "comment_posted", {
-                                "url": opp.get("url")
+                                "url": opp.get("url"),
+                                "via_fabric": True
                             })
 
             except Exception as e:
@@ -1245,16 +1372,21 @@ class MasterAutonomousOrchestrator:
                         })
                         continue
 
-                    # Route by platform
+                    # Route by platform - use Fabric for all
                     if platform == "reddit":
-                        # Post helpful reply to Reddit thread
-                        reply_result = await self._call("POST", "/reddit/post-reply", {
-                            "url": url,
-                            "opportunity": clean_opp,
-                            "type": "helpful"
-                        }, idempotency_key=f"{idem_base}|reply", platform=platform)
+                        # Post helpful reply via Fabric
+                        reply_result = await self._fabric_execute(
+                            pdl_name="reddit.post_reply",
+                            params={
+                                "post_url": url,
+                                "opportunity": clean_opp,
+                                "reply_text": None  # Will be generated by endpoint
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/reddit/post-reply"
+                        )
 
-                        if reply_result.get("ok"):
+                        if reply_result.get("ok") or reply_result.get("queued"):
                             results["conversational_started"] += 1
                             results["by_mode"]["reddit_reply"] = results["by_mode"].get("reddit_reply", 0) + 1
 
@@ -1263,12 +1395,14 @@ class MasterAutonomousOrchestrator:
                                 "channel": "reddit",
                                 "status": "reply_posted" if not reply_result.get("queued") else "queued",
                                 "comment_url": reply_result.get("comment_url"),
-                                "ev": opp.get("_ev", 0)
+                                "ev": opp.get("_ev", 0),
+                                "via_fabric": True
                             })
 
                             _log_structured(self._run_id(), "conversational", "reddit_reply", {
                                 "subreddit": reply_result.get("subreddit"),
-                                "queued": reply_result.get("queued", False)
+                                "queued": reply_result.get("queued", False),
+                                "via_fabric": True
                             })
                         else:
                             results["errors"].append({
@@ -1278,13 +1412,19 @@ class MasterAutonomousOrchestrator:
                             })
 
                     elif platform == "linkedin":
-                        # Send LinkedIn connection request
-                        connect_result = await self._call("POST", "/linkedin/connect", {
-                            "url": url,
-                            "opportunity": clean_opp
-                        }, idempotency_key=f"{idem_base}|connect", platform=platform)
+                        # Send LinkedIn connection request via Fabric
+                        connect_result = await self._fabric_execute(
+                            pdl_name="linkedin.send_connection",
+                            params={
+                                "profile_url": url,
+                                "opportunity": clean_opp,
+                                "note": None  # Will be generated by endpoint
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/linkedin/connect"
+                        )
 
-                        if connect_result.get("ok"):
+                        if connect_result.get("ok") or connect_result.get("queued"):
                             results["conversational_started"] += 1
                             results["by_mode"]["linkedin_connect"] = results["by_mode"].get("linkedin_connect", 0) + 1
 
@@ -1293,12 +1433,14 @@ class MasterAutonomousOrchestrator:
                                 "channel": "linkedin",
                                 "status": "connection_sent" if not connect_result.get("queued") else "queued",
                                 "profile_id": connect_result.get("profile_id"),
-                                "ev": opp.get("_ev", 0)
+                                "ev": opp.get("_ev", 0),
+                                "via_fabric": True
                             })
 
                             _log_structured(self._run_id(), "conversational", "linkedin_connect", {
                                 "profile_id": connect_result.get("profile_id"),
-                                "queued": connect_result.get("queued", False)
+                                "queued": connect_result.get("queued", False),
+                                "via_fabric": True
                             })
                         else:
                             results["errors"].append({
@@ -1308,13 +1450,19 @@ class MasterAutonomousOrchestrator:
                             })
 
                     elif platform == "twitter":
-                        # Reply to tweet
-                        reply_result = await self._call("POST", "/twitter/post-reply", {
-                            "url": url,
-                            "opportunity": clean_opp
-                        }, idempotency_key=f"{idem_base}|reply", platform=platform)
+                        # Reply to tweet via Fabric
+                        reply_result = await self._fabric_execute(
+                            pdl_name="twitter.post_reply",
+                            params={
+                                "tweet_url": url,
+                                "opportunity": clean_opp,
+                                "reply_text": None  # Will be generated
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/twitter/post-reply"
+                        )
 
-                        if reply_result.get("ok"):
+                        if reply_result.get("ok") or reply_result.get("queued"):
                             results["conversational_started"] += 1
                             results["by_mode"]["twitter_reply"] = results["by_mode"].get("twitter_reply", 0) + 1
 
@@ -1323,12 +1471,14 @@ class MasterAutonomousOrchestrator:
                                 "channel": "twitter",
                                 "status": "reply_posted" if not reply_result.get("queued") else "queued",
                                 "tweet_url": reply_result.get("tweet_url"),
-                                "ev": opp.get("_ev", 0)
+                                "ev": opp.get("_ev", 0),
+                                "via_fabric": True
                             })
 
                             _log_structured(self._run_id(), "conversational", "twitter_reply", {
                                 "tweet_id": reply_result.get("tweet_id"),
-                                "queued": reply_result.get("queued", False)
+                                "queued": reply_result.get("queued", False),
+                                "via_fabric": True
                             })
                         else:
                             results["errors"].append({
@@ -1338,14 +1488,31 @@ class MasterAutonomousOrchestrator:
                             })
 
                     elif platform == "hackernews":
-                        # HackerNews comment (queue for manual if no API)
-                        results["by_mode"]["hackernews_queued"] = results["by_mode"].get("hackernews_queued", 0) + 1
+                        # HackerNews comment via Fabric (browser automation)
+                        hn_result = await self._fabric_execute(
+                            pdl_name="hackernews.post_comment",
+                            params={
+                                "item_id": url.split("id=")[-1] if "id=" in url else "",
+                                "opportunity": clean_opp,
+                                "comment_text": None  # Will be generated
+                            },
+                            opportunity=opp,
+                            fallback_endpoint="/hackernews/post-comment"
+                        )
+
+                        if hn_result.get("ok"):
+                            results["conversational_started"] += 1
+                            results["by_mode"]["hackernews_posted"] = results["by_mode"].get("hackernews_posted", 0) + 1
+                        else:
+                            results["by_mode"]["hackernews_queued"] = results["by_mode"].get("hackernews_queued", 0) + 1
+
                         results["conversations_started"].append({
                             "opportunity_id": opp.get("id"),
                             "channel": "hackernews",
-                            "status": "queued_manual",
+                            "status": "posted" if hn_result.get("ok") else "queued_fabric",
                             "url": url,
-                            "ev": opp.get("_ev", 0)
+                            "ev": opp.get("_ev", 0),
+                            "via_fabric": True
                         })
 
                     elif platform == "email" or opp.get("contact_email"):

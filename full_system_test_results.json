@@ -1,6 +1,6 @@
 {
-  "test_run_id": "full_test_1769041558",
-  "started_at": "2026-01-22T00:25:58.620724+00:00Z",
+  "test_run_id": "full_test_1769105333",
+  "started_at": "2026-01-22T18:08:53.701611+00:00Z",
   "path_a_user": {
     "simple_onboard": {
       "test": "simple_onboard",
@@ -14,9 +14,9 @@
           "automation",
           "consulting"
         ],
-        "session_id": "onboard_15b4d450"
+        "session_id": "onboard_1e70ca04"
       },
-      "timestamp": "2026-01-22T00:25:58.622922+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.704529+00:00Z"
     },
     "sku_orchestrator": {
       "test": "sku_orchestrator",
@@ -28,7 +28,7 @@
           "social"
         ]
       },
-      "timestamp": "2026-01-22T00:25:58.623838+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.705552+00:00Z"
     },
     "template_actionizer": {
       "test": "template_actionizer",
@@ -36,7 +36,7 @@
       "details": {
         "templates_available": true
       },
-      "timestamp": "2026-01-22T00:25:58.742639+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.844494+00:00Z"
     },
     "one_tap_widget": {
       "test": "one_tap_widget",
@@ -53,7 +53,7 @@
           "partners": 1
         }
       },
-      "timestamp": "2026-01-22T00:25:58.742961+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.845315+00:00Z"
     },
     "outcome_subscriptions": {
       "test": "outcome_subscriptions",
@@ -67,7 +67,7 @@
         ],
         "mrr": 0
       },
-      "timestamp": "2026-01-22T00:25:58.743289+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.845768+00:00Z"
     },
     "public_proof_page": {
       "test": "public_proof_page",
@@ -76,7 +76,7 @@
         "trust_score": 60.0,
         "badges": 0
       },
-      "timestamp": "2026-01-22T00:25:58.744186+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.847651+00:00Z"
     }
   },
   "path_b_platform": {
@@ -96,7 +96,7 @@
           "subscriptions"
         ]
       },
-      "timestamp": "2026-01-22T00:25:58.817170+00:00Z"
+      "timestamp": "2026-01-22T18:08:53.964227+00:00Z"
     },
     "discovery_engine": {
       "test": "discovery_engine",
@@ -105,7 +105,7 @@
         "engine_initialized": true,
         "platforms_supported": 27
       },
-      "timestamp": "2026-01-22T00:25:58.882250+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.041402+00:00Z"
     },
     "monetization_fabric": {
       "test": "monetization_fabric",
@@ -115,7 +115,7 @@
         "platform_fee": 6.0,
         "user_share": 65.8
       },
-      "timestamp": "2026-01-22T00:25:58.882338+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.041500+00:00Z"
     },
     "brain_overlay": {
       "test": "brain_overlay",
@@ -128,7 +128,7 @@
           "params"
         ]
       },
-      "timestamp": "2026-01-22T00:25:58.882376+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.041534+00:00Z"
     },
     "integration_hooks": {
       "test": "integration_hooks",
@@ -138,7 +138,7 @@
         "brain_event": true,
         "suggested_price": 646.25
       },
-      "timestamp": "2026-01-22T00:25:58.882503+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.041656+00:00Z"
     },
     "universal_executor": {
       "test": "universal_executor",
@@ -146,7 +146,7 @@
       "details": {
         "executor_initialized": true
       },
-      "timestamp": "2026-01-22T00:25:58.887781+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.046462+00:00Z"
     },
     "proof_merkle": {
       "test": "proof_merkle",
@@ -155,21 +155,21 @@
         "total_executions": 0,
         "days_tracked": 0
       },
-      "timestamp": "2026-01-22T00:25:58.887809+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.046486+00:00Z"
     },
     "revsplit_optimizer": {
       "test": "revsplit_optimizer",
       "passed": true,
       "details": {
         "splits": {
-          "platform": 60.0,
-          "user": 700.0,
-          "pool": 100.0,
+          "platform": 100.0,
+          "user": 650.0,
+          "pool": 120.0,
           "partner": 50.0
         },
         "strategy": "unknown"
       },
-      "timestamp": "2026-01-22T00:25:58.887857+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.046533+00:00Z"
     }
   },
   "modules_tested": [
@@ -266,7 +266,7 @@
         "net_exposure": 0.0,
         "hedged_pct": 0
       },
-      "timestamp": "2026-01-22T00:25:58.888185+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.046928+00:00Z"
     },
     "builder_risk_tranches": {
       "test": "builder_risk_tranches",
@@ -301,7 +301,7 @@
           }
         }
       },
-      "timestamp": "2026-01-22T00:25:58.888487+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.047271+00:00Z"
     },
     "data_coop": {
       "test": "data_coop",
@@ -310,7 +310,7 @@
         "members": 0,
         "signals_shared": 0
       },
-      "timestamp": "2026-01-22T00:25:58.888832+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.047661+00:00Z"
     },
     "idle_time_arbitrage": {
       "test": "idle_time_arbitrage",
@@ -319,7 +319,7 @@
         "idle_slots": 0,
         "value_captured": 0
       },
-      "timestamp": "2026-01-22T00:25:58.889125+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.047936+00:00Z"
     },
     "lox": {
       "test": "lox",
@@ -328,7 +328,7 @@
         "book_size": 0,
         "total_volume": 0
       },
-      "timestamp": "2026-01-22T00:25:58.889363+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.048217+00:00Z"
     },
     "partner_mesh": {
       "test": "partner_mesh",
@@ -337,7 +337,7 @@
         "active_partners": 0,
         "deals_routed": 0
       },
-      "timestamp": "2026-01-22T00:25:58.889549+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.048464+00:00Z"
     },
     "profit_analyzer": {
       "test": "profit_analyzer",
@@ -346,7 +346,7 @@
         "avg_margin": 0.25,
         "recommendations": 2
       },
-      "timestamp": "2026-01-22T00:25:58.891461+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.051038+00:00Z"
     },
     "securitization_desk": {
       "test": "securitization_desk",
@@ -355,7 +355,7 @@
         "abs_issued": 0,
         "total_value": 0
       },
-      "timestamp": "2026-01-22T00:25:58.891685+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.051257+00:00Z"
     },
     "auto_spawn_engine": {
       "test": "auto_spawn_engine",
@@ -364,7 +364,7 @@
         "trends_detected": 0,
         "platforms": 27
       },
-      "timestamp": "2026-01-22T00:25:58.894802+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.054314+00:00Z"
     },
     "oio": {
       "test": "oio",
@@ -373,7 +373,7 @@
         "policies_active": 0,
         "premium_for_1000": 80.0
       },
-      "timestamp": "2026-01-22T00:25:58.895114+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.054679+00:00Z"
     }
   },
   "monetization": {
@@ -385,7 +385,7 @@
         "processing_fee": 0,
         "total_fee": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895133+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.054697+00:00Z"
     },
     "ledger": {
       "test": "ledger",
@@ -394,7 +394,7 @@
         "entry_posted": false,
         "total_entries": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895165+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.054984+00:00Z"
     },
     "settlements": {
       "test": "settlements",
@@ -402,7 +402,7 @@
       "details": {
         "pending_count": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895174+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.054992+00:00Z"
     },
     "referrals": {
       "test": "referrals",
@@ -411,7 +411,7 @@
         "referral_bonus": 120.0,
         "active_referrers": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895186+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055003+00:00Z"
     },
     "sponsorships": {
       "test": "sponsorships",
@@ -420,7 +420,7 @@
         "active_sponsors": 0,
         "total_revenue": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895200+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055015+00:00Z"
     },
     "subscriptions_mon": {
       "test": "subscriptions_mon",
@@ -429,7 +429,7 @@
         "mrr": 0,
         "active_subscriptions": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895205+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055020+00:00Z"
     },
     "proof_badges": {
       "test": "proof_badges",
@@ -438,7 +438,7 @@
         "total_badges": 0,
         "conversion_boost_avg": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895213+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055030+00:00Z"
     },
     "arbitrage_engine": {
       "test": "arbitrage_engine",
@@ -447,7 +447,7 @@
         "opportunities_found": 0,
         "profit_captured": 0
       },
-      "timestamp": "2026-01-22T00:25:58.895218+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055035+00:00Z"
     }
   },
   "connectors": {
@@ -455,62 +455,62 @@
       "test": "stripe",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899665+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055059+00:00Z"
     },
     "shopify": {
       "test": "shopify",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899693+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055071+00:00Z"
     },
     "email": {
       "test": "email",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899706+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055085+00:00Z"
     },
     "slack": {
       "test": "slack",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899716+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055095+00:00Z"
     },
     "airtable": {
       "test": "airtable",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899727+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055104+00:00Z"
     },
     "storage": {
       "test": "storage",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899737+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055114+00:00Z"
     },
     "resend": {
       "test": "resend",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899747+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055122+00:00Z"
     },
     "sms": {
       "test": "sms",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899755+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055130+00:00Z"
     },
     "webhook": {
       "test": "webhook",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899764+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055138+00:00Z"
     },
     "http": {
       "test": "http",
       "passed": true,
       "details": {},
-      "timestamp": "2026-01-22T00:25:58.899773+00:00Z"
+      "timestamp": "2026-01-22T18:08:54.055150+00:00Z"
     }
   },
-  "completed_at": "2026-01-22T00:25:58.899775+00:00Z"
+  "completed_at": "2026-01-22T18:08:54.055152+00:00Z"
 }

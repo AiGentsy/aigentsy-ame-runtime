@@ -5208,6 +5208,206 @@ async def get_flow_status():
         }
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PDL CATALOG ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/pdl/catalog")
+async def get_pdl_catalog_endpoint():
+    """
+    Get the full PDL (Protocol Descriptor Language) catalog.
+
+    Returns all platform actions with their:
+    - Execution method (api, browser, universal_fabric)
+    - Required APIs and availability
+    - Cost models and SLAs
+    - Auto-execute eligibility
+    """
+    try:
+        from pdl_polymorphic_catalog import get_pdl_catalog
+        catalog = get_pdl_catalog()
+        pdls = catalog.all()
+
+        return {
+            "ok": True,
+            "total": len(pdls),
+            "pdls": [pdl.to_dict() for pdl in pdls],
+            "summary": catalog.summary()
+        }
+    except ImportError as e:
+        return {"ok": False, "error": f"PDL Catalog not available: {e}"}
+
+
+@app.get("/pdl/summary")
+async def get_pdl_summary():
+    """Get PDL catalog summary stats"""
+    try:
+        from pdl_polymorphic_catalog import get_pdl_catalog
+        catalog = get_pdl_catalog()
+        return {
+            "ok": True,
+            **catalog.summary()
+        }
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/pdl/{name}")
+async def get_pdl_by_name(name: str):
+    """
+    Get a specific PDL by name.
+
+    Example: /pdl/github.submit_pr
+    """
+    try:
+        from pdl_polymorphic_catalog import get_pdl
+        pdl = get_pdl(name)
+        if pdl:
+            return {"ok": True, "pdl": pdl.to_dict()}
+        return {"ok": False, "error": f"PDL not found: {name}"}
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/pdl/platform/{platform}")
+async def get_pdls_by_platform(platform: str):
+    """Get all PDLs for a specific platform"""
+    try:
+        from pdl_polymorphic_catalog import get_pdl_catalog
+        catalog = get_pdl_catalog()
+        pdls = catalog.by_platform(platform)
+        return {
+            "ok": True,
+            "platform": platform,
+            "total": len(pdls),
+            "pdls": [pdl.to_dict() for pdl in pdls]
+        }
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/pdl/executable")
+async def get_executable_pdls():
+    """Get all PDLs that can currently execute (APIs configured)"""
+    try:
+        from pdl_polymorphic_catalog import get_pdl_catalog
+        catalog = get_pdl_catalog()
+        pdls = catalog.executable()
+        auto_pdls = catalog.auto_executable()
+        return {
+            "ok": True,
+            "executable": len(pdls),
+            "auto_executable": len(auto_pdls),
+            "pdls": [pdl.to_dict() for pdl in pdls],
+            "auto_pdls": [pdl.name for pdl in auto_pdls]
+        }
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UNIVERSAL FABRIC ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/fabric/status")
+async def get_fabric_status_endpoint():
+    """Get Universal Fulfillment Fabric status"""
+    try:
+        from universal_fulfillment_fabric import get_fabric_status
+        return {"ok": True, **get_fabric_status()}
+    except ImportError as e:
+        return {"ok": False, "error": str(e), "available": False}
+
+
+@app.get("/fabric/logs")
+async def get_fabric_logs(limit: int = 50):
+    """Get recent Universal Fabric execution logs"""
+    try:
+        from universal_fulfillment_fabric import get_execution_logs
+        logs = get_execution_logs(limit)
+        return {"ok": True, "total": len(logs), "logs": logs}
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/fabric/execute")
+async def fabric_execute_endpoint(body: dict = Body(...)):
+    """
+    Execute an action through the Universal Fulfillment Fabric.
+
+    Body:
+    - pdl_name: PDL name (e.g., "upwork.submit_proposal")
+    - params: Parameters for the action
+    - dry_run: If true, analyze and plan but don't execute
+
+    Routes automatically through:
+    1. API (if available)
+    2. Browser automation (if configured)
+    3. AI-powered Universal Fabric (fallback)
+    """
+    try:
+        from universal_fulfillment_fabric import fabric_execute
+        pdl_name = body.get("pdl_name")
+        params = body.get("params", {})
+        dry_run = body.get("dry_run", False)
+
+        if not pdl_name:
+            return {"ok": False, "error": "pdl_name required"}
+
+        result = await fabric_execute(
+            pdl_name=pdl_name,
+            params=params,
+            ev_estimate=body.get("ev_estimate", 0),
+            dry_run=dry_run
+        )
+        return result
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UNIFIED ORCHESTRATOR ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/orchestrator/unified-cycle")
+async def run_unified_cycle(body: dict = Body(default={})):
+    """
+    Run the unified revenue orchestrator cycle.
+
+    9 PHASES:
+    1. Discovery & Spawning
+    2. Polymorphic Execution (platform-native monetization)
+    3. Social Promotion
+    4. Fiverr Orders
+    5. Cart Recovery
+    6. Subscriptions
+    7. Arbitrage
+    8. Revenue Summary
+
+    This is the master endpoint that coordinates ALL revenue systems.
+    """
+    try:
+        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
+        orchestrator = UniversalRevenueOrchestrator()
+        results = await orchestrator.run_full_cycle()
+        return results
+    except ImportError as e:
+        return {"ok": False, "error": f"Universal Revenue Orchestrator not available: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/orchestrator/unified-dashboard")
+async def get_unified_dashboard():
+    """Get unified orchestrator dashboard with all system statuses"""
+    try:
+        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
+        orchestrator = UniversalRevenueOrchestrator()
+        return {"ok": True, **orchestrator.get_dashboard()}
+    except ImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/orchestrator/set-aggression")
 async def set_aggression(body: dict = Body(...)):
     """

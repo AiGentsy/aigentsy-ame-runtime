@@ -15,15 +15,25 @@ EXECUTION MODES:
 - manual_review: Queue for human review (APIs not configured)
 
 This module:
-1. Checks which APIs are configured (from v115 fabric)
+1. Uses PDL Catalog as single source of truth for API availability
 2. Returns the appropriate execution flow for each opportunity
-3. Specifies what steps, approvals, and communication are needed
+3. Routes to Universal Fabric when APIs not available
 """
 
 import os
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 from dataclasses import dataclass
+
+# PDL Catalog integration
+try:
+    from pdl_polymorphic_catalog import get_pdl_catalog, get_pdl, can_execute_pdl, PDL
+    PDL_CATALOG_AVAILABLE = True
+except ImportError:
+    PDL_CATALOG_AVAILABLE = False
+    def get_pdl_catalog(): return None
+    def get_pdl(name): return None
+    def can_execute_pdl(name): return False
 
 
 class ExecutionMode(Enum):
@@ -72,15 +82,16 @@ class ExecutionFlow:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# API AVAILABILITY CHECKER
+# API AVAILABILITY CHECKER - Uses PDL Catalog as source of truth
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_configured_apis() -> Dict[str, bool]:
     """
-    Check which APIs are configured based on environment variables.
-    Mirrors v115_api_fabric.py validation logic.
+    Check which APIs are configured.
+    Uses PDL Catalog as the source of truth when available.
     """
-    return {
+    # Base API checks (still needed for non-PDL operations)
+    base_apis = {
         # Payment
         "stripe": bool(os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_SECRET")),
         "stripe_webhook": bool(os.getenv("STRIPE_WEBHOOK_SECRET")),
@@ -134,11 +145,40 @@ def get_configured_apis() -> Dict[str, bool]:
         # Storage
         "jsonbin": bool(os.getenv("JSONBIN_SECRET")),
 
-        # Marketplaces (manual - no API)
-        "upwork": False,  # No direct API access
-        "fiverr": False,  # No direct API access
-        "freelancer": False,  # No direct API access
+        # Marketplaces - Check if browser automation available via Universal Fabric
+        "upwork": bool(os.getenv("UPWORK_USERNAME") and os.getenv("UPWORK_PASSWORD")),
+        "fiverr": bool(os.getenv("FIVERR_USERNAME") and os.getenv("FIVERR_PASSWORD")),
+        "freelancer": bool(os.getenv("FREELANCER_USERNAME") and os.getenv("FREELANCER_PASSWORD")),
+
+        # Reddit
+        "reddit": bool(os.getenv("REDDIT_CLIENT_ID") and os.getenv("REDDIT_CLIENT_SECRET")),
+
+        # HackerNews (browser only)
+        "hackernews": bool(os.getenv("HN_USERNAME") and os.getenv("HN_PASSWORD")),
     }
+
+    # Enrich with PDL catalog info if available
+    if PDL_CATALOG_AVAILABLE:
+        catalog = get_pdl_catalog()
+        if catalog:
+            # Add platform-level executability from PDL catalog
+            for platform in ["github", "reddit", "linkedin", "twitter", "upwork", "fiverr", "email", "stripe", "shopify"]:
+                pdls = catalog.by_platform(platform)
+                if pdls:
+                    # Platform is "executable" if ANY of its PDLs can execute
+                    can_exec = any(pdl.can_execute() for pdl in pdls)
+                    # Don't override if we already have True
+                    if not base_apis.get(platform):
+                        base_apis[platform] = can_exec
+
+    return base_apis
+
+
+def get_pdl_for_flow(platform: str, action: str) -> Optional["PDL"]:
+    """Get the PDL for a specific platform action"""
+    if not PDL_CATALOG_AVAILABLE:
+        return None
+    return get_pdl(f"{platform}.{action}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -596,8 +636,29 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
         "requires_approval": True,
         "auto_execute": False,
         "steps": [],
-        "endpoints": {}
+        "endpoints": {},
+        # PDL integration
+        "pdl_name": None,           # PDL name for fabric routing
+        "pdl_available": False,     # Whether PDL exists in catalog
+        "fabric_endpoint": None,    # Fabric endpoint for execution
+        "use_universal_fabric": False  # Whether to use browser automation fallback
     }
+
+    # Helper to enrich result with PDL info
+    def _enrich_with_pdl(result: Dict, platform: str, action: str):
+        """Add PDL catalog info to result"""
+        if PDL_CATALOG_AVAILABLE:
+            pdl_name = f"{platform}.{action}"
+            pdl = get_pdl(pdl_name)
+            if pdl:
+                result["pdl_name"] = pdl_name
+                result["pdl_available"] = True
+                result["fabric_endpoint"] = pdl.fabric_endpoint
+                # If APIs missing but PDL has browser fallback, still can execute via fabric
+                if not result["can_execute"] and pdl.browser_url_template:
+                    result["use_universal_fabric"] = True
+                    result["can_execute"] = True
+                    result["reason"] = f"{result['reason']} (via Universal Fabric)"
 
     # ─────────────────────────────────────────────────────────────────────────
     # GITHUB - Check for bounty vs regular issue
@@ -639,6 +700,9 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
 
+            # Enrich with PDL info
+            _enrich_with_pdl(result, "github", "submit_pr" if is_bounty else "post_comment")
+
         return result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -667,6 +731,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 result["reason"] = "LinkedIn lead - CONVERSATIONAL flow (connection → qualify → close)"
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
+
+            _enrich_with_pdl(result, "linkedin", "send_connection")
 
         return result
 
@@ -701,6 +767,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
 
+            _enrich_with_pdl(result, "twitter", "send_dm" if is_sponsored else "post_tweet")
+
         return result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -729,6 +797,9 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 result["reason"] = f"{platform.title()} - PROPOSAL flow (submit → hire → execute)"
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
+
+            # Marketplaces always can use Universal Fabric
+            _enrich_with_pdl(result, platform, "submit_proposal" if platform == "upwork" else "submit_offer" if platform == "fiverr" else "submit_bid")
 
         return result
 
@@ -759,6 +830,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
 
+            _enrich_with_pdl(result, "instagram", "post_content")
+
         return result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -787,6 +860,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 result["reason"] = "Shopify - ARBITRAGE flow (source → list → fulfill)"
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
+
+            _enrich_with_pdl(result, "shopify", "create_product")
 
         return result
 
@@ -817,6 +892,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
 
+            _enrich_with_pdl(result, "stripe", "create_payment_link")
+
         return result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -845,6 +922,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 result["reason"] = "Reddit - CONVERSATIONAL flow (helpful reply → engagement → offer)"
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
+
+            _enrich_with_pdl(result, "reddit", "post_reply")
 
         return result
 
@@ -875,6 +954,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
 
+            _enrich_with_pdl(result, "hackernews", "post_comment")
+
         return result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -903,6 +984,8 @@ def determine_execution_flow(opportunity: Dict[str, Any]) -> Dict[str, Any]:
                 result["reason"] = "Email - CONVERSATIONAL flow (outreach → qualify → close)"
             else:
                 result["reason"] = f"Missing APIs: {', '.join(missing)}"
+
+            _enrich_with_pdl(result, "email", "send_outreach")
 
         return result
 

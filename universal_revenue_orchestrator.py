@@ -152,6 +152,32 @@ except ImportError as e:
     print(f"⚠️ aigentsy_conductor import failed: {e}")
     CONDUCTOR_AVAILABLE = False
 
+# Master Autonomous Orchestrator (Polymorphic Execution)
+try:
+    from master_autonomous_orchestrator import MasterAutonomousOrchestrator
+    POLYMORPHIC_ORCHESTRATOR_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ master_autonomous_orchestrator import failed: {e}")
+    POLYMORPHIC_ORCHESTRATOR_AVAILABLE = False
+
+# PDL Catalog
+try:
+    from pdl_polymorphic_catalog import get_pdl_catalog, PDLCatalog
+    PDL_CATALOG_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ pdl_catalog import failed: {e}")
+    PDL_CATALOG_AVAILABLE = False
+    def get_pdl_catalog(): return None
+
+# Universal Fulfillment Fabric
+try:
+    from universal_fulfillment_fabric import get_fabric_status
+    UNIVERSAL_FABRIC_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ universal_fulfillment_fabric import failed: {e}")
+    UNIVERSAL_FABRIC_AVAILABLE = False
+    def get_fabric_status(): return {"available": False}
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # API KEYS
@@ -542,7 +568,17 @@ class UniversalRevenueOrchestrator:
         # Integration
         self.revenue_mesh = RevenueIntelligenceMesh("system") if INTEGRATION_LAYER_AVAILABLE else None
         self.executor = UniversalAutonomousExecutor() if EXECUTOR_AVAILABLE else None
-        
+
+        # Polymorphic Execution (Master Orchestrator)
+        self.polymorphic_orchestrator = MasterAutonomousOrchestrator() if POLYMORPHIC_ORCHESTRATOR_AVAILABLE else None
+        if self.polymorphic_orchestrator:
+            print("   ✅ Polymorphic Orchestrator connected")
+
+        # PDL Catalog
+        self.pdl_catalog = get_pdl_catalog() if PDL_CATALOG_AVAILABLE else None
+        if self.pdl_catalog:
+            print(f"   ✅ PDL Catalog: {len(self.pdl_catalog.all())} PDLs loaded")
+
         # Stats
         self.cycles_run = 0
         
@@ -550,6 +586,9 @@ class UniversalRevenueOrchestrator:
         engines = [
             ("Spawn Engine", SPAWN_ENGINE_AVAILABLE),
             ("Alpha Discovery", ALPHA_DISCOVERY_AVAILABLE),
+            ("Polymorphic Orchestrator", POLYMORPHIC_ORCHESTRATOR_AVAILABLE),
+            ("PDL Catalog", PDL_CATALOG_AVAILABLE),
+            ("Universal Fabric", UNIVERSAL_FABRIC_AVAILABLE),
             ("Video Engine", VIDEO_ENGINE_AVAILABLE),
             ("Audio Engine", AUDIO_ENGINE_AVAILABLE),
             ("Fiverr Engine", FIVERR_ENGINE_AVAILABLE),
@@ -572,13 +611,42 @@ class UniversalRevenueOrchestrator:
         
         # PHASE 1: DISCOVERY & SPAWN
         print("\n🔍 PHASE 1: Discovery & Spawning")
+        discovered_opportunities = []
         if self.spawn_engine:
             spawn_results = await self.spawn_engine.run_full_cycle()
             results["phases"]["spawn"] = {"signals": spawn_results.get("phases", {}).get("trends", {}).get("found", 0), "spawned": len(spawn_results.get("phases", {}).get("spawned", []))}
             print(f"   ✅ {results['phases']['spawn']['signals']} signals, {results['phases']['spawn']['spawned']} spawned")
-        
-        # PHASE 2: SOCIAL PROMOTION
-        print("\n📱 PHASE 2: Social Promotion")
+            # Collect opportunities for polymorphic execution
+            discovered_opportunities = spawn_results.get("phases", {}).get("trends", {}).get("opportunities", [])
+
+        # PHASE 2: POLYMORPHIC EXECUTION (NEW)
+        print("\n🔄 PHASE 2: Polymorphic Execution")
+        if self.polymorphic_orchestrator and discovered_opportunities:
+            try:
+                poly_results = await self.polymorphic_orchestrator.run_polymorphic_execution(discovered_opportunities)
+                results["phases"]["polymorphic_execution"] = {
+                    "total_processed": poly_results.get("total_processed", 0),
+                    "immediate_executed": poly_results.get("immediate_executed", 0),
+                    "conversational_started": poly_results.get("conversational_started", 0),
+                    "proposals_submitted": poly_results.get("proposals_submitted", 0),
+                    "content_posted": poly_results.get("content_posted", 0),
+                    "payments_initiated": poly_results.get("payments_initiated", 0),
+                    "queued_for_review": poly_results.get("queued_for_review", 0),
+                    "by_mode": poly_results.get("by_mode", {})
+                }
+                print(f"   ✅ Processed {poly_results.get('total_processed', 0)} opportunities")
+                print(f"      - Immediate: {poly_results.get('immediate_executed', 0)}")
+                print(f"      - Conversational: {poly_results.get('conversational_started', 0)}")
+                print(f"      - Queued: {poly_results.get('queued_for_review', 0)}")
+            except Exception as e:
+                print(f"   ⚠️ Polymorphic execution error: {e}")
+                results["phases"]["polymorphic_execution"] = {"error": str(e)}
+        else:
+            results["phases"]["polymorphic_execution"] = {"skipped": True, "reason": "No orchestrator or opportunities"}
+            print("   ⏭️ Skipped (no opportunities or orchestrator)")
+
+        # PHASE 3: SOCIAL PROMOTION
+        print("\n📱 PHASE 3: Social Promotion")
         social_posts = 0
         if results.get("phases", {}).get("spawn", {}).get("spawned"):
             for spawn in spawn_results.get("phases", {}).get("spawned", []):
@@ -588,8 +656,8 @@ class UniversalRevenueOrchestrator:
         results["phases"]["social"] = {"posts": social_posts}
         print(f"   ✅ {social_posts} posts")
         
-        # PHASE 3: FIVERR ORDERS
-        print("\n🛍️ PHASE 3: Fiverr Orders")
+        # PHASE 4: FIVERR ORDERS
+        print("\n🛍️ PHASE 4: Fiverr Orders")
         fiverr_orders = await self.fiverr.check_orders()
         processed = 0
         for order in fiverr_orders[:5]:
@@ -599,28 +667,28 @@ class UniversalRevenueOrchestrator:
                 record_revenue(RevenueEvent(event_id="", channel=RevenueChannel.FIVERR, amount=order.get("amount", 0)))
         results["phases"]["fiverr"] = {"pending": len(fiverr_orders), "processed": processed}
         print(f"   ✅ {processed}/{len(fiverr_orders)} orders processed")
-        
-        # PHASE 4: CART RECOVERY
-        print("\n🛒 PHASE 4: Cart Recovery")
+
+        # PHASE 5: CART RECOVERY
+        print("\n🛒 PHASE 5: Cart Recovery")
         cart_results = await self.cart_nudge.run_recovery_cycle()
         results["phases"]["cart_recovery"] = cart_results
         print(f"   ✅ {cart_results['emails_sent']} recovery emails")
-        
-        # PHASE 5: SUBSCRIPTIONS
-        print("\n💳 PHASE 5: Subscriptions")
+
+        # PHASE 6: SUBSCRIPTIONS
+        print("\n💳 PHASE 6: Subscriptions")
         sub_results = await self.subscriptions.process_renewals()
         mrr = await self.subscriptions.get_mrr()
         results["phases"]["subscriptions"] = {"renewals": sub_results.get("processed", 0), "mrr": mrr.get("mrr", 0)}
         print(f"   ✅ MRR: ${mrr.get('mrr', 0):.2f}")
-        
-        # PHASE 6: ARBITRAGE
-        print("\n💹 PHASE 6: Arbitrage")
+
+        # PHASE 7: ARBITRAGE
+        print("\n💹 PHASE 7: Arbitrage")
         arb_opps = await self.arbitrage.find_opportunities()
         results["phases"]["arbitrage"] = {"opportunities": len(arb_opps), "potential_profit": sum(o.get("profit", 0) for o in arb_opps)}
         print(f"   ✅ {len(arb_opps)} opportunities, ${results['phases']['arbitrage']['potential_profit']:.2f} potential")
-        
-        # PHASE 7: REVENUE SUMMARY
-        print("\n💰 PHASE 7: Revenue Summary")
+
+        # PHASE 8: REVENUE SUMMARY
+        print("\n💰 PHASE 8: Revenue Summary")
         revenue = get_revenue_summary(since=start - timedelta(hours=24))
         results["phases"]["revenue"] = revenue
         print(f"   ✅ ${revenue['total_revenue']:.2f} (24h)")
@@ -634,15 +702,33 @@ class UniversalRevenueOrchestrator:
         return results
     
     def get_dashboard(self) -> Dict:
+        # Get PDL catalog summary
+        pdl_summary = {}
+        if self.pdl_catalog:
+            pdl_summary = self.pdl_catalog.summary()
+
+        # Get fabric status
+        fabric_status = get_fabric_status() if UNIVERSAL_FABRIC_AVAILABLE else {"available": False}
+
         return {
             "cycles_run": self.cycles_run,
             "engines": {
-                "spawn": SPAWN_ENGINE_AVAILABLE, "alpha_discovery": ALPHA_DISCOVERY_AVAILABLE,
-                "video": VIDEO_ENGINE_AVAILABLE, "audio": AUDIO_ENGINE_AVAILABLE,
-                "fiverr": FIVERR_ENGINE_AVAILABLE, "social": SOCIAL_ENGINE_AVAILABLE,
-                "subscriptions": SUBSCRIPTION_AVAILABLE, "reconciliation": RECONCILIATION_AVAILABLE,
-                "integration": INTEGRATION_LAYER_AVAILABLE, "executor": EXECUTOR_AVAILABLE
+                "spawn": SPAWN_ENGINE_AVAILABLE,
+                "alpha_discovery": ALPHA_DISCOVERY_AVAILABLE,
+                "polymorphic_orchestrator": POLYMORPHIC_ORCHESTRATOR_AVAILABLE,
+                "pdl_catalog": PDL_CATALOG_AVAILABLE,
+                "universal_fabric": UNIVERSAL_FABRIC_AVAILABLE,
+                "video": VIDEO_ENGINE_AVAILABLE,
+                "audio": AUDIO_ENGINE_AVAILABLE,
+                "fiverr": FIVERR_ENGINE_AVAILABLE,
+                "social": SOCIAL_ENGINE_AVAILABLE,
+                "subscriptions": SUBSCRIPTION_AVAILABLE,
+                "reconciliation": RECONCILIATION_AVAILABLE,
+                "integration": INTEGRATION_LAYER_AVAILABLE,
+                "executor": EXECUTOR_AVAILABLE
             },
+            "pdl_catalog": pdl_summary,
+            "universal_fabric": fabric_status,
             "revenue": get_revenue_summary(),
             "spawn": self.spawn_engine.get_dashboard() if self.spawn_engine else {},
             "social_platforms": self.social.platforms,
