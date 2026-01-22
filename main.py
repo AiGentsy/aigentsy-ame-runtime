@@ -35538,6 +35538,126 @@ async def fulfillment_process_queue():
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/fulfillment/code-generation")
+async def fulfillment_code_generation(body: Dict = Body(...)):
+    """
+    Generate code solution for a GitHub issue using AI.
+
+    Used by polymorphic immediate execution flow for GitHub bounties.
+    Takes analysis and opportunity, returns generated solution.
+    """
+    opportunity = body.get("opportunity", {})
+    analysis = body.get("analysis", {})
+    ev_score = body.get("ev_score", 0)
+
+    title = opportunity.get("title", "")
+    url = opportunity.get("url", "")
+    requirements = analysis.get("requirements", [])
+    suggested_approach = analysis.get("suggested_approach", "")
+    files_to_modify = analysis.get("files_to_modify", [])
+
+    # Build prompt for AI
+    prompt = f"""Generate a solution for this GitHub issue:
+
+Title: {title}
+URL: {url}
+
+Requirements:
+{chr(10).join(f'- {r}' for r in requirements)}
+
+Suggested Approach:
+{suggested_approach}
+
+Files to modify:
+{chr(10).join(f'- {f}' for f in files_to_modify)}
+
+Provide:
+1. A brief summary of the solution
+2. The key code changes needed
+3. Any important considerations
+
+Keep the response focused and actionable."""
+
+    solution = {
+        "success": False,
+        "summary": "",
+        "code": "",
+        "files": files_to_modify,
+        "approach": suggested_approach
+    }
+
+    # Try OpenRouter
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-3-haiku",
+                        "messages": [{
+                            "role": "user",
+                            "content": prompt
+                        }],
+                        "max_tokens": 1500
+                    },
+                    timeout=60
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                    if content:
+                        solution["success"] = True
+                        # Parse summary (first paragraph)
+                        paragraphs = content.strip().split("\n\n")
+                        solution["summary"] = paragraphs[0] if paragraphs else content[:500]
+                        solution["code"] = content
+                        solution["generated_by"] = "openrouter/claude-3-haiku"
+
+        except Exception as e:
+            solution["error"] = str(e)
+
+    # Fallback to Gemini
+    if not solution["success"]:
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_key}",
+                        json={
+                            "contents": [{"parts": [{"text": prompt}]}],
+                            "generationConfig": {"maxOutputTokens": 1500}
+                        },
+                        timeout=60
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        content = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+
+                        if content:
+                            solution["success"] = True
+                            paragraphs = content.strip().split("\n\n")
+                            solution["summary"] = paragraphs[0] if paragraphs else content[:500]
+                            solution["code"] = content
+                            solution["generated_by"] = "gemini-pro"
+
+            except Exception as e:
+                solution["error"] = str(e)
+
+    if not solution["success"]:
+        solution["error"] = solution.get("error", "no_ai_available")
+
+    return solution
+
+
 @app.post("/fulfillment/auto-deliver")
 async def fulfillment_auto_deliver():
     """
