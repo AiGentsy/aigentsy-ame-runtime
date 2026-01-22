@@ -33919,6 +33919,451 @@ async def discovery_github_bounties(body: Dict = Body(default={})):
     return {"ok": True, "opportunities": opportunities}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# GITHUB EXECUTION ENDPOINTS - For polymorphic immediate execution flow
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/github/analyze-issue")
+async def github_analyze_issue(body: Dict = Body(...)):
+    """
+    Analyze a GitHub issue to understand requirements for automated execution.
+
+    Uses AI to parse:
+    - Issue requirements and acceptance criteria
+    - Technical complexity and estimated effort
+    - Files likely to be modified
+    - Suggested approach
+    """
+    url = body.get("url", "")
+    title = body.get("title", "")
+    description = body.get("description", "")
+
+    if not url:
+        return {"ok": False, "error": "url_required"}
+
+    # Parse GitHub URL
+    import re
+    match = re.search(r'github\.com/([^/]+)/([^/]+)/issues/(\d+)', url)
+    if not match:
+        return {"ok": False, "error": "invalid_github_url"}
+
+    owner, repo, issue_number = match.groups()
+
+    # Try to fetch issue details from GitHub API
+    github_token = os.getenv("GITHUB_TOKEN")
+    issue_body = description
+
+    if github_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}",
+                    headers={
+                        "Authorization": f"token {github_token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    },
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    issue_data = response.json()
+                    issue_body = issue_data.get("body", "") or description
+                    title = issue_data.get("title", "") or title
+        except Exception as e:
+            print(f"GitHub API error: {e}")
+
+    # Use AI to analyze the issue
+    analysis = {
+        "owner": owner,
+        "repo": repo,
+        "issue_number": int(issue_number),
+        "title": title,
+        "requirements": [],
+        "complexity": "medium",
+        "estimated_hours": 4,
+        "suggested_approach": "",
+        "files_to_modify": []
+    }
+
+    # Try OpenRouter for analysis
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key and issue_body:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "anthropic/claude-3-haiku",
+                        "messages": [{
+                            "role": "user",
+                            "content": f"""Analyze this GitHub issue and provide a JSON response:
+
+Title: {title}
+Body: {issue_body[:2000]}
+
+Respond with ONLY valid JSON:
+{{
+  "requirements": ["requirement 1", "requirement 2"],
+  "complexity": "low|medium|high",
+  "estimated_hours": <number>,
+  "suggested_approach": "brief approach description",
+  "files_to_modify": ["likely/file/paths.py"]
+}}"""
+                        }],
+                        "max_tokens": 500
+                    },
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    # Try to parse JSON from response
+                    import json
+                    try:
+                        # Find JSON in response
+                        json_match = re.search(r'\{[\s\S]*\}', content)
+                        if json_match:
+                            parsed = json.loads(json_match.group())
+                            analysis.update(parsed)
+                    except:
+                        pass
+        except Exception as e:
+            print(f"OpenRouter analysis error: {e}")
+
+    return {
+        "ok": True,
+        "analysis": analysis,
+        "url": url
+    }
+
+
+@app.post("/github/post-comment")
+async def github_post_comment(body: Dict = Body(...)):
+    """
+    Post a comment on a GitHub issue.
+
+    Used for:
+    - Expressing interest in bounties
+    - Offering solutions
+    - Asking clarifying questions
+    """
+    url = body.get("url", "")
+    comment_type = body.get("type", "interest")  # interest, solution_offer, question
+    solution_preview = body.get("solution_preview", "")
+    opportunity_id = body.get("opportunity_id")
+
+    if not url:
+        return {"ok": False, "error": "url_required"}
+
+    # Parse GitHub URL
+    import re
+    match = re.search(r'github\.com/([^/]+)/([^/]+)/issues/(\d+)', url)
+    if not match:
+        return {"ok": False, "error": "invalid_github_url"}
+
+    owner, repo, issue_number = match.groups()
+
+    github_token = os.getenv("GITHUB_TOKEN")
+    if not github_token:
+        return {"ok": False, "error": "github_token_not_configured"}
+
+    # Generate appropriate comment based on type
+    if comment_type == "interest":
+        comment_body = """Hi! I'm interested in working on this issue.
+
+I have experience with similar tasks and can provide a solution. Would love to contribute!
+
+Let me know if you need any additional information about my approach."""
+
+    elif comment_type == "solution_offer":
+        comment_body = f"""Hi! I've analyzed this issue and have a solution ready.
+
+**Approach Summary:**
+{solution_preview[:500] if solution_preview else "I can implement this using best practices and thorough testing."}
+
+I can submit a PR with the implementation. Let me know if you'd like me to proceed!"""
+
+    else:
+        comment_body = """Hi! I'd like to help with this issue.
+
+Could you please provide more details about the expected behavior and any specific requirements?"""
+
+    # Post comment via GitHub API
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments",
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                json={"body": comment_body},
+                timeout=30
+            )
+
+            if response.status_code == 201:
+                result = response.json()
+                return {
+                    "ok": True,
+                    "comment_id": result.get("id"),
+                    "comment_url": result.get("html_url"),
+                    "owner": owner,
+                    "repo": repo,
+                    "issue_number": int(issue_number)
+                }
+            else:
+                return {
+                    "ok": False,
+                    "error": f"github_api_error_{response.status_code}",
+                    "details": response.text[:500]
+                }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/github/create-branch")
+async def github_create_branch(body: Dict = Body(...)):
+    """
+    Create a branch for PR submission.
+
+    Creates: aigentsy/issue-{number} branch from default branch
+    """
+    owner = body.get("owner", "")
+    repo = body.get("repo", "")
+    issue_number = body.get("issue_number")
+    base_branch = body.get("base_branch", "main")
+
+    if not all([owner, repo, issue_number]):
+        return {"ok": False, "error": "owner_repo_issue_required"}
+
+    github_token = os.getenv("GITHUB_TOKEN")
+    if not github_token:
+        return {"ok": False, "error": "github_token_not_configured"}
+
+    branch_name = f"aigentsy/issue-{issue_number}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get the SHA of the base branch
+            ref_response = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{base_branch}",
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                timeout=30
+            )
+
+            if ref_response.status_code != 200:
+                return {"ok": False, "error": f"base_branch_not_found: {base_branch}"}
+
+            base_sha = ref_response.json().get("object", {}).get("sha")
+
+            # Create the new branch
+            create_response = await client.post(
+                f"https://api.github.com/repos/{owner}/{repo}/git/refs",
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                json={
+                    "ref": f"refs/heads/{branch_name}",
+                    "sha": base_sha
+                },
+                timeout=30
+            )
+
+            if create_response.status_code == 201:
+                return {
+                    "ok": True,
+                    "branch_name": branch_name,
+                    "base_sha": base_sha,
+                    "owner": owner,
+                    "repo": repo
+                }
+            elif create_response.status_code == 422:
+                # Branch already exists
+                return {
+                    "ok": True,
+                    "branch_name": branch_name,
+                    "already_exists": True
+                }
+            else:
+                return {
+                    "ok": False,
+                    "error": f"create_branch_failed_{create_response.status_code}",
+                    "details": create_response.text[:500]
+                }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/github/submit-pr")
+async def github_submit_pr(body: Dict = Body(...)):
+    """
+    Submit a pull request for a GitHub issue.
+
+    This is the final step in the immediate execution flow:
+    1. Creates a branch (if not exists)
+    2. Commits the solution
+    3. Opens a PR linked to the issue
+    """
+    url = body.get("url", "")
+    solution = body.get("solution", {})
+    opportunity = body.get("opportunity", {})
+
+    if not url:
+        return {"ok": False, "error": "url_required"}
+
+    # Parse GitHub URL
+    import re
+    match = re.search(r'github\.com/([^/]+)/([^/]+)/issues/(\d+)', url)
+    if not match:
+        return {"ok": False, "error": "invalid_github_url"}
+
+    owner, repo, issue_number = match.groups()
+
+    github_token = os.getenv("GITHUB_TOKEN")
+    if not github_token:
+        return {"ok": False, "error": "github_token_not_configured"}
+
+    # For now, we can only post a comment offering the solution
+    # Full PR creation requires:
+    # 1. Fork the repo (if not owner)
+    # 2. Create branch
+    # 3. Commit files
+    # 4. Create PR
+    #
+    # This is complex and requires the solution to have actual file changes.
+    # For MVP, we post a detailed solution comment and offer to create PR.
+
+    solution_summary = solution.get("summary", "")
+    solution_code = solution.get("code", "")
+    solution_files = solution.get("files", [])
+
+    # Build comment with solution
+    comment_parts = [
+        "## 🤖 Automated Solution Proposal",
+        "",
+        "I've analyzed this issue and prepared a solution.",
+        ""
+    ]
+
+    if solution_summary:
+        comment_parts.extend([
+            "### Summary",
+            solution_summary,
+            ""
+        ])
+
+    if solution_code:
+        comment_parts.extend([
+            "### Implementation",
+            "```",
+            solution_code[:2000],
+            "```",
+            ""
+        ])
+
+    if solution_files:
+        comment_parts.extend([
+            "### Files Modified",
+            "\n".join(f"- `{f}`" for f in solution_files[:10]),
+            ""
+        ])
+
+    comment_parts.extend([
+        "---",
+        "*Generated by AiGentsy Autonomous Execution*",
+        "",
+        "Would you like me to submit this as a PR? Please reply to confirm."
+    ])
+
+    comment_body = "\n".join(comment_parts)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments",
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                json={"body": comment_body},
+                timeout=30
+            )
+
+            if response.status_code == 201:
+                result = response.json()
+                return {
+                    "ok": True,
+                    "type": "solution_comment",  # Not a full PR yet
+                    "comment_id": result.get("id"),
+                    "comment_url": result.get("html_url"),
+                    "pr_url": None,  # Would be set if we created actual PR
+                    "owner": owner,
+                    "repo": repo,
+                    "issue_number": int(issue_number),
+                    "note": "Posted solution comment. Full PR creation pending repo fork capability."
+                }
+            else:
+                return {
+                    "ok": False,
+                    "error": f"github_api_error_{response.status_code}",
+                    "details": response.text[:500]
+                }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/github/pr-status")
+async def github_pr_status(owner: str, repo: str, pr_number: int):
+    """Check the status of a pull request"""
+    github_token = os.getenv("GITHUB_TOKEN")
+    if not github_token:
+        return {"ok": False, "error": "github_token_not_configured"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                pr = response.json()
+                return {
+                    "ok": True,
+                    "pr_number": pr_number,
+                    "state": pr.get("state"),
+                    "merged": pr.get("merged", False),
+                    "mergeable": pr.get("mergeable"),
+                    "title": pr.get("title"),
+                    "url": pr.get("html_url"),
+                    "created_at": pr.get("created_at"),
+                    "updated_at": pr.get("updated_at")
+                }
+            else:
+                return {"ok": False, "error": f"pr_not_found_{response.status_code}"}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END GITHUB EXECUTION ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 @app.post("/discovery/upwork/search")
 async def discovery_upwork_search(body: Dict = Body(default={})):
     """Upwork job discovery - placeholder until API connected"""
