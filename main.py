@@ -40605,6 +40605,47 @@ except ImportError as e:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# V115: UNIFIED API FABRIC - ALL APIS WIRED TO MONETIZATION
+# Stripe, Shopify, Twitter, Instagram, LinkedIn, Twilio, Resend, OpenRouter,
+# Gemini, Perplexity, Stability, RunwayML, GitHub, JSONBin
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from v115_api_fabric import include_v115_fabric, get_fabric_status
+    include_v115_fabric(app)
+
+    # Show fabric status on startup
+    fabric_status = get_fabric_status()
+    print("=" * 80)
+    print("🔌 V115 API FABRIC ACTIVATED")
+    print("=" * 80)
+    print(f"APIs Configured: {fabric_status['summary']['apis_configured']}")
+    print(f"Engines Ready: {fabric_status['summary']['engines_ready']}")
+    print(f"Addressable TAM: {fabric_status['summary']['addressable_tam']}")
+    print("=" * 80)
+    print("Super-Harvesters:")
+    for engine_id, info in fabric_status.get('v111_super_harvesters', {}).items():
+        icon = "✅" if info.get('ready') else "❌"
+        print(f"  {icon} {info.get('name', engine_id)} ({info.get('tam', 'N/A')})")
+    print("=" * 80)
+    print("Endpoints:")
+    print("  GET  /v115/fabric/status    - Full status")
+    print("  GET  /v115/fabric/apis      - API validation")
+    print("  GET  /v115/fabric/engines   - Engine readiness")
+    print("  POST /v115/fabric/run-cycle - Run monetization")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ v115_api_fabric not available: {e}")
+
+# V115 LIVE TEST - Real transaction execution
+try:
+    from v115_live_test import include_live_test
+    include_live_test(app)
+except ImportError as e:
+    print(f"⚠️ v115_live_test not available: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMPLETE MONETIZATION STACK SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -40617,9 +40658,11 @@ print("v107-v109: 20 overlays | 60+ endpoints | 14 revenue streams")
 print("v110:      15 harvesters | 45 endpoints | 15 revenue streams")
 print("v111:      3 super-harvesters | 16 endpoints | 3 revenue streams")
 print("v112:      3 modules | 9 endpoints | 3 revenue streams")
+print("v115:      API fabric | 4 endpoints | Unified monetization layer")
 print("")
-print("TOTAL:     41 revenue engines | 130+ endpoints | 35 revenue streams")
+print("TOTAL:     41 revenue engines | 134+ endpoints | 35 revenue streams")
 print("MARKET:    $6.36+ TRILLION addressable")
+print("APIS:      14 platforms wired (Stripe, Shopify, Twitter, Instagram, etc.)")
 print("")
 print("=" * 80)
 
