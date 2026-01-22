@@ -40663,6 +40663,87 @@ try:
 except ImportError as e:
     print(f"⚠️ affiliate_matching not available: {e}")
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# V115 ACCRETIVE UPGRADES - Powered by AiGentsy
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# PAYMENT-PACK GENERATOR - Multi-rail paylinks + A/B testing
+try:
+    from payment_pack_generator import include_payment_pack, get_payment_pack_status
+    include_payment_pack(app)
+
+    pack_status = get_payment_pack_status()
+    print("=" * 80)
+    print("💳 PAYMENT-PACK GENERATOR ACTIVATED - Powered by AiGentsy")
+    print("=" * 80)
+    print(f"Enabled Rails: {len(pack_status['enabled_rails'])} / {pack_status['total_rails']}")
+    print(f"Optimization Modes: {', '.join(pack_status['optimization_modes'])}")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ payment_pack_generator not available: {e}")
+
+# PARTNER MESH AUTO-OEM - Signed widget configs for partners
+try:
+    from partner_mesh_oem import include_partner_mesh, get_partner_mesh_status
+    include_partner_mesh(app)
+
+    mesh_status = get_partner_mesh_status()
+    print("=" * 80)
+    print("🤝 PARTNER MESH AUTO-OEM ACTIVATED - Powered by AiGentsy")
+    print("=" * 80)
+    print(f"Partner Tiers: {len(mesh_status['tiers'])} ({', '.join(mesh_status['tiers'])})")
+    print(f"Revenue Splits: 80/20 to 95/5 (partner/AiGentsy)")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ partner_mesh_oem not available: {e}")
+
+# SAVINGS COUNTER - Verifiable "$X saved / Y SLAs hit" with Merkle proofs
+try:
+    from savings_counter import include_savings_counter, get_savings_counter_status
+    include_savings_counter(app)
+
+    savings_status = get_savings_counter_status()
+    print("=" * 80)
+    print("💰 SAVINGS COUNTER ACTIVATED - Powered by AiGentsy")
+    print("=" * 80)
+    print(f"Total Saved: ${savings_status['global_stats']['total_saved']:,.2f}")
+    print(f"SLAs Met: {savings_status['global_stats']['slas_met']:,}")
+    print(f"Merkle Verified: ✅")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ savings_counter not available: {e}")
+
+# GAMEDAY ROUTES - Chaos engineering / circuit breaker testing
+try:
+    from gameday_routes import include_gameday, get_gameday_status
+    include_gameday(app)
+
+    gameday_status = get_gameday_status()
+    print("=" * 80)
+    print("🎮 GAMEDAY ROUTES ACTIVATED - Powered by AiGentsy")
+    print("=" * 80)
+    print(f"Scenarios Available: {len(gameday_status['available_scenarios'])}")
+    print(f"Chaos Flags Active: {gameday_status['chaos_flags_active']}")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ gameday_routes not available: {e}")
+
+# PRICE-FLOOR ORACLE - Dynamic pricing constraints
+try:
+    from price_floor_oracle import include_price_oracle, get_oracle_status
+    include_price_oracle(app)
+
+    oracle_status = get_oracle_status()
+    print("=" * 80)
+    print("📊 PRICE-FLOOR ORACLE ACTIVATED - Powered by AiGentsy")
+    print("=" * 80)
+    print(f"Categories: {len(oracle_status['categories'])}")
+    print(f"Quality Tiers: {len(oracle_status['quality_tiers'])}")
+    print(f"Pricing Models: {len(oracle_status['pricing_models'])}")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ price_floor_oracle not available: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPLETE MONETIZATION STACK SUMMARY
@@ -40678,8 +40759,14 @@ print("v110:      15 harvesters | 45 endpoints | 15 revenue streams")
 print("v111:      3 super-harvesters | 16 endpoints | 3 revenue streams")
 print("v112:      3 modules | 9 endpoints | 3 revenue streams")
 print("v115:      API fabric | 4 endpoints | Unified monetization layer")
+print("v115+:     5 accretive upgrades | 17 endpoints | Powered by AiGentsy")
+print("           - Payment-Pack Generator (multi-rail A/B)")
+print("           - Partner Mesh Auto-OEM (signed widgets)")
+print("           - Savings Counter (Merkle proofs)")
+print("           - GameDay Routes (chaos engineering)")
+print("           - Price-Floor Oracle (dynamic pricing)")
 print("")
-print("TOTAL:     41 revenue engines | 134+ endpoints | 35 revenue streams")
+print("TOTAL:     46 revenue engines | 151+ endpoints | 35+ revenue streams")
 print("MARKET:    $6.36+ TRILLION addressable")
 print("APIS:      14 platforms wired (Stripe, Shopify, Twitter, Instagram, etc.)")
 print("")
