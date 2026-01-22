@@ -12,15 +12,17 @@ REVENUE STREAMS:
    - Amazon Associates, ShareASale, CJ Affiliate, Impact
    - Curated storefronts drive traffic to affiliate links
 
-2. AiGentsy User Acquisition (lifetime value)
-   - Upsell signal sources to start their OWN storefront
-   - "Want an AI that finds deals for YOU? Start free at aigentsy.com"
-   - Convert buyers into business owners
+2. AiGentsy Business-in-a-Box Acquisition (lifetime value)
+   - Upsell signal sources to build their OWN AI-powered business
+   - "This AI found you, matched products, sent outreach. Build your own business with it."
+   - Convert deal-seekers into business owners using AiGentsy platform
+   - User gets: discovery + marketing + fulfillment + execution (all automated)
+   - AiGentsy gets: 2.8% + $0.28 per transaction + premiums
 
-3. Referral Bonuses ($10-50 per signup)
-   - Every outreach includes soft AiGentsy CTA
+3. Referral Bonuses ($10-100 per signup)
+   - Every outreach includes soft Business-in-a-Box CTA
    - Referral codes track attribution
-   - Tiered bonuses for active referrers
+   - Tiered bonuses: $10 Starter, $25 Pro, $50 Business, $100 Enterprise
 
 4. Email Capture & Retargeting
    - Build audience for future campaigns
@@ -564,11 +566,12 @@ def _generate_outreach_template(
 
     hook = category_hooks.get(product_intent, "exactly what you need")
 
-    # AiGentsy upsell CTAs (soft, value-focused)
+    # AiGentsy Business-in-a-Box upsell CTAs (soft, value-focused)
+    # Goal: Convert deal-seekers into business owners using AiGentsy platform
     upsell_ctas = [
-        f"ps - i use AI to find these deals automatically. if you want your own deal finder: {aigentsy_link}",
-        f"btw this is powered by an AI i built. you can get your own here: {aigentsy_link}",
-        f"fun fact: an AI curated these for you. want one for yourself? {aigentsy_link}",
+        f"ps - this runs on AI that finds opportunities + handles fulfillment automatically. you can build your own business with it: {aigentsy_link}",
+        f"btw an AI did all this - discovery, curation, outreach. you can spin up your own biz using the same system: {aigentsy_link}",
+        f"fun fact: AI found you, matched products, and sent this. want to run your own? takes 10 min to set up: {aigentsy_link}",
     ]
 
     # Pick based on product intent hash for consistency
@@ -623,11 +626,15 @@ No pressure either way - just figured I'd share since I was already looking.
 
 ---
 
-btw - I use an AI assistant that automatically finds deals and curates products for me. Saves hours of research.
+Quick backstory: an AI found your post, matched products, wrote this email, and will handle any follow-up. I just set it up once.
 
-If you want to try it (or even build your own storefront that does this): {aigentsy_link}
+Some people use this same system to run their own business - AI handles discovery, marketing, fulfillment, everything. You just pick a niche and collect margin.
 
-It's free to start. Referral code: {referral_code}
+If that sounds interesting: {aigentsy_link}
+
+Takes about 10 minutes to set up. No inventory, no employees, runs 24/7.
+
+Referral code if you try it: {referral_code}
 
 - A"""
 
@@ -639,16 +646,24 @@ It's free to start. Referral code: {referral_code}
     ]
     sms = sms_templates[template_idx % len(sms_templates)]
 
-    # Follow-up upsell message (for second touch)
+    # Follow-up upsell message (for second touch) - Business in a Box pitch
     followup_upsell = f"""hey - hope those {looking_for} options worked out
 
-quick q: would you want an AI that automatically finds deals like this for you?
+random thought: you know how i found you + sent curated options automatically?
 
-i built one that scans for exactly what you're looking for and sends curated picks. some people even set up their own storefronts with it.
+that's all AI - discovery, matching, outreach, even fulfillment. runs 24/7.
 
-free to try: {aigentsy_link}
+some people use the same system to run their own business:
+- picks a niche you care about
+- finds customers automatically
+- handles marketing + delivery
+- you just collect the margin
 
-no pressure - just thought you might dig it based on what you were searching for"""
+takes like 10 min to set up. no inventory, no employees.
+
+if you're curious: {aigentsy_link}
+
+not for everyone but figured i'd mention since you were already shopping"""
 
     return {
         "twitter_dm": twitter_dm,
@@ -873,11 +888,13 @@ def get_affiliate_status() -> Dict[str, Any]:
                 "networks": ["Amazon Associates", "ShareASale", "CJ Affiliate"],
                 "description": "Curated storefronts drive traffic to affiliate links"
             },
-            "aigentsy_user_acquisition": {
+            "business_in_a_box_acquisition": {
                 "upsell_ev_per_outreach": f"${UPSELL_EV_PER_OUTREACH:.2f}",
                 "conversion_funnel": UPSELL_CONVERSION_RATES,
                 "user_ltv": AIGENTSY_USER_LTV,
-                "description": "Convert deal-seekers into AiGentsy storefront owners"
+                "description": "Convert deal-seekers into Business-in-a-Box owners",
+                "user_gets": "AI-powered discovery + marketing + fulfillment + execution",
+                "aigentsy_gets": "2.8% + $0.28 per transaction + premiums"
             },
             "referral_bonuses": {
                 "tiers": REFERRAL_BONUSES,
