@@ -1,9 +1,15 @@
 """
-SIMPLE ONBOARD - 6 Questions to Money
-=====================================
+SIMPLE ONBOARD v115 - 6 Questions to Money
+==========================================
 
 Average user, 5-minute setup → AiGentsy finds clients, sells, contracts,
 communicates, fulfills, delivers, and collects via third-party processors.
+
+PSP-ONLY FUND FLOW - No money transmission, no custody:
+- All payments go directly to Stripe/PayPal
+- We never touch customer funds
+- Service credits instead of insurance
+- Clickwrap contracts with standard terms
 
 6 Questions Only:
 1. Name/Logo
@@ -23,6 +29,8 @@ Leverages:
 - one_tap_widget.py (Embeddable widget)
 - outcome_subscriptions.py (Subscription tiers)
 - policies/*.json (Default configurations)
+- monetization/ (Pricing, revenue routing, badges)
+- brain_overlay/ (OCS scoring, policy learning)
 
 Usage:
     from simple_onboard import start_onboard, complete_onboard, get_onboard_status
@@ -33,6 +41,12 @@ from typing import Dict, Any, Optional, List
 from uuid import uuid4
 import json
 import os
+import logging
+import re
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("simple_onboard")
 
 def _now():
     return datetime.now(timezone.utc).isoformat() + "Z"
