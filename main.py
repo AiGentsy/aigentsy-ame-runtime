@@ -40644,6 +40644,25 @@ try:
 except ImportError as e:
     print(f"⚠️ v115_live_test not available: {e}")
 
+# AFFILIATE MATCHING ENGINE - U-ACR $4.6T TAM via affiliate commissions
+try:
+    from affiliate_matching import include_affiliate_matching, get_affiliate_status
+    include_affiliate_matching(app)
+
+    aff_status = get_affiliate_status()
+    print("=" * 80)
+    print("🔗 AFFILIATE MATCHING ENGINE ACTIVATED")
+    print("=" * 80)
+    print(f"Amazon Associates: {'✅' if aff_status['networks']['amazon']['available'] else '❌'}")
+    print(f"Categories: {len(aff_status['categories_supported'])} product types")
+    print("=" * 80)
+    print("U-ACR now powered by affiliate matching (no Shopify required)")
+    print("Revenue: 3-15% commission on matched sales")
+    print("TAM: $4.6T abandoned cart market")
+    print("=" * 80)
+except ImportError as e:
+    print(f"⚠️ affiliate_matching not available: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPLETE MONETIZATION STACK SUMMARY

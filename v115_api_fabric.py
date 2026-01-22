@@ -68,14 +68,24 @@ def validate_all_apis() -> Dict[str, Any]:
         "revenue_potential": "High - Direct payment processing"
     }
 
-    # E-COMMERCE - SHOPIFY
+    # E-COMMERCE - SHOPIFY (Optional - only for direct AiGentsy storefront)
     apis["shopify"] = {
         "name": "Shopify E-Commerce",
         "configured": bool(os.getenv("SHOPIFY_ADMIN_TOKEN") or os.getenv("SHOPIFY_ACCESS_TOKEN")),
         "webhook_ready": bool(os.getenv("SHOPIFY_WEBHOOK_SECRET")),
         "env_vars": ["SHOPIFY_ADMIN_TOKEN", "SHOPIFY_SHOP_URL", "SHOPIFY_WEBHOOK_SECRET"],
-        "engines": ["v111_uacr", "abandoned_cart_recovery"],
-        "revenue_potential": "High - Abandoned cart recovery ($4.6T TAM)"
+        "engines": ["direct_storefront"],
+        "revenue_potential": "Optional - Only for direct AiGentsy storefront"
+    }
+
+    # AFFILIATE NETWORKS - AMAZON ASSOCIATES (For U-ACR $4.6T TAM)
+    apis["amazon_affiliate"] = {
+        "name": "Amazon Associates",
+        "configured": True,  # Always configured with default tag
+        "env_vars": ["AMAZON_AFFILIATE_TAG"],
+        "default_tag": "aigentsy-20",
+        "engines": ["v111_uacr", "affiliate_matching"],
+        "revenue_potential": "High - Affiliate matching ($4.6T TAM)"
     }
 
     # SOCIAL - TWITTER
@@ -236,12 +246,12 @@ def get_engine_readiness() -> Dict[str, Any]:
     engines = {
         # V111 SUPER-HARVESTERS
         "v111_uacr": {
-            "name": "U-ACR (Abandoned Checkout Recovery)",
+            "name": "U-ACR (Affiliate Matching)",
             "version": "V111",
             "tam": "$4.6T",
-            "required_apis": ["stripe", "shopify", "twitter", "instagram"],
-            "optional_apis": ["perplexity", "twilio", "resend"],
-            "description": "Capture abandoned cart signals from social, recover via Stripe/Shopify"
+            "required_apis": ["twitter", "instagram", "amazon_affiliate"],
+            "optional_apis": ["perplexity", "twilio", "resend", "openrouter"],
+            "description": "Capture purchase intent signals from social, match to affiliate offers (3-15% commission)"
         },
         "v111_receivables": {
             "name": "Receivables Desk",
