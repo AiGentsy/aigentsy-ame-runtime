@@ -468,7 +468,11 @@ class CartNudgeEngine:
     
     async def run_recovery_cycle(self) -> Dict:
         carts = await self.check_abandoned_carts()
-        sent = sum(1 for c in carts[:10] if (await self.send_recovery_email(c)).get("ok"))
+        sent = 0
+        for c in carts[:10]:
+            result = await self.send_recovery_email(c)
+            if result.get("ok"):
+                sent += 1
         return {"abandoned_found": len(carts), "emails_sent": sent}
 
 
