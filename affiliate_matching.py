@@ -2,29 +2,44 @@
 AFFILIATE MATCHING ENGINE FOR U-ACR
 ====================================
 
-Captures $4.6T abandoned cart TAM via affiliate matching instead of Shopify.
+Captures $4.6T abandoned cart TAM via affiliate marketing storefronts.
+
+AiGentsy storefronts are MARKETING FRONTS for affiliates - we don't hold inventory.
+Revenue comes from affiliate commissions + user acquisition.
+
+REVENUE STREAMS:
+1. Affiliate Commissions (4-10% per sale)
+   - Amazon Associates, ShareASale, CJ Affiliate, Impact
+   - Curated storefronts drive traffic to affiliate links
+
+2. AiGentsy User Acquisition (lifetime value)
+   - Upsell signal sources to start their OWN storefront
+   - "Want an AI that finds deals for YOU? Start free at aigentsy.com"
+   - Convert buyers into business owners
+
+3. Referral Bonuses ($10-50 per signup)
+   - Every outreach includes soft AiGentsy CTA
+   - Referral codes track attribution
+   - Tiered bonuses for active referrers
+
+4. Email Capture & Retargeting
+   - Build audience for future campaigns
+   - Cross-sell across niches
 
 FLOW:
-1. Capture purchase intent signals from Twitter/Instagram (already working)
-2. Match signals to affiliate products/offers
-3. Generate trackable affiliate links
-4. Send outreach via Twitter DM / Email / SMS
-5. Track conversions and earn 3-15% commission
+1. Capture purchase intent signals from Twitter/Instagram
+2. Auto-spawn curated storefront (marketing landing page)
+3. Generate affiliate links + AiGentsy upsell
+4. Send cool outreach via Twitter DM / Email / SMS
+5. Track: affiliate conversions + AiGentsy signups + referrals
 
-SUPPORTED AFFILIATE NETWORKS:
-- Amazon Associates (AMAZON_AFFILIATE_TAG)
-- ShareASale (SHAREASALE_AFFILIATE_ID)
-- CJ Affiliate (CJ_AFFILIATE_ID)
-- Impact (IMPACT_ACCOUNT_SID)
-- Direct merchant programs
-
-NO SHOPIFY REQUIRED - This is the matchmaker model.
+NO INVENTORY. NO FULFILLMENT. Pure marketing arbitrage.
 
 Usage:
     from affiliate_matching import match_signal_to_affiliate, get_affiliate_status
 
     result = await match_signal_to_affiliate(signal)
-    # Returns affiliate link + outreach template
+    # Returns affiliate link + outreach template + upsell CTA
 """
 
 import os
@@ -44,10 +59,51 @@ IMPACT_ACCOUNT_SID = os.getenv("IMPACT_ACCOUNT_SID")
 AMAZON_AVAILABLE = bool(AMAZON_AFFILIATE_TAG)
 SHAREASALE_AVAILABLE = bool(SHAREASALE_AFFILIATE_ID)
 
-# Auto-spawn storefront integration
+# Auto-spawn storefront integration (marketing fronts, not inventory)
 SPAWNS_URL = os.getenv("SPAWNS_URL", "https://spawns.aigentsy.com")
 AIGENTSY_URL = os.getenv("AIGENTSY_URL", "https://aigentsy.com")
 AUTO_SPAWN_ENABLED = os.getenv("AUTO_SPAWN_STOREFRONTS", "true").lower() == "true"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AIGENTSY UPSELL & REFERRAL CONFIG
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Referral bonus tiers (paid to referrer when referee signs up)
+REFERRAL_BONUSES = {
+    "free_signup": 0,        # Free tier signup - no bonus yet
+    "starter": 10,           # $10 when referee upgrades to Starter
+    "pro": 25,               # $25 when referee upgrades to Pro
+    "business": 50,          # $50 when referee upgrades to Business
+    "enterprise": 100,       # $100 for enterprise deals
+}
+
+# Revenue per converted AiGentsy user (lifetime value estimates)
+AIGENTSY_USER_LTV = {
+    "free": 0,
+    "starter": 147,          # $49/mo * 3 months avg
+    "pro": 594,              # $99/mo * 6 months avg
+    "business": 2388,        # $199/mo * 12 months avg
+}
+
+# Upsell conversion rates (based on funnel stage)
+UPSELL_CONVERSION_RATES = {
+    "outreach_to_click": 0.08,       # 8% click the AiGentsy link
+    "click_to_signup": 0.15,         # 15% of clickers sign up free
+    "signup_to_paid": 0.12,          # 12% convert to paid
+}
+
+# Calculate expected value per outreach with AiGentsy upsell
+def _calculate_upsell_ev() -> float:
+    """Expected value of AiGentsy upsell per outreach"""
+    click_rate = UPSELL_CONVERSION_RATES["outreach_to_click"]
+    signup_rate = UPSELL_CONVERSION_RATES["click_to_signup"]
+    paid_rate = UPSELL_CONVERSION_RATES["signup_to_paid"]
+    avg_ltv = (AIGENTSY_USER_LTV["starter"] + AIGENTSY_USER_LTV["pro"]) / 2
+
+    # EV = click_rate * signup_rate * paid_rate * avg_LTV
+    return click_rate * signup_rate * paid_rate * avg_ltv
+
+UPSELL_EV_PER_OUTREACH = _calculate_upsell_ev()  # ~$0.53 per outreach
 
 
 def _now():
@@ -409,27 +465,33 @@ async def match_signal_to_affiliate(
             "commission_rate": category["commission_rate"]
         })
 
-    # Calculate expected commission
-    # Storefront = higher margin (15-30% vs 3-8% affiliate)
+    # Calculate expected revenue (affiliate commission is always 4-10%, storefronts are marketing fronts)
     avg_price = sum(price_range) / 2 if price_range else category["avg_price"]
     conversion_prob = signal.get("conversion_prob", signal.get("conversion_prob_override", 0.05))
 
-    if storefront:
-        # AiGentsy storefront: higher margin (avg 20%)
-        commission_rate = 0.20
-        expected_commission = avg_price * commission_rate * conversion_prob
-    else:
-        # Affiliate: standard rates
-        commission_rate = category["commission_rate"]
-        expected_commission = avg_price * commission_rate * conversion_prob
+    # Affiliate commission (storefront just provides better UX, same affiliate backend)
+    commission_rate = category["commission_rate"]
+    affiliate_commission = avg_price * commission_rate * conversion_prob
 
-    # Generate outreach template with storefront prioritized
+    # AiGentsy upsell expected value (user acquisition)
+    upsell_ev = UPSELL_EV_PER_OUTREACH  # ~$0.53 per outreach
+
+    # Total expected value = affiliate commission + upsell EV
+    total_expected_value = affiliate_commission + upsell_ev
+
+    # Generate referral code for this outreach
+    referral_code = f"UACR-{tracking_id[:8].upper()}"
+    aigentsy_signup_link = f"{AIGENTSY_URL}/start?ref={referral_code}"
+
+    # Generate outreach template with storefront + upsell
     outreach_template = _generate_outreach_template(
         product_intent=product_intent,
         text=text,
         affiliate_link=affiliate_links[0]["url"] if affiliate_links else None,
         source=source,
-        storefront_url=storefront_url
+        storefront_url=storefront_url,
+        aigentsy_link=aigentsy_signup_link,
+        referral_code=referral_code
     )
 
     return {
@@ -439,11 +501,17 @@ async def match_signal_to_affiliate(
         "storefront": storefront,
         "affiliate_links": affiliate_links,
         "outreach_template": outreach_template,
-        "expected_commission": round(expected_commission, 2),
+        "revenue_breakdown": {
+            "affiliate_commission": round(affiliate_commission, 2),
+            "upsell_ev": round(upsell_ev, 2),
+            "total_expected": round(total_expected_value, 2)
+        },
         "avg_order_value": avg_price,
         "commission_rate": commission_rate,
         "conversion_prob": conversion_prob,
         "tracking_id": tracking_id,
+        "referral_code": referral_code,
+        "aigentsy_signup_link": aigentsy_signup_link,
         "channel": "storefront" if storefront else "affiliate",
         "matched_at": _now()
     }
@@ -454,10 +522,17 @@ def _generate_outreach_template(
     text: str,
     affiliate_link: str,
     source: str,
-    storefront_url: str = None
+    storefront_url: str = None,
+    aigentsy_link: str = None,
+    referral_code: str = None
 ) -> Dict[str, str]:
     """
     Generate cool, smart, inviting outreach templates for different channels.
+
+    Includes:
+    - Product recommendation (affiliate link)
+    - Soft AiGentsy upsell (become a user, start your own storefront)
+    - Referral tracking
 
     The vibe: helpful friend who found exactly what you need, not a salesperson.
     """
@@ -489,33 +564,46 @@ def _generate_outreach_template(
 
     hook = category_hooks.get(product_intent, "exactly what you need")
 
-    # Twitter DM templates (rotate for variety) - casual, helpful vibe
+    # AiGentsy upsell CTAs (soft, value-focused)
+    upsell_ctas = [
+        f"ps - i use AI to find these deals automatically. if you want your own deal finder: {aigentsy_link}",
+        f"btw this is powered by an AI i built. you can get your own here: {aigentsy_link}",
+        f"fun fact: an AI curated these for you. want one for yourself? {aigentsy_link}",
+    ]
+
+    # Pick based on product intent hash for consistency
+    template_idx = int(hashlib.md5(product_intent.encode()).hexdigest(), 16) % 3
+
+    # Twitter DM templates - casual, helpful vibe + soft upsell
     twitter_templates = [
         f"""yo - caught your post about {looking_for}
 
 put together some options that might be exactly what you need: {main_link}
 
-lmk if you want me to dig deeper on specs or deals""",
+lmk if you want me to dig deeper on specs or deals
+
+{upsell_ctas[0]}""",
 
         f"""saw you're hunting for {hook}
 
 curated a few solid picks here: {main_link}
 
-hit me back if you need recs on specific features""",
+hit me back if you need recs on specific features
+
+{upsell_ctas[1]}""",
 
         f"""quick heads up - noticed you're looking for {looking_for}
 
 found some solid options worth checking: {main_link}
 
-always down to help narrow it down if needed"""
+always down to help narrow it down if needed
+
+{upsell_ctas[2]}"""
     ]
 
-    # Pick based on product intent hash for consistency
-    import hashlib
-    template_idx = int(hashlib.md5(product_intent.encode()).hexdigest(), 16) % len(twitter_templates)
     twitter_dm = twitter_templates[template_idx]
 
-    # Email template - helpful but not pushy
+    # Email template - helpful with clear upsell section
     email_subject_options = [
         f"Found {hook} for you",
         f"Re: {looking_for} - options inside",
@@ -533,9 +621,17 @@ The picks are curated based on what you mentioned - mix of value and quality. If
 
 No pressure either way - just figured I'd share since I was already looking.
 
+---
+
+btw - I use an AI assistant that automatically finds deals and curates products for me. Saves hours of research.
+
+If you want to try it (or even build your own storefront that does this): {aigentsy_link}
+
+It's free to start. Referral code: {referral_code}
+
 - A"""
 
-    # SMS template - super casual, value-first
+    # SMS template - super casual, value-first (no upsell in SMS, too long)
     sms_templates = [
         f"found some solid {looking_for} options: {main_link} - lmk if you need help narrowing down",
         f"yo - {hook} options here: {main_link}",
@@ -543,14 +639,28 @@ No pressure either way - just figured I'd share since I was already looking.
     ]
     sms = sms_templates[template_idx % len(sms_templates)]
 
+    # Follow-up upsell message (for second touch)
+    followup_upsell = f"""hey - hope those {looking_for} options worked out
+
+quick q: would you want an AI that automatically finds deals like this for you?
+
+i built one that scans for exactly what you're looking for and sends curated picks. some people even set up their own storefronts with it.
+
+free to try: {aigentsy_link}
+
+no pressure - just thought you might dig it based on what you were searching for"""
+
     return {
         "twitter_dm": twitter_dm,
         "email_subject": email_subject,
         "email_body": email_body,
         "sms": sms,
+        "followup_upsell": followup_upsell,
         "affiliate_link": affiliate_link,
         "storefront_url": storefront_url,
-        "main_link": main_link
+        "main_link": main_link,
+        "aigentsy_link": aigentsy_link,
+        "referral_code": referral_code
     }
 
 
@@ -560,38 +670,50 @@ No pressure either way - just figured I'd share since I was already looking.
 
 async def match_batch_signals(
     signals: List[Dict[str, Any]],
-    min_expected_commission: float = 0.10
+    min_expected_value: float = 0.10
 ) -> Dict[str, Any]:
     """
-    Match multiple signals to affiliate offers.
-    Filters by minimum expected commission.
+    Match multiple signals to affiliate offers + upsells.
+    Filters by minimum expected value (affiliate + upsell EV).
     """
     results = []
-    total_expected = 0
+    total_affiliate = 0
+    total_upsell_ev = 0
 
     for signal in signals:
         match = await match_signal_to_affiliate(signal)
 
-        if match["matched"] and match["expected_commission"] >= min_expected_commission:
-            results.append(match)
-            total_expected += match["expected_commission"]
+        if match["matched"]:
+            rev = match.get("revenue_breakdown", {})
+            total_ev = rev.get("total_expected", 0)
+
+            if total_ev >= min_expected_value:
+                results.append(match)
+                total_affiliate += rev.get("affiliate_commission", 0)
+                total_upsell_ev += rev.get("upsell_ev", 0)
 
     return {
         "ok": True,
         "signals_processed": len(signals),
         "signals_matched": len(results),
-        "total_expected_commission": round(total_expected, 2),
+        "revenue_projection": {
+            "affiliate_commissions": round(total_affiliate, 2),
+            "upsell_ev": round(total_upsell_ev, 2),
+            "total_expected": round(total_affiliate + total_upsell_ev, 2)
+        },
         "matches": results,
         "processed_at": _now()
     }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONVERSION TRACKING
+# CONVERSION & REFERRAL TRACKING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# In-memory conversion tracking (would be persisted in production)
+# In-memory tracking (would be persisted in production)
 CONVERSION_TRACKING = {}
+REFERRAL_TRACKING = {}
+AIGENTSY_SIGNUPS = {}
 
 
 def track_click(tracking_id: str, signal_id: str, network: str) -> None:
@@ -631,6 +753,112 @@ def get_conversion_stats() -> Dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# REFERRAL & UPSELL TRACKING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def track_aigentsy_click(referral_code: str, signal_id: str) -> None:
+    """Track click on AiGentsy signup link"""
+    if referral_code not in REFERRAL_TRACKING:
+        REFERRAL_TRACKING[referral_code] = {
+            "signal_id": signal_id,
+            "clicks": 0,
+            "signups": 0,
+            "upgrades": 0,
+            "bonus_earned": 0,
+            "first_click": _now()
+        }
+    REFERRAL_TRACKING[referral_code]["clicks"] += 1
+    REFERRAL_TRACKING[referral_code]["last_click"] = _now()
+
+
+def track_aigentsy_signup(referral_code: str, user_email: str, plan: str = "free") -> Dict[str, Any]:
+    """Track AiGentsy signup from referral"""
+    if referral_code not in REFERRAL_TRACKING:
+        REFERRAL_TRACKING[referral_code] = {
+            "clicks": 0,
+            "signups": 0,
+            "upgrades": 0,
+            "bonus_earned": 0
+        }
+
+    REFERRAL_TRACKING[referral_code]["signups"] += 1
+
+    signup_id = f"signup_{hashlib.md5(user_email.encode()).hexdigest()[:8]}"
+    AIGENTSY_SIGNUPS[signup_id] = {
+        "referral_code": referral_code,
+        "email": user_email,
+        "plan": plan,
+        "signed_up_at": _now(),
+        "upgraded": False
+    }
+
+    # Calculate bonus if paid plan
+    bonus = REFERRAL_BONUSES.get(plan, 0)
+    if bonus > 0:
+        REFERRAL_TRACKING[referral_code]["upgrades"] += 1
+        REFERRAL_TRACKING[referral_code]["bonus_earned"] += bonus
+
+    return {
+        "signup_id": signup_id,
+        "referral_code": referral_code,
+        "plan": plan,
+        "bonus_earned": bonus
+    }
+
+
+def track_aigentsy_upgrade(signup_id: str, new_plan: str) -> Dict[str, Any]:
+    """Track when a referred user upgrades their plan"""
+    if signup_id not in AIGENTSY_SIGNUPS:
+        return {"ok": False, "error": "Signup not found"}
+
+    signup = AIGENTSY_SIGNUPS[signup_id]
+    old_plan = signup["plan"]
+    referral_code = signup["referral_code"]
+
+    # Calculate bonus difference
+    old_bonus = REFERRAL_BONUSES.get(old_plan, 0)
+    new_bonus = REFERRAL_BONUSES.get(new_plan, 0)
+    bonus_delta = max(0, new_bonus - old_bonus)
+
+    # Update tracking
+    signup["plan"] = new_plan
+    signup["upgraded"] = True
+    signup["upgraded_at"] = _now()
+
+    if referral_code in REFERRAL_TRACKING and bonus_delta > 0:
+        REFERRAL_TRACKING[referral_code]["upgrades"] += 1
+        REFERRAL_TRACKING[referral_code]["bonus_earned"] += bonus_delta
+
+    return {
+        "ok": True,
+        "signup_id": signup_id,
+        "old_plan": old_plan,
+        "new_plan": new_plan,
+        "bonus_earned": bonus_delta,
+        "referral_code": referral_code
+    }
+
+
+def get_referral_stats() -> Dict[str, Any]:
+    """Get referral program statistics"""
+    total_clicks = sum(r.get("clicks", 0) for r in REFERRAL_TRACKING.values())
+    total_signups = sum(r.get("signups", 0) for r in REFERRAL_TRACKING.values())
+    total_upgrades = sum(r.get("upgrades", 0) for r in REFERRAL_TRACKING.values())
+    total_bonus = sum(r.get("bonus_earned", 0) for r in REFERRAL_TRACKING.values())
+
+    return {
+        "total_referral_clicks": total_clicks,
+        "total_signups": total_signups,
+        "total_paid_upgrades": total_upgrades,
+        "total_bonus_earned": total_bonus,
+        "click_to_signup_rate": total_signups / total_clicks if total_clicks > 0 else 0,
+        "signup_to_paid_rate": total_upgrades / total_signups if total_signups > 0 else 0,
+        "active_referral_codes": len(REFERRAL_TRACKING),
+        "total_aigentsy_users": len(AIGENTSY_SIGNUPS)
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STATUS & HEALTH
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -638,11 +866,29 @@ def get_affiliate_status() -> Dict[str, Any]:
     """Get affiliate matching engine status"""
     return {
         "ok": True,
+        "business_model": "MARKETING FRONTS - No inventory, pure affiliate arbitrage + user acquisition",
+        "revenue_streams": {
+            "affiliate_commissions": {
+                "rate": "4-10% per sale",
+                "networks": ["Amazon Associates", "ShareASale", "CJ Affiliate"],
+                "description": "Curated storefronts drive traffic to affiliate links"
+            },
+            "aigentsy_user_acquisition": {
+                "upsell_ev_per_outreach": f"${UPSELL_EV_PER_OUTREACH:.2f}",
+                "conversion_funnel": UPSELL_CONVERSION_RATES,
+                "user_ltv": AIGENTSY_USER_LTV,
+                "description": "Convert deal-seekers into AiGentsy storefront owners"
+            },
+            "referral_bonuses": {
+                "tiers": REFERRAL_BONUSES,
+                "description": "Bonus paid when referred user upgrades to paid plan"
+            }
+        },
         "auto_spawn_storefronts": {
             "enabled": AUTO_SPAWN_ENABLED,
             "spawns_url": SPAWNS_URL,
-            "commission_rate": "15-30% (owned channel)",
-            "description": "Auto-spawns AiGentsy storefronts for purchase intent signals"
+            "purpose": "Marketing landing pages (not inventory)",
+            "benefit": "Better UX, email capture, brand control, upsell opportunity"
         },
         "affiliate_networks": {
             "amazon": {
@@ -664,12 +910,18 @@ def get_affiliate_status() -> Dict[str, Any]:
         "conversion_stats": get_conversion_stats(),
         "monetization_flow": [
             "1. Capture purchase intent signal from Twitter/Instagram",
-            "2. Auto-spawn AiGentsy storefront for niche (15-30% margin)",
-            "3. Fallback to affiliate links (4-10% margin)",
-            "4. Generate cool outreach templates",
+            "2. Auto-spawn marketing storefront (curated landing page)",
+            "3. Generate affiliate links (4-10% commission)",
+            "4. Add soft AiGentsy upsell to outreach",
             "5. Execute via Twitter DM / Email / SMS",
-            "6. Track conversions and optimize"
+            "6. Track: affiliate conversions + AiGentsy signups + referrals",
+            "7. Follow-up with upsell for non-converters"
         ],
+        "expected_value_per_outreach": {
+            "affiliate_commission": "~$2-5 (varies by product)",
+            "upsell_ev": f"~${UPSELL_EV_PER_OUTREACH:.2f}",
+            "total": "~$2.50-5.50 per outreach"
+        },
         "status": "operational"
     }
 
@@ -760,7 +1012,8 @@ if __name__ == "__main__":
 
     async def test():
         print("=" * 80)
-        print("U-ACR AFFILIATE + STOREFRONT MATCHING ENGINE")
+        print("U-ACR AFFILIATE MARKETING ENGINE")
+        print("Marketing Fronts + Affiliate Arbitrage + User Acquisition")
         print("=" * 80)
 
         # Test signal
@@ -778,50 +1031,64 @@ if __name__ == "__main__":
 
         result = await match_signal_to_affiliate(test_signal)
 
-        print(f"\n{'='*40}")
-        print("MATCH RESULT")
-        print(f"{'='*40}")
-        print(f"  Matched: {result['matched']}")
-        print(f"  Channel: {result['channel']}")
-        print(f"  Expected Commission: ${result['expected_commission']}")
-        print(f"  Commission Rate: {result['commission_rate']*100:.0f}%")
-        print(f"  Tracking ID: {result['tracking_id']}")
+        print(f"\n{'='*60}")
+        print("REVENUE BREAKDOWN (per outreach)")
+        print(f"{'='*60}")
+        rev = result.get('revenue_breakdown', {})
+        print(f"  Affiliate Commission (4-10%):  ${rev.get('affiliate_commission', 0):.2f}")
+        print(f"  AiGentsy Upsell EV:            ${rev.get('upsell_ev', 0):.2f}")
+        print(f"  ─────────────────────────────────────")
+        print(f"  TOTAL EXPECTED VALUE:          ${rev.get('total_expected', 0):.2f}")
+
+        print(f"\n{'='*60}")
+        print("TRACKING & REFERRAL")
+        print(f"{'='*60}")
+        print(f"  Tracking ID:       {result['tracking_id']}")
+        print(f"  Referral Code:     {result['referral_code']}")
+        print(f"  AiGentsy Signup:   {result['aigentsy_signup_link']}")
 
         if result.get('storefront'):
-            print(f"\n{'='*40}")
-            print("AUTO-SPAWNED STOREFRONT")
-            print(f"{'='*40}")
-            print(f"  Storefront URL: {result['storefront']['storefront_url']}")
-            print(f"  Name: {result['storefront']['storefront_name']}")
-            print(f"  Niche: {result['storefront']['niche']}")
-            print(f"  Spawn ID: {result['storefront']['spawn_id']}")
+            print(f"\n{'='*60}")
+            print("AUTO-SPAWNED STOREFRONT (Marketing Front)")
+            print(f"{'='*60}")
+            print(f"  URL:    {result['storefront']['storefront_url']}")
+            print(f"  Name:   {result['storefront']['storefront_name']}")
+            print(f"  Niche:  {result['storefront']['niche']}")
+            print(f"  NOTE:   No inventory - links to affiliate products")
 
-        if result.get('affiliate_links'):
-            print(f"\n{'='*40}")
-            print("AFFILIATE FALLBACK")
-            print(f"{'='*40}")
-            print(f"  Amazon Link: {result['affiliate_links'][0]['url'][:60]}...")
-
-        print(f"\n{'='*40}")
-        print("OUTREACH TEMPLATES (cool, smart, inviting)")
-        print(f"{'='*40}")
-        print("\nTwitter DM:")
-        print("-" * 40)
+        print(f"\n{'='*60}")
+        print("OUTREACH TEMPLATES")
+        print(f"{'='*60}")
+        print("\n[Twitter DM - with soft upsell]")
+        print("-" * 50)
         print(result['outreach_template']['twitter_dm'])
-        print("\nEmail Subject:", result['outreach_template']['email_subject'])
-        print("\nSMS:")
-        print("-" * 40)
-        print(result['outreach_template']['sms'])
 
-        print(f"\n{'='*80}")
-        print("ENGINE STATUS")
-        print(f"{'='*80}")
+        print("\n[Follow-up Upsell Message]")
+        print("-" * 50)
+        print(result['outreach_template']['followup_upsell'])
+
+        print(f"\n{'='*60}")
+        print("REVENUE MODEL")
+        print(f"{'='*60}")
         status = get_affiliate_status()
-        print(f"Auto-Spawn Storefronts: {'ENABLED' if status['auto_spawn_storefronts']['enabled'] else 'DISABLED'}")
-        print(f"Spawns URL: {status['auto_spawn_storefronts']['spawns_url']}")
-        print(f"Storefront Commission: {status['auto_spawn_storefronts']['commission_rate']}")
-        print(f"\nMonetization Flow:")
-        for step in status['monetization_flow']:
-            print(f"  {step}")
+        print("\nRevenue Streams:")
+        for stream, details in status['revenue_streams'].items():
+            print(f"\n  {stream.upper()}:")
+            if isinstance(details, dict):
+                for k, v in details.items():
+                    if k != 'description':
+                        print(f"    {k}: {v}")
+
+        print(f"\n{'='*60}")
+        print("REFERRAL BONUS TIERS")
+        print(f"{'='*60}")
+        for plan, bonus in REFERRAL_BONUSES.items():
+            if bonus > 0:
+                print(f"  {plan.title()}: ${bonus} when referee upgrades")
+
+        print(f"\nUpsell EV per outreach: ${UPSELL_EV_PER_OUTREACH:.2f}")
+        print(f"(Based on {UPSELL_CONVERSION_RATES['outreach_to_click']*100:.0f}% click -> "
+              f"{UPSELL_CONVERSION_RATES['click_to_signup']*100:.0f}% signup -> "
+              f"{UPSELL_CONVERSION_RATES['signup_to_paid']*100:.0f}% paid)")
 
     asyncio.run(test())
