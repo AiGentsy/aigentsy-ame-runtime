@@ -5394,7 +5394,10 @@ async def run_unified_cycle(body: dict = Body(default={})):
     except ImportError as e:
         return {"ok": False, "error": f"Universal Revenue Orchestrator not available: {e}"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        import traceback
+        tb = traceback.format_exc()
+        print(f"Unified cycle error: {tb}")
+        return {"ok": False, "error": str(e), "traceback": tb}
 
 
 @app.get("/orchestrator/unified-dashboard")
