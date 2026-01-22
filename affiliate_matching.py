@@ -566,12 +566,12 @@ def _generate_outreach_template(
 
     hook = category_hooks.get(product_intent, "exactly what you need")
 
-    # AiGentsy Business-in-a-Box upsell CTAs (soft, value-focused)
-    # Goal: Convert deal-seekers into business owners using AiGentsy platform
+    # AiGentsy Business-in-a-Box upsell CTAs (branded, value-focused)
+    # Goal: Convert deal-seekers into AiGentsy business owners
     upsell_ctas = [
-        f"ps - this runs on AI that finds opportunities + handles fulfillment automatically. you can build your own business with it: {aigentsy_link}",
-        f"btw an AI did all this - discovery, curation, outreach. you can spin up your own biz using the same system: {aigentsy_link}",
-        f"fun fact: AI found you, matched products, and sent this. want to run your own? takes 10 min to set up: {aigentsy_link}",
+        f"ps - this is powered by AiGentsy. it finds opportunities + handles fulfillment automatically. start your own AiGentsy: {aigentsy_link}",
+        f"btw this is AiGentsy - AI that does discovery, curation, outreach, fulfillment. build your own AiGentsy business: {aigentsy_link}",
+        f"powered by AiGentsy - AI found you, matched products, sent this. want your own AiGentsy? 10 min setup: {aigentsy_link}",
     ]
 
     # Pick based on product intent hash for consistency
@@ -626,17 +626,17 @@ No pressure either way - just figured I'd share since I was already looking.
 
 ---
 
-Quick backstory: an AI found your post, matched products, wrote this email, and will handle any follow-up. I just set it up once.
+Quick backstory: AiGentsy found your post, matched products, wrote this email, and handles follow-up. I just set it up once.
 
-Some people use this same system to run their own business - AI handles discovery, marketing, fulfillment, everything. You just pick a niche and collect margin.
+People use AiGentsy to run their own business - AI handles discovery, marketing, fulfillment, everything. You just pick a niche and collect margin.
 
-If that sounds interesting: {aigentsy_link}
+Start your own AiGentsy: {aigentsy_link}
 
-Takes about 10 minutes to set up. No inventory, no employees, runs 24/7.
+Takes 10 minutes. No inventory, no employees, runs 24/7.
 
-Referral code if you try it: {referral_code}
+Referral code: {referral_code}
 
-- A"""
+Powered by AiGentsy"""
 
     # SMS template - super casual, value-first (no upsell in SMS, too long)
     sms_templates = [
@@ -646,24 +646,24 @@ Referral code if you try it: {referral_code}
     ]
     sms = sms_templates[template_idx % len(sms_templates)]
 
-    # Follow-up upsell message (for second touch) - Business in a Box pitch
+    # Follow-up upsell message (for second touch) - AiGentsy Business pitch
     followup_upsell = f"""hey - hope those {looking_for} options worked out
 
 random thought: you know how i found you + sent curated options automatically?
 
-that's all AI - discovery, matching, outreach, even fulfillment. runs 24/7.
+that's AiGentsy - AI that handles discovery, matching, outreach, fulfillment. runs 24/7.
 
-some people use the same system to run their own business:
-- picks a niche you care about
-- finds customers automatically
+people use AiGentsy to run their own business:
+- pick a niche you care about
+- AiGentsy finds customers automatically
 - handles marketing + delivery
 - you just collect the margin
 
-takes like 10 min to set up. no inventory, no employees.
+takes 10 min to start your own AiGentsy. no inventory, no employees.
 
 if you're curious: {aigentsy_link}
 
-not for everyone but figured i'd mention since you were already shopping"""
+not for everyone but figured i'd mention - powered by AiGentsy"""
 
     return {
         "twitter_dm": twitter_dm,
