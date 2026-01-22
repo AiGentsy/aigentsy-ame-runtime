@@ -492,3 +492,47 @@ def get_provider_idle_stats(provider_id: str) -> Dict[str, Any]:
 def get_idle_arbitrage_stats() -> Dict[str, Any]:
     """Get overall idle arbitrage stats"""
     return _arbitrage.get_stats()
+
+
+def detect_idle_capacity() -> Dict[str, Any]:
+    """Detect current idle capacity across providers"""
+    slots = _arbitrage.find_idle_slots(min_discount=0.0)
+    return {
+        "ok": True,
+        "idle_slots": slots.get("slots", []),
+        "total_available": slots.get("total_available", 0),
+        "base_discount": slots.get("base_discount", 0)
+    }
+
+
+def get_idle_stats() -> Dict[str, Any]:
+    """Get idle time arbitrage stats (alias with friendly format)"""
+    stats = _arbitrage.get_stats()
+    return {
+        "ok": True,
+        "value_captured": stats.get("total_arbitrage_fees", 0),
+        "total_savings": stats.get("total_buyer_savings", 0),
+        "bookings": stats.get("total_bookings", 0),
+        "avg_discount": stats.get("avg_discount", 0),
+        "active_providers": stats.get("active_providers", 0)
+    }
+
+
+def assign_micro_task(slot_id: str, task_id: str, value: float) -> Dict[str, Any]:
+    """Assign a micro-task to an idle slot"""
+    return book_idle_slot(slot_id, "micro_task_system", outcome_id=task_id, base_price=value)
+
+
+def optimize_scheduling() -> Dict[str, Any]:
+    """Optimize provider scheduling for idle time"""
+    stats = _arbitrage.get_stats()
+    return {
+        "ok": True,
+        "providers_analyzed": stats.get("total_providers", 0),
+        "utilization_opportunity": round((1 - stats.get("completion_rate", 0.9)) * 100, 1),
+        "recommendations": [
+            "Expand off-peak discounts to increase bookings",
+            "Target flexible-deadline outcomes for idle slots",
+            "Monitor provider availability patterns"
+        ]
+    }

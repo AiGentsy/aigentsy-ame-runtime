@@ -1391,3 +1391,42 @@ async def get_user_opportunities(results: Dict[str, Any], username: str) -> List
 
 # Backward compatibility
 scrape_platform_for_opportunities = discover_all_opportunities
+
+
+class UltimateDiscoveryEngine:
+    """
+    Class wrapper for discovery engine functions.
+    Provides object-oriented interface for the discovery engine.
+    """
+
+    def __init__(self, user_profile: Any = None):
+        self.user_profile = user_profile or {}
+        self.platforms_supported = 27
+
+    async def discover(self, user_profile: Dict = None) -> Dict[str, Any]:
+        """Run full discovery across all platforms"""
+        profile = user_profile or self.user_profile
+        return await discover_all_opportunities(profile)
+
+    async def discover_all(self, user_profile: Dict = None) -> Dict[str, Any]:
+        """Alias for discover()"""
+        return await self.discover(user_profile)
+
+    def get_platforms(self) -> List[str]:
+        """Get list of supported platforms"""
+        return [
+            "github", "reddit", "hackernews", "upwork", "remoteok",
+            "weworkremotely", "indiehackers", "stackoverflow", "angellist",
+            "ycombinator", "freelancer", "fiverr", "peopleperhour", "guru",
+            "99designs", "dribbble", "behance", "producthunt", "devpost",
+            "craigslist", "simplyhired", "dice", "flexjobs", "linkedin",
+            "indeed", "glassdoor", "toptal"
+        ]
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get engine statistics"""
+        return {
+            "platforms_supported": self.platforms_supported,
+            "platforms": self.get_platforms(),
+            "cache_size": len(OPPORTUNITY_CACHE)
+        }

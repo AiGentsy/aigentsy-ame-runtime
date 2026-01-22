@@ -273,3 +273,23 @@ def calculate_conversion_boost(entity: str) -> Dict[str, Any]:
 def verify_badge(badge_id: str) -> Dict[str, Any]:
     """Verify badge authenticity"""
     return _default_badges.verify_badge(badge_id)
+
+
+def get_badge_stats() -> Dict[str, Any]:
+    """Get badge system statistics"""
+    stats = _default_badges.get_stats()
+    # Calculate average boost across all entities
+    total_boost = 0.0
+    entity_count = len(_default_badges._by_entity)
+    for entity in _default_badges._by_entity.keys():
+        boost_result = _default_badges.calculate_total_boost(entity)
+        total_boost += boost_result.get("total_boost", 0)
+    avg_boost = total_boost / entity_count if entity_count > 0 else 0
+
+    return {
+        "ok": True,
+        "total_badges": stats.get("total_badges", 0),
+        "unique_entities": stats.get("unique_entities", 0),
+        "by_type": stats.get("by_type", {}),
+        "avg_boost": round(avg_boost, 3)
+    }

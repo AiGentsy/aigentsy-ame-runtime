@@ -500,3 +500,28 @@ def get_hedge_details(hedge_id: str) -> Optional[Dict[str, Any]]:
 def get_auto_hedge_stats() -> Dict[str, Any]:
     """Get auto-hedge statistics"""
     return _auto_hedge.get_stats()
+
+
+def get_exposure_summary() -> Dict[str, Any]:
+    """Get exposure summary (alias for get_exposure)"""
+    return get_exposure()
+
+
+def get_hedge_portfolio() -> Dict[str, Any]:
+    """Get hedge portfolio"""
+    return {
+        "ok": True,
+        "positions": list(_OAA_POSITIONS.values()),
+        "hedges": list(_IFX_HEDGES.values()),
+        "total_hedged": sum(h.get("amount", 0) for h in _IFX_HEDGES.values() if h.get("status") == "EXECUTED")
+    }
+
+
+def place_hedge(exposure_type: str, amount: float, instrument: str = "put_spread") -> Dict[str, Any]:
+    """Place a new hedge"""
+    return execute_hedge(amount=amount, hedge_type=instrument)
+
+
+def rebalance_hedges() -> Dict[str, Any]:
+    """Rebalance hedges (alias for rebalance)"""
+    return rebalance()

@@ -264,3 +264,15 @@ def get_available_slots() -> Dict[str, Any]:
         "slots": available,
         "count": len(available)
     }
+
+
+def get_sponsorship_stats() -> Dict[str, Any]:
+    """Get sponsorship statistics"""
+    stats = _default_sponsorships.get_stats()
+    return {
+        "ok": True,
+        "active_sponsors": stats.get("active_slots", 0),
+        "total_revenue": stats.get("total_revenue", 0),
+        "total_sold": stats.get("total_sold", 0),
+        "by_type": stats.get("by_type", {})
+    }

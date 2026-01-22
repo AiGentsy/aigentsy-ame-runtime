@@ -536,3 +536,44 @@ def get_holder_positions(holder_id: str) -> List[Dict[str, Any]]:
 def get_securitization_stats() -> Dict[str, Any]:
     """Get desk statistics"""
     return _desk.get_stats()
+
+
+def get_desk_stats() -> Dict[str, Any]:
+    """Get desk stats (alias with friendly format)"""
+    stats = _desk.get_stats()
+    return {
+        "ok": True,
+        "abs_issued": stats.get("tranches_issued", 0),
+        "total_value": stats.get("total_pooled", 0),
+        "spvs_created": stats.get("spvs_created", 0),
+        "total_distributed": stats.get("total_distributed", 0),
+        "servicing_fees": stats.get("total_servicing_fees", 0),
+        "by_tranche_type": stats.get("by_tranche_type", {})
+    }
+
+
+def price_abs(face_value: float, tranche_type: str = "senior") -> Dict[str, Any]:
+    """Price an asset-backed security"""
+    tranche_config = TRANCHES.get(tranche_type)
+    if not tranche_config:
+        return {"ok": False, "error": "invalid_tranche_type"}
+
+    # Calculate pricing based on tranche characteristics
+    origination_fee = round(face_value * ORIGINATION_FEE_PCT, 2)
+    annual_yield = tranche_config["target_yield"]
+    coverage_ratio = tranche_config["coverage_ratio"]
+
+    # Required pool size to support this tranche
+    required_pool = face_value * coverage_ratio
+
+    return {
+        "ok": True,
+        "tranche_type": tranche_type,
+        "face_value": face_value,
+        "origination_fee": origination_fee,
+        "target_yield": annual_yield,
+        "coverage_ratio": coverage_ratio,
+        "required_pool_size": required_pool,
+        "min_ocs": tranche_config["min_ocs"],
+        "monthly_distribution": round(face_value * annual_yield / 12, 2)
+    }

@@ -449,3 +449,56 @@ def get_trend_analysis(dimension: str, value: str, **kwargs) -> Dict[str, Any]:
 def get_profit_summary() -> Dict[str, Any]:
     """Get profit summary"""
     return _analyzer.get_summary()
+
+
+def analyze_margins() -> Dict[str, Any]:
+    """Analyze margins across dimensions"""
+    summary = _analyzer.get_summary()
+    suggestions = _analyzer.get_optimization_suggestions()
+
+    if not summary.get("total_outcomes"):
+        return {
+            "ok": True,
+            "avg_margin": 0.25,  # Default benchmark
+            "recommendations": [
+                "Start tracing outcomes to build analysis dataset",
+                "Target 25% gross margin benchmark"
+            ],
+            "dimensions_analyzed": len(DIMENSIONS)
+        }
+
+    return {
+        "ok": True,
+        "avg_margin": summary.get("gross_margin", 0),
+        "margin_vs_benchmark": summary.get("margin_vs_benchmark", 0),
+        "recommendations": [s.get("action", "") for s in suggestions.get("suggestions", [])[:5]],
+        "total_profit": summary.get("total_profit", 0),
+        "completion_rate": summary.get("completion_rate", 0),
+        "dispute_rate": summary.get("dispute_rate", 0)
+    }
+
+
+def get_profit_stats() -> Dict[str, Any]:
+    """Get profit stats (alias with friendly format)"""
+    summary = _analyzer.get_summary()
+
+    if not summary.get("total_outcomes"):
+        return {
+            "ok": True,
+            "total_outcomes": 0,
+            "total_revenue": 0,
+            "total_profit": 0,
+            "gross_margin": 0,
+            "benchmarks": BENCHMARKS
+        }
+
+    return {
+        "ok": True,
+        "total_outcomes": summary.get("total_outcomes", 0),
+        "total_revenue": summary.get("total_revenue", 0),
+        "total_profit": summary.get("total_profit", 0),
+        "gross_margin": summary.get("gross_margin", 0),
+        "margin_vs_benchmark": summary.get("margin_vs_benchmark", 0),
+        "completion_rate": summary.get("completion_rate", 0),
+        "benchmarks": BENCHMARKS
+    }

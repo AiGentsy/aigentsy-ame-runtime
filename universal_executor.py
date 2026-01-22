@@ -770,3 +770,7 @@ async def execute_opportunity(opportunity: Dict, auto_approve: bool = False) -> 
     """Convenience function to execute an opportunity"""
     executor = get_executor()
     return await executor.execute_opportunity(opportunity, auto_approve)
+
+
+# Alias for backwards compatibility
+UniversalExecutor = UniversalAutonomousExecutor

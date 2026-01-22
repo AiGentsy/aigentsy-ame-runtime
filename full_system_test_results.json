@@ -1,0 +1,516 @@
+{
+  "test_run_id": "full_test_1769041558",
+  "started_at": "2026-01-22T00:25:58.620724+00:00Z",
+  "path_a_user": {
+    "simple_onboard": {
+      "test": "simple_onboard",
+      "passed": true,
+      "details": {
+        "niche_packs": [
+          "code",
+          "design",
+          "content",
+          "marketing",
+          "automation",
+          "consulting"
+        ],
+        "session_id": "onboard_15b4d450"
+      },
+      "timestamp": "2026-01-22T00:25:58.622922+00:00Z"
+    },
+    "sku_orchestrator": {
+      "test": "sku_orchestrator",
+      "passed": true,
+      "details": {
+        "available_skus": [
+          "saas",
+          "marketing",
+          "social"
+        ]
+      },
+      "timestamp": "2026-01-22T00:25:58.623838+00:00Z"
+    },
+    "template_actionizer": {
+      "test": "template_actionizer",
+      "passed": true,
+      "details": {
+        "templates_available": true
+      },
+      "timestamp": "2026-01-22T00:25:58.742639+00:00Z"
+    },
+    "one_tap_widget": {
+      "test": "one_tap_widget",
+      "passed": true,
+      "details": {
+        "widget_created": true,
+        "stats": {
+          "total_widgets": 1,
+          "active_widgets": 1,
+          "total_purchases": 0,
+          "total_revenue": 0.0,
+          "total_affiliate_payouts": 0.0,
+          "total_widget_fees": 0.0,
+          "partners": 1
+        }
+      },
+      "timestamp": "2026-01-22T00:25:58.742961+00:00Z"
+    },
+    "outcome_subscriptions": {
+      "test": "outcome_subscriptions",
+      "passed": true,
+      "details": {
+        "tiers": [
+          "starter",
+          "professional",
+          "business",
+          "enterprise"
+        ],
+        "mrr": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.743289+00:00Z"
+    },
+    "public_proof_page": {
+      "test": "public_proof_page",
+      "passed": true,
+      "details": {
+        "trust_score": 60.0,
+        "badges": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.744186+00:00Z"
+    }
+  },
+  "path_b_platform": {
+    "apex_integration": {
+      "test": "apex_integration",
+      "passed": true,
+      "details": {
+        "status": "healthy",
+        "version": "v115",
+        "policies_loaded": [
+          "pricing",
+          "contract",
+          "lox",
+          "safety",
+          "autospawn",
+          "white_label",
+          "subscriptions"
+        ]
+      },
+      "timestamp": "2026-01-22T00:25:58.817170+00:00Z"
+    },
+    "discovery_engine": {
+      "test": "discovery_engine",
+      "passed": true,
+      "details": {
+        "engine_initialized": true,
+        "platforms_supported": 27
+      },
+      "timestamp": "2026-01-22T00:25:58.882250+00:00Z"
+    },
+    "monetization_fabric": {
+      "test": "monetization_fabric",
+      "passed": true,
+      "details": {
+        "price_for_100": 117.7,
+        "platform_fee": 6.0,
+        "user_share": 65.8
+      },
+      "timestamp": "2026-01-22T00:25:58.882338+00:00Z"
+    },
+    "brain_overlay": {
+      "test": "brain_overlay",
+      "passed": true,
+      "details": {
+        "brain_initialized": true,
+        "default_ocs": 0,
+        "policy_actions": [
+          "action",
+          "params"
+        ]
+      },
+      "timestamp": "2026-01-22T00:25:58.882376+00:00Z"
+    },
+    "integration_hooks": {
+      "test": "integration_hooks",
+      "passed": true,
+      "details": {
+        "hooked": true,
+        "brain_event": true,
+        "suggested_price": 646.25
+      },
+      "timestamp": "2026-01-22T00:25:58.882503+00:00Z"
+    },
+    "universal_executor": {
+      "test": "universal_executor",
+      "passed": true,
+      "details": {
+        "executor_initialized": true
+      },
+      "timestamp": "2026-01-22T00:25:58.887781+00:00Z"
+    },
+    "proof_merkle": {
+      "test": "proof_merkle",
+      "passed": true,
+      "details": {
+        "total_executions": 0,
+        "days_tracked": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.887809+00:00Z"
+    },
+    "revsplit_optimizer": {
+      "test": "revsplit_optimizer",
+      "passed": true,
+      "details": {
+        "splits": {
+          "platform": 60.0,
+          "user": 700.0,
+          "pool": 100.0,
+          "partner": 50.0
+        },
+        "strategy": "unknown"
+      },
+      "timestamp": "2026-01-22T00:25:58.887857+00:00Z"
+    }
+  },
+  "modules_tested": [
+    {
+      "name": "auto_hedge",
+      "revenue_stream": "hedge_fees"
+    },
+    {
+      "name": "builder_risk_tranches",
+      "revenue_stream": "tranche_carry"
+    },
+    {
+      "name": "data_coop",
+      "revenue_stream": "data_licensing"
+    },
+    {
+      "name": "idle_time_arbitrage",
+      "revenue_stream": "micro_task_margin"
+    },
+    {
+      "name": "lead_overflow_exchange",
+      "revenue_stream": "lox_spread"
+    },
+    {
+      "name": "partner_mesh",
+      "revenue_stream": "partner_commission"
+    },
+    {
+      "name": "profit_analyzer",
+      "revenue_stream": "margin_optimization"
+    },
+    {
+      "name": "securitization_desk",
+      "revenue_stream": "abs_spread"
+    },
+    {
+      "name": "auto_spawn_engine",
+      "revenue_stream": "spawn_equity"
+    },
+    {
+      "name": "outcomes_insurance_oracle",
+      "revenue_stream": "insurance_premium"
+    }
+  ],
+  "monetization_paths": [
+    {
+      "stream": "platform_fees",
+      "rate": "0.0%",
+      "on_1000": 0
+    },
+    {
+      "stream": "ledger_tracking",
+      "entries": 0
+    },
+    {
+      "stream": "settlement_fees",
+      "rate": "0.5%",
+      "min_threshold": 25
+    },
+    {
+      "stream": "referral_commission",
+      "rate": "12%",
+      "total_paid": 0
+    },
+    {
+      "stream": "sponsored_placement",
+      "active_sponsors": 0
+    },
+    {
+      "stream": "subscription_mrr",
+      "mrr": 0,
+      "active": 0
+    },
+    {
+      "stream": "badge_conversion_boost",
+      "badges_minted": 0
+    },
+    {
+      "stream": "arbitrage_profit",
+      "opportunities": 0
+    }
+  ],
+  "summary": {
+    "total_tests": 42,
+    "passed": 42,
+    "failed": 0,
+    "pass_rate": 100.0
+  },
+  "trillion_tilt": {
+    "auto_hedge": {
+      "test": "auto_hedge",
+      "passed": true,
+      "details": {
+        "net_exposure": 0.0,
+        "hedged_pct": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.888185+00:00Z"
+    },
+    "builder_risk_tranches": {
+      "test": "builder_risk_tranches",
+      "passed": true,
+      "details": {
+        "tranches": [
+          "starter",
+          "growth",
+          "scale"
+        ],
+        "yields": {
+          "starter": {
+            "name": "Starter",
+            "premium_pct": 0.02,
+            "retention_pct": 0.5,
+            "ceded_pct": 0.5,
+            "max_coverage": 10000
+          },
+          "growth": {
+            "name": "Growth",
+            "premium_pct": 0.035,
+            "retention_pct": 0.3,
+            "ceded_pct": 0.7,
+            "max_coverage": 50000
+          },
+          "scale": {
+            "name": "Scale",
+            "premium_pct": 0.05,
+            "retention_pct": 0.1,
+            "ceded_pct": 0.9,
+            "max_coverage": 250000
+          }
+        }
+      },
+      "timestamp": "2026-01-22T00:25:58.888487+00:00Z"
+    },
+    "data_coop": {
+      "test": "data_coop",
+      "passed": true,
+      "details": {
+        "members": 0,
+        "signals_shared": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.888832+00:00Z"
+    },
+    "idle_time_arbitrage": {
+      "test": "idle_time_arbitrage",
+      "passed": true,
+      "details": {
+        "idle_slots": 0,
+        "value_captured": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.889125+00:00Z"
+    },
+    "lox": {
+      "test": "lox",
+      "passed": true,
+      "details": {
+        "book_size": 0,
+        "total_volume": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.889363+00:00Z"
+    },
+    "partner_mesh": {
+      "test": "partner_mesh",
+      "passed": true,
+      "details": {
+        "active_partners": 0,
+        "deals_routed": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.889549+00:00Z"
+    },
+    "profit_analyzer": {
+      "test": "profit_analyzer",
+      "passed": true,
+      "details": {
+        "avg_margin": 0.25,
+        "recommendations": 2
+      },
+      "timestamp": "2026-01-22T00:25:58.891461+00:00Z"
+    },
+    "securitization_desk": {
+      "test": "securitization_desk",
+      "passed": true,
+      "details": {
+        "abs_issued": 0,
+        "total_value": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.891685+00:00Z"
+    },
+    "auto_spawn_engine": {
+      "test": "auto_spawn_engine",
+      "passed": true,
+      "details": {
+        "trends_detected": 0,
+        "platforms": 27
+      },
+      "timestamp": "2026-01-22T00:25:58.894802+00:00Z"
+    },
+    "oio": {
+      "test": "oio",
+      "passed": true,
+      "details": {
+        "policies_active": 0,
+        "premium_for_1000": 80.0
+      },
+      "timestamp": "2026-01-22T00:25:58.895114+00:00Z"
+    }
+  },
+  "monetization": {
+    "fee_schedule": {
+      "test": "fee_schedule",
+      "passed": true,
+      "details": {
+        "platform_fee_pct": 0.0,
+        "processing_fee": 0,
+        "total_fee": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895133+00:00Z"
+    },
+    "ledger": {
+      "test": "ledger",
+      "passed": true,
+      "details": {
+        "entry_posted": false,
+        "total_entries": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895165+00:00Z"
+    },
+    "settlements": {
+      "test": "settlements",
+      "passed": true,
+      "details": {
+        "pending_count": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895174+00:00Z"
+    },
+    "referrals": {
+      "test": "referrals",
+      "passed": true,
+      "details": {
+        "referral_bonus": 120.0,
+        "active_referrers": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895186+00:00Z"
+    },
+    "sponsorships": {
+      "test": "sponsorships",
+      "passed": true,
+      "details": {
+        "active_sponsors": 0,
+        "total_revenue": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895200+00:00Z"
+    },
+    "subscriptions_mon": {
+      "test": "subscriptions_mon",
+      "passed": true,
+      "details": {
+        "mrr": 0,
+        "active_subscriptions": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895205+00:00Z"
+    },
+    "proof_badges": {
+      "test": "proof_badges",
+      "passed": true,
+      "details": {
+        "total_badges": 0,
+        "conversion_boost_avg": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895213+00:00Z"
+    },
+    "arbitrage_engine": {
+      "test": "arbitrage_engine",
+      "passed": true,
+      "details": {
+        "opportunities_found": 0,
+        "profit_captured": 0
+      },
+      "timestamp": "2026-01-22T00:25:58.895218+00:00Z"
+    }
+  },
+  "connectors": {
+    "stripe": {
+      "test": "stripe",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899665+00:00Z"
+    },
+    "shopify": {
+      "test": "shopify",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899693+00:00Z"
+    },
+    "email": {
+      "test": "email",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899706+00:00Z"
+    },
+    "slack": {
+      "test": "slack",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899716+00:00Z"
+    },
+    "airtable": {
+      "test": "airtable",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899727+00:00Z"
+    },
+    "storage": {
+      "test": "storage",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899737+00:00Z"
+    },
+    "resend": {
+      "test": "resend",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899747+00:00Z"
+    },
+    "sms": {
+      "test": "sms",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899755+00:00Z"
+    },
+    "webhook": {
+      "test": "webhook",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899764+00:00Z"
+    },
+    "http": {
+      "test": "http",
+      "passed": true,
+      "details": {},
+      "timestamp": "2026-01-22T00:25:58.899773+00:00Z"
+    }
+  },
+  "completed_at": "2026-01-22T00:25:58.899775+00:00Z"
+}

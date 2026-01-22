@@ -190,3 +190,37 @@ def register_chain(user: str, chain: List[str]) -> Dict[str, Any]:
 def record_attribution(user: str, gross: float, **kwargs) -> Dict[str, Any]:
     """Record attribution"""
     return _default_referrals.record_attribution(user, gross, **kwargs)
+
+
+def get_referral_stats() -> Dict[str, Any]:
+    """Get referral statistics"""
+    return {
+        "ok": True,
+        "total_paid": round(sum(_default_referrals._earnings.values()), 2),
+        "active_referrers": len([e for e in _default_referrals._earnings.values() if e > 0]),
+        "total_chains": len(_default_referrals._chains),
+        "top_referrers": _default_referrals.get_top_referrers(5)
+    }
+
+
+def calculate_referral_bonus(amount: float, tier: int = 1) -> Dict[str, Any]:
+    """Calculate referral bonus for an amount at a given tier"""
+    config = _default_referrals.config
+    base_rate = config["default_pct"]
+    decay = config["decay_factor"]
+    max_hops = config["max_hops"]
+
+    # Clamp tier to valid range
+    tier = max(1, min(tier, max_hops))
+
+    # Apply geometric decay for deeper tiers
+    rate = base_rate * (decay ** (tier - 1))
+    bonus = round(amount * rate, 2)
+
+    return {
+        "ok": True,
+        "amount": amount,
+        "tier": tier,
+        "rate": round(rate, 4),
+        "bonus": bonus
+    }

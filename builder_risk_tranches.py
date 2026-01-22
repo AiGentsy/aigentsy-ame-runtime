@@ -552,3 +552,50 @@ def get_brt_claim(claim_id: str) -> Optional[Dict[str, Any]]:
 def get_brt_stats() -> Dict[str, Any]:
     """Get BRT program statistics"""
     return _brt.get_stats()
+
+
+def get_tranche_portfolio() -> Dict[str, Any]:
+    """Get tranche portfolio (alias for BRT stats with portfolio view)"""
+    stats = _brt.get_stats()
+    return {
+        "ok": True,
+        "tranches": list(RISK_TIERS.keys()),
+        "builders_by_tier": stats.get("builders_by_tier", {}),
+        "total_volume": stats.get("total_transaction_volume", 0),
+        "risk_pool_balance": stats.get("risk_pool_balance", 0)
+    }
+
+
+def get_tranche_yields() -> Dict[str, Any]:
+    """Get tranche yields by tier"""
+    return {
+        tier: {
+            "name": config["name"],
+            "premium_pct": config["premium_pct"],
+            "retention_pct": config["retention_pct"],
+            "ceded_pct": config["ceded_pct"],
+            "max_coverage": config["max_coverage"]
+        }
+        for tier, config in RISK_TIERS.items()
+    }
+
+
+def issue_tranche(builder_id: str, tier: str = "starter", **kwargs) -> Dict[str, Any]:
+    """Issue a tranche (register builder for tier)"""
+    return register_builder(builder_id, tier=tier, **kwargs)
+
+
+def price_tranche(amount: float, tier: str = "starter") -> Dict[str, Any]:
+    """Price a tranche (calculate premium for amount at tier)"""
+    tier_config = RISK_TIERS.get(tier)
+    if not tier_config:
+        return {"ok": False, "error": "invalid_tier"}
+    premium = round(amount * tier_config["premium_pct"], 2)
+    return {
+        "ok": True,
+        "tier": tier,
+        "amount": amount,
+        "premium": premium,
+        "premium_pct": tier_config["premium_pct"],
+        "coverage_pct": tier_config["ceded_pct"]
+    }

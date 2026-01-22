@@ -21,7 +21,7 @@ Usage:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from uuid import uuid4
 import json
 import hashlib
@@ -400,9 +400,9 @@ window.AiGentsyWidget.init({{
 _widget = OneTapWidget()
 
 
-def create_widget_config(partner_id: str, **kwargs) -> Dict[str, Any]:
+def create_widget_config(partner_id: str, name: str = "Outcome Widget", **kwargs) -> Dict[str, Any]:
     """Create widget configuration for partner"""
-    return _widget.create_widget_config(partner_id, **kwargs)
+    return _widget.create_widget_config(partner_id, name=name, **kwargs)
 
 
 def generate_embed_code(widget_id: str, **kwargs) -> Dict[str, Any]:
@@ -438,3 +438,10 @@ def get_partner_widgets(partner_id: str) -> list:
 def get_widget_platform_stats() -> Dict[str, Any]:
     """Get aggregate widget stats"""
     return _widget.get_all_stats()
+
+
+def get_widget_stats(widget_id: str = None) -> Dict[str, Any]:
+    """Get widget stats - if no widget_id, returns platform stats"""
+    if widget_id:
+        return _widget.get_stats(widget_id)
+    return get_widget_platform_stats()

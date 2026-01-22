@@ -352,6 +352,11 @@ def list_available_templates() -> Dict[str, Any]:
     }
 
 
+def get_available_templates() -> Dict[str, Any]:
+    """Get available templates (alias for list_available_templates)"""
+    return list_available_templates()
+
+
 # =============================================================
 # TESTING
 # =============================================================

@@ -719,7 +719,27 @@ class TrendDetector:
         self.last_scan = datetime.now(timezone.utc).isoformat()
         print(f"\n🎯 TOTAL: {len(signals)} real opportunities\n" + "="*80)
         return signals
-    
+
+    def detect_emerging_trends(self) -> Dict[str, Any]:
+        """Detect emerging trends (sync wrapper returning cached/empty results)"""
+        return {
+            "ok": True,
+            "trends": [
+                {
+                    "id": s.id,
+                    "source": s.source,
+                    "description": s.description,
+                    "category": s.category.value if hasattr(s.category, 'value') else str(s.category),
+                    "opportunity_score": s.opportunity_score,
+                    "detected_at": s.detected_at
+                }
+                for s in self.signals[:10]
+            ],
+            "total_signals": len(self.signals),
+            "last_scan": self.last_scan,
+            "errors": self.scan_errors
+        }
+
     async def _scan_reddit(self) -> List[TrendSignal]:
         signals = []
         subreddits = ["forhire", "freelance", "slavelabour", "DesignJobs", "gameDevClassifieds", "hiring", "remotejs", "webdev"]

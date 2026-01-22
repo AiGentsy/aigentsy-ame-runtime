@@ -585,3 +585,34 @@ def get_jv(jv_id: str) -> Optional[Dict[str, Any]]:
 def get_mesh_stats() -> Dict[str, Any]:
     """Get mesh statistics"""
     return _mesh.get_stats()
+
+
+def get_partner_stats() -> Dict[str, Any]:
+    """Get partner mesh stats (alias with friendly format)"""
+    stats = _mesh.get_stats()
+    return {
+        "ok": True,
+        "active_partners": stats.get("active_partners", 0),
+        "total_partners": stats.get("total_partners", 0),
+        "deals_routed": sum(len(_TRANSACTIONS.get(p, [])) for p in _PARTNERS.keys()),
+        "total_volume": stats.get("total_volume", 0),
+        "commissions_paid": stats.get("total_commissions_paid", 0),
+        "active_jvs": stats.get("active_jvs", 0),
+        "by_tier": stats.get("by_tier", {})
+    }
+
+
+def sync_partners() -> Dict[str, Any]:
+    """Sync partner data (check for stale partners, suggest JVs)"""
+    suggestions = []
+    for partner_id in _PARTNERS.keys():
+        jv_suggestions = _mesh.suggest_jv(partner_id)
+        if jv_suggestions.get("ok") and jv_suggestions.get("suggestions"):
+            suggestions.extend(jv_suggestions["suggestions"][:2])
+
+    return {
+        "ok": True,
+        "partners_synced": len(_PARTNERS),
+        "jv_suggestions": suggestions[:5],
+        "active_count": len([p for p in _PARTNERS.values() if p["status"] == "ACTIVE"])
+    }

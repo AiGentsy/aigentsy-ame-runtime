@@ -595,3 +595,8 @@ def get_usage_history(subscriber_id: str, limit: int = 50) -> list:
 def get_subscription_stats() -> Dict[str, Any]:
     """Get subscription statistics"""
     return _subscriptions.get_stats()
+
+
+def get_subscription_tiers() -> Dict[str, Any]:
+    """Get available subscription tiers"""
+    return _subscriptions.packages

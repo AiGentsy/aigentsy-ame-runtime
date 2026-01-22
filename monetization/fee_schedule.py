@@ -177,3 +177,8 @@ def calculate_platform_fee(amount: float) -> Dict[str, float]:
 def get_schedule() -> Dict[str, float]:
     """Get full fee schedule"""
     return _default_schedule.get_all()
+
+
+def get_fee_schedule() -> Dict[str, float]:
+    """Get full fee schedule (alias)"""
+    return _default_schedule.get_all()

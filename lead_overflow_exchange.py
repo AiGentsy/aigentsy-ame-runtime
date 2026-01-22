@@ -564,3 +564,18 @@ def get_lox_provider_stats(provider_id: str) -> Dict[str, Any]:
 def get_lox_exchange_stats() -> Dict[str, Any]:
     """Get exchange statistics"""
     return _lox.get_exchange_stats()
+
+
+def get_lox_stats() -> Dict[str, Any]:
+    """Get LOX stats (alias with friendly format)"""
+    stats = _lox.get_exchange_stats()
+    return {
+        "ok": True,
+        "book_size": stats.get("open_listings", 0),
+        "total_volume": stats.get("total_volume", 0),
+        "total_listings": stats.get("total_listings", 0),
+        "matched_listings": stats.get("matched_listings", 0),
+        "exchange_fees": stats.get("total_exchange_fees", 0),
+        "referrals_paid": stats.get("total_referrals_paid", 0),
+        "avg_discount": stats.get("avg_discount", 0)
+    }

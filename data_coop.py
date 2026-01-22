@@ -498,3 +498,43 @@ def opt_out_contributor(contributor_id: str) -> Dict[str, Any]:
 def get_data_coop_stats() -> Dict[str, Any]:
     """Get data co-op statistics"""
     return _coop.get_stats()
+
+
+def get_coop_stats() -> Dict[str, Any]:
+    """Get data co-op statistics (alias)"""
+    stats = _coop.get_stats()
+    return {
+        "ok": True,
+        "members": stats.get("total_contributors", 0),
+        "active_members": stats.get("active_contributors", 0),
+        "signals_shared": stats.get("total_data_points", 0),
+        "total_revenue": stats.get("total_revenue", 0),
+        "total_payouts": stats.get("total_contributor_earnings", 0)
+    }
+
+
+def query_coop(query: Dict[str, Any]) -> Dict[str, Any]:
+    """Query the data co-op (simplified alias for query_insights)"""
+    query_type = query.get("type", "benchmark_report")
+    category = query.get("category")
+
+    # Map simple query types to product names
+    product_map = {
+        "market_rates": "benchmark_report",
+        "demand": "demand_forecast",
+        "skills": "skill_gap_analysis",
+        "intelligence": "market_intelligence"
+    }
+    product = product_map.get(query_type, query_type)
+
+    return _coop.query_insights("coop_query", product, category=category)
+
+
+def contribute_signal(contributor_id: str, signal_type: str, data: dict) -> Dict[str, Any]:
+    """Contribute a signal to the co-op (alias for contribute_data)"""
+    return _coop.contribute_data(contributor_id, signal_type, data)
+
+
+def claim_rewards(contributor_id: str) -> Dict[str, Any]:
+    """Claim contributor rewards (alias for process_payout)"""
+    return _coop.process_payout(contributor_id)

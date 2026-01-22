@@ -401,3 +401,24 @@ def get_oio_policy(coi_id: str) -> Optional[Dict[str, Any]]:
 def get_oio_stats() -> Dict[str, Any]:
     """Get OIO statistics"""
     return _oio.get_stats()
+
+
+def calculate_premium(payout: float, tier: str = "standard") -> Dict[str, Any]:
+    """Calculate insurance premium for a payout amount"""
+    # Premium rates by tier
+    rates = {
+        "basic": 0.05,      # 5%
+        "standard": 0.08,   # 8%
+        "premium": 0.12,    # 12%
+        "enterprise": 0.15  # 15%
+    }
+    rate = rates.get(tier, rates["standard"])
+    premium = round(payout * rate, 2)
+    return {
+        "ok": True,
+        "payout": payout,
+        "tier": tier,
+        "rate": rate,
+        "premium": premium,
+        "coverage": payout
+    }

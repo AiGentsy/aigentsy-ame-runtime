@@ -320,3 +320,21 @@ def subscribe(user: str, tier: str, **kwargs) -> Dict[str, Any]:
 def record_usage(user: str, calls: int = 1) -> Dict[str, Any]:
     """Record API usage"""
     return _default_subscriptions.record_usage(user, calls)
+
+
+def get_subscription_stats() -> Dict[str, Any]:
+    """Get subscription statistics"""
+    subs = _default_subscriptions._subscriptions
+    active = len([s for s in subs.values() if s.get("status") == "active"])
+    mrr = sum(
+        s.get("price", 0) / (12 if s.get("billing_period") == "annual" else 1)
+        for s in subs.values()
+        if s.get("status") == "active"
+    )
+    return {
+        "ok": True,
+        "total_subscribers": len(subs),
+        "active_subscriptions": active,
+        "mrr": round(mrr, 2),
+        "arr": round(mrr * 12, 2)
+    }
