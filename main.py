@@ -1253,7 +1253,7 @@ except Exception as e:
 
 async def auto_bid_background():
     """Runs in background forever"""
-    base_url = os.getenv("SELF_URL", "http://localhost:8000")
+    base_url = os.getenv("BACKEND_BASE", "http://localhost:8000")
     await asyncio.sleep(60)
     
     while True:

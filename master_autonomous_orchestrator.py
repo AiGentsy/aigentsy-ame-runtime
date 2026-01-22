@@ -62,7 +62,7 @@ try:
 except ImportError:
     HTTPX_AVAILABLE = False
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("BACKEND_BASE", "http://localhost:8000")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
