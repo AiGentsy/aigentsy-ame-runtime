@@ -32,6 +32,25 @@ import random
 import os
 import json
 import logging
+import hashlib
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POLYMORPHIC EXECUTION FLOWS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from platform_execution_flows import (
+        determine_execution_flow,
+        route_opportunities_by_flow,
+        get_flow_summary,
+        ExecutionMode,
+        get_configured_apis
+    )
+    POLYMORPHIC_FLOWS_AVAILABLE = True
+except ImportError as e:
+    POLYMORPHIC_FLOWS_AVAILABLE = False
+    logging.warning(f"Platform execution flows not available: {e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STRUCTURED LOGGING
@@ -970,6 +989,496 @@ class MasterAutonomousOrchestrator:
         }, idempotency_key=idempotency_key, platform=platform)
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # POLYMORPHIC EXECUTION - Platform-native flows
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def run_polymorphic_execution(self, opportunities: List[Dict]) -> Dict[str, Any]:
+        """
+        Execute opportunities using their native platform flows.
+
+        Instead of forcing all opportunities through communication → contract → fulfill,
+        each platform type uses its own monetization flow:
+
+        - GitHub bounties: IMMEDIATE execution (analyze → PR → claim)
+        - LinkedIn leads: CONVERSATIONAL (connect → qualify → close)
+        - Upwork gigs: PROPOSAL-based (submit → hire → execute)
+        - Twitter: CONTENT POSTING (generate → post → track)
+        - etc.
+        """
+        if not POLYMORPHIC_FLOWS_AVAILABLE:
+            _log_structured(self._run_id(), "polymorphic", "fallback", {
+                "reason": "platform_execution_flows not available"
+            })
+            # Fallback to traditional communication flow
+            return await self.run_communication_all_channels(opportunities)
+
+        self.current_run["phase"] = "polymorphic_execution"
+        _log_structured(self._run_id(), "polymorphic", "start", {"count": len(opportunities)})
+
+        # Route opportunities by execution mode
+        routing = route_opportunities_by_flow(opportunities)
+        routed = routing["routed"]
+        stats = routing["stats"]
+
+        _log_structured(self._run_id(), "polymorphic", "routed", stats)
+
+        results = {
+            "total_processed": 0,
+            "by_mode": {},
+            "immediate_executed": 0,
+            "conversational_started": 0,
+            "proposals_submitted": 0,
+            "content_posted": 0,
+            "payments_initiated": 0,
+            "queued_for_review": 0,
+            "errors": [],
+            "conversations_started": [],  # For compatibility with contract flow
+            "routing_stats": stats
+        }
+
+        # Execute each flow type in parallel where possible
+        execution_tasks = []
+
+        # IMMEDIATE EXECUTION (GitHub bounties) - Execute now
+        if routed.get("immediate"):
+            execution_tasks.append(
+                self._execute_immediate_flow(routed["immediate"], results)
+            )
+
+        # CONVERSATIONAL (LinkedIn, Reddit) - Start conversations
+        if routed.get("conversational"):
+            execution_tasks.append(
+                self._execute_conversational_flow(routed["conversational"], results)
+            )
+
+        # APPLICATION BASED (Twitter sponsored) - Apply to campaigns
+        if routed.get("application_based"):
+            execution_tasks.append(
+                self._execute_application_flow(routed["application_based"], results)
+            )
+
+        # PROPOSAL BASED (Upwork, Fiverr) - Submit proposals
+        if routed.get("proposal_based"):
+            execution_tasks.append(
+                self._execute_proposal_flow(routed["proposal_based"], results)
+            )
+
+        # CONTENT POSTING (Twitter affiliate, Instagram) - Post content
+        if routed.get("content_posting"):
+            execution_tasks.append(
+                self._execute_content_flow(routed["content_posting"], results)
+            )
+
+        # PAYMENT COLLECTION (Stripe) - Collect payments
+        if routed.get("payment_collection"):
+            execution_tasks.append(
+                self._execute_payment_flow(routed["payment_collection"], results)
+            )
+
+        # MANUAL REVIEW - Queue for human review
+        if routed.get("manual_review"):
+            for opp in routed["manual_review"]:
+                results["queued_for_review"] += 1
+                _log_structured(self._run_id(), "polymorphic", "queued_manual", {
+                    "platform": opp.get("platform"),
+                    "reason": opp.get("_flow", {}).get("reason", "unknown")
+                })
+
+        # Run all execution flows in parallel
+        if execution_tasks:
+            await asyncio.gather(*execution_tasks, return_exceptions=True)
+
+        results["total_processed"] = (
+            results["immediate_executed"] +
+            results["conversational_started"] +
+            results["proposals_submitted"] +
+            results["content_posted"] +
+            results["payments_initiated"] +
+            results["queued_for_review"]
+        )
+
+        _log_structured(self._run_id(), "polymorphic", "complete", {
+            "total": results["total_processed"],
+            "immediate": results["immediate_executed"],
+            "conversational": results["conversational_started"],
+            "proposals": results["proposals_submitted"],
+            "content": results["content_posted"],
+            "payments": results["payments_initiated"],
+            "manual": results["queued_for_review"]
+        })
+
+        self.current_run["results"]["polymorphic_execution"] = results
+        return results
+
+    async def _execute_immediate_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute IMMEDIATE flow opportunities (GitHub bounties).
+
+        Flow: analyze_issue → generate_solution → create_branch → submit_pr
+        """
+        _log_structured(self._run_id(), "immediate", "start", {"count": len(opportunities)})
+
+        for opp in opportunities:
+            try:
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|imm|{opp_key}"
+                platform = opp.get("platform", "github")
+
+                sem = self._get_semaphore(platform)
+                async with sem:
+                    # Check circuit breaker
+                    if not self.circuit_breaker.can_call(platform):
+                        _log_structured(self._run_id(), "immediate", "circuit_open", {
+                            "platform": platform
+                        })
+                        continue
+
+                    # Step 1: Analyze the issue
+                    analysis = await self._call("POST", "/github/analyze-issue", {
+                        "url": opp.get("url"),
+                        "title": opp.get("title"),
+                        "description": opp.get("description", "")
+                    }, idempotency_key=f"{idem_base}|analyze", platform=platform)
+
+                    if not analysis.get("ok"):
+                        results["errors"].append({
+                            "opportunity_id": opp.get("id"),
+                            "step": "analyze",
+                            "error": analysis.get("error")
+                        })
+                        continue
+
+                    # Step 2: Generate solution
+                    solution = await self._call("POST", "/fulfillment/code-generation", {
+                        "opportunity": opp,
+                        "analysis": analysis,
+                        "ev_score": opp.get("_ev", 0)
+                    }, idempotency_key=f"{idem_base}|solution", platform="internal")
+
+                    if not solution.get("success"):
+                        results["errors"].append({
+                            "opportunity_id": opp.get("id"),
+                            "step": "generate_solution",
+                            "error": solution.get("error", "generation_failed")
+                        })
+                        continue
+
+                    # Step 3: Submit PR (or post comment for non-bounties)
+                    flow_info = opp.get("_flow", {})
+                    if flow_info.get("flow_key") == "github_bounty":
+                        # Submit actual PR
+                        pr_result = await self._call("POST", "/github/submit-pr", {
+                            "url": opp.get("url"),
+                            "solution": solution,
+                            "opportunity": opp
+                        }, idempotency_key=f"{idem_base}|pr", platform=platform)
+
+                        if pr_result.get("ok"):
+                            results["immediate_executed"] += 1
+                            results["by_mode"]["github_bounty"] = results["by_mode"].get("github_bounty", 0) + 1
+
+                            # Track for payment collection later
+                            results["conversations_started"].append({
+                                "opportunity_id": opp.get("id"),
+                                "channel": "github_pr",
+                                "status": "pr_submitted",
+                                "pr_url": pr_result.get("pr_url"),
+                                "ev": opp.get("_ev", 0)
+                            })
+
+                            _log_structured(self._run_id(), "immediate", "pr_submitted", {
+                                "url": opp.get("url"),
+                                "pr_url": pr_result.get("pr_url")
+                            })
+                    else:
+                        # Post interest comment
+                        comment_result = await self._call("POST", "/github/post-comment", {
+                            "url": opp.get("url"),
+                            "type": "solution_offer",
+                            "solution_preview": solution.get("summary", "")[:500]
+                        }, idempotency_key=f"{idem_base}|comment", platform=platform)
+
+                        if comment_result.get("ok"):
+                            results["immediate_executed"] += 1
+                            results["by_mode"]["github_issue"] = results["by_mode"].get("github_issue", 0) + 1
+
+                            _log_structured(self._run_id(), "immediate", "comment_posted", {
+                                "url": opp.get("url")
+                            })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "error": str(e)
+                })
+
+    async def _execute_conversational_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute CONVERSATIONAL flow opportunities (LinkedIn, Reddit, Email).
+
+        These require relationship building before monetization.
+        Uses existing communication infrastructure.
+        """
+        _log_structured(self._run_id(), "conversational", "start", {"count": len(opportunities)})
+
+        # Use existing communication flow for conversational opportunities
+        comm_results = await self.run_communication_all_channels(opportunities)
+
+        results["conversational_started"] += (
+            comm_results.get("emails_sent", 0) +
+            comm_results.get("dms_sent", 0) +
+            comm_results.get("sms_sent", 0) +
+            comm_results.get("platform_messages", 0)
+        )
+
+        results["by_mode"]["conversational"] = results["conversational_started"]
+
+        # Pass through conversations for contract flow
+        results["conversations_started"].extend(comm_results.get("conversations_started", []))
+
+    async def _execute_application_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute APPLICATION-based flow (Twitter sponsored content).
+
+        Flow: apply_to_campaign → await_approval → create_content → post
+        """
+        _log_structured(self._run_id(), "application", "start", {"count": len(opportunities)})
+
+        for opp in opportunities:
+            try:
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|app|{opp_key}"
+                platform = opp.get("platform", "twitter")
+
+                sem = self._get_semaphore(platform)
+                async with sem:
+                    if not self.circuit_breaker.can_call(platform):
+                        continue
+
+                    # For sponsored content, we apply via DM
+                    contact = opp.get("contact", {})
+                    twitter_handle = contact.get("twitter")
+
+                    if twitter_handle:
+                        # Generate application message
+                        pitch = await self._call("POST", "/ame/generate-pitch", {
+                            "opportunity": opp,
+                            "channel": "twitter_dm",
+                            "type": "sponsorship_application"
+                        }, platform="internal")
+
+                        # Send DM application
+                        dm_result = await self._call("POST", "/twitter/send-dm", {
+                            "username": twitter_handle,
+                            "message": pitch.get("body", ""),
+                            "opportunity_id": opp.get("id")
+                        }, idempotency_key=f"{idem_base}|dm", platform=platform)
+
+                        if dm_result.get("ok"):
+                            results["by_mode"]["twitter_sponsored"] = results["by_mode"].get("twitter_sponsored", 0) + 1
+                            results["conversations_started"].append({
+                                "opportunity_id": opp.get("id"),
+                                "channel": "twitter_dm",
+                                "status": "application_sent",
+                                "ev": opp.get("_ev", 0)
+                            })
+                            _log_structured(self._run_id(), "application", "applied", {
+                                "platform": platform,
+                                "handle": twitter_handle
+                            })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "error": str(e)
+                })
+
+    async def _execute_proposal_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute PROPOSAL-based flow (Upwork, Fiverr, Freelancer).
+
+        Flow: analyze_job → generate_proposal → calculate_bid → submit
+        """
+        _log_structured(self._run_id(), "proposal", "start", {"count": len(opportunities)})
+
+        for opp in opportunities:
+            try:
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|prop|{opp_key}"
+                platform = opp.get("platform", "upwork")
+
+                sem = self._get_semaphore(platform)
+                async with sem:
+                    if not self.circuit_breaker.can_call(platform):
+                        continue
+
+                    # Generate COGS-aware proposal
+                    pitch = await self._call("POST", "/ame/generate-pitch", {
+                        "opportunity": opp,
+                        "channel": platform,
+                        "include_sla": True
+                    }, platform="internal")
+
+                    # Calculate bid with margin protection
+                    value = opp.get("value", 0) or opp.get("estimated_value", 0)
+                    cogs = opp.get("cogs_estimate", value * 0.3)
+                    min_margin = 0.2
+                    suggested_bid = max(value * 0.8, cogs * (1 + min_margin))
+
+                    # Submit proposal (this goes to queue for manual submission on most platforms)
+                    proposal_result = await self._call("POST", f"/{platform}/submit-proposal", {
+                        "job_id": opp.get("job_id") or opp.get("id"),
+                        "proposal": pitch.get("body", ""),
+                        "bid_amount": suggested_bid,
+                        "sla": pitch.get("sla"),
+                        "opportunity_url": opp.get("url")
+                    }, idempotency_key=f"{idem_base}|submit", platform=platform)
+
+                    if proposal_result.get("ok") or proposal_result.get("queued"):
+                        results["proposals_submitted"] += 1
+                        results["by_mode"][f"{platform}_proposal"] = results["by_mode"].get(f"{platform}_proposal", 0) + 1
+
+                        results["conversations_started"].append({
+                            "opportunity_id": opp.get("id"),
+                            "channel": platform,
+                            "status": "proposal_submitted",
+                            "bid": suggested_bid,
+                            "ev": opp.get("_ev", 0)
+                        })
+
+                        _log_structured(self._run_id(), "proposal", "submitted", {
+                            "platform": platform,
+                            "bid": suggested_bid,
+                            "url": opp.get("url")
+                        })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "error": str(e)
+                })
+
+    async def _execute_content_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute CONTENT POSTING flow (Twitter affiliate, Instagram).
+
+        Flow: identify_product → generate_affiliate_link → create_content → post → track
+        """
+        _log_structured(self._run_id(), "content", "start", {"count": len(opportunities)})
+
+        for opp in opportunities:
+            try:
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|cont|{opp_key}"
+                platform = opp.get("platform", "twitter")
+
+                sem = self._get_semaphore(platform)
+                async with sem:
+                    if not self.circuit_breaker.can_call(platform):
+                        continue
+
+                    flow_info = opp.get("_flow", {})
+                    flow_key = flow_info.get("flow_key", "")
+
+                    if "twitter" in flow_key:
+                        # Generate affiliate content for Twitter
+                        content = await self._call("POST", "/ame/generate-pitch", {
+                            "opportunity": opp,
+                            "channel": "twitter_thread",
+                            "type": "affiliate_content"
+                        }, platform="internal")
+
+                        # Post tweet/thread
+                        post_result = await self._call("POST", "/twitter/post", {
+                            "content": content.get("body", ""),
+                            "opportunity_id": opp.get("id")
+                        }, idempotency_key=f"{idem_base}|post", platform=platform)
+
+                        if post_result.get("ok"):
+                            results["content_posted"] += 1
+                            results["by_mode"]["twitter_affiliate"] = results["by_mode"].get("twitter_affiliate", 0) + 1
+                            _log_structured(self._run_id(), "content", "posted", {
+                                "platform": "twitter",
+                                "tweet_id": post_result.get("tweet_id")
+                            })
+
+                    elif "instagram" in flow_key:
+                        # Generate content for Instagram
+                        content = await self._call("POST", "/fulfillment/graphics-generation", {
+                            "opportunity": opp,
+                            "type": "instagram_post"
+                        }, platform="internal")
+
+                        # Post to Instagram
+                        post_result = await self._call("POST", "/instagram/post", {
+                            "image_url": content.get("image_url"),
+                            "caption": content.get("caption", ""),
+                            "opportunity_id": opp.get("id")
+                        }, idempotency_key=f"{idem_base}|post", platform=platform)
+
+                        if post_result.get("ok"):
+                            results["content_posted"] += 1
+                            results["by_mode"]["instagram_creator"] = results["by_mode"].get("instagram_creator", 0) + 1
+                            _log_structured(self._run_id(), "content", "posted", {
+                                "platform": "instagram",
+                                "post_id": post_result.get("post_id")
+                            })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "error": str(e)
+                })
+
+    async def _execute_payment_flow(self, opportunities: List[Dict], results: Dict):
+        """
+        Execute PAYMENT COLLECTION flow (Stripe invoices/receivables).
+
+        Flow: identify_receivable → send_reminder → generate_link → track
+        """
+        _log_structured(self._run_id(), "payment", "start", {"count": len(opportunities)})
+
+        for opp in opportunities:
+            try:
+                opp_key = opp.get("_key", self._compute_opportunity_key(opp))
+                idem_base = f"{self._run_id()}|pay|{opp_key}"
+
+                # Create payment link
+                amount = opp.get("value", 0) or opp.get("amount", 0)
+                if amount > 0:
+                    payment_result = await self._create_payment_link_fabric(
+                        amount=amount,
+                        description=opp.get("title", "Payment"),
+                        metadata={"opportunity_id": opp.get("id")},
+                        idempotency_key=f"{idem_base}|link"
+                    )
+
+                    if payment_result.get("ok"):
+                        results["payments_initiated"] += 1
+                        results["by_mode"]["stripe_payment"] = results["by_mode"].get("stripe_payment", 0) + 1
+
+                        # Send reminder email if we have contact
+                        contact = opp.get("contact", {})
+                        email = contact.get("email")
+                        if email:
+                            await self._call("POST", "/email/send", {
+                                "to": email,
+                                "subject": f"Payment reminder: {opp.get('title', 'Invoice')}",
+                                "body": f"Please complete your payment: {payment_result.get('payment_link')}"
+                            }, idempotency_key=f"{idem_base}|email", platform="email")
+
+                        _log_structured(self._run_id(), "payment", "link_created", {
+                            "amount": amount,
+                            "link_id": payment_result.get("payment_link_id")
+                        })
+
+            except Exception as e:
+                results["errors"].append({
+                    "opportunity_id": opp.get("id"),
+                    "error": str(e)
+                })
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 3: CONTRACT & AGREEMENT
     # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1611,23 +2120,53 @@ AiGentsy Autonomous Fulfillment
 
             ranked_opportunities = discovery.get("ranked_opportunities", [])
 
-            # PHASE 2: COMMUNICATION (if not dry run)
+            # PHASE 2: POLYMORPHIC EXECUTION (if not dry run)
+            # Each platform monetizes in its native way instead of forcing all through communication
             if ranked_opportunities and not dry_run:
-                _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "communication"})
-                communication = await self.run_communication_all_channels(ranked_opportunities)
-                final_results["phases_completed"].append("communication")
-                final_results["communication"] = {
-                    "emails_sent": communication["emails_sent"],
-                    "dms_sent": communication["dms_sent"],
-                    "sms_sent": communication["sms_sent"],
-                    "platform_messages": communication["platform_messages"],
-                    "skipped_no_consent": communication["skipped_no_consent"],
-                    "conversations_started": len(communication["conversations_started"])
-                }
+                if POLYMORPHIC_FLOWS_AVAILABLE:
+                    _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "polymorphic_execution"})
+                    execution = await self.run_polymorphic_execution(ranked_opportunities)
+                    final_results["phases_completed"].append("polymorphic_execution")
+                    final_results["polymorphic_execution"] = {
+                        "total_processed": execution.get("total_processed", 0),
+                        "immediate_executed": execution.get("immediate_executed", 0),
+                        "conversational_started": execution.get("conversational_started", 0),
+                        "proposals_submitted": execution.get("proposals_submitted", 0),
+                        "content_posted": execution.get("content_posted", 0),
+                        "payments_initiated": execution.get("payments_initiated", 0),
+                        "queued_for_review": execution.get("queued_for_review", 0),
+                        "by_mode": execution.get("by_mode", {}),
+                        "routing_stats": execution.get("routing_stats", {})
+                    }
 
-                # PHASE 3: CONTRACT
-                interested = [c for c in communication["conversations_started"]
-                              if c.get("status") == "client_interested"]
+                    # For backwards compatibility, also populate communication results
+                    final_results["communication"] = {
+                        "emails_sent": 0,
+                        "dms_sent": 0,
+                        "sms_sent": 0,
+                        "platform_messages": execution.get("immediate_executed", 0) + execution.get("content_posted", 0),
+                        "skipped_no_consent": 0,
+                        "conversations_started": len(execution.get("conversations_started", []))
+                    }
+                    communication = execution
+                else:
+                    # Fallback to traditional communication flow
+                    _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "communication"})
+                    communication = await self.run_communication_all_channels(ranked_opportunities)
+                    final_results["phases_completed"].append("communication")
+                    final_results["communication"] = {
+                        "emails_sent": communication["emails_sent"],
+                        "dms_sent": communication["dms_sent"],
+                        "sms_sent": communication["sms_sent"],
+                        "platform_messages": communication["platform_messages"],
+                        "skipped_no_consent": communication["skipped_no_consent"],
+                        "conversations_started": len(communication["conversations_started"])
+                    }
+
+                # PHASE 3: CONTRACT (for opportunities that need it)
+                # Note: Immediate execution opportunities (GitHub bounties) skip this
+                interested = [c for c in communication.get("conversations_started", [])
+                              if c.get("status") in ["client_interested", "proposal_submitted", "application_sent"]]
                 if interested:
                     _log_structured(self._run_id(), "orchestrator", "phase_start", {"phase": "contract"})
                     contracts = await self.run_contract_flow(interested)

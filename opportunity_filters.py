@@ -7,6 +7,7 @@ UPGRADED with:
 - Actionability scoring (can we actually execute on this?)
 - Contact info validation (email, phone, post_id)
 - Platform-specific execution readiness
+- POLYMORPHIC FLOW INTEGRATION (v115+)
 """
 
 from datetime import datetime, timezone, timedelta
@@ -19,6 +20,19 @@ try:
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
+
+# Try polymorphic execution flows
+try:
+    from platform_execution_flows import (
+        determine_execution_flow,
+        get_configured_apis,
+        ExecutionMode
+    )
+    POLYMORPHIC_FLOWS_AVAILABLE = True
+except ImportError:
+    POLYMORPHIC_FLOWS_AVAILABLE = False
+    determine_execution_flow = None
+    get_configured_apis = None
 
 
 # =============================================================================
@@ -600,24 +614,50 @@ def get_execute_now_opportunities(
 def extract_execution_target(opportunity: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract execution target info from opportunity URL/data
-    
+
+    ENHANCED: Now integrates with polymorphic execution flows to determine
+    the correct execution mode and required APIs.
+
     Returns a dict with platform-specific execution info:
     - Reddit: post_id, subreddit
     - Twitter: tweet_id
     - GitHub: owner, repo, issue_number
     - Email: contact_email
-    - etc.
+    - Plus: execution_mode, flow_key, required_apis, auto_execute
     """
     platform = opportunity.get('platform', '').lower()
     url = opportunity.get('url', '')
     source_data = opportunity.get('source_data', {})
-    
+
     target = {
         'platform': platform,
         'can_execute': False,
         'method': None,
-        'details': {}
+        'details': {},
+        # Polymorphic flow info
+        'execution_mode': None,
+        'flow_key': None,
+        'requires_communication': True,
+        'requires_approval': True,
+        'auto_execute': False,
+        'missing_apis': [],
+        'flow_reason': None
     }
+
+    # Get polymorphic flow info if available
+    if POLYMORPHIC_FLOWS_AVAILABLE and determine_execution_flow:
+        flow_result = determine_execution_flow(opportunity)
+        target['execution_mode'] = flow_result.get('execution_mode')
+        target['flow_key'] = flow_result.get('flow_key')
+        target['requires_communication'] = flow_result.get('requires_communication', True)
+        target['requires_approval'] = flow_result.get('requires_approval', True)
+        target['auto_execute'] = flow_result.get('auto_execute', False)
+        target['missing_apis'] = flow_result.get('missing_apis', [])
+        target['flow_reason'] = flow_result.get('reason')
+
+        # If flow says we can execute and APIs are available, set can_execute
+        if flow_result.get('can_execute'):
+            target['can_execute'] = True
     
     if platform == 'reddit':
         # Extract post ID from URL
@@ -715,12 +755,163 @@ def extract_execution_target(opportunity: Dict[str, Any]) -> Dict[str, Any]:
 def enrich_opportunity_for_execution(opportunity: Dict[str, Any]) -> Dict[str, Any]:
     """
     Enrich opportunity with execution target info
-    
+
     Adds 'execution_target' key with parsed execution details
+    including polymorphic flow information.
     """
     enriched = opportunity.copy()
     enriched['execution_target'] = extract_execution_target(opportunity)
+
+    # Also add flow info directly to opportunity for orchestrator
+    if POLYMORPHIC_FLOWS_AVAILABLE and determine_execution_flow:
+        flow_result = determine_execution_flow(opportunity)
+        enriched['_flow'] = flow_result
+
     return enriched
+
+
+def get_execution_readiness_summary(opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Get a summary of execution readiness across all opportunities.
+
+    Shows:
+    - How many can be auto-executed (GitHub bounties, content posting)
+    - How many need communication (LinkedIn, Reddit)
+    - How many are blocked by missing APIs
+    - Breakdown by execution mode
+    """
+    summary = {
+        'total': len(opportunities),
+        'can_auto_execute': 0,
+        'needs_communication': 0,
+        'needs_approval': 0,
+        'blocked_by_apis': 0,
+        'by_mode': {},
+        'by_platform': {},
+        'missing_apis_breakdown': {}
+    }
+
+    if not POLYMORPHIC_FLOWS_AVAILABLE:
+        summary['warning'] = 'Polymorphic flows not available - all will use communication flow'
+        return summary
+
+    for opp in opportunities:
+        flow_result = determine_execution_flow(opp)
+        platform = opp.get('platform', 'unknown')
+        mode = flow_result.get('execution_mode', 'unknown')
+
+        # Count by mode
+        summary['by_mode'][mode] = summary['by_mode'].get(mode, 0) + 1
+
+        # Count by platform
+        summary['by_platform'][platform] = summary['by_platform'].get(platform, 0) + 1
+
+        # Check execution readiness
+        if flow_result.get('auto_execute'):
+            summary['can_auto_execute'] += 1
+        if flow_result.get('requires_communication'):
+            summary['needs_communication'] += 1
+        if flow_result.get('requires_approval'):
+            summary['needs_approval'] += 1
+
+        # Check API availability
+        missing = flow_result.get('missing_apis', [])
+        if missing:
+            summary['blocked_by_apis'] += 1
+            for api in missing:
+                summary['missing_apis_breakdown'][api] = summary['missing_apis_breakdown'].get(api, 0) + 1
+
+    return summary
+
+
+def filter_by_execution_readiness(
+    opportunities: List[Dict[str, Any]],
+    require_auto_execute: bool = False,
+    skip_missing_apis: bool = True,
+    allowed_modes: List[str] = None
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Filter opportunities based on execution readiness.
+
+    Args:
+        opportunities: List of opportunities to filter
+        require_auto_execute: If True, only return opportunities that can auto-execute
+        skip_missing_apis: If True, skip opportunities missing required APIs
+        allowed_modes: If provided, only return opportunities with these execution modes
+
+    Returns:
+        Tuple of (filtered_opportunities, filter_stats)
+    """
+    if not POLYMORPHIC_FLOWS_AVAILABLE:
+        # Return all opportunities if flows not available
+        return opportunities, {'warning': 'flows_not_available', 'returned': len(opportunities)}
+
+    filtered = []
+    stats = {
+        'total': len(opportunities),
+        'passed': 0,
+        'skipped_auto_execute': 0,
+        'skipped_missing_apis': 0,
+        'skipped_mode': 0
+    }
+
+    for opp in opportunities:
+        flow_result = determine_execution_flow(opp)
+
+        # Check auto-execute requirement
+        if require_auto_execute and not flow_result.get('auto_execute'):
+            stats['skipped_auto_execute'] += 1
+            continue
+
+        # Check API availability
+        if skip_missing_apis and flow_result.get('missing_apis'):
+            stats['skipped_missing_apis'] += 1
+            continue
+
+        # Check allowed modes
+        if allowed_modes:
+            mode = flow_result.get('execution_mode')
+            if mode not in allowed_modes:
+                stats['skipped_mode'] += 1
+                continue
+
+        # Enrich and add
+        enriched = opp.copy()
+        enriched['_flow'] = flow_result
+        filtered.append(enriched)
+        stats['passed'] += 1
+
+    return filtered, stats
+
+
+def get_immediate_execution_opportunities(opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Get opportunities that can be executed immediately without communication.
+
+    These are typically:
+    - GitHub bounties (analyze → PR → claim)
+    - Twitter affiliate posts (generate → post → track)
+    - Content posting opportunities
+
+    Returns opportunities enriched with flow info, ready for immediate execution.
+    """
+    if not POLYMORPHIC_FLOWS_AVAILABLE:
+        return []
+
+    immediate = []
+    for opp in opportunities:
+        flow_result = determine_execution_flow(opp)
+
+        # Check if immediate execution is possible
+        if (flow_result.get('execution_mode') == 'immediate' and
+            flow_result.get('can_execute') and
+            flow_result.get('auto_execute')):
+
+            enriched = opp.copy()
+            enriched['_flow'] = flow_result
+            immediate.append(enriched)
+
+    return immediate
 
 
 # Example usage

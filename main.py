@@ -5086,6 +5086,128 @@ async def get_v104_config():
         "current_aggression": CURRENT_AGGRESSION
     }
 
+@app.get("/orchestrator/config/v115")
+async def get_v115_config():
+    """
+    Get v115 configuration with POLYMORPHIC EXECUTION FLOWS.
+
+    v115 introduces platform-native monetization:
+    - GitHub bounties: IMMEDIATE execution (analyze → PR → claim)
+    - LinkedIn leads: CONVERSATIONAL (connect → qualify → close)
+    - Upwork gigs: PROPOSAL-based (submit → hire → execute)
+    - Twitter: CONTENT POSTING (generate → post → track)
+    - Each platform monetizes in its native way
+    """
+    # Try to get polymorphic flow summary
+    flow_summary = {}
+    try:
+        from platform_execution_flows import get_flow_summary, get_configured_apis
+        flow_summary = get_flow_summary()
+        configured_apis = get_configured_apis()
+    except ImportError:
+        flow_summary = {"error": "platform_execution_flows not available"}
+        configured_apis = {}
+
+    return {
+        "ok": True,
+        **V103_CONFIG,
+        "version": "v115",
+        "agg_tuning": {
+            "beast": {"max_bids": 30, "max_spawns": 5, "min_ev": 30},
+            "high": {"max_bids": 20, "max_spawns": 4, "min_ev": 40},
+            "normal": {"max_bids": 15, "max_spawns": 3, "min_ev": 50},
+            "optimize": {"max_bids": 6, "max_spawns": 1, "min_ev": 100}
+        },
+        "gates": {
+            "budget_threshold": 50,
+            "health_platforms": ["twitter", "reddit", "linkedin"]
+        },
+        "current_aggression": CURRENT_AGGRESSION,
+        # v115 Polymorphic Execution
+        "polymorphic_execution": {
+            "enabled": True,
+            "description": "Each platform monetizes in its native way",
+            "execution_modes": [
+                "immediate",        # GitHub bounties - execute now
+                "conversational",   # LinkedIn, Reddit - relationship building
+                "application_based", # Twitter sponsored - apply → approval → post
+                "proposal_based",   # Upwork, Fiverr - submit → hire → execute
+                "content_posting",  # Twitter/Instagram affiliate - post with monetization
+                "payment_collection", # Stripe - collect payments
+                "manual_review"     # Unknown platforms or missing APIs
+            ],
+            "ready_flows": flow_summary.get("ready_flows", []),
+            "blocked_flows": flow_summary.get("blocked_flows", []),
+            "configured_apis": list(configured_apis.keys()) if isinstance(configured_apis, dict) else []
+        },
+        "accretive_upgrades": {
+            "payment_pack_generator": True,
+            "partner_mesh_oem": True,
+            "savings_counter": True,
+            "gameday_routes": True,
+            "price_floor_oracle": True
+        }
+    }
+
+
+@app.get("/orchestrator/flow-status")
+async def get_flow_status():
+    """
+    Get detailed status of polymorphic execution flows.
+
+    Shows which platforms can auto-execute, which need communication,
+    and which are blocked by missing APIs.
+    """
+    try:
+        from platform_execution_flows import get_flow_summary, get_configured_apis
+        summary = get_flow_summary()
+        apis = get_configured_apis()
+
+        # Categorize flows by execution capability
+        immediate_ready = []
+        conversational_ready = []
+        blocked = []
+
+        for flow_key, flow_info in summary.get("flows", {}).items():
+            if flow_info.get("ready"):
+                if flow_info.get("mode") == "immediate":
+                    immediate_ready.append(flow_key)
+                else:
+                    conversational_ready.append(flow_key)
+            else:
+                blocked.append({
+                    "flow": flow_key,
+                    "missing": flow_info.get("missing_apis", [])
+                })
+
+        return {
+            "ok": True,
+            "polymorphic_enabled": True,
+            "summary": {
+                "total_flows": len(summary.get("flows", {})),
+                "ready_flows": len(summary.get("ready_flows", [])),
+                "blocked_flows": len(summary.get("blocked_flows", [])),
+                "configured_apis": len([k for k, v in apis.items() if v]),
+                "missing_apis": len([k for k, v in apis.items() if not v])
+            },
+            "immediate_execution_ready": immediate_ready,
+            "conversational_ready": conversational_ready,
+            "blocked_by_missing_apis": blocked,
+            "apis": {
+                "configured": [k for k, v in apis.items() if v],
+                "missing": [k for k, v in apis.items() if not v]
+            },
+            "flows": summary.get("flows", {})
+        }
+    except ImportError as e:
+        return {
+            "ok": False,
+            "polymorphic_enabled": False,
+            "error": str(e),
+            "fallback": "Using traditional communication flow for all opportunities"
+        }
+
+
 @app.post("/orchestrator/set-aggression")
 async def set_aggression(body: dict = Body(...)):
     """
