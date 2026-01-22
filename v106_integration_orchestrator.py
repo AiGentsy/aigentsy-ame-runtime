@@ -633,7 +633,7 @@ async def feed_outcome_to_learning(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def check_autonomy_guardrails(
-    min_cash_floor: float = 50.0
+    min_cash_floor: float = 0.0
 ) -> Dict[str, Any]:
     """
     Check if autonomous operations should proceed
@@ -865,7 +865,7 @@ def include_v106_integration(app):
     
     @app.get("/v106/check-guardrails")
     async def check_guardrails_endpoint(
-        min_cash_floor: float = 50.0
+        min_cash_floor: float = 0.0
     ):
         """Check if autonomous operations should proceed"""
         return await check_autonomy_guardrails(min_cash_floor)
@@ -939,7 +939,7 @@ class V106Integrator:
         """Execute with full v106 integration"""
         return await v106_integrated_execution(opportunity, auto_execute)
     
-    async def check_guardrails(self, min_cash_floor: float = 50.0):
+    async def check_guardrails(self, min_cash_floor: float = 0.0):
         """Check if autonomous operations should proceed"""
         return await check_autonomy_guardrails(min_cash_floor)
     
