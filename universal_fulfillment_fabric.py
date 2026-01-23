@@ -40,6 +40,9 @@ RATE_LIMIT_PER_HOUR = int(os.getenv("FABRIC_RATE_LIMIT_HOUR", "10"))
 SCREENSHOT_DIR = os.getenv("FABRIC_SCREENSHOT_DIR", "/tmp/fabric_screenshots")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 
 # Try to import Playwright
 try:
@@ -139,10 +142,84 @@ async def _call_vision_ai(image_base64: str, prompt: str) -> Dict[str, Any]:
 
 
 async def _call_ai(prompt: str) -> Dict[str, Any]:
-    """Call AI for text generation"""
+    """Call AI for text generation with fallback chain"""
     if not HTTPX_AVAILABLE:
         return {"ok": False, "error": "httpx not available"}
 
+    # Try OpenAI first (most reliable)
+    if OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENAI_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 2000
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    return {"ok": True, "content": content, "provider": "openai"}
+                logger.warning(f"OpenAI failed with {response.status_code}, trying fallback")
+        except Exception as e:
+            logger.warning(f"OpenAI error: {e}, trying fallback")
+
+    # Fallback to Anthropic
+    if ANTHROPIC_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "claude-3-haiku-20240307",
+                        "max_tokens": 2000,
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("content", [{}])[0].get("text", "")
+                    return {"ok": True, "content": content, "provider": "anthropic"}
+                logger.warning(f"Anthropic failed with {response.status_code}, trying fallback")
+        except Exception as e:
+            logger.warning(f"Anthropic error: {e}, trying fallback")
+
+    # Fallback to Perplexity
+    if PERPLEXITY_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-sonar-small-128k-online",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 2000
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    return {"ok": True, "content": content, "provider": "perplexity"}
+                logger.warning(f"Perplexity failed with {response.status_code}, trying fallback")
+        except Exception as e:
+            logger.warning(f"Perplexity error: {e}, trying fallback")
+
+    # Last resort: OpenRouter
     if OPENROUTER_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -161,13 +238,13 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                 if response.status_code == 200:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {"ok": True, "content": content}
-                return {"ok": False, "error": f"AI API error: {response.status_code}"}
+                    return {"ok": True, "content": content, "provider": "openrouter"}
+                return {"ok": False, "error": f"OpenRouter API error: {response.status_code}"}
         except Exception as e:
-            logger.error(f"AI error: {e}")
+            logger.error(f"OpenRouter error: {e}")
             return {"ok": False, "error": str(e)}
 
-    return {"ok": False, "error": "No AI API configured"}
+    return {"ok": False, "error": "No AI API configured (need OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY, or OPENROUTER_API_KEY)"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -757,7 +834,7 @@ def get_fabric_status() -> Dict[str, Any]:
 
     return {
         "playwright_available": PLAYWRIGHT_AVAILABLE,
-        "ai_available": bool(OPENROUTER_API_KEY or GEMINI_API_KEY),
+        "ai_available": bool(OPENAI_API_KEY or ANTHROPIC_API_KEY or PERPLEXITY_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY),
         "rate_limit": {
             "per_hour": RATE_LIMIT_PER_HOUR,
             "used_this_hour": recent_executions,
