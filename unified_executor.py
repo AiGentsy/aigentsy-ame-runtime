@@ -1221,7 +1221,8 @@ class UnifiedExecutor:
         try:
             if self._subsystem_status.get("auto_reconciliation"):
                 for exec_item in executed:
-                    revenue = exec_item.get("result", {}).get("revenue", 0)
+                    result = exec_item.get("result")
+                    revenue = result.get("revenue", 0) if isinstance(result, dict) else 0
                     if revenue > 0:
                         self._auto_reconciliation.record_activity(
                             activity_type="execution",
@@ -1247,10 +1248,13 @@ class UnifiedExecutor:
             # Store patterns in Yield Memory
             if self._subsystem_status.get("yield_memory"):
                 for exec_item in executed:
+                    opp = exec_item.get("opportunity", {})
+                    result = exec_item.get("result")
+                    revenue = result.get("revenue", 0) if isinstance(result, dict) else 0
                     self._store_pattern({
-                        "action": exec_item.get("opportunity", {}).get("type"),
+                        "action": opp.get("type") if isinstance(opp, dict) else str(opp),
                         "success": True,
-                        "revenue": exec_item.get("result", {}).get("revenue", 0),
+                        "revenue": revenue,
                         "cycle_id": cycle_id
                     })
                     results["learnings_recorded"] += 1
@@ -1268,11 +1272,16 @@ class UnifiedExecutor:
 
             # Suggest upgrades based on outcomes
             if self._subsystem_status.get("auto_upgrades"):
-                outcomes = [{
-                    "type": exec_item.get("opportunity", {}).get("type"),
-                    "success": True,
-                    "revenue": exec_item.get("result", {}).get("revenue", 0)
-                } for exec_item in executed]
+                outcomes = []
+                for exec_item in executed:
+                    opp = exec_item.get("opportunity", {})
+                    result = exec_item.get("result")
+                    revenue = result.get("revenue", 0) if isinstance(result, dict) else 0
+                    outcomes.append({
+                        "type": opp.get("type") if isinstance(opp, dict) else "unknown",
+                        "success": True,
+                        "revenue": revenue
+                    })
 
                 if outcomes:
                     suggestion = self._suggest_upgrade(outcomes)
