@@ -298,6 +298,84 @@ class UnifiedExecutor:
         managers_loaded = sum(1 for v in self._manager_status.values() if v)
         logger.info(f"Managers initialized: {managers_loaded}/5")
 
+        # Initialize 8 orchestrators (higher-level coordination)
+        self._init_orchestrators()
+
+    def _init_orchestrators(self):
+        """Initialize 8 orchestrators for higher-level coordination"""
+        self._orchestrators: Dict[str, Any] = {}
+
+        # 1. V106 Integration Orchestrator
+        try:
+            from v106_integration_orchestrator import V106Integrator
+            self._orchestrators["v106"] = V106Integrator()
+            logger.info("V106 Integrator loaded")
+        except ImportError as e:
+            logger.warning(f"V106 Integrator not available: {e}")
+
+        # 2. Week2 Master Orchestrator
+        try:
+            from week2_master_orchestrator import Week2MasterOrchestrator
+            self._orchestrators["week2_master"] = Week2MasterOrchestrator()
+            logger.info("Week2 Master Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"Week2 Master Orchestrator not available: {e}")
+
+        # 3. Master Autonomous Orchestrator
+        try:
+            from master_autonomous_orchestrator import get_master_orchestrator
+            self._orchestrators["master_autonomous"] = get_master_orchestrator()
+            logger.info("Master Autonomous Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"Master Autonomous Orchestrator not available: {e}")
+
+        # 4. Universal Revenue Orchestrator
+        try:
+            from universal_revenue_orchestrator import get_revenue_orchestrator
+            self._orchestrators["revenue_orchestrator"] = get_revenue_orchestrator()
+            logger.info("Universal Revenue Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"Universal Revenue Orchestrator not available: {e}")
+
+        # 5. AMG Orchestrator
+        try:
+            from amg_orchestrator import AMGOrchestrator
+            self._orchestrators["amg"] = AMGOrchestrator()
+            logger.info("AMG Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"AMG Orchestrator not available: {e}")
+
+        # 6. Execution Orchestrator
+        try:
+            from execution_orchestrator import get_orchestrator as get_exec_orchestrator
+            self._orchestrators["execution_orch"] = get_exec_orchestrator()
+            logger.info("Execution Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"Execution Orchestrator not available: {e}")
+
+        # 7. R3 Autopilot
+        try:
+            from r3_autopilot import create_autopilot_strategy, execute_autopilot_spend
+            self._orchestrators["r3"] = {
+                "create_strategy": create_autopilot_strategy,
+                "execute_spend": execute_autopilot_spend
+            }
+            logger.info("R3 Autopilot loaded")
+        except ImportError as e:
+            logger.warning(f"R3 Autopilot not available: {e}")
+
+        # 8. C-Suite Orchestrator
+        try:
+            from csuite_orchestrator import get_orchestrator as get_csuite_orchestrator
+            self._orchestrators["csuite"] = get_csuite_orchestrator()
+            logger.info("C-Suite Orchestrator loaded")
+        except ImportError as e:
+            logger.warning(f"C-Suite Orchestrator not available: {e}")
+
+        # Log orchestrator status
+        orchestrators_loaded = len(self._orchestrators)
+        logger.info(f"Orchestrators initialized: {orchestrators_loaded}/8")
+
     def _init_all_subsystems(self):
         """Initialize ALL 108+ subsystems"""
 

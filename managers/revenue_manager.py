@@ -1,5 +1,5 @@
 """
-Revenue Manager - Coordinates 11 Revenue-Generating Systems
+Revenue Manager - Coordinates 20 Revenue-Generating Systems
 ============================================================
 
 Systems managed (with ACTUAL function imports):
@@ -14,6 +14,15 @@ Systems managed (with ACTUAL function imports):
 9. affiliate_matching.py - match_signal_to_affiliate, get_affiliate_status
 10. v110_gap_harvesters.py - scan_all_harvesters (20+ gap types)
 11. auto_hedge.py - get_exposure, execute_hedge, rebalance_hedges
+12. v107_v108_v109_complete.py - 20+ revenue overlays (IFX, BNPL, RFPs, Ads)
+13. v115_api_fabric.py - Monetization cycle coordination
+14. v106_integration_orchestrator.py - Close-loop execution, market making
+15. outcome_subscriptions.py - Retainer tiers and credit system
+16. partner_mesh.py - JV partnerships and routing
+17. partner_mesh_oem.py - Widget embedding and white-label
+18. data_coop.py - Data monetization and insights
+19. sponsor_pools.py - Sponsored discounts and matching
+20. profit_analyzer.py - Margin optimization and attribution
 """
 
 from typing import Dict, Any, List, Optional
@@ -316,6 +325,214 @@ class RevenueManager:
         except (ImportError, Exception) as e:
             logger.warning(f"Auto hedge not available: {e}")
             self._subsystems["auto_hedge"] = False
+
+        # 12. V107-V109 Complete Overlays (20+ revenue overlays)
+        try:
+            from v107_v108_v109_complete import (
+                quote_ifx_option_fixed,
+                write_ifx_option_fixed,
+                underwrite_service_bnpl,
+                attach_bnpl_to_contract,
+                publish_skill_installable,
+                bill_skill_usage,
+                scan_public_rfps,
+                compose_rfp_bid,
+                submit_rfp_bid,
+                create_ad_campaign,
+                serve_ad,
+                attribute_ad_conversion
+            )
+            self._quote_ifx = quote_ifx_option_fixed
+            self._write_ifx = write_ifx_option_fixed
+            self._underwrite_bnpl = underwrite_service_bnpl
+            self._attach_bnpl = attach_bnpl_to_contract
+            self._publish_skill = publish_skill_installable
+            self._bill_skill = bill_skill_usage
+            self._scan_rfps = scan_public_rfps
+            self._compose_rfp = compose_rfp_bid
+            self._submit_rfp = submit_rfp_bid
+            self._create_ad = create_ad_campaign
+            self._serve_ad = serve_ad
+            self._attribute_ad = attribute_ad_conversion
+            self._subsystems["v107_v109_overlays"] = True
+            logger.info("V107-V109 Complete Overlays loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"V107-V109 overlays not available: {e}")
+            self._subsystems["v107_v109_overlays"] = False
+
+        # 13. V115 API Fabric (coordinates all overlays)
+        try:
+            from v115_api_fabric import (
+                validate_all_apis,
+                get_engine_readiness,
+                run_monetization_cycle,
+                get_fabric_status
+            )
+            self._validate_apis = validate_all_apis
+            self._engine_readiness = get_engine_readiness
+            self._run_monetization = run_monetization_cycle
+            self._fabric_status = get_fabric_status
+            self._subsystems["v115_api_fabric"] = True
+            logger.info("V115 API Fabric loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"V115 API Fabric not available: {e}")
+            self._subsystems["v115_api_fabric"] = False
+
+        # 14. V106 Integration Orchestrator
+        try:
+            from v106_integration_orchestrator import (
+                V106Integrator,
+                close_loop_execution,
+                market_maker_auto_quote,
+                risk_tranche_deal,
+                v106_integrated_execution
+            )
+            self._v106_integrator = V106Integrator
+            self._close_loop = close_loop_execution
+            self._mm_auto_quote = market_maker_auto_quote
+            self._risk_tranche = risk_tranche_deal
+            self._v106_exec = v106_integrated_execution
+            self._subsystems["v106_integration"] = True
+            logger.info("V106 Integration Orchestrator loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"V106 Integration not available: {e}")
+            self._subsystems["v106_integration"] = False
+
+        # 15. Outcome Subscriptions (retainer tiers)
+        try:
+            from outcome_subscriptions import (
+                OutcomeSubscriptions,
+                create_retainer,
+                use_credit,
+                renew_retainer,
+                upgrade_package,
+                get_subscriber_status,
+                get_subscription_stats
+            )
+            self._subscriptions = OutcomeSubscriptions
+            self._create_retainer = create_retainer
+            self._use_credit = use_credit
+            self._renew_retainer = renew_retainer
+            self._upgrade_pkg = upgrade_package
+            self._subscriber_status = get_subscriber_status
+            self._sub_stats = get_subscription_stats
+            self._subsystems["outcome_subscriptions"] = True
+            logger.info("Outcome Subscriptions loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Outcome Subscriptions not available: {e}")
+            self._subsystems["outcome_subscriptions"] = False
+
+        # 16. Partner Mesh (JV partnerships)
+        try:
+            from partner_mesh import (
+                PartnerMesh,
+                onboard_partner,
+                create_auto_jv,
+                route_to_partner,
+                suggest_jv,
+                get_partner_performance,
+                get_mesh_stats
+            )
+            self._partner_mesh = PartnerMesh
+            self._onboard_partner = onboard_partner
+            self._create_jv = create_auto_jv
+            self._route_partner = route_to_partner
+            self._suggest_jv = suggest_jv
+            self._partner_perf = get_partner_performance
+            self._mesh_stats = get_mesh_stats
+            self._subsystems["partner_mesh"] = True
+            logger.info("Partner Mesh loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Partner Mesh not available: {e}")
+            self._subsystems["partner_mesh"] = False
+
+        # 17. Partner Mesh OEM (widget embedding)
+        try:
+            from partner_mesh_oem import (
+                register_partner,
+                generate_widget_config,
+                export_widget_config,
+                verify_widget_request,
+                track_partner_transaction
+            )
+            self._register_oem = register_partner
+            self._widget_config = generate_widget_config
+            self._export_widget = export_widget_config
+            self._verify_widget = verify_widget_request
+            self._track_partner_tx = track_partner_transaction
+            self._subsystems["partner_mesh_oem"] = True
+            logger.info("Partner Mesh OEM loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Partner Mesh OEM not available: {e}")
+            self._subsystems["partner_mesh_oem"] = False
+
+        # 18. Data Coop (data monetization)
+        try:
+            from data_coop import (
+                DataCoop,
+                opt_in_contributor,
+                contribute_data,
+                query_insights,
+                get_contributor_earnings,
+                get_data_coop_stats
+            )
+            self._data_coop = DataCoop
+            self._opt_in = opt_in_contributor
+            self._contribute_data = contribute_data
+            self._query_insights = query_insights
+            self._contributor_earnings = get_contributor_earnings
+            self._coop_stats = get_data_coop_stats
+            self._subsystems["data_coop"] = True
+            logger.info("Data Coop loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Data Coop not available: {e}")
+            self._subsystems["data_coop"] = False
+
+        # 19. Sponsor Pools (sponsored discounts)
+        try:
+            from sponsor_pools import (
+                create_sponsor_pool,
+                check_pool_eligibility,
+                calculate_discount,
+                apply_pool_discount,
+                track_conversion,
+                find_matching_pools,
+                get_pool_leaderboard
+            )
+            self._create_pool = create_sponsor_pool
+            self._pool_eligibility = check_pool_eligibility
+            self._calc_discount = calculate_discount
+            self._apply_discount = apply_pool_discount
+            self._track_conv = track_conversion
+            self._matching_pools = find_matching_pools
+            self._pool_leaderboard = get_pool_leaderboard
+            self._subsystems["sponsor_pools"] = True
+            logger.info("Sponsor Pools loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Sponsor Pools not available: {e}")
+            self._subsystems["sponsor_pools"] = False
+
+        # 20. Profit Analyzer (margin optimization)
+        try:
+            from profit_analyzer import (
+                ProfitAnalyzer,
+                trace_outcome,
+                get_profit_attribution,
+                get_optimization_suggestions,
+                analyze_margins,
+                get_profit_summary
+            )
+            self._profit_analyzer = ProfitAnalyzer
+            self._trace_outcome = trace_outcome
+            self._profit_attrib = get_profit_attribution
+            self._optim_suggest = get_optimization_suggestions
+            self._analyze_margins = analyze_margins
+            self._profit_summary = get_profit_summary
+            self._subsystems["profit_analyzer"] = True
+            logger.info("Profit Analyzer loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Profit Analyzer not available: {e}")
+            self._subsystems["profit_analyzer"] = False
 
         self._log_status()
 

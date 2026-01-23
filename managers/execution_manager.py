@@ -15,6 +15,10 @@ Systems managed (with ACTUAL function imports):
 10. client_acceptance_portal.py - accept_deal, submit_delivery, get_deal_stats
 11. aigentsy_conductor.py - MultiAIRouter
 12. connectors (registry) - get_registry, get_connector
+13. universal_platform_adapter.py - PlatformRegistry, AdapterFactory (27+ platforms)
+14. dribbble_portfolio_automation.py - DribbbleAutomation, ContentGenerator
+15. ninety_nine_designs_automation.py - DesignContestAutomation, ContestDiscovery
+16. vercel_deployer.py - deploy_to_vercel, delete_deployment
 """
 
 from typing import Dict, Any, List, Optional
@@ -274,6 +278,78 @@ class ExecutionManager:
         except (ImportError, Exception) as e:
             logger.warning(f"Fabric not available: {e}")
             self._subsystems["fabric"] = False
+
+        # 13. Universal Platform Adapter (27+ platforms)
+        try:
+            from universal_platform_adapter import (
+                PlatformRegistry,
+                get_platform_registry,
+                PlatformAdapter,
+                GenericAPIAdapter,
+                GenericScrapingAdapter,
+                AdapterFactory
+            )
+            self._platform_registry = get_platform_registry()
+            self._adapter_factory = AdapterFactory
+            self._api_adapter = GenericAPIAdapter
+            self._scraping_adapter = GenericScrapingAdapter
+            self._subsystems["universal_platform_adapter"] = True
+            logger.info("Universal Platform Adapter loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Universal Platform Adapter not available: {e}")
+            self._subsystems["universal_platform_adapter"] = False
+
+        # 14. Dribbble Portfolio Automation
+        try:
+            from dribbble_portfolio_automation import (
+                DribbbleAutomation,
+                TrendAnalyzer,
+                ContentGenerator,
+                PortfolioManager,
+                ClientInquiryManager
+            )
+            self._dribbble = DribbbleAutomation()
+            self._dribbble_trends = TrendAnalyzer
+            self._dribbble_content = ContentGenerator
+            self._dribbble_portfolio = PortfolioManager
+            self._dribbble_inquiries = ClientInquiryManager
+            self._subsystems["dribbble_portfolio"] = True
+            logger.info("Dribbble Portfolio Automation loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Dribbble portfolio not available: {e}")
+            self._subsystems["dribbble_portfolio"] = False
+
+        # 15. 99designs Automation
+        try:
+            from ninety_nine_designs_automation import (
+                DesignContestAutomation,
+                ContestDiscovery,
+                ContestEntryGenerator,
+                ContestSubmissionManager
+            )
+            self._ninety_nine = DesignContestAutomation()
+            self._contest_discovery = ContestDiscovery
+            self._entry_generator = ContestEntryGenerator
+            self._submission_mgr = ContestSubmissionManager
+            self._subsystems["ninety_nine_designs"] = True
+            logger.info("99designs Automation loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"99designs not available: {e}")
+            self._subsystems["ninety_nine_designs"] = False
+
+        # 16. Vercel Deployer
+        try:
+            from vercel_deployer import (
+                deploy_to_vercel,
+                delete_deployment
+            )
+            self._deploy_vercel = deploy_to_vercel
+            self._delete_vercel = delete_deployment
+            self._subsystems["vercel_deployer"] = True
+            logger.info("Vercel Deployer loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Vercel deployer not available: {e}")
+            self._subsystems["vercel_deployer"] = False
 
         self._log_status()
 

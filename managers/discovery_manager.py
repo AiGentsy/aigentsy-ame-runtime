@@ -1,23 +1,25 @@
 """
-Discovery Manager - Coordinates 15 Discovery Source Systems
+Discovery Manager - Coordinates 17 Discovery Source Systems
 ============================================================
 
 Systems managed (with ACTUAL function imports):
 1. alpha_discovery_engine.py - AlphaDiscoveryEngine, CapabilityMatcher
 2. ultimate_discovery_engine.py - scrape_* functions for 20+ platforms
 3. auto_spawn_engine.py - AutoSpawnEngine, TrendDetector, BusinessSpawner
-4. internet_domination_engine.py - Internet discovery
+4. internet_domination_engine.py - RealScrapers, include_domination_engine
 5. v110_gap_harvesters.py - scan_all_harvesters (20+ gap types)
-6. v111_gapharvester_ii.py - Advanced gap detection
-7. flow_arbitrage_detector.py - FlowArbitrageDetector
-8. idle_time_arbitrage.py - IdleTimeArbitrage, detect_idle_capacity
-9. affiliate_matching.py - match_signal_to_affiliate
-10. research_engine.py - ResearchEngine, PerplexityResearcher
-11. signal_ingestion.py - Signal ingestion
-12. platform_recruitment_engine.py - Platform recruitment
-13. pain_point_detector.py - Pain detection
-14. dealgraph.py - Deal relationship graph
-15. advanced_discovery_dimensions.py - Advanced discovery
+6. flow_arbitrage_detector.py - FlowArbitrageDetector
+7. idle_time_arbitrage.py - IdleTimeArbitrage, detect_idle_capacity
+8. affiliate_matching.py - match_signal_to_affiliate
+9. research_engine.py - ResearchEngine, PerplexityResearcher
+10. pain_point_detector.py - PainPointDetector
+11. dealgraph.py - create_deal, get_deal_summary
+12. real_signal_ingestion.py - RealSignalIngestionEngine, get_signal_engine
+13. platform_recruitment_engine.py - RecruitmentEngine, get_recruitment_engine
+14. advanced_discovery_dimensions.py - PredictiveIntelligenceEngine
+15. mega_discovery_engine.py - MegaDiscoveryEngine
+16. autonomous_deal_graph.py - DealGraph, RelationshipGraph (network effects)
+17. internet_discovery_expansion.py - SearchEngineScanner, ContactExtractor
 """
 
 from typing import Dict, Any, List, Optional
@@ -309,7 +311,7 @@ class DiscoveryManager:
             logger.warning(f"Advanced dimensions not available: {e}")
             self._subsystems["advanced_dimensions"] = False
 
-        # 15. Internet Discovery Expansion
+        # 15. Mega Discovery Engine
         try:
             from mega_discovery_engine import MegaDiscoveryEngine
             self._mega_engine = MegaDiscoveryEngine()
@@ -318,6 +320,45 @@ class DiscoveryManager:
         except (ImportError, Exception) as e:
             logger.warning(f"Mega discovery not available: {e}")
             self._subsystems["mega_discovery"] = False
+
+        # 16. Autonomous Deal Graph (network effects)
+        try:
+            from autonomous_deal_graph import (
+                DealGraph,
+                get_deal_graph,
+                RelationshipGraph,
+                IntroOpportunity
+            )
+            self._auto_deal_graph = get_deal_graph()
+            self._relationship_graph = RelationshipGraph
+            self._intro_opportunity = IntroOpportunity
+            self._subsystems["autonomous_deal_graph"] = True
+            logger.info("Autonomous Deal Graph loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Autonomous Deal Graph not available: {e}")
+            self._subsystems["autonomous_deal_graph"] = False
+
+        # 17. Internet Discovery Expansion
+        try:
+            from internet_discovery_expansion import (
+                InternetDiscoveryExpansion,
+                SearchEngineScanner,
+                ContactExtractor,
+                NewsScanner,
+                FreelancePlatformScanner,
+                expand_discovery_dimensions
+            )
+            self._internet_expansion = InternetDiscoveryExpansion()
+            self._search_scanner = SearchEngineScanner
+            self._contact_extractor = ContactExtractor
+            self._news_scanner = NewsScanner
+            self._freelance_scanner = FreelancePlatformScanner
+            self._expand_discovery = expand_discovery_dimensions
+            self._subsystems["internet_expansion"] = True
+            logger.info("Internet Discovery Expansion loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Internet Discovery Expansion not available: {e}")
+            self._subsystems["internet_expansion"] = False
 
         self._log_status()
 

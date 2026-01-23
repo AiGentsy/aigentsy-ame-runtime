@@ -4,7 +4,7 @@ Financial Manager - OCL P2P Lending + Financial Infrastructure
 
 Systems managed (with ACTUAL function imports):
 1. ocl_p2p_lending.py - create_loan_offer, match_loan_offers, accept_loan_offer
-2. ocl_engine.py - calculate_ocl_limit, spend_ocl, get_ocl_balance
+2. ocl_engine.py - calculate_ocl_limit, spend_ocl, auto_repay_ocl
 3. ocl_expansion.py - expand_ocl_limit, process_job_completion_expansion
 4. performance_bonds.py - stake_bond, return_bond, award_sla_bonus
 5. securitization_desk.py - create_spv, issue_tranche, distribute_cash_flows
@@ -14,6 +14,7 @@ Systems managed (with ACTUAL function imports):
 9. batch_payments.py - create_batch_payment, execute_batch_payment
 10. builder_risk_tranches.py - register_builder, issue_tranche
 11. dark_pool.py - create_dark_pool_auction, submit_dark_pool_bid
+12. escrow_lite.py - create_payment_intent, capture_payment, auto_capture
 
 CRITICAL FEATURE: Internal OCL P2P Lending
 - Enables AI agents to lend to each other
@@ -346,6 +347,30 @@ class FinancialManager:
         except (ImportError, Exception) as e:
             logger.warning(f"Dark pool not available: {e}")
             self._subsystems["dark_pool"] = False
+
+        # 12. Escrow Lite (payment escrow)
+        try:
+            from escrow_lite import (
+                create_payment_intent,
+                capture_payment,
+                cancel_payment,
+                get_payment_status,
+                auto_capture_on_delivered,
+                auto_timeout_release,
+                partial_refund_on_dispute
+            )
+            self._create_escrow = create_payment_intent
+            self._capture_escrow = capture_payment
+            self._cancel_escrow = cancel_payment
+            self._escrow_status = get_payment_status
+            self._auto_capture = auto_capture_on_delivered
+            self._timeout_release = auto_timeout_release
+            self._partial_refund = partial_refund_on_dispute
+            self._subsystems["escrow"] = True
+            logger.info("Escrow Lite loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Escrow not available: {e}")
+            self._subsystems["escrow"] = False
 
         self._log_status()
 
