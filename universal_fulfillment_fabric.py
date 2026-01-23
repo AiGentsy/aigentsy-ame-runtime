@@ -153,6 +153,8 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
     if not HTTPX_AVAILABLE:
         return {"ok": False, "error": "httpx not available"}
 
+    errors = []  # Track errors from each provider
+
     # 1. OpenRouter with GPT-4o-mini (fastest, cheapest)
     if OPENROUTER_API_KEY:
         try:
@@ -173,9 +175,18 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return {"ok": True, "content": content, "provider": "openrouter/gpt-4o-mini"}
-                logger.warning(f"OpenRouter/GPT-4o-mini failed with {response.status_code}, trying fallback")
+                err = f"OpenRouter/GPT-4o-mini: {response.status_code}"
+                try:
+                    err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
+                except:
+                    pass
+                errors.append(err)
+                logger.warning(f"{err}, trying fallback")
         except Exception as e:
+            errors.append(f"OpenRouter/GPT-4o-mini: {str(e)[:100]}")
             logger.warning(f"OpenRouter/GPT-4o-mini error: {e}, trying fallback")
+    else:
+        errors.append("OpenRouter: no API key")
 
     # 2. OpenRouter with Claude 3.5 Haiku
     if OPENROUTER_API_KEY:
@@ -197,8 +208,15 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return {"ok": True, "content": content, "provider": "openrouter/claude-3.5-haiku"}
-                logger.warning(f"OpenRouter/Claude failed with {response.status_code}, trying fallback")
+                err = f"OpenRouter/Claude: {response.status_code}"
+                try:
+                    err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
+                except:
+                    pass
+                errors.append(err)
+                logger.warning(f"{err}, trying fallback")
         except Exception as e:
+            errors.append(f"OpenRouter/Claude: {str(e)[:100]}")
             logger.warning(f"OpenRouter/Claude error: {e}, trying fallback")
 
     # 3. Perplexity with Llama 3.1 Sonar
@@ -221,9 +239,18 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     return {"ok": True, "content": content, "provider": "perplexity/llama-3.1-sonar"}
-                logger.warning(f"Perplexity failed with {response.status_code}, trying fallback")
+                err = f"Perplexity: {response.status_code}"
+                try:
+                    err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
+                except:
+                    pass
+                errors.append(err)
+                logger.warning(f"{err}, trying fallback")
         except Exception as e:
+            errors.append(f"Perplexity: {str(e)[:100]}")
             logger.warning(f"Perplexity error: {e}, trying fallback")
+    else:
+        errors.append("Perplexity: no API key")
 
     # 4. Gemini direct API
     if GEMINI_API_KEY:
@@ -241,11 +268,21 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     data = response.json()
                     content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                     return {"ok": True, "content": content, "provider": "gemini/flash-1.5"}
-                logger.warning(f"Gemini failed with {response.status_code}")
+                err = f"Gemini: {response.status_code}"
+                try:
+                    err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
+                except:
+                    pass
+                errors.append(err)
+                logger.warning(f"{err}")
         except Exception as e:
+            errors.append(f"Gemini: {str(e)[:100]}")
             logger.warning(f"Gemini error: {e}")
+    else:
+        errors.append("Gemini: no API key")
 
-    return {"ok": False, "error": "All AI providers failed (tried OpenRouter/GPT-4o-mini, OpenRouter/Claude, Perplexity, Gemini)"}
+    # Return detailed error info
+    return {"ok": False, "error": f"All AI providers failed: {'; '.join(errors)}"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
