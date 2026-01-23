@@ -435,3 +435,24 @@ async def execute_outcome(
         "error": "all_connectors_failed",
         "attempts": errors
     }
+
+
+# ============================================================================
+# SINGLETON REGISTRY & HELPER FUNCTIONS
+# ============================================================================
+
+_registry: Optional[ConnectorRegistry] = None
+
+
+def get_registry() -> ConnectorRegistry:
+    """Get the global connector registry (singleton)"""
+    global _registry
+    if _registry is None:
+        _registry = ConnectorRegistry()
+        _registry.auto_register_all()
+    return _registry
+
+
+def get_connector(name: str) -> Optional[Connector]:
+    """Get a connector by name from the global registry"""
+    return get_registry().get(name)

@@ -582,10 +582,10 @@ class UnifiedExecutor:
 
         # Master Runtime (for autonomous cycles)
         try:
-            from master_autonomous_orchestrator import MasterOrchestrator
-            self._master_orchestrator = MasterOrchestrator
+            from master_autonomous_orchestrator import MasterAutonomousOrchestrator
+            self._master_orchestrator = MasterAutonomousOrchestrator
             self._subsystem_status["master_orchestrator"] = True
-        except ImportError:
+        except (ImportError, Exception):
             self._subsystem_status["master_orchestrator"] = False
 
         self._initialized = True

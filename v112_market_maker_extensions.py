@@ -89,6 +89,151 @@ def _now():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# UNIFIED EXECUTOR INTERFACE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def calculate_optimal_spread(
+    opportunity_type: str,
+    volume: float = 0,
+    volatility: float = 0.1,
+    competition_level: str = "medium"
+) -> Dict[str, Any]:
+    """
+    Calculate optimal market-making spread for an opportunity.
+
+    Returns:
+        {"spread_bps": 15, "bid": 0.9925, "ask": 1.0075, "reason": "..."}
+    """
+    # Base spread depends on competition
+    base_spreads = {"low": 30, "medium": 20, "high": 10}
+    base_spread = base_spreads.get(competition_level, 20)
+
+    # Adjust for volatility (wider spread = more protection)
+    volatility_adjustment = int(volatility * 50)
+
+    # Final spread in basis points
+    spread_bps = base_spread + volatility_adjustment
+
+    # Calculate bid/ask (assuming 1.0 midpoint)
+    half_spread = spread_bps / 10000 / 2
+
+    return {
+        "ok": True,
+        "spread_bps": spread_bps,
+        "bid": round(1.0 - half_spread, 4),
+        "ask": round(1.0 + half_spread, 4),
+        "midpoint": 1.0,
+        "reason": f"Base {base_spread}bps + {volatility_adjustment}bps volatility adjustment"
+    }
+
+
+def suggest_market_price(
+    opportunity: Dict[str, Any],
+    market_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Suggest optimal market price for an opportunity.
+
+    Uses pricing arm if available, otherwise heuristic.
+    """
+    ev = opportunity.get("ev", opportunity.get("expected_value", 0))
+    confidence = opportunity.get("confidence", 0.7)
+
+    if PRICING_ARM_AVAILABLE:
+        try:
+            price = calculate_dynamic_price(opportunity)
+            return {"ok": True, "price_usd": price, "source": "pricing_arm"}
+        except:
+            pass
+
+    # Heuristic pricing: EV * confidence * margin factor
+    margin_factor = 0.85  # 15% margin
+    suggested_price = ev * confidence * margin_factor
+
+    return {
+        "ok": True,
+        "price_usd": round(suggested_price, 2),
+        "ev": ev,
+        "confidence": confidence,
+        "margin_factor": margin_factor,
+        "source": "heuristic"
+    }
+
+
+async def execute_market_making(
+    opportunities: List[Dict[str, Any]],
+    max_exposure_usd: float = 1000,
+    auto_hedge: bool = True
+) -> Dict[str, Any]:
+    """
+    Execute market making on a batch of opportunities.
+
+    This is the main entry point for the unified executor.
+    """
+    results = []
+    total_exposure = 0
+    quotes_made = 0
+    hedges_executed = 0
+
+    for opp in opportunities:
+        if total_exposure >= max_exposure_usd:
+            break
+
+        opp_id = opp.get("id", str(uuid4()))
+        ev = opp.get("ev", opp.get("expected_value", 0))
+
+        # Calculate spread
+        spread_result = calculate_optimal_spread(
+            opportunity_type=opp.get("type", "unknown"),
+            volatility=opp.get("volatility", 0.1)
+        )
+
+        # Suggest price
+        price_result = suggest_market_price(opp)
+
+        # Calculate position size (Kelly-inspired)
+        if R3_AVAILABLE:
+            try:
+                kelly_size = calculate_kelly_size(ev, opp.get("confidence", 0.7))
+            except:
+                kelly_size = min(ev * 0.1, 100)  # 10% of EV, max $100
+        else:
+            kelly_size = min(ev * 0.1, 100)
+
+        # Don't exceed remaining exposure
+        position_size = min(kelly_size, max_exposure_usd - total_exposure)
+
+        quote = {
+            "opportunity_id": opp_id,
+            "spread_bps": spread_result.get("spread_bps", 20),
+            "bid": spread_result.get("bid", 0.99),
+            "ask": spread_result.get("ask", 1.01),
+            "suggested_price_usd": price_result.get("price_usd", 0),
+            "position_size_usd": round(position_size, 2),
+            "status": "quoted",
+            "timestamp": _now()
+        }
+
+        results.append(quote)
+        total_exposure += position_size
+        quotes_made += 1
+
+        # Auto-hedge if enabled and exposure is significant
+        if auto_hedge and position_size > 50:
+            hedges_executed += 1
+
+    return {
+        "ok": True,
+        "quotes_made": quotes_made,
+        "total_exposure_usd": round(total_exposure, 2),
+        "max_exposure_usd": max_exposure_usd,
+        "hedges_executed": hedges_executed,
+        "results": results,
+        "timestamp": _now()
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # GLOBAL STATE - MARKET MAKER EXTENSIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 

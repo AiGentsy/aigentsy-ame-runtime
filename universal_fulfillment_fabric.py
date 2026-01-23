@@ -168,7 +168,8 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     json={
                         "model": "openai/gpt-4o-mini",
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 2000
+                        "max_tokens": 4000,
+                        "temperature": 0.3
                     }
                 )
                 if response.status_code == 200:
@@ -201,7 +202,8 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     json={
                         "model": "anthropic/claude-3-haiku",
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 2000
+                        "max_tokens": 4000,
+                        "temperature": 0.3
                     }
                 )
                 if response.status_code == 200:
@@ -232,7 +234,8 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     json={
                         "model": "sonar",
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 2000
+                        "max_tokens": 4000,
+                        "temperature": 0.3
                     }
                 )
                 if response.status_code == 200:
@@ -261,7 +264,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                     headers={"Content-Type": "application/json"},
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"maxOutputTokens": 2000}
+                        "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.3}
                     }
                 )
                 if response.status_code == 200:
@@ -438,27 +441,73 @@ Example:
   {{"action": "wait", "seconds": 2, "reason": "Wait for submission"}}
 ]
 
-Return ONLY the JSON array, no other text."""
+IMPORTANT: You MUST respond with ONLY a valid JSON array. No explanations, no markdown, just the JSON array starting with [ and ending with ]."""
 
-    ai_result = await _call_ai(prompt)
-
-    if not ai_result.get("ok"):
-        return {"ok": False, "error": ai_result.get("error", "AI generation failed")}
-
-    # Parse the plan
-    try:
-        content = ai_result.get("content", "[]")
-        # Extract JSON from response (may have markdown code blocks)
+    # Helper function to extract JSON from AI response
+    def extract_json(content: str) -> str:
+        if not content or not content.strip():
+            return "[]"
+        content = content.strip()
+        # Remove markdown code fences
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
+            parts = content.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("[") or part.startswith("{"):
+                    content = part
+                    break
+        # Find JSON array in response
+        import re
+        json_match = re.search(r'\[[\s\S]*\]', content)
+        if json_match:
+            return json_match.group(0)
+        return content.strip()
 
-        plan = json.loads(content.strip())
-        return {"ok": True, "plan": plan}
-    except json.JSONDecodeError as e:
-        logger.error(f"Plan parsing error: {e}")
-        return {"ok": False, "error": f"Plan parsing failed: {e}"}
+    # Try up to 2 times (initial + 1 retry)
+    for attempt in range(2):
+        ai_result = await _call_ai(prompt)
+
+        if not ai_result.get("ok"):
+            if attempt == 0:
+                logger.warning(f"AI call failed, retrying: {ai_result.get('error')}")
+                continue
+            return {"ok": False, "error": ai_result.get("error", "AI generation failed")}
+
+        # Parse the plan
+        try:
+            content = ai_result.get("content", "[]")
+            extracted = extract_json(content)
+
+            if not extracted or extracted == "[]" or len(extracted) < 5:
+                if attempt == 0:
+                    logger.warning(f"Empty AI response from {ai_result.get('provider')}, retrying")
+                    continue
+                # Return minimal fallback plan
+                logger.warning("AI returned empty, using fallback plan")
+                return {"ok": True, "plan": [
+                    {"action": "wait", "seconds": 1, "reason": "Initial wait"},
+                    {"action": "screenshot", "name": "fallback", "reason": "Capture page state"}
+                ], "fallback": True}
+
+            plan = json.loads(extracted)
+            if isinstance(plan, list) and len(plan) > 0:
+                return {"ok": True, "plan": plan, "provider": ai_result.get("provider")}
+
+            if attempt == 0:
+                logger.warning(f"Invalid plan structure, retrying")
+                continue
+
+        except json.JSONDecodeError as e:
+            if attempt == 0:
+                logger.warning(f"JSON parse failed: {e}, retrying")
+                continue
+            logger.error(f"Plan parsing error after retry: {e}")
+            logger.error(f"Raw content: {content[:500]}")
+            return {"ok": False, "error": f"Plan parsing failed: {e}"}
+
+    return {"ok": False, "error": "Plan generation failed after retries"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
