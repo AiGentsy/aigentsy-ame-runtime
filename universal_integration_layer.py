@@ -1152,7 +1152,7 @@ class UniversalAIRouter:
     
     def __init__(self, username: str = "system"):
         self.username = username
-        self.ai_workers = self._initialize_enhanced_workers()
+        self.ai_workers = self._initialize_workers()
         self.quality_engine = QualityAssuranceEngine()
         self.performance_optimizer = PerformanceOptimizer()
         
