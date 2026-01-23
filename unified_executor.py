@@ -381,17 +381,17 @@ class UnifiedExecutor:
 
         # Auto-Spawn Engine (AI Venture Factory)
         try:
-            from auto_spawn_engine import AutoSpawnEngine, spawn_ai_business
-            self._spawn_engine = AutoSpawnEngine() if hasattr(AutoSpawnEngine, '__init__') else None
-            self._spawn_business = spawn_ai_business
+            from auto_spawn_engine import get_spawn_engine, AutoSpawnEngine
+            self._spawn_engine = get_spawn_engine()
             self._subsystem_status["spawn_engine"] = True
         except (ImportError, Exception):
             self._subsystem_status["spawn_engine"] = False
 
         # Internet Domination Engine
         try:
-            from internet_domination_engine import InternetDominationEngine
-            self._internet_domination = InternetDominationEngine()
+            from internet_domination_engine import domination_scan_all, get_domination_opportunities
+            self._domination_scan = domination_scan_all
+            self._get_domination_opps = get_domination_opportunities
             self._subsystem_status["internet_domination"] = True
         except (ImportError, Exception):
             self._subsystem_status["internet_domination"] = False
@@ -891,18 +891,26 @@ class UnifiedExecutor:
             # Spawn Engine (AI Venture Factory)
             if self._subsystem_status.get("spawn_engine"):
                 try:
-                    spawn_opps = await self._spawn_engine.discover_spawn_opportunities() if hasattr(self._spawn_engine, 'discover_spawn_opportunities') else []
-                    results.extend(spawn_opps if isinstance(spawn_opps, list) else spawn_opps.get("opportunities", []))
-                    subsystems_used.append("spawn_engine")
+                    # Use detector to scan for trend signals (opportunities)
+                    if hasattr(self._spawn_engine, 'detector'):
+                        signals = await self._spawn_engine.detector.scan_all_sources()
+                        for sig in signals[:20]:
+                            results.append({
+                                "type": "spawn_opportunity",
+                                "source": "spawn_engine",
+                                "ev": getattr(sig, 'opportunity_score', 50),
+                                "query": getattr(sig, 'query', '')[:100],
+                                "platform": getattr(sig, 'source', 'unknown')
+                            })
+                        subsystems_used.append("spawn_engine")
                 except Exception as e:
                     logger.warning(f"Spawn engine error: {e}")
             # Internet Domination Engine
             if self._subsystem_status.get("internet_domination"):
                 try:
-                    if hasattr(self._internet_domination, 'discover_platform_opportunities'):
-                        inet_opps = await self._internet_domination.discover_platform_opportunities()
-                        results.extend(inet_opps if isinstance(inet_opps, list) else inet_opps.get("opportunities", []))
-                        subsystems_used.append("internet_domination")
+                    inet_opps = await self._get_domination_opps(limit=30)
+                    results.extend(inet_opps if isinstance(inet_opps, list) else [])
+                    subsystems_used.append("internet_domination")
                 except Exception as e:
                     logger.warning(f"Internet domination error: {e}")
             # Deal Graph (relationship-based opportunities)
@@ -923,12 +931,12 @@ class UnifiedExecutor:
             return {"ok": True, "output": results, "count": len(results), "subsystems_used": subsystems_used}
 
         elif task_type == "spawn_business" and self._subsystem_status.get("spawn_engine"):
-            result = await self._spawn_business(task.get("template", "marketing"), task.get("config", {}))
+            result = await self._spawn_engine.run_full_cycle()
             subsystems_used.append("spawn_engine")
             return {"ok": True, "output": result, "subsystems_used": subsystems_used}
 
         elif task_type == "internet_dominate" and self._subsystem_status.get("internet_domination"):
-            result = await self._internet_domination.run_domination_cycle() if hasattr(self._internet_domination, 'run_domination_cycle') else {}
+            result = await self._domination_scan()
             subsystems_used.append("internet_domination")
             return {"ok": True, "output": result, "subsystems_used": subsystems_used}
 
