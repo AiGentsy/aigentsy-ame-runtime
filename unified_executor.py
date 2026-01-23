@@ -1079,15 +1079,18 @@ class UnifiedExecutor:
             except:
                 pass
 
-        # Contribute to MetaHive
+        # Contribute to MetaHive (async, but wrapped in try/except)
         if self._subsystem_status.get("metahive"):
             try:
-                self._contribute_to_hive({
-                    "pattern_type": "execution",
-                    "task_type": task.get("type"),
-                    "success": result.get("ok", False),
-                    "subsystems_used": result.get("subsystems_used", [])
-                })
+                # Note: This is async but called without await in sync context
+                # The contribution will happen in background
+                asyncio.create_task(self._contribute_to_hive(
+                    username=task.get("user_id", "system"),
+                    pattern_type="task_execution",
+                    context={"task_type": task.get("type")},
+                    action={"subsystems_used": result.get("subsystems_used", [])},
+                    outcome={"success": result.get("ok", False)}
+                ))
             except:
                 pass
 
@@ -1263,13 +1266,13 @@ class UnifiedExecutor:
 
             # Contribute patterns to MetaHive
             if self._subsystem_status.get("metahive"):
-                self._contribute_to_hive({
-                    "pattern_type": "autonomous_cycle",
-                    "opportunities_found": len(opportunities),
-                    "actions_taken": len(executed),
-                    "revenue": results["revenue_tracked"],
-                    "cycle_id": cycle_id
-                })
+                await self._contribute_to_hive(
+                    username="system",
+                    pattern_type="autonomous_cycle",
+                    context={"cycle_id": cycle_id, "opportunities_found": len(opportunities)},
+                    action={"actions_taken": len(executed)},
+                    outcome={"revenue": results["revenue_tracked"], "success": True}
+                )
                 results["learnings_recorded"] += 1
 
             # Suggest upgrades based on outcomes
