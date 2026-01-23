@@ -1276,23 +1276,21 @@ class UnifiedExecutor:
                 results["learnings_recorded"] += 1
 
             # Suggest upgrades based on outcomes
-            if self._subsystem_status.get("auto_upgrades"):
-                outcomes = []
-                for exec_item in executed:
-                    opp = exec_item.get("opportunity", {})
-                    result = exec_item.get("result")
-                    revenue = result.get("revenue", 0) if isinstance(result, dict) else 0
-                    outcomes.append({
-                        "type": opp.get("type") if isinstance(opp, dict) else "unknown",
-                        "success": True,
-                        "revenue": revenue
-                    })
+            if self._subsystem_status.get("auto_upgrades") and executed:
+                try:
+                    # Build user-like records from executed outcomes
+                    simulated_users = [{
+                        "intents": [exec_item.get("opportunity", {}).get("type", "unknown")],
+                        "role": "agent",
+                        "revenue": (exec_item.get("result") or {}).get("revenue", 0) if isinstance(exec_item.get("result"), dict) else 0
+                    } for exec_item in executed]
 
-                if outcomes:
-                    suggestion = self._suggest_upgrade(outcomes)
+                    suggestion = self._suggest_upgrade(simulated_users, self._upgrade_tests)
                     if suggestion:
                         results["phases"]["upgrade_suggestion"] = suggestion
                         results["learnings_recorded"] += 1
+                except Exception as upgrade_err:
+                    logger.warning(f"Upgrade suggestion skipped: {upgrade_err}")
 
             results["phases"]["learning"] = {"ok": True, "patterns_stored": results["learnings_recorded"]}
             results["subsystems_used"].extend(["yield_memory", "metahive", "auto_upgrades"])
