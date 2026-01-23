@@ -307,6 +307,25 @@ class UnifiedExecutor:
         except ImportError:
             self._subsystem_status["fraud_detector"] = False
 
+        # Autonomous Upgrades (self-evolution)
+        try:
+            from autonomous_upgrades import (
+                suggest_next_upgrade,
+                create_ab_test,
+                get_active_tests,
+                deploy_logic_upgrade,
+                UPGRADE_TYPES
+            )
+            self._suggest_upgrade = suggest_next_upgrade
+            self._create_test = create_ab_test
+            self._get_tests = get_active_tests
+            self._deploy_upgrade = deploy_logic_upgrade
+            self._upgrade_types = UPGRADE_TYPES
+            self._upgrade_tests = []  # State storage for tests
+            self._subsystem_status["auto_upgrades"] = True
+        except (ImportError, Exception):
+            self._subsystem_status["auto_upgrades"] = False
+
         # ═══════════════════════════════════════════════════════════════════
         # 3. DISCOVERY LAYER
         # ═══════════════════════════════════════════════════════════════════
@@ -359,6 +378,23 @@ class UnifiedExecutor:
             self._subsystem_status["signal_ingestion"] = True
         except ImportError:
             self._subsystem_status["signal_ingestion"] = False
+
+        # Auto-Spawn Engine (AI Venture Factory)
+        try:
+            from auto_spawn_engine import AutoSpawnEngine, spawn_ai_business
+            self._spawn_engine = AutoSpawnEngine() if hasattr(AutoSpawnEngine, '__init__') else None
+            self._spawn_business = spawn_ai_business
+            self._subsystem_status["spawn_engine"] = True
+        except (ImportError, Exception):
+            self._subsystem_status["spawn_engine"] = False
+
+        # Internet Domination Engine
+        try:
+            from internet_domination_engine import InternetDominationEngine
+            self._internet_domination = InternetDominationEngine()
+            self._subsystem_status["internet_domination"] = True
+        except (ImportError, Exception):
+            self._subsystem_status["internet_domination"] = False
 
         # ═══════════════════════════════════════════════════════════════════
         # 4. REVENUE LAYER
@@ -488,6 +524,14 @@ class UnifiedExecutor:
             self._subsystem_status["reconciliation"] = True
         except ImportError:
             self._subsystem_status["reconciliation"] = False
+
+        # Autonomous Reconciliation Engine (enhanced financial truth)
+        try:
+            from autonomous_reconciliation_engine import reconciliation_engine as auto_recon
+            self._auto_reconciliation = auto_recon
+            self._subsystem_status["auto_reconciliation"] = True
+        except (ImportError, Exception):
+            self._subsystem_status["auto_reconciliation"] = False
 
         # ═══════════════════════════════════════════════════════════════════
         # 7. COLLABORATION LAYER
@@ -828,15 +872,65 @@ class UnifiedExecutor:
 
         if task_type == "discover_opportunities":
             results = []
+            # Alpha Discovery
             if self._subsystem_status.get("alpha_discovery"):
-                alpha = await self._alpha_discovery.discover()
-                results.extend(alpha.get("opportunities", []))
-                subsystems_used.append("alpha_discovery")
+                try:
+                    alpha = await self._alpha_discovery.discover()
+                    results.extend(alpha.get("opportunities", []))
+                    subsystems_used.append("alpha_discovery")
+                except Exception as e:
+                    logger.warning(f"Alpha discovery error: {e}")
+            # Ultimate Discovery
             if self._subsystem_status.get("ultimate_discovery"):
-                ultimate = await self._ultimate_discover()
-                results.extend(ultimate.get("opportunities", []))
-                subsystems_used.append("ultimate_discovery")
+                try:
+                    ultimate = await self._ultimate_discover()
+                    results.extend(ultimate.get("opportunities", []))
+                    subsystems_used.append("ultimate_discovery")
+                except Exception as e:
+                    logger.warning(f"Ultimate discovery error: {e}")
+            # Spawn Engine (AI Venture Factory)
+            if self._subsystem_status.get("spawn_engine"):
+                try:
+                    spawn_opps = await self._spawn_engine.discover_spawn_opportunities() if hasattr(self._spawn_engine, 'discover_spawn_opportunities') else []
+                    results.extend(spawn_opps if isinstance(spawn_opps, list) else spawn_opps.get("opportunities", []))
+                    subsystems_used.append("spawn_engine")
+                except Exception as e:
+                    logger.warning(f"Spawn engine error: {e}")
+            # Internet Domination Engine
+            if self._subsystem_status.get("internet_domination"):
+                try:
+                    if hasattr(self._internet_domination, 'discover_platform_opportunities'):
+                        inet_opps = await self._internet_domination.discover_platform_opportunities()
+                        results.extend(inet_opps if isinstance(inet_opps, list) else inet_opps.get("opportunities", []))
+                        subsystems_used.append("internet_domination")
+                except Exception as e:
+                    logger.warning(f"Internet domination error: {e}")
+            # Deal Graph (relationship-based opportunities)
+            if self._subsystem_status.get("deal_graph"):
+                try:
+                    if hasattr(self._deal_graph, 'get_intro_opportunities'):
+                        intro_opps = self._deal_graph.get_intro_opportunities(limit=20)
+                        for intro in intro_opps:
+                            results.append({
+                                "type": "relationship_intro",
+                                "source": "deal_graph",
+                                "ev": getattr(intro, 'expected_value', 50),
+                                "data": intro.__dict__ if hasattr(intro, '__dict__') else intro
+                            })
+                        subsystems_used.append("deal_graph")
+                except Exception as e:
+                    logger.warning(f"Deal graph error: {e}")
             return {"ok": True, "output": results, "count": len(results), "subsystems_used": subsystems_used}
+
+        elif task_type == "spawn_business" and self._subsystem_status.get("spawn_engine"):
+            result = await self._spawn_business(task.get("template", "marketing"), task.get("config", {}))
+            subsystems_used.append("spawn_engine")
+            return {"ok": True, "output": result, "subsystems_used": subsystems_used}
+
+        elif task_type == "internet_dominate" and self._subsystem_status.get("internet_domination"):
+            result = await self._internet_domination.run_domination_cycle() if hasattr(self._internet_domination, 'run_domination_cycle') else {}
+            subsystems_used.append("internet_domination")
+            return {"ok": True, "output": result, "subsystems_used": subsystems_used}
 
         elif task_type == "internet_search" and self._subsystem_status.get("internet_discovery"):
             result = await self._search_internet(task.get("query", ""), task.get("max_results", 10))
@@ -1003,6 +1097,195 @@ class UnifiedExecutor:
         return True
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # AUTONOMOUS INTERCONNECTION - All systems feeding into each other
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def run_autonomous_cycle(self) -> Dict[str, Any]:
+        """
+        Run a complete autonomous cycle with all systems interconnected:
+
+        1. DISCOVER → Find opportunities from all sources
+        2. PRIORITIZE → Use MetaHive + Deal Graph for scoring
+        3. EXECUTE → Run through Fabric + Connectors
+        4. RECONCILE → Track finances through Reconciliation
+        5. LEARN → Feed back to MetaHive + Yield Memory + Upgrades
+        """
+        cycle_id = f"cycle_{uuid4().hex[:8]}"
+        start_time = datetime.now(timezone.utc)
+        results = {
+            "cycle_id": cycle_id,
+            "phases": {},
+            "total_opportunities": 0,
+            "actions_taken": 0,
+            "revenue_tracked": 0.0,
+            "learnings_recorded": 0,
+            "subsystems_used": []
+        }
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 1: DISCOVERY (All sources)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            discovery_result = await self._execute_discovery({"type": "discover_opportunities"})
+            opportunities = discovery_result.get("output", [])
+            results["phases"]["discovery"] = {
+                "ok": True,
+                "count": len(opportunities),
+                "sources": discovery_result.get("subsystems_used", [])
+            }
+            results["total_opportunities"] = len(opportunities)
+            results["subsystems_used"].extend(discovery_result.get("subsystems_used", []))
+        except Exception as e:
+            results["phases"]["discovery"] = {"ok": False, "error": str(e)}
+            opportunities = []
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 2: PRIORITIZATION (MetaHive + Deal Graph + Outcome Oracle)
+        # ═══════════════════════════════════════════════════════════════════
+        prioritized = []
+        try:
+            for opp in opportunities[:50]:  # Limit to top 50
+                score = opp.get("ev", opp.get("expected_value", 0))
+
+                # Enhance with MetaHive patterns
+                if self._subsystem_status.get("metahive"):
+                    try:
+                        pattern = self._query_hive(opp.get("type", "unknown"))
+                        if pattern:
+                            score *= (1 + pattern.get("success_rate", 0))
+                    except:
+                        pass
+
+                # Enhance with Deal Graph network multiplier
+                if self._subsystem_status.get("deal_graph") and hasattr(self._deal_graph, 'get_network_multiplier'):
+                    try:
+                        network_mult = self._deal_graph.get_network_multiplier(opp.get("entity_id"))
+                        score *= network_mult
+                    except:
+                        pass
+
+                # Enhance with Outcome Oracle probability
+                if self._subsystem_status.get("outcome_oracle"):
+                    try:
+                        funnel_stats = self._get_funnel_stats(opp.get("user_id", "system"))
+                        if funnel_stats:
+                            score *= funnel_stats.get("conversion_rate", 0.5) + 0.5
+                    except:
+                        pass
+
+                prioritized.append({**opp, "priority_score": score})
+
+            prioritized.sort(key=lambda x: x.get("priority_score", 0), reverse=True)
+            results["phases"]["prioritization"] = {"ok": True, "count": len(prioritized)}
+            results["subsystems_used"].extend(["metahive", "deal_graph", "outcome_oracle"])
+        except Exception as e:
+            results["phases"]["prioritization"] = {"ok": False, "error": str(e)}
+            prioritized = opportunities[:20]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 3: EXECUTION (Fabric + Connectors)
+        # ═══════════════════════════════════════════════════════════════════
+        executed = []
+        try:
+            # Execute top opportunities
+            for opp in prioritized[:10]:  # Execute top 10
+                if self._subsystem_status.get("fabric"):
+                    try:
+                        exec_result = await self.execute({
+                            "type": "execute_opportunity",
+                            "category": ExecutionCategory.EXECUTION.value,
+                            "opportunity": opp
+                        })
+                        if exec_result.ok:
+                            executed.append({"opportunity": opp, "result": exec_result.output})
+                            results["actions_taken"] += 1
+                    except:
+                        pass
+
+            results["phases"]["execution"] = {"ok": True, "count": len(executed)}
+            results["subsystems_used"].append("fabric")
+        except Exception as e:
+            results["phases"]["execution"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 4: RECONCILIATION (Track all financial activity)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._subsystem_status.get("auto_reconciliation"):
+                for exec_item in executed:
+                    revenue = exec_item.get("result", {}).get("revenue", 0)
+                    if revenue > 0:
+                        self._auto_reconciliation.record_activity(
+                            activity_type="execution",
+                            gross_revenue=revenue,
+                            path="path_a",
+                            metadata={"cycle_id": cycle_id, "opportunity": exec_item.get("opportunity", {})}
+                        )
+                        results["revenue_tracked"] += revenue
+
+                results["phases"]["reconciliation"] = {"ok": True, "revenue": results["revenue_tracked"]}
+                results["subsystems_used"].append("auto_reconciliation")
+
+                # Feed reconciliation data back to Outcome Oracle
+                if self._subsystem_status.get("outcome_oracle") and results["revenue_tracked"] > 0:
+                    self._credit_aigx("system", results["revenue_tracked"] * 0.1)  # 10% to AIGx
+        except Exception as e:
+            results["phases"]["reconciliation"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 5: LEARNING (MetaHive + Yield Memory + Upgrades)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            # Store patterns in Yield Memory
+            if self._subsystem_status.get("yield_memory"):
+                for exec_item in executed:
+                    self._store_pattern({
+                        "action": exec_item.get("opportunity", {}).get("type"),
+                        "success": True,
+                        "revenue": exec_item.get("result", {}).get("revenue", 0),
+                        "cycle_id": cycle_id
+                    })
+                    results["learnings_recorded"] += 1
+
+            # Contribute patterns to MetaHive
+            if self._subsystem_status.get("metahive"):
+                self._contribute_to_hive({
+                    "pattern_type": "autonomous_cycle",
+                    "opportunities_found": len(opportunities),
+                    "actions_taken": len(executed),
+                    "revenue": results["revenue_tracked"],
+                    "cycle_id": cycle_id
+                })
+                results["learnings_recorded"] += 1
+
+            # Suggest upgrades based on outcomes
+            if self._subsystem_status.get("auto_upgrades"):
+                outcomes = [{
+                    "type": exec_item.get("opportunity", {}).get("type"),
+                    "success": True,
+                    "revenue": exec_item.get("result", {}).get("revenue", 0)
+                } for exec_item in executed]
+
+                if outcomes:
+                    suggestion = self._suggest_upgrade(outcomes)
+                    if suggestion:
+                        results["phases"]["upgrade_suggestion"] = suggestion
+                        results["learnings_recorded"] += 1
+
+            results["phases"]["learning"] = {"ok": True, "patterns_stored": results["learnings_recorded"]}
+            results["subsystems_used"].extend(["yield_memory", "metahive", "auto_upgrades"])
+        except Exception as e:
+            results["phases"]["learning"] = {"ok": False, "error": str(e)}
+
+        # Calculate execution time
+        end_time = datetime.now(timezone.utc)
+        results["execution_time_ms"] = int((end_time - start_time).total_seconds() * 1000)
+        results["timestamp"] = end_time.isoformat()
+        results["subsystems_used"] = list(set(results["subsystems_used"]))
+
+        return results
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # STATUS & DIAGNOSTICS
     # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1011,14 +1294,14 @@ class UnifiedExecutor:
         available = sum(1 for v in self._subsystem_status.values() if v)
         total = len(self._subsystem_status)
 
-        # Group by category
+        # Group by category (includes all autonomous subsystems)
         categories = {
             "execution": ["connectors", "ai_router", "fabric"],
-            "intelligence": ["metahive", "outcome_oracle", "pricing_oracle", "yield_memory", "ltv_forecaster", "fraud_detector"],
-            "discovery": ["alpha_discovery", "ultimate_discovery", "internet_discovery", "pain_detector", "research_engine", "signal_ingestion"],
+            "intelligence": ["metahive", "outcome_oracle", "pricing_oracle", "yield_memory", "ltv_forecaster", "fraud_detector", "auto_upgrades"],
+            "discovery": ["alpha_discovery", "ultimate_discovery", "internet_discovery", "pain_detector", "research_engine", "signal_ingestion", "spawn_engine", "internet_domination"],
             "revenue": ["amg", "r3_autopilot", "gap_harvesters", "market_maker", "arbitrage", "revenue_orchestrator"],
             "content": ["social_engine", "video_engine", "audio_engine", "graphics_engine"],
-            "financial": ["aigx_protocol", "ocl_engine", "agent_factoring", "reconciliation"],
+            "financial": ["aigx_protocol", "ocl_engine", "agent_factoring", "reconciliation", "auto_reconciliation"],
             "collaboration": ["metabridge", "jv_mesh", "deal_graph", "agent_registry", "protocol_gateway"],
             "business": ["business_accelerator", "storefront_deployer", "template_actionizer", "franchise_engine", "sku_orchestrator", "master_orchestrator"]
         }
@@ -1109,6 +1392,21 @@ async def list_subsystems():
         "summary": f"{status['subsystems']['available']}/{status['subsystems']['total']} subsystems available",
         "categories": status["categories"]
     }
+
+
+@unified_router.post("/autonomous-cycle")
+async def run_autonomous_cycle_endpoint():
+    """
+    Run a complete autonomous cycle with all systems interconnected:
+    1. DISCOVER → All sources (Alpha, Ultimate, Spawn, Domination, DealGraph)
+    2. PRIORITIZE → MetaHive + Deal Graph + Outcome Oracle scoring
+    3. EXECUTE → Fabric + Connectors execution
+    4. RECONCILE → Track finances through Auto-Reconciliation
+    5. LEARN → Feed back to MetaHive + Yield Memory + Auto-Upgrades
+    """
+    executor = get_executor()
+    result = await executor.run_autonomous_cycle()
+    return result
 
 
 def include_unified_endpoints(app):
