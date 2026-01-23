@@ -75,6 +75,15 @@ AI_MODEL_ROUTING = {
     'kelly_sizing': ['claude', 'gpt4'],  # Kelly criterion
     'invoice_analysis': ['claude', 'gpt4'],  # Invoice risk assessment
     'payment_routing': ['claude', 'gpt4'],  # PSP optimization
+
+    # Grok-first tasks (social intelligence, trending, cultural context)
+    'social_intelligence': ['grok', 'perplexity', 'claude'],  # Twitter/social analysis
+    'social_analysis': ['grok', 'perplexity', 'claude'],
+    'trending_detection': ['grok', 'perplexity', 'gemini'],  # What's trending
+    'meme_generation': ['grok', 'gpt4', 'claude'],  # Meme/viral content
+    'cultural_context': ['grok', 'claude', 'gpt4'],  # Cultural understanding
+    'twitter_opportunities': ['grok', 'perplexity', 'claude'],  # Twitter-specific
+    'viral_content': ['grok', 'gpt4', 'claude'],  # Viral potential
 }
 # Model performance tracking for learning
 MODEL_PERFORMANCE = {
@@ -82,6 +91,7 @@ MODEL_PERFORMANCE = {
     'gpt4': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
     'gemini': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
     'perplexity': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},
+    'grok': {'successes': 0, 'failures': 0, 'total_time_ms': 0, 'tasks': []},  # xAI Grok
 }
 
 # Task-specific learning - which model performs best for which task type
@@ -104,17 +114,19 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+XAI_API_KEY = os.environ.get("XAI_API_KEY", "")  # Grok (xAI)
 
 class MultiAIRouter:
     """
     Routes execution to appropriate AI model based on task type.
-    
+
     THE AI FAMILY:
     - Claude (Anthropic): Primary reasoning, code, content, fulfillment
     - GPT-4 (OpenAI): Fast generation, creative tasks
-    - Gemini (Google): Research, multimodal analysis  
+    - Gemini (Google): Research, multimodal analysis
     - Perplexity: Real-time web search, opportunity discovery
-    
+    - Grok (xAI): Social intelligence, trending, cultural context, Twitter [OPTIONAL]
+
     LEARNING: Models learn from each other's successes and failures.
     Task routing adapts based on which models perform best for which tasks.
     """
@@ -128,6 +140,7 @@ class MultiAIRouter:
             'gpt4': bool(OPENAI_API_KEY or OPENROUTER_API_KEY),
             'gemini': bool(GEMINI_API_KEY),
             'perplexity': bool(PERPLEXITY_API_KEY),
+            'grok': bool(XAI_API_KEY),  # xAI Grok - optional, for social intelligence
         }
         
         # Print available models
@@ -288,6 +301,8 @@ class MultiAIRouter:
                 result = await self._execute_with_gemini(task)
             elif model == 'perplexity':
                 result = await self._execute_with_perplexity(task)
+            elif model == 'grok':
+                result = await self._execute_with_grok(task)
             else:
                 result = {'status': 'failed', 'error': f'Unknown model: {model}'}
             
@@ -453,8 +468,51 @@ class MultiAIRouter:
                     }
         except Exception as e:
             print(f"[Gemini] Error: {e}, falling back to Claude")
-        
+
         return await self._execute_with_claude(task)
+
+    async def _execute_with_grok(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task using Grok (xAI) - best for social intelligence, trending, cultural context"""
+        task_type = task.get('type', 'unknown')
+        requirements = task.get('requirements', '')
+
+        print(f"[Grok] Executing {task_type}: {requirements[:100]}...")
+
+        if not XAI_API_KEY:
+            print("[Grok] No XAI_API_KEY configured, falling back to Perplexity")
+            return await self._execute_with_perplexity(task)
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {XAI_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "grok-beta",
+                        "messages": [{"role": "user", "content": requirements}],
+                        "max_tokens": 2000
+                    }
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                    return {
+                        'status': 'completed',
+                        'output': content,
+                        'agent': 'grok',
+                        'duration_hours': 0.1
+                    }
+                else:
+                    print(f"[Grok] API error {response.status_code}, falling back to Perplexity")
+        except Exception as e:
+            print(f"[Grok] Error: {e}, falling back to Perplexity")
+
+        return await self._execute_with_perplexity(task)
 
 
 # ============================================================

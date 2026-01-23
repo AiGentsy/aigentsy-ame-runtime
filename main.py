@@ -46,6 +46,8 @@ from diagnostic_opportunity_tracer import include_diagnostic_endpoints
 from internet_search_setup import include_search_endpoints
 from oauth_credential_manager import include_credential_endpoints
 from apex_upgrades_overlay import include_overlay
+from aigentsy_protocol import include_protocol_endpoints
+from unified_executor import include_unified_endpoints
 from v110_gap_harvesters import include_gap_harvesters
 from opportunity_filters import (
     filter_opportunities,
@@ -1066,6 +1068,8 @@ include_diagnostic_tracer(app)
 include_diagnostic_endpoints(app)  # Opportunity tracer with /diagnostic/trace-cycle
 include_search_endpoints(app)  # Internet-wide search with DuckDuckGo fallback
 include_credential_endpoints(app)  # OAuth credential manager with /pdl/missing-credentials
+include_protocol_endpoints(app)  # Thin Film Protocol - TCP/IP of AI collaboration
+include_unified_endpoints(app)  # Unified Executor - single entry point for all execution
 include_profit_engine(app)
 include_gap_harvesters(app)
 
