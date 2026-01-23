@@ -146,9 +146,9 @@ async def _call_vision_ai(image_base64: str, prompt: str) -> Dict[str, Any]:
 async def _call_ai(prompt: str) -> Dict[str, Any]:
     """Call AI for text generation with fallback chain:
     1. OpenRouter → openai/gpt-4o-mini
-    2. OpenRouter → anthropic/claude-3-5-haiku
-    3. Perplexity → llama-3.1-sonar
-    4. Gemini → gemini-flash-1.5
+    2. OpenRouter → anthropic/claude-3-haiku
+    3. Perplexity → sonar
+    4. Gemini → gemini-2.0-flash
     """
     if not HTTPX_AVAILABLE:
         return {"ok": False, "error": "httpx not available"}
@@ -199,7 +199,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "anthropic/claude-3-5-haiku-20241022",
+                        "model": "anthropic/claude-3-haiku",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 2000
                     }
@@ -230,7 +230,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "llama-3.1-sonar-small-128k-online",
+                        "model": "sonar",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 2000
                     }
@@ -238,7 +238,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                 if response.status_code == 200:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {"ok": True, "content": content, "provider": "perplexity/llama-3.1-sonar"}
+                    return {"ok": True, "content": content, "provider": "perplexity/sonar"}
                 err = f"Perplexity: {response.status_code}"
                 try:
                     err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
@@ -257,7 +257,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
                     headers={"Content-Type": "application/json"},
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
@@ -267,7 +267,7 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                 if response.status_code == 200:
                     data = response.json()
                     content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    return {"ok": True, "content": content, "provider": "gemini/flash-1.5"}
+                    return {"ok": True, "content": content, "provider": "gemini/2.0-flash"}
                 err = f"Gemini: {response.status_code}"
                 try:
                     err += f" - {response.json().get('error', {}).get('message', '')[:100]}"
