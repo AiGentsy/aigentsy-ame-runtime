@@ -1,23 +1,23 @@
 """
-Discovery Manager - Opportunity Discovery from 15+ Sources
-==========================================================
+Discovery Manager - Coordinates 15 Discovery Source Systems
+============================================================
 
-Systems managed:
-1. alpha_discovery_engine.py - 7 discovery dimensions
-2. ultimate_discovery_engine.py - Combined discovery
-3. auto_spawn_engine.py - AI venture factory
-4. internet_domination_engine.py - Internet-wide scanning
-5. flow_arbitrage_detector.py - Arbitrage opportunities
-6. pain_point_detector.py - Pain point discovery
-7. real_signal_ingestion.py - Signal processing
-8. research_engine.py - Research capabilities
-9. industry_knowledge.py - Domain expertise
-10. advanced_discovery_dimensions.py - Extended dimensions
-11. autonomous_deal_graph.py - Relationship opportunities
-12. direct_outreach_engine.py - Lead discovery
-13. affiliate_matching.py - JV opportunities
-14. internet_discovery_expansion.py - Extended internet sources
-15. discovery_to_queue_connector.py - Queue integration
+Systems managed (with ACTUAL function imports):
+1. alpha_discovery_engine.py - AlphaDiscoveryEngine, CapabilityMatcher
+2. ultimate_discovery_engine.py - scrape_* functions for 20+ platforms
+3. auto_spawn_engine.py - AutoSpawnEngine, TrendDetector, BusinessSpawner
+4. internet_domination_engine.py - Internet discovery
+5. v110_gap_harvesters.py - scan_all_harvesters (20+ gap types)
+6. v111_gapharvester_ii.py - Advanced gap detection
+7. flow_arbitrage_detector.py - FlowArbitrageDetector
+8. idle_time_arbitrage.py - IdleTimeArbitrage, detect_idle_capacity
+9. affiliate_matching.py - match_signal_to_affiliate
+10. research_engine.py - ResearchEngine, PerplexityResearcher
+11. signal_ingestion.py - Signal ingestion
+12. platform_recruitment_engine.py - Platform recruitment
+13. pain_point_detector.py - Pain detection
+14. dealgraph.py - Deal relationship graph
+15. advanced_discovery_dimensions.py - Advanced discovery
 """
 
 from typing import Dict, Any, List, Optional
@@ -30,164 +30,283 @@ logger = logging.getLogger("discovery_manager")
 
 
 class DiscoveryManager:
-    """Coordinates all 15+ discovery sources"""
+    """Coordinates all discovery source subsystems"""
 
     def __init__(self):
         self._subsystems: Dict[str, bool] = {}
-        self._opportunities: List[Dict] = []
+        self._opportunities_found: int = 0
         self._sources_used: List[str] = []
         self._init_subsystems()
 
     def _init_subsystems(self):
-        """Initialize all 15 discovery subsystems"""
+        """Initialize all 15 discovery subsystems with CORRECT imports"""
 
-        # 1. Alpha Discovery Engine (7 dimensions)
+        # 1. Alpha Discovery Engine
         try:
-            from alpha_discovery_engine import AlphaDiscoveryEngine
-            self._alpha_discovery = AlphaDiscoveryEngine()
+            from alpha_discovery_engine import (
+                AlphaDiscoveryEngine,
+                CapabilityMatcher,
+                AlphaDiscoveryRouter,
+                MultiAIOrchestrator
+            )
+            self._alpha_engine = AlphaDiscoveryEngine()
+            self._capability_matcher = CapabilityMatcher
+            self._alpha_router = AlphaDiscoveryRouter
+            self._ai_orchestrator = MultiAIOrchestrator
             self._subsystems["alpha_discovery"] = True
+            logger.info("Alpha Discovery Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Alpha discovery not available: {e}")
             self._subsystems["alpha_discovery"] = False
 
-        # 2. Ultimate Discovery Engine
+        # 2. Ultimate Discovery Engine (20+ platform scrapers)
         try:
-            from ultimate_discovery_engine import discover_all_opportunities
-            self._ultimate_discover = discover_all_opportunities
+            from ultimate_discovery_engine import (
+                scrape_github,
+                scrape_github_bounties,
+                scrape_reddit,
+                scrape_hackernews,
+                scrape_upwork,
+                scrape_remoteok,
+                scrape_weworkremotely,
+                scrape_indiehackers,
+                scrape_fiverr,
+                scrape_producthunt,
+                scrape_devpost,
+                scrape_linkedin_jobs,
+                scrape_indeed,
+                calculate_fulfillability
+            )
+            self._scrape_github = scrape_github
+            self._scrape_bounties = scrape_github_bounties
+            self._scrape_reddit = scrape_reddit
+            self._scrape_hackernews = scrape_hackernews
+            self._scrape_upwork = scrape_upwork
+            self._scrape_remoteok = scrape_remoteok
+            self._scrape_weworkremotely = scrape_weworkremotely
+            self._scrape_indiehackers = scrape_indiehackers
+            self._scrape_fiverr = scrape_fiverr
+            self._scrape_producthunt = scrape_producthunt
+            self._scrape_devpost = scrape_devpost
+            self._scrape_linkedin = scrape_linkedin_jobs
+            self._scrape_indeed = scrape_indeed
+            self._calc_fulfillability = calculate_fulfillability
             self._subsystems["ultimate_discovery"] = True
+            logger.info("Ultimate Discovery Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Ultimate discovery not available: {e}")
             self._subsystems["ultimate_discovery"] = False
 
-        # 3. Auto-Spawn Engine
+        # 3. Auto Spawn Engine
         try:
-            from auto_spawn_engine import get_spawn_engine
+            from auto_spawn_engine import (
+                AutoSpawnEngine,
+                get_spawn_engine,
+                TrendDetector,
+                BusinessSpawner,
+                LifecycleManager,
+                AdoptionSystem,
+                SpawnNetwork,
+                UniversalAI,
+                get_universal_ai
+            )
             self._spawn_engine = get_spawn_engine()
+            self._trend_detector = TrendDetector
+            self._business_spawner = BusinessSpawner
+            self._lifecycle_mgr = LifecycleManager
+            self._adoption_sys = AdoptionSystem
+            self._spawn_network = SpawnNetwork
+            self._universal_ai = get_universal_ai()
             self._subsystems["spawn_engine"] = True
+            logger.info("Auto Spawn Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Spawn engine not available: {e}")
             self._subsystems["spawn_engine"] = False
 
         # 4. Internet Domination Engine
         try:
-            from internet_domination_engine import get_domination_opportunities, domination_scan_all
-            self._get_domination_opps = get_domination_opportunities
-            self._domination_scan = domination_scan_all
+            from internet_domination_engine import (
+                InternetDominationEngine,
+                discover_opportunities
+            )
+            self._internet_engine = InternetDominationEngine()
+            self._discover_internet = discover_opportunities
             self._subsystems["internet_domination"] = True
+            logger.info("Internet Domination Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Internet domination not available: {e}")
             self._subsystems["internet_domination"] = False
 
-        # 5. Flow Arbitrage Detector
+        # 5. V110 Gap Harvesters (20+ gap types)
         try:
-            from flow_arbitrage_detector import (
-                get_all_arbitrage_opportunities,
-                detect_price_arbitrage,
-                detect_temporal_arbitrage
+            from v110_gap_harvesters import (
+                scan_all_harvesters,
+                apcr_scan_credits,
+                affiliate_scan_broken_links,
+                saas_optimize_rightsizing,
+                seo_scan_404s,
+                market_scan_orphans,
+                grants_scan,
+                domains_scan_expiries,
+                i18n_scan,
+                car_scout_risks
             )
-            self._get_arbitrage = get_all_arbitrage_opportunities
-            self._price_arb = detect_price_arbitrage
-            self._temporal_arb = detect_temporal_arbitrage
+            self._scan_harvesters = scan_all_harvesters
+            self._apcr_scan = apcr_scan_credits
+            self._affiliate_scan = affiliate_scan_broken_links
+            self._saas_scan = saas_optimize_rightsizing
+            self._seo_scan = seo_scan_404s
+            self._market_scan = market_scan_orphans
+            self._grants_scan = grants_scan
+            self._domains_scan = domains_scan_expiries
+            self._i18n_scan = i18n_scan
+            self._car_scan = car_scout_risks
+            self._subsystems["gap_harvesters"] = True
+            logger.info("V110 Gap Harvesters loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Gap harvesters not available: {e}")
+            self._subsystems["gap_harvesters"] = False
+
+        # 6. Flow Arbitrage Detector
+        try:
+            from flow_arbitrage_detector import FlowArbitrageDetector
+            self._flow_detector = FlowArbitrageDetector()
             self._subsystems["flow_arbitrage"] = True
+            logger.info("Flow Arbitrage Detector loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Flow arbitrage not available: {e}")
             self._subsystems["flow_arbitrage"] = False
 
-        # 6. Pain Point Detector
+        # 7. Idle Time Arbitrage
         try:
-            from pain_point_detector import PainPointDetector
-            self._pain_detector = PainPointDetector()
-            self._subsystems["pain_detector"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Pain detector not available: {e}")
-            self._subsystems["pain_detector"] = False
-
-        # 7. Real Signal Ingestion
-        try:
-            from real_signal_ingestion import get_signal_engine
-            self._signal_engine = get_signal_engine()
-            self._subsystems["signal_ingestion"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Signal ingestion not available: {e}")
-            self._subsystems["signal_ingestion"] = False
-
-        # 8. Research Engine
-        try:
-            from research_engine import ResearchEngine
-            self._research_engine = ResearchEngine()
-            self._subsystems["research_engine"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Research engine not available: {e}")
-            self._subsystems["research_engine"] = False
-
-        # 9. Industry Knowledge
-        try:
-            from industry_knowledge import get_industry_insights, analyze_industry_gaps
-            self._industry_insights = get_industry_insights
-            self._analyze_gaps = analyze_industry_gaps
-            self._subsystems["industry_knowledge"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Industry knowledge not available: {e}")
-            self._subsystems["industry_knowledge"] = False
-
-        # 10. Advanced Discovery Dimensions
-        try:
-            from advanced_discovery_dimensions import (
-                discover_advanced_opportunities,
-                get_discovery_dimensions
+            from idle_time_arbitrage import (
+                IdleTimeArbitrage,
+                detect_idle_capacity,
+                find_idle_slots,
+                get_idle_arbitrage_stats
             )
-            self._advanced_discover = discover_advanced_opportunities
-            self._get_dimensions = get_discovery_dimensions
-            self._subsystems["advanced_dimensions"] = True
+            self._idle_arb = IdleTimeArbitrage()
+            self._detect_idle = detect_idle_capacity
+            self._find_slots = find_idle_slots
+            self._idle_stats = get_idle_arbitrage_stats
+            self._subsystems["idle_arbitrage"] = True
+            logger.info("Idle Time Arbitrage loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"Advanced dimensions not available: {e}")
-            self._subsystems["advanced_dimensions"] = False
+            logger.warning(f"Idle arbitrage not available: {e}")
+            self._subsystems["idle_arbitrage"] = False
 
-        # 11. Autonomous Deal Graph
+        # 8. Affiliate Matching
         try:
-            from autonomous_deal_graph import get_deal_graph
-            self._deal_graph = get_deal_graph()
-            self._subsystems["deal_graph"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Deal graph not available: {e}")
-            self._subsystems["deal_graph"] = False
-
-        # 12. Direct Outreach Engine (lead discovery)
-        try:
-            from direct_outreach_engine import find_prospects
-            self._find_prospects = find_prospects
-            self._subsystems["direct_outreach"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Direct outreach not available: {e}")
-            self._subsystems["direct_outreach"] = False
-
-        # 13. Affiliate Matching (JV opportunities)
-        try:
-            from affiliate_matching import find_affiliate_matches
-            self._find_affiliates = find_affiliate_matches
+            from affiliate_matching import (
+                match_signal_to_affiliate,
+                match_batch_signals,
+                get_affiliate_status,
+                get_conversion_stats
+            )
+            self._match_affiliate = match_signal_to_affiliate
+            self._batch_match = match_batch_signals
+            self._affiliate_status = get_affiliate_status
+            self._conversion_stats = get_conversion_stats
             self._subsystems["affiliate_matching"] = True
+            logger.info("Affiliate Matching loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Affiliate matching not available: {e}")
             self._subsystems["affiliate_matching"] = False
 
-        # 14. Internet Discovery Expansion
+        # 9. Research Engine
         try:
-            from internet_search_setup import search_internet, internet_discovery_scan
-            self._search_internet = search_internet
-            self._internet_scan = internet_discovery_scan
-            self._subsystems["internet_search"] = True
+            from research_engine import (
+                ResearchEngine,
+                PerplexityResearcher,
+                ClaudeOpusResearcher,
+                GeminiResearcher,
+                ResearchAnalyzer,
+                PredictiveMarketEngine
+            )
+            self._research_engine = ResearchEngine()
+            self._perplexity = PerplexityResearcher
+            self._claude_researcher = ClaudeOpusResearcher
+            self._gemini_researcher = GeminiResearcher
+            self._research_analyzer = ResearchAnalyzer
+            self._market_predictor = PredictiveMarketEngine
+            self._subsystems["research_engine"] = True
+            logger.info("Research Engine loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"Internet search not available: {e}")
-            self._subsystems["internet_search"] = False
+            logger.warning(f"Research engine not available: {e}")
+            self._subsystems["research_engine"] = False
 
-        # 15. Idle Time Arbitrage (capacity discovery)
+        # 10. Pain Point Detector
         try:
-            from idle_time_arbitrage import detect_idle_capacity
-            self._detect_idle = detect_idle_capacity
-            self._subsystems["idle_arbitrage"] = True
+            from pain_point_detector import (
+                PainPointDetector,
+                detect_pain_points
+            )
+            self._pain_detector = PainPointDetector()
+            self._detect_pain = detect_pain_points
+            self._subsystems["pain_detector"] = True
+            logger.info("Pain Point Detector loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"Idle arbitrage not available: {e}")
-            self._subsystems["idle_arbitrage"] = False
+            logger.warning(f"Pain detector not available: {e}")
+            self._subsystems["pain_detector"] = False
+
+        # 11. Deal Graph
+        try:
+            from dealgraph import DealGraph
+            self._deal_graph = DealGraph()
+            self._subsystems["deal_graph"] = True
+            logger.info("Deal Graph loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Deal graph not available: {e}")
+            self._subsystems["deal_graph"] = False
+
+        # 12. Signal Ingestion
+        try:
+            from signal_ingestion import ingest_signals, get_signal_stats
+            self._ingest_signals = ingest_signals
+            self._signal_stats = get_signal_stats
+            self._subsystems["signal_ingestion"] = True
+            logger.info("Signal Ingestion loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Signal ingestion not available: {e}")
+            self._subsystems["signal_ingestion"] = False
+
+        # 13. Platform Recruitment Engine
+        try:
+            from platform_recruitment_engine import (
+                PlatformRecruitmentEngine,
+                recruit_from_platforms
+            )
+            self._recruitment_engine = PlatformRecruitmentEngine()
+            self._recruit = recruit_from_platforms
+            self._subsystems["platform_recruitment"] = True
+            logger.info("Platform Recruitment Engine loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Platform recruitment not available: {e}")
+            self._subsystems["platform_recruitment"] = False
+
+        # 14. Advanced Discovery Dimensions
+        try:
+            from advanced_discovery_dimensions import (
+                AdvancedDiscoveryDimensions,
+                discover_by_dimensions
+            )
+            self._advanced_dims = AdvancedDiscoveryDimensions()
+            self._discover_dims = discover_by_dimensions
+            self._subsystems["advanced_dimensions"] = True
+            logger.info("Advanced Discovery Dimensions loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Advanced dimensions not available: {e}")
+            self._subsystems["advanced_dimensions"] = False
+
+        # 15. Internet Discovery Expansion
+        try:
+            from mega_discovery_engine import MegaDiscoveryEngine
+            self._mega_engine = MegaDiscoveryEngine()
+            self._subsystems["mega_discovery"] = True
+            logger.info("Mega Discovery Engine loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Mega discovery not available: {e}")
+            self._subsystems["mega_discovery"] = False
 
         self._log_status()
 
@@ -197,262 +316,198 @@ class DiscoveryManager:
         total = len(self._subsystems)
         logger.info(f"DiscoveryManager: {available}/{total} subsystems loaded")
 
-    async def discover_all_sources(self) -> List[Dict[str, Any]]:
-        """Discover opportunities from all 15+ sources"""
-        opportunities = []
-        self._sources_used = []
+    async def discover_all_sources(self, user_profile: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Discover opportunities from all 15 sources"""
+        if user_profile is None:
+            user_profile = {"skills": ["python", "automation"], "budget_min": 50}
 
-        # 1. Alpha Discovery (7 dimensions)
+        all_opportunities = []
+        sources_used = []
+
+        # 1. Alpha Discovery
         if self._subsystems.get("alpha_discovery"):
             try:
-                alpha_opps = await self._alpha_discovery.discover() if hasattr(self._alpha_discovery, 'discover') else {}
-                for opp in alpha_opps.get("opportunities", []):
-                    opportunities.append({**opp, "source": "alpha_discovery"})
-                self._sources_used.append("alpha_discovery")
+                if hasattr(self._alpha_engine, 'discover'):
+                    opps = await self._alpha_engine.discover(user_profile)
+                    for opp in (opps if isinstance(opps, list) else []):
+                        opp["source"] = "alpha_discovery"
+                        all_opportunities.append(opp)
+                    sources_used.append("alpha_discovery")
             except Exception as e:
                 logger.warning(f"Alpha discovery error: {e}")
 
-        # 2. Ultimate Discovery
+        # 2. Ultimate Discovery (multi-platform)
         if self._subsystems.get("ultimate_discovery"):
             try:
-                ultimate_opps = await self._ultimate_discover() if asyncio.iscoroutinefunction(self._ultimate_discover) else self._ultimate_discover()
-                for opp in (ultimate_opps.get("opportunities", []) if isinstance(ultimate_opps, dict) else []):
-                    opportunities.append({**opp, "source": "ultimate_discovery"})
-                self._sources_used.append("ultimate_discovery")
+                scrapers = [
+                    ("github", self._scrape_github),
+                    ("reddit", self._scrape_reddit),
+                    ("hackernews", self._scrape_hackernews),
+                    ("upwork", self._scrape_upwork),
+                ]
+                for name, scraper in scrapers:
+                    try:
+                        if callable(scraper):
+                            opps = await scraper(user_profile)
+                            for opp in (opps if isinstance(opps, list) else []):
+                                opp["source"] = f"ultimate/{name}"
+                                all_opportunities.append(opp)
+                    except:
+                        pass
+                sources_used.append("ultimate_discovery")
             except Exception as e:
                 logger.warning(f"Ultimate discovery error: {e}")
 
-        # 3. Spawn Engine (AI Venture Factory)
+        # 3. Auto Spawn Engine
         if self._subsystems.get("spawn_engine"):
             try:
-                if hasattr(self._spawn_engine, 'detector'):
-                    signals = await self._spawn_engine.detector.scan_all_sources()
-                    for sig in (signals[:30] if isinstance(signals, list) else []):
-                        opportunities.append({
-                            "type": "spawn_opportunity",
+                if hasattr(self._spawn_engine, 'discover_trends'):
+                    trends = await self._spawn_engine.discover_trends()
+                    for trend in (trends if isinstance(trends, list) else []):
+                        all_opportunities.append({
+                            "type": "spawn_trend",
                             "source": "spawn_engine",
-                            "ev": getattr(sig, 'opportunity_score', 50),
-                            "query": getattr(sig, 'query', '')[:100],
-                            "platform": getattr(sig, 'source', 'unknown')
+                            "ev": trend.get("potential_value", 100),
+                            "data": trend
                         })
-                    self._sources_used.append("spawn_engine")
+                    sources_used.append("spawn_engine")
             except Exception as e:
                 logger.warning(f"Spawn engine error: {e}")
 
         # 4. Internet Domination
         if self._subsystems.get("internet_domination"):
             try:
-                inet_opps = await self._get_domination_opps(limit=30)
-                for opp in (inet_opps if isinstance(inet_opps, list) else []):
-                    opportunities.append({**opp, "source": "internet_domination"})
-                self._sources_used.append("internet_domination")
+                if callable(self._discover_internet):
+                    opps = await self._discover_internet(user_profile)
+                    for opp in (opps if isinstance(opps, list) else []):
+                        opp["source"] = "internet_domination"
+                        all_opportunities.append(opp)
+                    sources_used.append("internet_domination")
             except Exception as e:
                 logger.warning(f"Internet domination error: {e}")
 
-        # 5. Flow Arbitrage
+        # 5. Gap Harvesters
+        if self._subsystems.get("gap_harvesters"):
+            try:
+                if callable(self._scan_harvesters):
+                    gaps = await self._scan_harvesters()
+                    if isinstance(gaps, dict) and gaps.get("ok"):
+                        for name, data in gaps.get("harvesters", {}).items():
+                            all_opportunities.append({
+                                "type": "gap_harvester",
+                                "source": f"gap/{name}",
+                                "ev": data.get("potential_ev", 50) if isinstance(data, dict) else 50,
+                                "data": data
+                            })
+                    sources_used.append("gap_harvesters")
+            except Exception as e:
+                logger.warning(f"Gap harvesters error: {e}")
+
+        # 6. Flow Arbitrage
         if self._subsystems.get("flow_arbitrage"):
             try:
-                arb_opps = self._get_arbitrage() if callable(self._get_arbitrage) else []
-                for opp in (arb_opps if isinstance(arb_opps, list) else []):
-                    opportunities.append({
-                        "type": "arbitrage",
-                        "source": "flow_arbitrage",
-                        "ev": opp.get("expected_profit", 0),
-                        "data": opp
-                    })
-                self._sources_used.append("flow_arbitrage")
+                if hasattr(self._flow_detector, 'scan_all_arbitrage'):
+                    arbs = self._flow_detector.scan_all_arbitrage()
+                    for arb in (arbs if isinstance(arbs, list) else []):
+                        all_opportunities.append({
+                            "type": "arbitrage",
+                            "source": "flow_arbitrage",
+                            "ev": arb.get("expected_profit", 0),
+                            "data": arb
+                        })
+                    sources_used.append("flow_arbitrage")
             except Exception as e:
                 logger.warning(f"Flow arbitrage error: {e}")
 
-        # 6. Pain Point Detection
-        if self._subsystems.get("pain_detector"):
+        # 7. Idle Arbitrage
+        if self._subsystems.get("idle_arbitrage"):
             try:
-                if hasattr(self._pain_detector, 'detect'):
-                    pains = await self._pain_detector.detect() if asyncio.iscoroutinefunction(self._pain_detector.detect) else self._pain_detector.detect()
-                    for pain in (pains.get("pain_points", []) if isinstance(pains, dict) else []):
-                        opportunities.append({
-                            "type": "pain_point",
-                            "source": "pain_detector",
-                            "ev": pain.get("severity", 50),
-                            "data": pain
-                        })
-                    self._sources_used.append("pain_detector")
+                if callable(self._detect_idle):
+                    idle = self._detect_idle()
+                    if isinstance(idle, dict):
+                        for slot in idle.get("idle_slots", []):
+                            all_opportunities.append({
+                                "type": "idle_capacity",
+                                "source": "idle_arbitrage",
+                                "ev": slot.get("value", 25),
+                                "data": slot
+                            })
+                    sources_used.append("idle_arbitrage")
             except Exception as e:
-                logger.warning(f"Pain detector error: {e}")
-
-        # 7. Signal Ingestion
-        if self._subsystems.get("signal_ingestion"):
-            try:
-                if hasattr(self._signal_engine, 'get_latest_signals'):
-                    signals = self._signal_engine.get_latest_signals(50)
-                    for sig in (signals if isinstance(signals, list) else []):
-                        opportunities.append({
-                            "type": "signal",
-                            "source": "signal_ingestion",
-                            "ev": sig.get("strength", 30),
-                            "data": sig
-                        })
-                    self._sources_used.append("signal_ingestion")
-            except Exception as e:
-                logger.warning(f"Signal ingestion error: {e}")
+                logger.warning(f"Idle arbitrage error: {e}")
 
         # 8. Research Engine
         if self._subsystems.get("research_engine"):
             try:
                 if hasattr(self._research_engine, 'discover_opportunities'):
-                    research_opps = await self._research_engine.discover_opportunities() if asyncio.iscoroutinefunction(self._research_engine.discover_opportunities) else self._research_engine.discover_opportunities()
-                    for opp in (research_opps if isinstance(research_opps, list) else []):
-                        opportunities.append({**opp, "source": "research_engine"})
-                    self._sources_used.append("research_engine")
+                    research = await self._research_engine.discover_opportunities(user_profile)
+                    for opp in (research if isinstance(research, list) else []):
+                        opp["source"] = "research_engine"
+                        all_opportunities.append(opp)
+                    sources_used.append("research_engine")
             except Exception as e:
                 logger.warning(f"Research engine error: {e}")
 
-        # 9. Deal Graph (relationship opportunities)
+        # 9. Pain Point Detection
+        if self._subsystems.get("pain_detector"):
+            try:
+                if callable(self._detect_pain):
+                    pains = await self._detect_pain(user_profile)
+                    for pain in (pains if isinstance(pains, list) else []):
+                        all_opportunities.append({
+                            "type": "pain_point",
+                            "source": "pain_detector",
+                            "ev": pain.get("solution_value", 75),
+                            "data": pain
+                        })
+                    sources_used.append("pain_detector")
+            except Exception as e:
+                logger.warning(f"Pain detector error: {e}")
+
+        # 10. Deal Graph relationships
         if self._subsystems.get("deal_graph"):
             try:
-                if hasattr(self._deal_graph, 'get_intro_opportunities'):
-                    intro_opps = self._deal_graph.get_intro_opportunities(limit=20)
-                    for intro in (intro_opps if isinstance(intro_opps, list) else []):
-                        opportunities.append({
-                            "type": "relationship_intro",
+                if hasattr(self._deal_graph, 'find_opportunities'):
+                    deals = self._deal_graph.find_opportunities()
+                    for deal in (deals if isinstance(deals, list) else []):
+                        all_opportunities.append({
+                            "type": "deal_relationship",
                             "source": "deal_graph",
-                            "ev": getattr(intro, 'expected_value', 50),
-                            "data": intro.__dict__ if hasattr(intro, '__dict__') else intro
+                            "ev": deal.get("value", 50),
+                            "data": deal
                         })
-                    self._sources_used.append("deal_graph")
+                    sources_used.append("deal_graph")
             except Exception as e:
                 logger.warning(f"Deal graph error: {e}")
 
-        # 10. Affiliate/JV Opportunities
-        if self._subsystems.get("affiliate_matching"):
-            try:
-                affiliates = self._find_affiliates({}) if callable(self._find_affiliates) else []
-                for aff in (affiliates if isinstance(affiliates, list) else []):
-                    opportunities.append({
-                        "type": "affiliate_jv",
-                        "source": "affiliate_matching",
-                        "ev": aff.get("potential_revenue", 0),
-                        "data": aff
-                    })
-                self._sources_used.append("affiliate_matching")
-            except Exception as e:
-                logger.warning(f"Affiliate matching error: {e}")
+        self._opportunities_found += len(all_opportunities)
+        self._sources_used = sources_used
 
-        # 11. Industry Knowledge
-        if self._subsystems.get("industry_knowledge"):
-            try:
-                if callable(self._analyze_gaps):
-                    gaps = self._analyze_gaps()
-                    for gap in (gaps if isinstance(gaps, list) else []):
-                        opportunities.append({
-                            "type": "industry_gap",
-                            "source": "industry_knowledge",
-                            "ev": gap.get("opportunity_size", 0),
-                            "data": gap
-                        })
-                    self._sources_used.append("industry_knowledge")
-            except Exception as e:
-                logger.warning(f"Industry knowledge error: {e}")
+        return all_opportunities
 
-        # 12. Advanced Dimensions
-        if self._subsystems.get("advanced_dimensions"):
-            try:
-                if callable(self._advanced_discover):
-                    adv_opps = await self._advanced_discover() if asyncio.iscoroutinefunction(self._advanced_discover) else self._advanced_discover()
-                    for opp in (adv_opps if isinstance(adv_opps, list) else []):
-                        opportunities.append({**opp, "source": "advanced_dimensions"})
-                    self._sources_used.append("advanced_dimensions")
-            except Exception as e:
-                logger.warning(f"Advanced dimensions error: {e}")
+    async def enrich_opportunities(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Enrich opportunities with additional data"""
+        enriched = []
 
-        # 13. Idle Capacity
-        if self._subsystems.get("idle_arbitrage"):
-            try:
-                idle = self._detect_idle() if callable(self._detect_idle) else {}
-                for opp in idle.get("opportunities", []):
-                    opportunities.append({
-                        "type": "idle_capacity",
-                        "source": "idle_arbitrage",
-                        "ev": opp.get("value", 0),
-                        "data": opp
-                    })
-                self._sources_used.append("idle_arbitrage")
-            except Exception as e:
-                logger.warning(f"Idle arbitrage error: {e}")
+        for opp in opportunities:
+            enriched_opp = {**opp}
 
-        self._opportunities = opportunities
-        return opportunities
+            # Add fulfillability score if available
+            if self._subsystems.get("ultimate_discovery") and callable(self._calc_fulfillability):
+                try:
+                    fulfillability = self._calc_fulfillability(opp)
+                    enriched_opp["fulfillability"] = fulfillability
+                except:
+                    pass
 
-    async def enrich_with_network(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Enrich opportunities with network/relationship data"""
-        if not self._subsystems.get("deal_graph"):
-            return opportunities
+            enriched_opp["enriched_at"] = datetime.now(timezone.utc).isoformat()
+            enriched.append(enriched_opp)
 
-        try:
-            enriched = []
-            for opp in opportunities:
-                enriched_opp = {**opp}
-
-                # Try to get network multiplier
-                if hasattr(self._deal_graph, 'get_network_multiplier'):
-                    entity_id = opp.get("entity_id") or opp.get("user_id")
-                    if entity_id:
-                        multiplier = self._deal_graph.get_network_multiplier(entity_id)
-                        enriched_opp["network_multiplier"] = multiplier
-                        enriched_opp["ev"] = opp.get("ev", 0) * multiplier
-
-                # Try to find related connections
-                if hasattr(self._deal_graph, 'find_related'):
-                    related = self._deal_graph.find_related(opp.get("type", ""))
-                    enriched_opp["related_connections"] = len(related) if isinstance(related, list) else 0
-
-                enriched.append(enriched_opp)
-
-            return enriched
-
-        except Exception as e:
-            logger.warning(f"Network enrichment error: {e}")
-            return opportunities
-
-    async def detect_arbitrage(self) -> List[Dict[str, Any]]:
-        """Detect arbitrage opportunities specifically"""
-        arbitrage_opps = []
-
-        if not self._subsystems.get("flow_arbitrage"):
-            return arbitrage_opps
-
-        try:
-            # Price arbitrage
-            if callable(self._price_arb):
-                price_arbs = self._price_arb()
-                for arb in (price_arbs if isinstance(price_arbs, list) else []):
-                    arbitrage_opps.append({
-                        "type": "price_arbitrage",
-                        "source": "flow_arbitrage",
-                        "ev": arb.get("spread", 0),
-                        "data": arb
-                    })
-
-            # Temporal arbitrage
-            if callable(self._temporal_arb):
-                time_arbs = self._temporal_arb()
-                for arb in (time_arbs if isinstance(time_arbs, list) else []):
-                    arbitrage_opps.append({
-                        "type": "temporal_arbitrage",
-                        "source": "flow_arbitrage",
-                        "ev": arb.get("expected_gain", 0),
-                        "data": arb
-                    })
-
-        except Exception as e:
-            logger.warning(f"Arbitrage detection error: {e}")
-
-        return arbitrage_opps
+        return enriched
 
     def get_status(self) -> Dict[str, Any]:
         """Get discovery manager status"""
         available = sum(1 for v in self._subsystems.values() if v)
-
         return {
             "ok": True,
             "subsystems": {
@@ -462,7 +517,7 @@ class DiscoveryManager:
                 "details": self._subsystems
             },
             "discovery": {
-                "opportunities_found": len(self._opportunities),
+                "opportunities_found": self._opportunities_found,
                 "sources_used": self._sources_used
             },
             "timestamp": datetime.now(timezone.utc).isoformat()

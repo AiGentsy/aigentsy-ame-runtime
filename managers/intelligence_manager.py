@@ -2,17 +2,17 @@
 Intelligence Manager - Scoring, Prediction, Learning
 =====================================================
 
-Systems managed:
-1. metahive_brain.py - Cross-user learning
-2. outcome_oracle_max.py - Funnel tracking
-3. pricing_oracle.py - Dynamic pricing
-4. yield_memory.py - Pattern storage
-5. ltv_forecaster.py - LTV/churn prediction
-6. fraud_detector.py - Fraud signals
-7. intelligent_pricing_autopilot.py - Real-time price learning
-8. client_success_predictor.py - Success prediction
-9. adaptive_aggression.py - Aggression tuning
-10. slo_policy.py - SLA/SLO policies
+Systems managed (with ACTUAL function imports):
+1. metahive_brain.py - contribute_to_hive, query_hive, get_hive_stats
+2. outcome_oracle_max.py - on_event, get_user_funnel_stats, credit_aigx
+3. pricing_oracle.py - calculate_dynamic_price, suggest_optimal_pricing
+4. yield_memory.py - store_pattern, get_best_action, find_similar_patterns
+5. ltv_forecaster.py - calculate_ltv_with_churn, predict_churn_risk
+6. fraud_detector.py - check_fraud_signals, get_risk_score
+7. intelligent_pricing_autopilot.py - get_pricing_autopilot, get_smart_bid_price
+8. client_success_predictor.py - get_success_predictor, predict_user_success
+9. slo_engine.py - get_all_slo_tiers, calculate_slo_pricing_detailed
+10. apex_upgrades_overlay.py - Accretive upgrades
 """
 
 from typing import Dict, Any, List, Optional
@@ -34,7 +34,7 @@ class IntelligenceManager:
         self._init_subsystems()
 
     def _init_subsystems(self):
-        """Initialize all 10 intelligence subsystems"""
+        """Initialize all 10 intelligence subsystems with CORRECT imports"""
 
         # 1. MetaHive Brain (cross-user learning)
         try:
@@ -43,17 +43,19 @@ class IntelligenceManager:
             self._query_hive = query_hive
             self._hive_stats = get_hive_stats
             self._subsystems["metahive"] = True
+            logger.info("MetaHive Brain loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"MetaHive not available: {e}")
             self._subsystems["metahive"] = False
 
-        # 2. Outcome Oracle (funnel tracking)
+        # 2. Outcome Oracle Max (funnel tracking)
         try:
             from outcome_oracle_max import on_event, get_user_funnel_stats, credit_aigx
             self._track_event = on_event
             self._get_funnel = get_user_funnel_stats
             self._credit_aigx = credit_aigx
             self._subsystems["outcome_oracle"] = True
+            logger.info("Outcome Oracle Max loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Outcome oracle not available: {e}")
             self._subsystems["outcome_oracle"] = False
@@ -64,6 +66,7 @@ class IntelligenceManager:
             self._calc_price = calculate_dynamic_price
             self._suggest_price = suggest_optimal_pricing
             self._subsystems["pricing_oracle"] = True
+            logger.info("Pricing Oracle loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Pricing oracle not available: {e}")
             self._subsystems["pricing_oracle"] = False
@@ -75,6 +78,7 @@ class IntelligenceManager:
             self._get_best_action = get_best_action
             self._find_patterns = find_similar_patterns
             self._subsystems["yield_memory"] = True
+            logger.info("Yield Memory loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Yield memory not available: {e}")
             self._subsystems["yield_memory"] = False
@@ -85,6 +89,7 @@ class IntelligenceManager:
             self._calc_ltv = calculate_ltv_with_churn
             self._predict_churn = predict_churn_risk
             self._subsystems["ltv_forecaster"] = True
+            logger.info("LTV Forecaster loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"LTV forecaster not available: {e}")
             self._subsystems["ltv_forecaster"] = False
@@ -95,6 +100,7 @@ class IntelligenceManager:
             self._check_fraud = check_fraud_signals
             self._risk_score = get_risk_score
             self._subsystems["fraud_detector"] = True
+            logger.info("Fraud Detector loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Fraud detector not available: {e}")
             self._subsystems["fraud_detector"] = False
@@ -102,14 +108,16 @@ class IntelligenceManager:
         # 7. Intelligent Pricing Autopilot
         try:
             from intelligent_pricing_autopilot import (
-                optimize_price_realtime,
-                learn_from_outcome,
-                get_pricing_insights
+                IntelligentPricingAutopilot,
+                get_pricing_autopilot,
+                get_smart_bid_price,
+                record_bid_result
             )
-            self._optimize_price = optimize_price_realtime
-            self._learn_price = learn_from_outcome
-            self._price_insights = get_pricing_insights
+            self._pricing_autopilot = get_pricing_autopilot()
+            self._smart_bid = get_smart_bid_price
+            self._record_bid = record_bid_result
             self._subsystems["pricing_autopilot"] = True
+            logger.info("Intelligent Pricing Autopilot loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Pricing autopilot not available: {e}")
             self._subsystems["pricing_autopilot"] = False
@@ -117,47 +125,61 @@ class IntelligenceManager:
         # 8. Client Success Predictor
         try:
             from client_success_predictor import (
-                predict_success_probability,
-                get_success_factors,
-                recommend_actions
+                ClientSuccessPredictor,
+                get_success_predictor,
+                predict_user_success,
+                get_users_needing_intervention
             )
-            self._predict_success = predict_success_probability
-            self._success_factors = get_success_factors
-            self._recommend = recommend_actions
+            self._success_predictor = get_success_predictor()
+            self._predict_success = predict_user_success
+            self._needs_intervention = get_users_needing_intervention
             self._subsystems["success_predictor"] = True
+            logger.info("Client Success Predictor loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Success predictor not available: {e}")
             self._subsystems["success_predictor"] = False
 
-        # 9. Adaptive Aggression
+        # 9. SLO Engine (SLA/SLO policies)
         try:
-            from adaptive_aggression import (
-                calculate_aggression_level,
-                adjust_strategy,
-                get_aggression_metrics
+            from slo_engine import (
+                get_all_slo_tiers,
+                calculate_slo_pricing_detailed,
+                compare_slo_tiers,
+                track_slo_performance_event,
+                get_slo_contract_status,
+                get_agent_slo_dashboard,
+                get_buyer_slo_dashboard,
+                recommend_slo_tier
             )
-            self._calc_aggression = calculate_aggression_level
-            self._adjust_strategy = adjust_strategy
-            self._aggression_metrics = get_aggression_metrics
-            self._subsystems["adaptive_aggression"] = True
+            self._slo_tiers = get_all_slo_tiers
+            self._slo_pricing = calculate_slo_pricing_detailed
+            self._compare_tiers = compare_slo_tiers
+            self._track_slo = track_slo_performance_event
+            self._slo_status = get_slo_contract_status
+            self._agent_dashboard = get_agent_slo_dashboard
+            self._buyer_dashboard = get_buyer_slo_dashboard
+            self._recommend_tier = recommend_slo_tier
+            self._subsystems["slo_engine"] = True
+            logger.info("SLO Engine loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"Adaptive aggression not available: {e}")
-            self._subsystems["adaptive_aggression"] = False
+            logger.warning(f"SLO engine not available: {e}")
+            self._subsystems["slo_engine"] = False
 
-        # 10. SLO Policy
+        # 10. Apex Upgrades Overlay (accretive upgrades)
         try:
-            from slo_policy import (
-                get_slo_requirements,
-                check_slo_compliance,
-                calculate_slo_bonus
+            from apex_upgrades_overlay import (
+                ApexUpgradesOverlay,
+                get_accretive_upgrades,
+                suggest_next_upgrade
             )
-            self._slo_requirements = get_slo_requirements
-            self._check_slo = check_slo_compliance
-            self._slo_bonus = calculate_slo_bonus
-            self._subsystems["slo_policy"] = True
+            self._apex_overlay = ApexUpgradesOverlay()
+            self._accretive_upgrades = get_accretive_upgrades
+            self._suggest_upgrade = suggest_next_upgrade
+            self._subsystems["apex_upgrades"] = True
+            logger.info("Apex Upgrades Overlay loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"SLO policy not available: {e}")
-            self._subsystems["slo_policy"] = False
+            logger.warning(f"Apex upgrades not available: {e}")
+            self._subsystems["apex_upgrades"] = False
 
         self._log_status()
 
@@ -210,18 +232,30 @@ class IntelligenceManager:
                     fraud_signals = self._check_fraud({"opportunity": opp})
                     if fraud_signals and isinstance(fraud_signals, dict):
                         risk = fraud_signals.get("risk_level", 0)
-                        score *= (1 - risk * 0.5)  # Reduce score based on fraud risk
+                        score *= (1 - risk * 0.5)
                 except Exception as e:
                     logger.debug(f"Fraud check error: {e}")
 
             # 5. Success prediction
             if self._subsystems.get("success_predictor"):
                 try:
-                    success_prob = self._predict_success(opp) if callable(self._predict_success) else 0.5
-                    if isinstance(success_prob, (int, float)):
-                        score *= (0.5 + success_prob * 0.5)
+                    if callable(self._predict_success):
+                        success_result = await self._predict_success(opp)
+                        if isinstance(success_result, dict):
+                            success_prob = success_result.get("success_probability", 0.5)
+                            score *= (0.5 + success_prob * 0.5)
                 except Exception as e:
                     logger.debug(f"Success prediction error: {e}")
+
+            # 6. Pricing optimization
+            if self._subsystems.get("pricing_autopilot"):
+                try:
+                    if callable(self._smart_bid):
+                        bid_price = await self._smart_bid(opp)
+                        if isinstance(bid_price, dict):
+                            opp["recommended_bid"] = bid_price.get("price", score)
+                except Exception as e:
+                    logger.debug(f"Pricing error: {e}")
 
             scored.append({
                 **opp,
@@ -248,7 +282,9 @@ class IntelligenceManager:
         # Success probability
         if self._subsystems.get("success_predictor") and callable(self._predict_success):
             try:
-                predictions["success_probability"] = self._predict_success(opportunity)
+                result = await self._predict_success(opportunity)
+                if isinstance(result, dict):
+                    predictions["success_probability"] = result.get("success_probability", 0.5)
             except:
                 pass
 
@@ -289,9 +325,9 @@ class IntelligenceManager:
         base_price = opportunity.get("base_price", opportunity.get("ev", 100))
 
         # Try pricing autopilot first (real-time learning)
-        if self._subsystems.get("pricing_autopilot") and callable(self._optimize_price):
+        if self._subsystems.get("pricing_autopilot") and callable(self._smart_bid):
             try:
-                optimized = self._optimize_price(opportunity)
+                optimized = await self._smart_bid(opportunity)
                 if isinstance(optimized, (int, float)):
                     return optimized
                 elif isinstance(optimized, dict):
@@ -359,9 +395,9 @@ class IntelligenceManager:
                     errors.append(f"outcome_oracle: {e}")
 
             # 4. Learn pricing from outcome
-            if self._subsystems.get("pricing_autopilot") and callable(self._learn_price):
+            if self._subsystems.get("pricing_autopilot") and callable(self._record_bid):
                 try:
-                    self._learn_price(result)
+                    self._record_bid(result)
                     learned += 1
                 except Exception as e:
                     errors.append(f"pricing_autopilot: {e}")
@@ -404,12 +440,13 @@ class IntelligenceManager:
             except:
                 pass
 
-        # Get aggression level
-        if self._subsystems.get("adaptive_aggression") and callable(self._calc_aggression):
+        # Get SLO recommendation
+        if self._subsystems.get("slo_engine") and callable(self._recommend_tier):
             try:
-                aggression = self._calc_aggression(context)
-                recommendations["aggression_level"] = aggression
-                recommendations["reasoning"].append("adaptive aggression tuning")
+                slo_rec = self._recommend_tier(context)
+                if slo_rec:
+                    recommendations["slo_recommendation"] = slo_rec
+                    recommendations["reasoning"].append("slo_engine tier recommendation")
             except:
                 pass
 

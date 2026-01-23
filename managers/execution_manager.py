@@ -2,17 +2,19 @@
 Execution Manager - Execution Quality + Verification
 =====================================================
 
-Systems managed:
-1. fiverr_automation_engine.py - Full Fiverr integration
-2. deliverable_verification_engine.py - SLA verification
-3. compliance_oracle.py - KYC/AML enforcement
-4. one_tap_widget.py - Embeddable purchase widget
-5. direct_outreach_engine.py - AI cold outreach
-6. proposal_generator.py - Auto-generate proposals
-7. platform_apis.py - Platform API integrations
-8. universal_fulfillment_fabric.py - Browser automation
-9. aigentsy_conductor.py - AI routing
-10. connectors (registry) - Connector registry
+Systems managed (with ACTUAL function imports):
+1. fiverr_automation_engine.py - FiverrAutomationEngine class
+2. deliverable_verification_engine.py - DeliverableVerificationEngine, verify_before_buyer_sees
+3. compliance_oracle.py - submit_kyc, check_transaction_allowed, get_kyc_status
+4. one_tap_widget.py - OneTapWidget, create_widget_config, process_widget_purchase
+5. direct_outreach_engine.py - DirectOutreachEngine, send_direct_outreach
+6. proposal_generator.py - ProposalGenerator class
+7. social_autoposting_engine.py - SocialAutoPostingEngine, get_social_engine
+8. storefront_deployer.py - deploy_storefront, update_storefront
+9. sku_orchestrator.py - UniversalBusinessOrchestrator
+10. client_acceptance_portal.py - accept_deal, submit_delivery, get_deal_stats
+11. aigentsy_conductor.py - MultiAIRouter
+12. connectors (registry) - get_registry, get_connector
 """
 
 from typing import Dict, Any, List, Optional
@@ -35,21 +37,25 @@ class ExecutionManager:
         self._init_subsystems()
 
     def _init_subsystems(self):
-        """Initialize all 10 execution subsystems"""
+        """Initialize all 12 execution subsystems with CORRECT imports"""
 
         # 1. Fiverr Automation Engine
         try:
             from fiverr_automation_engine import (
-                FiverrAutomationEngine,
-                create_gig,
-                process_order,
-                deliver_order
+                FiverrGigConfig,
+                PortfolioGenerator,
+                FiverrGigManager,
+                FiverrOrderProcessor,
+                FiverrAnalytics,
+                FiverrAutomationEngine
             )
             self._fiverr_engine = FiverrAutomationEngine()
-            self._create_gig = create_gig
-            self._process_order = process_order
-            self._deliver_order = deliver_order
+            self._gig_manager = FiverrGigManager
+            self._order_processor = FiverrOrderProcessor
+            self._fiverr_analytics = FiverrAnalytics
+            self._portfolio_gen = PortfolioGenerator
             self._subsystems["fiverr_automation"] = True
+            logger.info("Fiverr Automation Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Fiverr automation not available: {e}")
             self._subsystems["fiverr_automation"] = False
@@ -57,14 +63,18 @@ class ExecutionManager:
         # 2. Deliverable Verification Engine
         try:
             from deliverable_verification_engine import (
-                verify_deliverable,
-                check_sla_compliance,
-                generate_proof_of_execution
+                DeliverableVerificationEngine,
+                get_verification_engine,
+                verify_before_buyer_sees,
+                VerificationDimension,
+                VerificationResult
             )
-            self._verify_deliverable = verify_deliverable
-            self._check_sla = check_sla_compliance
-            self._generate_proof = generate_proof_of_execution
+            self._verification_engine = get_verification_engine()
+            self._verify_deliverable = verify_before_buyer_sees
+            self._ver_dimension = VerificationDimension
+            self._ver_result = VerificationResult
             self._subsystems["deliverable_verification"] = True
+            logger.info("Deliverable Verification Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Deliverable verification not available: {e}")
             self._subsystems["deliverable_verification"] = False
@@ -72,14 +82,25 @@ class ExecutionManager:
         # 3. Compliance Oracle
         try:
             from compliance_oracle import (
-                check_kyc_status,
-                verify_aml_compliance,
-                get_compliance_tier
+                submit_kyc,
+                approve_kyc,
+                reject_kyc,
+                check_transaction_allowed,
+                get_kyc_status,
+                list_pending_kyc,
+                list_sars,
+                get_compliance_stats
             )
-            self._check_kyc = check_kyc_status
-            self._verify_aml = verify_aml_compliance
-            self._get_tier = get_compliance_tier
+            self._submit_kyc = submit_kyc
+            self._approve_kyc = approve_kyc
+            self._reject_kyc = reject_kyc
+            self._check_transaction = check_transaction_allowed
+            self._kyc_status = get_kyc_status
+            self._pending_kyc = list_pending_kyc
+            self._list_sars = list_sars
+            self._compliance_stats = get_compliance_stats
             self._subsystems["compliance_oracle"] = True
+            logger.info("Compliance Oracle loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Compliance oracle not available: {e}")
             self._subsystems["compliance_oracle"] = False
@@ -87,14 +108,27 @@ class ExecutionManager:
         # 4. One-Tap Widget
         try:
             from one_tap_widget import (
-                generate_widget_code,
+                OneTapWidget,
+                create_widget_config,
+                generate_embed_code,
+                create_widget_session,
                 process_widget_purchase,
-                track_widget_conversion
+                get_widget_config,
+                get_widget_stats,
+                get_partner_widgets,
+                get_widget_platform_stats
             )
-            self._gen_widget = generate_widget_code
-            self._process_widget = process_widget_purchase
-            self._track_widget = track_widget_conversion
+            self._widget_class = OneTapWidget
+            self._create_widget = create_widget_config
+            self._embed_code = generate_embed_code
+            self._widget_session = create_widget_session
+            self._process_purchase = process_widget_purchase
+            self._get_widget_config = get_widget_config
+            self._widget_stats = get_widget_stats
+            self._partner_widgets = get_partner_widgets
+            self._platform_stats = get_widget_platform_stats
             self._subsystems["one_tap_widget"] = True
+            logger.info("One-Tap Widget loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"One-tap widget not available: {e}")
             self._subsystems["one_tap_widget"] = False
@@ -102,36 +136,128 @@ class ExecutionManager:
         # 5. Direct Outreach Engine
         try:
             from direct_outreach_engine import (
-                find_prospects,
-                personalize_message,
-                send_outreach,
-                track_response
+                DirectOutreachEngine,
+                get_outreach_engine,
+                send_direct_outreach,
+                OutreachChannel,
+                OutreachStatus,
+                ProposalGenerator as OutreachProposalGen
             )
-            self._find_prospects = find_prospects
-            self._personalize = personalize_message
-            self._send_outreach = send_outreach
-            self._track_response = track_response
+            self._outreach_engine = get_outreach_engine()
+            self._send_outreach = send_direct_outreach
+            self._outreach_channel = OutreachChannel
+            self._outreach_status = OutreachStatus
             self._subsystems["direct_outreach"] = True
+            logger.info("Direct Outreach Engine loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Direct outreach not available: {e}")
             self._subsystems["direct_outreach"] = False
 
-        # 6. Proposal Generator
+        # 6. Social AutoPosting Engine
         try:
-            from proposal_generator import (
-                generate_proposal,
-                customize_proposal,
-                submit_proposal
+            from social_autoposting_engine import (
+                SocialAutoPostingEngine,
+                get_social_engine,
+                SocialPlatform,
+                SocialPoster,
+                ContentGenerator,
+                ApprovalManager
             )
-            self._gen_proposal = generate_proposal
-            self._customize_proposal = customize_proposal
-            self._submit_proposal = submit_proposal
-            self._subsystems["proposal_generator"] = True
+            self._social_engine = get_social_engine()
+            self._social_platform = SocialPlatform
+            self._social_poster = SocialPoster
+            self._content_gen = ContentGenerator
+            self._approval_mgr = ApprovalManager
+            self._subsystems["social_autoposting"] = True
+            logger.info("Social AutoPosting Engine loaded successfully")
         except (ImportError, Exception) as e:
-            logger.warning(f"Proposal generator not available: {e}")
-            self._subsystems["proposal_generator"] = False
+            logger.warning(f"Social autoposting not available: {e}")
+            self._subsystems["social_autoposting"] = False
 
-        # 7. Universal Fulfillment Fabric
+        # 7. Storefront Deployer
+        try:
+            from storefront_deployer import (
+                deploy_storefront,
+                update_storefront,
+                get_storefront_status
+            )
+            self._deploy_storefront = deploy_storefront
+            self._update_storefront = update_storefront
+            self._storefront_status = get_storefront_status
+            self._subsystems["storefront_deployer"] = True
+            logger.info("Storefront Deployer loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Storefront deployer not available: {e}")
+            self._subsystems["storefront_deployer"] = False
+
+        # 8. SKU Orchestrator
+        try:
+            from sku_orchestrator import UniversalBusinessOrchestrator
+            self._sku_orchestrator = UniversalBusinessOrchestrator()
+            self._subsystems["sku_orchestrator"] = True
+            logger.info("SKU Orchestrator loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"SKU orchestrator not available: {e}")
+            self._subsystems["sku_orchestrator"] = False
+
+        # 9. Client Acceptance Portal
+        try:
+            from client_acceptance_portal import (
+                get_service_pricing,
+                create_accept_link,
+                get_deal,
+                accept_deal,
+                mark_deal_in_progress,
+                submit_delivery,
+                client_approve_delivery,
+                client_request_revision,
+                client_dispute_delivery,
+                get_pending_deals,
+                get_in_progress_deals,
+                get_awaiting_approval_deals,
+                get_deal_stats
+            )
+            self._service_pricing = get_service_pricing
+            self._create_link = create_accept_link
+            self._get_deal = get_deal
+            self._accept_deal = accept_deal
+            self._start_deal = mark_deal_in_progress
+            self._submit_delivery = submit_delivery
+            self._approve_delivery = client_approve_delivery
+            self._request_revision = client_request_revision
+            self._dispute_delivery = client_dispute_delivery
+            self._pending_deals = get_pending_deals
+            self._in_progress = get_in_progress_deals
+            self._awaiting_approval = get_awaiting_approval_deals
+            self._deal_stats = get_deal_stats
+            self._subsystems["client_portal"] = True
+            logger.info("Client Acceptance Portal loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Client portal not available: {e}")
+            self._subsystems["client_portal"] = False
+
+        # 10. AiGentsy Conductor (AI Router)
+        try:
+            from aigentsy_conductor import MultiAIRouter
+            self._ai_router = MultiAIRouter()
+            self._subsystems["ai_router"] = True
+            logger.info("AiGentsy Conductor (AI Router) loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"AI router not available: {e}")
+            self._subsystems["ai_router"] = False
+
+        # 11. Connector Registry
+        try:
+            from connectors.registry import get_registry, get_connector
+            self._get_registry = get_registry
+            self._get_connector = get_connector
+            self._subsystems["connectors"] = True
+            logger.info("Connector Registry loaded successfully")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Connectors not available: {e}")
+            self._subsystems["connectors"] = False
+
+        # 12. Universal Fulfillment Fabric
         try:
             from universal_fulfillment_fabric import (
                 execute_universal,
@@ -140,39 +266,12 @@ class ExecutionManager:
             )
             self._execute_fabric = execute_universal
             self._fabric_status = get_fabric_status
+            self._fabric_class = FulfillmentFabric
             self._subsystems["fabric"] = True
+            logger.info("Universal Fulfillment Fabric loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Fabric not available: {e}")
             self._subsystems["fabric"] = False
-
-        # 8. AiGentsy Conductor (AI Router)
-        try:
-            from aigentsy_conductor import MultiAIRouter
-            self._ai_router = MultiAIRouter()
-            self._subsystems["ai_router"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"AI router not available: {e}")
-            self._subsystems["ai_router"] = False
-
-        # 9. Connector Registry
-        try:
-            from connectors.registry import get_registry, get_connector
-            self._get_registry = get_registry
-            self._get_connector = get_connector
-            self._subsystems["connectors"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Connectors not available: {e}")
-            self._subsystems["connectors"] = False
-
-        # 10. Platform APIs
-        try:
-            from platform_apis import get_platform_api, execute_platform_action
-            self._get_api = get_platform_api
-            self._platform_action = execute_platform_action
-            self._subsystems["platform_apis"] = True
-        except (ImportError, Exception) as e:
-            logger.warning(f"Platform APIs not available: {e}")
-            self._subsystems["platform_apis"] = False
 
         self._log_status()
 
@@ -192,7 +291,7 @@ class ExecutionManager:
             # Step 1: Compliance check (if available)
             if self._subsystems.get("compliance_oracle"):
                 user_id = task.get("user_id", "system")
-                compliance = await self._ensure_compliance(user_id)
+                compliance = await self._ensure_compliance(user_id, task)
                 if not compliance.get("compliant", True):
                     return {"ok": False, "error": "compliance_failed", "details": compliance}
 
@@ -240,9 +339,9 @@ class ExecutionManager:
         if platform == "fiverr" and self._subsystems.get("fiverr_automation"):
             return await self._execute_fiverr(task)
 
-        # Proposal generation
-        if task_type == "proposal" and self._subsystems.get("proposal_generator"):
-            return await self._execute_proposal(task)
+        # Social posting
+        if task_type == "social_post" and self._subsystems.get("social_autoposting"):
+            return await self._execute_social(task)
 
         # Outreach tasks
         if task_type == "outreach" and self._subsystems.get("direct_outreach"):
@@ -251,6 +350,10 @@ class ExecutionManager:
         # AI content generation
         if task_type in ["content", "code", "analysis"] and self._subsystems.get("ai_router"):
             return await self._execute_ai(task)
+
+        # Client portal deals
+        if task_type == "deal" and self._subsystems.get("client_portal"):
+            return await self._execute_deal(task)
 
         # Browser automation (fabric)
         if self._subsystems.get("fabric"):
@@ -265,57 +368,30 @@ class ExecutionManager:
     async def _execute_fiverr(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute Fiverr-specific task"""
         try:
-            action = task.get("action", "process_order")
-
-            if action == "create_gig" and callable(self._create_gig):
-                result = await self._create_gig(task.get("gig_data", {}))
-                return {"ok": True, "output": result, "executor": "fiverr/create_gig"}
-
-            elif action == "process_order" and callable(self._process_order):
-                result = await self._process_order(task.get("order_id", ""))
-                return {"ok": True, "output": result, "executor": "fiverr/process_order"}
-
-            elif action == "deliver" and callable(self._deliver_order):
-                result = await self._deliver_order(task.get("order_id", ""), task.get("deliverable", {}))
-                return {"ok": True, "output": result, "executor": "fiverr/deliver"}
-
-            return {"ok": False, "error": f"Unknown Fiverr action: {action}"}
-
+            if hasattr(self._fiverr_engine, 'process_order'):
+                result = await self._fiverr_engine.process_order(task)
+                return {"ok": True, "output": result, "executor": "fiverr_automation"}
+            return {"ok": False, "error": "Fiverr engine not properly initialized"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    async def _execute_proposal(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate and submit proposal"""
+    async def _execute_social(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute social posting task"""
         try:
-            if callable(self._gen_proposal):
-                proposal = self._gen_proposal(task.get("job", {}))
-                if task.get("submit") and callable(self._submit_proposal):
-                    result = self._submit_proposal(proposal)
-                    return {"ok": True, "output": result, "executor": "proposal/submit"}
-                return {"ok": True, "output": proposal, "executor": "proposal/generate"}
-
-            return {"ok": False, "error": "Proposal generator not callable"}
-
+            if hasattr(self._social_engine, 'create_and_schedule_post'):
+                result = await self._social_engine.create_and_schedule_post(task)
+                return {"ok": True, "output": result, "executor": "social_autoposting"}
+            return {"ok": False, "error": "Social engine not properly initialized"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
     async def _execute_outreach(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute outreach campaign"""
         try:
-            prospects = []
-            if callable(self._find_prospects):
-                prospects = self._find_prospects(task.get("criteria", {}))
-
-            sent = 0
-            for prospect in prospects[:task.get("limit", 10)]:
-                if callable(self._personalize):
-                    message = self._personalize(prospect, task.get("template", ""))
-                    if callable(self._send_outreach):
-                        self._send_outreach(prospect, message)
-                        sent += 1
-
-            return {"ok": True, "output": {"prospects": len(prospects), "sent": sent}, "executor": "outreach"}
-
+            if callable(self._send_outreach):
+                result = await self._send_outreach(task)
+                return {"ok": True, "output": result, "executor": "direct_outreach"}
+            return {"ok": False, "error": "Outreach function not callable"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -333,7 +409,20 @@ class ExecutionManager:
                 "output": result.get("output"),
                 "executor": f"ai/{routing.get('primary_model')}"
             }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
+    async def _execute_deal(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute client portal deal"""
+        try:
+            action = task.get("action", "create")
+            if action == "accept" and callable(self._accept_deal):
+                result = await self._accept_deal(task.get("deal_id"), task.get("client_info", {}))
+                return {"ok": True, "output": result, "executor": "client_portal/accept"}
+            elif action == "deliver" and callable(self._submit_delivery):
+                result = await self._submit_delivery(task.get("deal_id"), task.get("deliverable", {}))
+                return {"ok": True, "output": result, "executor": "client_portal/deliver"}
+            return {"ok": False, "error": f"Unknown deal action: {action}"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -347,7 +436,6 @@ class ExecutionManager:
                 ev_estimate=task.get("ev_estimate", 0)
             )
             return {"ok": result.get("ok", False), "output": result, "executor": "fabric"}
-
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -360,7 +448,6 @@ class ExecutionManager:
                 result = await connector.execute(task.get("data", {}))
                 return {"ok": True, "output": result, "executor": f"connector/{platform}"}
             return {"ok": False, "error": f"No connector for {platform}"}
-
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -371,48 +458,43 @@ class ExecutionManager:
 
         try:
             output = execution_result.get("output", {})
-
-            # Use verification engine if available
             if callable(self._verify_deliverable):
-                verification = self._verify_deliverable(output)
+                verification = await self._verify_deliverable(output, {})
                 return {
                     "verified": verification.get("passed", True),
                     "quality_score": verification.get("score", 0.8),
                     "details": verification
                 }
-
-            # Fallback verification
             return {"verified": True, "quality_score": 0.8, "method": "fallback"}
-
         except Exception as e:
             return {"verified": False, "error": str(e)}
 
-    async def _ensure_compliance(self, user_id: str) -> Dict[str, Any]:
+    async def _ensure_compliance(self, user_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure user/agent meets compliance requirements"""
         if not self._subsystems.get("compliance_oracle"):
             return {"compliant": True, "tier": "BASIC"}
 
         try:
-            if callable(self._check_kyc):
-                kyc_status = self._check_kyc(user_id)
-                if not kyc_status.get("verified", True):
-                    return {"compliant": False, "reason": "KYC not verified"}
-
-            if callable(self._get_tier):
-                tier = self._get_tier(user_id)
-                return {"compliant": True, "tier": tier}
-
+            if callable(self._check_transaction):
+                check = await self._check_transaction(user_id, task.get("value", 0), task.get("type", ""))
+                return {"compliant": check.get("allowed", True), "details": check}
             return {"compliant": True, "tier": "BASIC"}
-
         except Exception as e:
             logger.warning(f"Compliance check error: {e}")
             return {"compliant": True, "tier": "BASIC", "error": str(e)}
 
-    async def ensure_compliance(self, task: Dict[str, Any]) -> bool:
-        """Public method to check task compliance"""
-        user_id = task.get("user_id", "system")
-        result = await self._ensure_compliance(user_id)
-        return result.get("compliant", True)
+    async def deploy_storefront(self, user_data: Dict[str, Any], sku_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Deploy a storefront for a user"""
+        if not self._subsystems.get("storefront_deployer"):
+            return {"ok": False, "error": "Storefront deployer not available"}
+
+        try:
+            if callable(self._deploy_storefront):
+                result = await self._deploy_storefront(user_data, sku_config)
+                return {"ok": True, "result": result}
+            return {"ok": False, "error": "Deploy function not callable"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def get_status(self) -> Dict[str, Any]:
         """Get execution manager status"""
