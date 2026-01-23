@@ -39,10 +39,8 @@ MAX_EV_AUTO_EXECUTE = float(os.getenv("FABRIC_MAX_EV_AUTO", "50"))
 RATE_LIMIT_PER_HOUR = int(os.getenv("FABRIC_RATE_LIMIT_HOUR", "10"))
 SCREENSHOT_DIR = os.getenv("FABRIC_SCREENSHOT_DIR", "/tmp/fabric_screenshots")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Try to import Playwright
 try:
@@ -142,22 +140,27 @@ async def _call_vision_ai(image_base64: str, prompt: str) -> Dict[str, Any]:
 
 
 async def _call_ai(prompt: str) -> Dict[str, Any]:
-    """Call AI for text generation with fallback chain"""
+    """Call AI for text generation with fallback chain:
+    1. OpenRouter → openai/gpt-4o-mini
+    2. OpenRouter → anthropic/claude-3-5-haiku
+    3. Perplexity → llama-3.1-sonar
+    4. Gemini → gemini-flash-1.5
+    """
     if not HTTPX_AVAILABLE:
         return {"ok": False, "error": "httpx not available"}
 
-    # Try OpenAI first (most reliable)
-    if OPENAI_API_KEY:
+    # 1. OpenRouter with GPT-4o-mini (fastest, cheapest)
+    if OPENROUTER_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    "https://openrouter.ai/api/v1/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {OPENAI_API_KEY}",
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "gpt-4o-mini",
+                        "model": "openai/gpt-4o-mini",
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 2000
                     }
@@ -165,37 +168,36 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                 if response.status_code == 200:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {"ok": True, "content": content, "provider": "openai"}
-                logger.warning(f"OpenAI failed with {response.status_code}, trying fallback")
+                    return {"ok": True, "content": content, "provider": "openrouter/gpt-4o-mini"}
+                logger.warning(f"OpenRouter/GPT-4o-mini failed with {response.status_code}, trying fallback")
         except Exception as e:
-            logger.warning(f"OpenAI error: {e}, trying fallback")
+            logger.warning(f"OpenRouter/GPT-4o-mini error: {e}, trying fallback")
 
-    # Fallback to Anthropic
-    if ANTHROPIC_API_KEY:
+    # 2. OpenRouter with Claude 3.5 Haiku
+    if OPENROUTER_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                    "https://openrouter.ai/api/v1/chat/completions",
                     headers={
-                        "x-api-key": ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "claude-3-haiku-20240307",
-                        "max_tokens": 2000,
-                        "messages": [{"role": "user", "content": prompt}]
+                        "model": "anthropic/claude-3-5-haiku-20241022",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 2000
                     }
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    content = data.get("content", [{}])[0].get("text", "")
-                    return {"ok": True, "content": content, "provider": "anthropic"}
-                logger.warning(f"Anthropic failed with {response.status_code}, trying fallback")
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    return {"ok": True, "content": content, "provider": "openrouter/claude-3.5-haiku"}
+                logger.warning(f"OpenRouter/Claude failed with {response.status_code}, trying fallback")
         except Exception as e:
-            logger.warning(f"Anthropic error: {e}, trying fallback")
+            logger.warning(f"OpenRouter/Claude error: {e}, trying fallback")
 
-    # Fallback to Perplexity
+    # 3. Perplexity with Llama 3.1 Sonar
     if PERPLEXITY_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -214,37 +216,32 @@ async def _call_ai(prompt: str) -> Dict[str, Any]:
                 if response.status_code == 200:
                     data = response.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {"ok": True, "content": content, "provider": "perplexity"}
+                    return {"ok": True, "content": content, "provider": "perplexity/llama-3.1-sonar"}
                 logger.warning(f"Perplexity failed with {response.status_code}, trying fallback")
         except Exception as e:
             logger.warning(f"Perplexity error: {e}, trying fallback")
 
-    # Last resort: OpenRouter
-    if OPENROUTER_API_KEY:
+    # 4. Gemini direct API
+    if GEMINI_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+                    headers={"Content-Type": "application/json"},
                     json={
-                        "model": "google/gemini-flash-1.5",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 2000
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": 2000}
                     }
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {"ok": True, "content": content, "provider": "openrouter"}
-                return {"ok": False, "error": f"OpenRouter API error: {response.status_code}"}
+                    content = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    return {"ok": True, "content": content, "provider": "gemini/flash-1.5"}
+                logger.warning(f"Gemini failed with {response.status_code}")
         except Exception as e:
-            logger.error(f"OpenRouter error: {e}")
-            return {"ok": False, "error": str(e)}
+            logger.warning(f"Gemini error: {e}")
 
-    return {"ok": False, "error": "No AI API configured (need OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY, or OPENROUTER_API_KEY)"}
+    return {"ok": False, "error": "All AI providers failed (tried OpenRouter/GPT-4o-mini, OpenRouter/Claude, Perplexity, Gemini)"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -834,7 +831,7 @@ def get_fabric_status() -> Dict[str, Any]:
 
     return {
         "playwright_available": PLAYWRIGHT_AVAILABLE,
-        "ai_available": bool(OPENAI_API_KEY or ANTHROPIC_API_KEY or PERPLEXITY_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY),
+        "ai_available": bool(OPENROUTER_API_KEY or PERPLEXITY_API_KEY or GEMINI_API_KEY),
         "rate_limit": {
             "per_hour": RATE_LIMIT_PER_HOUR,
             "used_this_hour": recent_executions,
