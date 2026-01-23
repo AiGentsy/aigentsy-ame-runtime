@@ -75,8 +75,13 @@ def get_master_orchestrator():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# AUTONOMOUS UPGRADES - Import functions directly
+# AUTONOMOUS UPGRADES - Import functions with state management
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# State storage for upgrades (these functions are stateless)
+_upgrade_tests: List[Dict[str, Any]] = []
+_upgrade_deployments: List[Dict[str, Any]] = []
+
 
 def _import_upgrades():
     """Import upgrade functions"""
@@ -87,7 +92,8 @@ def _import_upgrades():
             get_active_tests,
             analyze_ab_test,
             deploy_logic_upgrade,
-            rollback_logic_upgrade
+            rollback_logic_upgrade,
+            UPGRADE_TYPES
         )
         return {
             "suggest_next_upgrade": suggest_next_upgrade,
@@ -96,6 +102,7 @@ def _import_upgrades():
             "analyze_ab_test": analyze_ab_test,
             "deploy_logic_upgrade": deploy_logic_upgrade,
             "rollback_logic_upgrade": rollback_logic_upgrade,
+            "upgrade_types": UPGRADE_TYPES,
             "available": True
         }
     except ImportError as e:
@@ -425,12 +432,15 @@ def include_autonomous_endpoints(app: FastAPI):
             return {"ok": False, "error": upgrades.get("error", "Upgrades not available")}
 
         try:
-            active_tests = upgrades["get_active_tests"]()
+            # Use internal state storage
+            active_tests = upgrades["get_active_tests"](_upgrade_tests)
             return {
                 "ok": True,
                 "engine": "autonomous_upgrades",
                 "active_tests": len(active_tests),
                 "tests": active_tests[:10],  # Limit to 10
+                "total_deployments": len(_upgrade_deployments),
+                "upgrade_types": list(upgrades.get("upgrade_types", {}).keys()),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
@@ -444,10 +454,13 @@ def include_autonomous_endpoints(app: FastAPI):
             return {"ok": False, "error": upgrades.get("error", "Upgrades not available")}
 
         try:
-            suggestion = upgrades["suggest_next_upgrade"]()
+            # Get outcome data for suggestion (simplified)
+            outcomes = []  # Would come from Outcome Oracle
+            suggestion = upgrades["suggest_next_upgrade"](outcomes)
             return {
                 "ok": True,
                 "proposal": suggestion,
+                "upgrade_types": upgrades.get("upgrade_types", {}),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
@@ -461,16 +474,19 @@ def include_autonomous_endpoints(app: FastAPI):
             return {"ok": False, "error": upgrades.get("error", "Upgrades not available")}
 
         try:
-            test_id = upgrades["create_ab_test"](
+            test = upgrades["create_ab_test"](
                 name=test_config.get("name", "unnamed_test"),
                 control_logic=test_config.get("control", {}),
                 variant_logic=test_config.get("variant", {}),
                 success_metric=test_config.get("metric", "revenue"),
                 sample_size=test_config.get("sample_size", 100)
             )
+            # Store in internal state
+            _upgrade_tests.append(test)
             return {
                 "ok": True,
-                "test_id": test_id,
+                "test_id": test.get("id"),
+                "test": test,
                 "status": "created",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
