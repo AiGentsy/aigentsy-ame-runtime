@@ -36,11 +36,15 @@ logger = logging.getLogger("universal_fabric")
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MAX_EV_AUTO_EXECUTE = float(os.getenv("FABRIC_MAX_EV_AUTO", "50"))
-RATE_LIMIT_PER_HOUR = int(os.getenv("FABRIC_RATE_LIMIT_HOUR", "10"))
+RATE_LIMIT_PER_HOUR = int(os.getenv("FABRIC_RATE_LIMIT_HOUR", "100"))
 SCREENSHOT_DIR = os.getenv("FABRIC_SCREENSHOT_DIR", "/tmp/fabric_screenshots")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# HackerNews credentials (required for posting comments)
+HN_USERNAME = os.getenv("HN_USERNAME") or os.getenv("HACKERNEWS_USERNAME", "")
+HN_PASSWORD = os.getenv("HN_PASSWORD") or os.getenv("HACKERNEWS_PASSWORD", "")
 
 # Try to import Playwright
 try:
@@ -830,8 +834,10 @@ def get_fabric_status() -> Dict[str, Any]:
     recent_executions = len([t for t in _executions_this_hour if t > cutoff])
 
     return {
+        "ok": True,
         "playwright_available": PLAYWRIGHT_AVAILABLE,
         "ai_available": bool(OPENROUTER_API_KEY or PERPLEXITY_API_KEY or GEMINI_API_KEY),
+        "hackernews_credentials": bool(HN_USERNAME and HN_PASSWORD),
         "rate_limit": {
             "per_hour": RATE_LIMIT_PER_HOUR,
             "used_this_hour": recent_executions,
@@ -930,3 +936,4 @@ print(f"   • Playwright: {'Available' if PLAYWRIGHT_AVAILABLE else 'Not instal
 print(f"   • Vision AI: {'Configured' if OPENROUTER_API_KEY else 'Not configured'}")
 print(f"   • Max auto EV: ${MAX_EV_AUTO_EXECUTE}")
 print(f"   • Rate limit: {RATE_LIMIT_PER_HOUR}/hour")
+print(f"   • HackerNews: {'Credentials configured' if HN_USERNAME and HN_PASSWORD else '⚠️  No credentials (set HN_USERNAME + HN_PASSWORD for posting)'}")
