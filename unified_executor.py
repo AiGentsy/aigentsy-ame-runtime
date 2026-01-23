@@ -1069,13 +1069,13 @@ class UnifiedExecutor:
         # Store pattern in Yield Memory
         if self._subsystem_status.get("yield_memory"):
             try:
-                pattern = {
-                    "task_type": task.get("type"),
-                    "success": result.get("ok", False),
-                    "execution_time": result.get("execution_time_ms", 0),
-                    "timestamp": self._now()
-                }
-                self._store_pattern(pattern)
+                self._store_pattern(
+                    username=task.get("user_id", "system"),
+                    pattern_type="task_execution",
+                    context={"timestamp": self._now()},
+                    action={"type": task.get("type"), "task_id": task.get("task_id")},
+                    outcome={"success": result.get("ok", False), "execution_time": result.get("execution_time_ms", 0)}
+                )
             except:
                 pass
 
@@ -1251,12 +1251,14 @@ class UnifiedExecutor:
                     opp = exec_item.get("opportunity", {})
                     result = exec_item.get("result")
                     revenue = result.get("revenue", 0) if isinstance(result, dict) else 0
-                    self._store_pattern({
-                        "action": opp.get("type") if isinstance(opp, dict) else str(opp),
-                        "success": True,
-                        "revenue": revenue,
-                        "cycle_id": cycle_id
-                    })
+                    opp_type = opp.get("type") if isinstance(opp, dict) else "unknown"
+                    self._store_pattern(
+                        username="system",
+                        pattern_type="autonomous_execution",
+                        context={"cycle_id": cycle_id, "source": opp.get("source", "unknown") if isinstance(opp, dict) else "unknown"},
+                        action={"type": opp_type, "opportunity": opp if isinstance(opp, dict) else str(opp)},
+                        outcome={"success": True, "revenue": revenue}
+                    )
                     results["learnings_recorded"] += 1
 
             # Contribute patterns to MetaHive
