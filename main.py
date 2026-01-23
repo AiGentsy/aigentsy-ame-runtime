@@ -42,6 +42,9 @@ from apex_upgrades_api import create_apex_upgrade_routes
 from v97_cash_endpoints import include_v97_cash_endpoints
 from profit_engine_v98 import include_profit_engine
 from diagnostic_tracer import include_diagnostic_tracer
+from diagnostic_opportunity_tracer import include_diagnostic_endpoints
+from internet_search_setup import include_search_endpoints
+from oauth_credential_manager import include_credential_endpoints
 from apex_upgrades_overlay import include_overlay
 from v110_gap_harvesters import include_gap_harvesters
 from opportunity_filters import (
@@ -1060,6 +1063,9 @@ app = FastAPI()
 
 register_investor_routes(app)
 include_diagnostic_tracer(app)
+include_diagnostic_endpoints(app)  # Opportunity tracer with /diagnostic/trace-cycle
+include_search_endpoints(app)  # Internet-wide search with DuckDuckGo fallback
+include_credential_endpoints(app)  # OAuth credential manager with /pdl/missing-credentials
 include_profit_engine(app)
 include_gap_harvesters(app)
 
