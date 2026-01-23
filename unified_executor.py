@@ -1,75 +1,53 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-UNIFIED EXECUTOR v2.0 - THE COMPLETE ORCHESTRATION LAYER
+UNIFIED EXECUTOR v3.0 - MANAGER PATTERN ORCHESTRATION
 ═══════════════════════════════════════════════════════════════════════════════
 
-SINGLE ENTRY POINT FOR ALL 108+ SUBSYSTEMS:
+NOW COORDINATING 60+ SUBSYSTEMS VIA 5 SPECIALIZED MANAGERS:
 
-1. EXECUTION LAYER
-   - Connector Registry (APIs)
-   - Multi-AI Router (Claude/GPT/Gemini/Perplexity/Grok)
-   - Universal Fabric (Browser automation)
+1. REVENUE MANAGER (11 subsystems)
+   - OCL P2P Lending, Securitization Desk, Performance Bonds
+   - Outcomes Insurance, OCL Expansion, Insurance Pool
+   - Flow Arbitrage, Idle Arbitrage, Affiliate Matching
+   - Lead Exchange, Auto Hedge
 
-2. INTELLIGENCE LAYER
-   - MetaHive Brain (Cross-user learning)
-   - Outcome Oracle (Funnel tracking)
-   - Pricing Oracle (Dynamic pricing)
-   - Yield Memory (Pattern learning)
-   - LTV Forecaster (Churn prediction)
-   - Fraud Detector
-
-3. DISCOVERY LAYER
-   - Alpha Discovery Engine (7 dimensions)
-   - Ultimate Discovery Engine
-   - Internet Discovery (Perplexity/DuckDuckGo)
-   - Pain Point Detector
-   - Research Engine
-   - Signal Ingestion
-
-4. REVENUE LAYER
-   - AMG Orchestrator (10-stage loop)
-   - R3 Autopilot (Revenue reinvestment)
-   - V107-V115 Revenue Engines
-   - Gap Harvesters
-   - Market Maker
-   - Arbitrage Pipeline
-
-5. CONTENT LAYER
-   - Social AutoPosting
-   - Video Engine
-   - Audio Engine
-   - Graphics Engine
-
-6. FINANCIAL LAYER
-   - AIGx Protocol (Settlement)
-   - OCL Engine (Credit)
+2. FINANCIAL MANAGER (8 subsystems) + OCL P2P
+   - OCL P2P Lending (AI-to-AI internal lending)
+   - OCL Engine, OCL Expansion, Performance Bonds
+   - Securitization Desk, Outcomes Insurance, Insurance Pool
    - Agent Factoring
-   - Revenue Reconciliation
 
-7. COLLABORATION LAYER
-   - MetaBridge (Agent matching)
-   - JV Mesh (Joint ventures)
-   - Deal Graph (Relationships)
-   - Agent Registry
-   - Protocol Gateway
+3. EXECUTION MANAGER (10 subsystems)
+   - Fiverr Automation, Deliverable Verification, Compliance Oracle
+   - One-Tap Widget, Direct Outreach, Proposal Generator
+   - Platform APIs, Fabric, AI Router, Connectors
 
-8. BUSINESS LAYER
-   - Business Accelerator
-   - Storefront Deployer
-   - Template Actionizer
-   - Franchise Engine
-   - SKU Orchestrator
+4. DISCOVERY MANAGER (15 subsystems)
+   - Alpha Discovery, Ultimate Discovery, Spawn Engine
+   - Internet Domination, Flow Arbitrage, Pain Detector
+   - Signal Ingestion, Research Engine, Industry Knowledge
+   - Advanced Dimensions, Deal Graph, Affiliate Matching
+   - Direct Outreach, Internet Search, Idle Arbitrage
 
-USAGE:
-    from unified_executor import execute, UnifiedExecutor
+5. INTELLIGENCE MANAGER (10 subsystems)
+   - MetaHive Brain, Outcome Oracle, Pricing Oracle
+   - Yield Memory, LTV Forecaster, Fraud Detector
+   - Pricing Autopilot, Success Predictor
+   - Adaptive Aggression, SLO Policy
 
-    result = await execute({
-        "type": "discovery",
-        "action": "find_opportunities",
-        "keywords": ["AI automation"]
-    })
+AUTONOMOUS CYCLE (10-PHASE):
+1. DISCOVER → 15+ sources
+2. ENRICH → Deal Graph network
+3. SCORE → Intelligence scoring
+4. FINANCE → OCL P2P if needed
+5. REVENUE → Revenue opportunities
+6. EXECUTE → Top 20 opportunities
+7. VERIFY → Deliverable verification
+8. REVENUE FLOWS → Execute revenue
+9. RECONCILE → Financial tracking
+10. LEARN → Pattern storage
 
-Updated: Jan 2026 - Full 108+ System Integration
+Updated: Jan 2026 - v3.0 Manager Pattern Architecture
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -83,6 +61,45 @@ import os
 import logging
 
 logger = logging.getLogger("unified_executor")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MANAGER IMPORTS (60+ subsystems coordinated via 5 managers)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from managers.revenue_manager import RevenueManager, get_revenue_manager
+    REVENUE_MANAGER_AVAILABLE = True
+except ImportError:
+    REVENUE_MANAGER_AVAILABLE = False
+    logger.warning("RevenueManager not available")
+
+try:
+    from managers.financial_manager import FinancialManager, get_financial_manager
+    FINANCIAL_MANAGER_AVAILABLE = True
+except ImportError:
+    FINANCIAL_MANAGER_AVAILABLE = False
+    logger.warning("FinancialManager not available")
+
+try:
+    from managers.execution_manager import ExecutionManager, get_execution_manager
+    EXECUTION_MANAGER_AVAILABLE = True
+except ImportError:
+    EXECUTION_MANAGER_AVAILABLE = False
+    logger.warning("ExecutionManager not available")
+
+try:
+    from managers.discovery_manager import DiscoveryManager, get_discovery_manager
+    DISCOVERY_MANAGER_AVAILABLE = True
+except ImportError:
+    DISCOVERY_MANAGER_AVAILABLE = False
+    logger.warning("DiscoveryManager not available")
+
+try:
+    from managers.intelligence_manager import IntelligenceManager, get_intelligence_manager
+    INTELLIGENCE_MANAGER_AVAILABLE = True
+except ImportError:
+    INTELLIGENCE_MANAGER_AVAILABLE = False
+    logger.warning("IntelligenceManager not available")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -211,9 +228,75 @@ class UnifiedExecutor:
         self._initialized = False
         self._execution_log: List[Dict] = []
         self._subsystem_status: Dict[str, bool] = {}
+        self._manager_status: Dict[str, bool] = {}
 
-        # Initialize all subsystems
+        # Initialize 5 specialized managers (60+ subsystems)
+        self._init_managers()
+
+        # Initialize legacy subsystems (backward compatibility)
         self._init_all_subsystems()
+
+    def _init_managers(self):
+        """Initialize all 5 specialized managers"""
+
+        # Revenue Manager (11 subsystems)
+        if REVENUE_MANAGER_AVAILABLE:
+            try:
+                self.revenue_mgr = get_revenue_manager()
+                self._manager_status["revenue_manager"] = True
+            except Exception as e:
+                logger.warning(f"Revenue manager init failed: {e}")
+                self._manager_status["revenue_manager"] = False
+        else:
+            self._manager_status["revenue_manager"] = False
+
+        # Financial Manager (8 subsystems + OCL P2P)
+        if FINANCIAL_MANAGER_AVAILABLE:
+            try:
+                self.financial_mgr = get_financial_manager()
+                self._manager_status["financial_manager"] = True
+            except Exception as e:
+                logger.warning(f"Financial manager init failed: {e}")
+                self._manager_status["financial_manager"] = False
+        else:
+            self._manager_status["financial_manager"] = False
+
+        # Execution Manager (10 subsystems)
+        if EXECUTION_MANAGER_AVAILABLE:
+            try:
+                self.execution_mgr = get_execution_manager()
+                self._manager_status["execution_manager"] = True
+            except Exception as e:
+                logger.warning(f"Execution manager init failed: {e}")
+                self._manager_status["execution_manager"] = False
+        else:
+            self._manager_status["execution_manager"] = False
+
+        # Discovery Manager (15 subsystems)
+        if DISCOVERY_MANAGER_AVAILABLE:
+            try:
+                self.discovery_mgr = get_discovery_manager()
+                self._manager_status["discovery_manager"] = True
+            except Exception as e:
+                logger.warning(f"Discovery manager init failed: {e}")
+                self._manager_status["discovery_manager"] = False
+        else:
+            self._manager_status["discovery_manager"] = False
+
+        # Intelligence Manager (10 subsystems)
+        if INTELLIGENCE_MANAGER_AVAILABLE:
+            try:
+                self.intelligence_mgr = get_intelligence_manager()
+                self._manager_status["intelligence_manager"] = True
+            except Exception as e:
+                logger.warning(f"Intelligence manager init failed: {e}")
+                self._manager_status["intelligence_manager"] = False
+        else:
+            self._manager_status["intelligence_manager"] = False
+
+        # Log manager status
+        managers_loaded = sum(1 for v in self._manager_status.values() if v)
+        logger.info(f"Managers initialized: {managers_loaded}/5")
 
     def _init_all_subsystems(self):
         """Initialize ALL 108+ subsystems"""
@@ -1306,6 +1389,250 @@ class UnifiedExecutor:
         return results
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # FULL AUTONOMOUS CYCLE (v3.0 - Using 5 Specialized Managers)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def run_full_autonomous_cycle(self) -> Dict[str, Any]:
+        """
+        v3.0: Complete 10-phase autonomous cycle using ALL 60+ subsystems via managers.
+
+        PHASES:
+        1. DISCOVER → 15+ sources via DiscoveryManager
+        2. ENRICH → Deal Graph network enrichment
+        3. SCORE → Intelligence scoring via IntelligenceManager
+        4. FINANCE → OCL P2P lending if needed via FinancialManager
+        5. REVENUE → Revenue opportunities via RevenueManager
+        6. EXECUTE → Execute top 20 via ExecutionManager
+        7. VERIFY → Deliverable verification
+        8. REVENUE FLOWS → Execute revenue streams
+        9. RECONCILE → Financial tracking
+        10. LEARN → Pattern storage and learning
+        """
+        cycle_id = f"full_cycle_{uuid4().hex[:8]}"
+        start_time = datetime.now(timezone.utc)
+        loan_id = None
+
+        results = {
+            "cycle_id": cycle_id,
+            "version": "3.0",
+            "phases": {},
+            "total_opportunities": 0,
+            "opportunities_scored": 0,
+            "opportunities_executed": 0,
+            "revenue_generated": 0.0,
+            "revenue_streams": 0,
+            "patterns_learned": 0,
+            "internal_lending": None,
+            "managers_used": [],
+            "subsystems_used": 0
+        }
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 1: DISCOVERY (15+ sources via DiscoveryManager)
+        # ═══════════════════════════════════════════════════════════════════
+        opportunities = []
+        try:
+            if self._manager_status.get("discovery_manager"):
+                opportunities = await self.discovery_mgr.discover_all_sources()
+                results["phases"]["discovery"] = {
+                    "ok": True,
+                    "count": len(opportunities),
+                    "sources": self.discovery_mgr._sources_used
+                }
+                results["total_opportunities"] = len(opportunities)
+                results["managers_used"].append("discovery_manager")
+            else:
+                # Fallback to legacy discovery
+                discovery_result = await self._execute_discovery({"type": "discover_opportunities"})
+                opportunities = discovery_result.get("output", [])
+                results["phases"]["discovery"] = {"ok": True, "count": len(opportunities), "fallback": True}
+        except Exception as e:
+            results["phases"]["discovery"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 2: ENRICH (Deal Graph network enrichment)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._manager_status.get("discovery_manager") and opportunities:
+                opportunities = await self.discovery_mgr.enrich_with_network(opportunities)
+                results["phases"]["enrichment"] = {"ok": True, "enriched": len(opportunities)}
+            else:
+                results["phases"]["enrichment"] = {"ok": True, "skipped": True}
+        except Exception as e:
+            results["phases"]["enrichment"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 3: SCORE (Intelligence scoring via IntelligenceManager)
+        # ═══════════════════════════════════════════════════════════════════
+        scored = []
+        try:
+            if self._manager_status.get("intelligence_manager") and opportunities:
+                scored = await self.intelligence_mgr.score_opportunities(opportunities[:100])
+                results["phases"]["scoring"] = {"ok": True, "scored": len(scored)}
+                results["opportunities_scored"] = len(scored)
+                results["managers_used"].append("intelligence_manager")
+            else:
+                # Fallback to simple scoring
+                scored = sorted(opportunities[:50], key=lambda x: x.get("ev", 0), reverse=True)
+                results["phases"]["scoring"] = {"ok": True, "count": len(scored), "fallback": True}
+        except Exception as e:
+            results["phases"]["scoring"] = {"ok": False, "error": str(e)}
+            scored = opportunities[:20]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 4: FINANCE (OCL P2P lending check via FinancialManager)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._manager_status.get("financial_manager") and scored:
+                # Estimate capital needed for top 20 opportunities
+                capital_needed = sum(opp.get("budget", opp.get("ev", 50)) for opp in scored[:20])
+
+                capital = await self.financial_mgr.check_capital_availability(capital_needed)
+                results["phases"]["capital_check"] = {
+                    "ok": True,
+                    "needed": capital_needed,
+                    "available": capital.get("direct_available", 0),
+                    "can_fulfill": capital.get("can_fulfill", False)
+                }
+
+                # Arrange internal lending if needed
+                if capital.get("needs_borrowing", 0) > 0:
+                    loan = await self.financial_mgr.arrange_internal_lending(capital["needs_borrowing"])
+                    loan_id = loan.get("id")
+                    results["internal_lending"] = {
+                        "borrowed": loan.get("total_borrowed", 0),
+                        "loans": len(loan.get("loans", [])),
+                        "facilitation_fees": loan.get("total_facilitation_fees", 0)
+                    }
+                    results["phases"]["internal_lending"] = {"ok": True, **results["internal_lending"]}
+
+                results["managers_used"].append("financial_manager")
+            else:
+                results["phases"]["capital_check"] = {"ok": True, "skipped": True}
+        except Exception as e:
+            results["phases"]["capital_check"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 5: REVENUE OPPORTUNITIES (RevenueManager)
+        # ═══════════════════════════════════════════════════════════════════
+        revenue_opps = []
+        try:
+            if self._manager_status.get("revenue_manager"):
+                revenue_opps = await self.revenue_mgr.discover_revenue_opportunities()
+                results["phases"]["revenue_discovery"] = {"ok": True, "count": len(revenue_opps)}
+                results["managers_used"].append("revenue_manager")
+        except Exception as e:
+            results["phases"]["revenue_discovery"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 6: EXECUTE (Top 20 via ExecutionManager)
+        # ═══════════════════════════════════════════════════════════════════
+        executed = []
+        try:
+            if self._manager_status.get("execution_manager") and scored:
+                for opp in scored[:20]:
+                    exec_result = await self.execution_mgr.execute_with_verification({
+                        "type": opp.get("type", "opportunity"),
+                        "opportunity": opp,
+                        "task_id": f"{cycle_id}_{uuid4().hex[:4]}"
+                    })
+                    if exec_result.get("ok"):
+                        executed.append({"opportunity": opp, "result": exec_result})
+                        results["opportunities_executed"] += 1
+
+                results["phases"]["execution"] = {
+                    "ok": True,
+                    "attempted": min(20, len(scored)),
+                    "succeeded": len(executed)
+                }
+                results["managers_used"].append("execution_manager")
+            else:
+                results["phases"]["execution"] = {"ok": True, "skipped": True}
+        except Exception as e:
+            results["phases"]["execution"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 7: REVENUE FLOWS (Execute revenue streams)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._manager_status.get("revenue_manager") and executed:
+                for exec_item in executed:
+                    flow_result = await self.revenue_mgr.execute_revenue_flow(exec_item.get("opportunity", {}))
+                    if flow_result.get("ok"):
+                        results["revenue_generated"] += flow_result.get("revenue", 0)
+                        results["revenue_streams"] += 1
+
+                # Track all revenue streams
+                revenue_status = await self.revenue_mgr.track_revenue_streams()
+                results["phases"]["revenue_flows"] = {
+                    "ok": True,
+                    "total_revenue": results["revenue_generated"],
+                    "streams": results["revenue_streams"]
+                }
+        except Exception as e:
+            results["phases"]["revenue_flows"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 8: LOAN SETTLEMENT (if internal lending was used)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if loan_id and self._manager_status.get("financial_manager") and results["revenue_generated"] > 0:
+                settlement = await self.financial_mgr.settle_loan(loan_id, results["revenue_generated"])
+                results["phases"]["loan_settlement"] = {"ok": True, **settlement}
+        except Exception as e:
+            results["phases"]["loan_settlement"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 9: RECONCILIATION
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._subsystem_status.get("auto_reconciliation") and results["revenue_generated"] > 0:
+                self._auto_reconciliation.record_activity(
+                    activity_type="full_cycle",
+                    gross_revenue=results["revenue_generated"],
+                    path="path_a",
+                    metadata={"cycle_id": cycle_id}
+                )
+                results["phases"]["reconciliation"] = {"ok": True, "revenue": results["revenue_generated"]}
+        except Exception as e:
+            results["phases"]["reconciliation"] = {"ok": False, "error": str(e)}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 10: LEARN (Pattern storage via IntelligenceManager)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            if self._manager_status.get("intelligence_manager") and executed:
+                learning_results = await self.intelligence_mgr.learn_from_cycle(executed)
+                results["patterns_learned"] = learning_results.get("patterns_learned", 0)
+                results["phases"]["learning"] = {"ok": True, "patterns": results["patterns_learned"]}
+        except Exception as e:
+            results["phases"]["learning"] = {"ok": False, "error": str(e)}
+
+        # Calculate totals
+        end_time = datetime.now(timezone.utc)
+        results["execution_time_ms"] = int((end_time - start_time).total_seconds() * 1000)
+        results["timestamp"] = end_time.isoformat()
+        results["managers_used"] = list(set(results["managers_used"]))
+
+        # Count total subsystems used
+        subsystem_count = 0
+        for mgr_name in results["managers_used"]:
+            if mgr_name == "discovery_manager" and hasattr(self, 'discovery_mgr'):
+                subsystem_count += sum(1 for v in self.discovery_mgr._subsystems.values() if v)
+            elif mgr_name == "revenue_manager" and hasattr(self, 'revenue_mgr'):
+                subsystem_count += sum(1 for v in self.revenue_mgr._subsystems.values() if v)
+            elif mgr_name == "financial_manager" and hasattr(self, 'financial_mgr'):
+                subsystem_count += sum(1 for v in self.financial_mgr._subsystems.values() if v)
+            elif mgr_name == "execution_manager" and hasattr(self, 'execution_mgr'):
+                subsystem_count += sum(1 for v in self.execution_mgr._subsystems.values() if v)
+            elif mgr_name == "intelligence_manager" and hasattr(self, 'intelligence_mgr'):
+                subsystem_count += sum(1 for v in self.intelligence_mgr._subsystems.values() if v)
+
+        results["subsystems_used"] = subsystem_count
+
+        return results
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # STATUS & DIAGNOSTICS
     # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1335,10 +1662,38 @@ class UnifiedExecutor:
                 "systems": {s: self._subsystem_status.get(s, False) for s in systems}
             }
 
+        # Get manager status
+        manager_details = {}
+        manager_subsystems = 0
+        for mgr_name, available_flag in self._manager_status.items():
+            if available_flag:
+                mgr_attr = mgr_name.replace("_manager", "_mgr")
+                if hasattr(self, mgr_attr):
+                    mgr = getattr(self, mgr_attr)
+                    if hasattr(mgr, '_subsystems'):
+                        mgr_subs = sum(1 for v in mgr._subsystems.values() if v)
+                        manager_subsystems += mgr_subs
+                        manager_details[mgr_name] = {
+                            "available": True,
+                            "subsystems": mgr_subs,
+                            "total": len(mgr._subsystems)
+                        }
+                    else:
+                        manager_details[mgr_name] = {"available": True}
+            else:
+                manager_details[mgr_name] = {"available": False}
+
         return {
             "ok": True,
-            "version": "2.0",
-            "subsystems": {
+            "version": "3.0",
+            "architecture": "Manager Pattern",
+            "managers": {
+                "available": sum(1 for v in self._manager_status.values() if v),
+                "total": len(self._manager_status),
+                "details": manager_details,
+                "total_manager_subsystems": manager_subsystems
+            },
+            "legacy_subsystems": {
                 "available": available,
                 "total": total,
                 "percentage": round(available / total * 100, 1) if total > 0 else 0
@@ -1417,7 +1772,7 @@ async def list_subsystems():
 @unified_router.post("/autonomous-cycle")
 async def run_autonomous_cycle_endpoint():
     """
-    Run a complete autonomous cycle with all systems interconnected:
+    v2.0: Run a basic autonomous cycle with legacy subsystems:
     1. DISCOVER → All sources (Alpha, Ultimate, Spawn, Domination, DealGraph)
     2. PRIORITIZE → MetaHive + Deal Graph + Outcome Oracle scoring
     3. EXECUTE → Fabric + Connectors execution
@@ -1429,6 +1784,71 @@ async def run_autonomous_cycle_endpoint():
     return result
 
 
+@unified_router.post("/full-autonomous-cycle")
+async def run_full_autonomous_cycle_endpoint():
+    """
+    v3.0: Run FULL 10-phase autonomous cycle using ALL 60+ subsystems via 5 managers:
+
+    PHASES:
+    1. DISCOVER → 15+ sources via DiscoveryManager
+    2. ENRICH → Deal Graph network enrichment
+    3. SCORE → Intelligence scoring via IntelligenceManager
+    4. FINANCE → OCL P2P internal lending via FinancialManager
+    5. REVENUE → Revenue opportunities via RevenueManager
+    6. EXECUTE → Top 20 opportunities via ExecutionManager
+    7. VERIFY → Deliverable verification
+    8. REVENUE FLOWS → Execute revenue streams
+    9. RECONCILE → Financial tracking
+    10. LEARN → Pattern storage and learning
+
+    MANAGERS USED:
+    - RevenueManager (11 subsystems)
+    - FinancialManager (8 subsystems + OCL P2P)
+    - ExecutionManager (10 subsystems)
+    - DiscoveryManager (15 subsystems)
+    - IntelligenceManager (10 subsystems)
+    """
+    executor = get_executor()
+    result = await executor.run_full_autonomous_cycle()
+    return result
+
+
+@unified_router.get("/managers/status")
+async def get_managers_status():
+    """Get status of all 5 specialized managers"""
+    executor = get_executor()
+    status = {}
+
+    if hasattr(executor, 'revenue_mgr') and executor._manager_status.get("revenue_manager"):
+        status["revenue_manager"] = executor.revenue_mgr.get_status()
+
+    if hasattr(executor, 'financial_mgr') and executor._manager_status.get("financial_manager"):
+        status["financial_manager"] = executor.financial_mgr.get_status()
+
+    if hasattr(executor, 'execution_mgr') and executor._manager_status.get("execution_manager"):
+        status["execution_manager"] = executor.execution_mgr.get_status()
+
+    if hasattr(executor, 'discovery_mgr') and executor._manager_status.get("discovery_manager"):
+        status["discovery_manager"] = executor.discovery_mgr.get_status()
+
+    if hasattr(executor, 'intelligence_mgr') and executor._manager_status.get("intelligence_manager"):
+        status["intelligence_manager"] = executor.intelligence_mgr.get_status()
+
+    # Calculate totals
+    total_subsystems = sum(
+        s.get("subsystems", {}).get("available", 0)
+        for s in status.values()
+        if isinstance(s, dict)
+    )
+
+    return {
+        "ok": True,
+        "managers": status,
+        "total_manager_subsystems": total_subsystems,
+        "managers_available": len([s for s in status.values() if s.get("ok")])
+    }
+
+
 def include_unified_endpoints(app):
     """Include unified executor endpoints in FastAPI app"""
     app.include_router(unified_router)
@@ -1437,12 +1857,33 @@ def include_unified_endpoints(app):
     status = executor.get_status()
 
     print("=" * 80)
-    print("⚡ UNIFIED EXECUTOR v2.0 - COMPLETE ORCHESTRATION LAYER")
+    print("⚡ UNIFIED EXECUTOR v3.0 - MANAGER PATTERN ORCHESTRATION")
     print("=" * 80)
-    print(f"   Subsystems: {status['subsystems']['available']}/{status['subsystems']['total']} loaded ({status['subsystems']['percentage']}%)")
-    for cat, data in status["categories"].items():
+
+    # Print manager status
+    mgr_status = status.get("managers", {})
+    mgr_available = mgr_status.get("available", 0)
+    mgr_total = mgr_status.get("total", 5)
+    mgr_subs = mgr_status.get("total_manager_subsystems", 0)
+    print(f"   Managers: {mgr_available}/{mgr_total} ({mgr_subs} subsystems via managers)")
+
+    for mgr_name, mgr_data in mgr_status.get("details", {}).items():
+        if isinstance(mgr_data, dict):
+            icon = "✅" if mgr_data.get("available") else "❌"
+            subs = mgr_data.get("subsystems", 0)
+            total = mgr_data.get("total", 0)
+            print(f"   {icon} {mgr_name}: {subs}/{total} subsystems")
+
+    print("-" * 80)
+
+    # Print legacy status
+    legacy = status.get("legacy_subsystems", {})
+    print(f"   Legacy: {legacy.get('available', 0)}/{legacy.get('total', 0)} ({legacy.get('percentage', 0)}%)")
+
+    for cat, data in status.get("categories", {}).items():
         icon = "✅" if data["available"] == data["total"] else "⚠️" if data["available"] > 0 else "❌"
         print(f"   {icon} {cat.upper()}: {data['available']}/{data['total']}")
+
     print("=" * 80)
 
 
