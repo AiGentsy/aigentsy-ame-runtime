@@ -367,9 +367,9 @@ class UnifiedExecutor:
         # AMG Orchestrator
         try:
             from amg_orchestrator import AMGOrchestrator
-            self._amg = AMGOrchestrator()
+            self._amg = AMGOrchestrator(username=os.getenv("AIGENTSY_USERNAME", "wade"))
             self._subsystem_status["amg"] = True
-        except ImportError:
+        except (ImportError, Exception) as e:
             self._subsystem_status["amg"] = False
 
         # R3 Autopilot
