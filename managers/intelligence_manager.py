@@ -85,9 +85,14 @@ class IntelligenceManager:
 
         # 5. LTV Forecaster (churn prediction)
         try:
-            from ltv_forecaster import calculate_ltv_with_churn, predict_churn_risk
+            from ltv_forecaster import (
+                calculate_ltv_with_churn,
+                calculate_churn_risk,
+                suggest_retention_campaign
+            )
             self._calc_ltv = calculate_ltv_with_churn
-            self._predict_churn = predict_churn_risk
+            self._calc_churn = calculate_churn_risk
+            self._retention_campaign = suggest_retention_campaign
             self._subsystems["ltv_forecaster"] = True
             logger.info("LTV Forecaster loaded successfully")
         except (ImportError, Exception) as e:
@@ -96,9 +101,18 @@ class IntelligenceManager:
 
         # 6. Fraud Detector
         try:
-            from fraud_detector import check_fraud_signals, get_risk_score
-            self._check_fraud = check_fraud_signals
-            self._risk_score = get_risk_score
+            from fraud_detector import (
+                report_fraud,
+                get_fraud_stats,
+                get_user_risk_profile,
+                get_fraud_case,
+                list_fraud_cases
+            )
+            self._report_fraud = report_fraud
+            self._fraud_stats = get_fraud_stats
+            self._user_risk_profile = get_user_risk_profile
+            self._get_fraud_case = get_fraud_case
+            self._list_fraud_cases = list_fraud_cases
             self._subsystems["fraud_detector"] = True
             logger.info("Fraud Detector loaded successfully")
         except (ImportError, Exception) as e:
@@ -167,14 +181,8 @@ class IntelligenceManager:
 
         # 10. Apex Upgrades Overlay (accretive upgrades)
         try:
-            from apex_upgrades_overlay import (
-                ApexUpgradesOverlay,
-                get_accretive_upgrades,
-                suggest_next_upgrade
-            )
-            self._apex_overlay = ApexUpgradesOverlay()
-            self._accretive_upgrades = get_accretive_upgrades
-            self._suggest_upgrade = suggest_next_upgrade
+            from apex_upgrades_overlay import include_overlay
+            self._include_overlay = include_overlay
             self._subsystems["apex_upgrades"] = True
             logger.info("Apex Upgrades Overlay loaded successfully")
         except (ImportError, Exception) as e:

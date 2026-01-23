@@ -262,11 +262,13 @@ class ExecutionManager:
             from universal_fulfillment_fabric import (
                 execute_universal,
                 get_fabric_status,
-                FulfillmentFabric
+                get_execution_logs,
+                fabric_execute
             )
             self._execute_fabric = execute_universal
             self._fabric_status = get_fabric_status
-            self._fabric_class = FulfillmentFabric
+            self._execution_logs = get_execution_logs
+            self._fabric_execute = fabric_execute
             self._subsystems["fabric"] = True
             logger.info("Universal Fulfillment Fabric loaded successfully")
         except (ImportError, Exception) as e:

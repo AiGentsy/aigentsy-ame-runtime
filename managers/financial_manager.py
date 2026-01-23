@@ -93,10 +93,16 @@ class FinancialManager:
 
         # 2. Core OCL Engine
         try:
-            from ocl_engine import calculate_ocl_limit, spend_ocl, get_ocl_balance
+            from ocl_engine import (
+                calculate_ocl_limit,
+                spend_ocl,
+                auto_repay_ocl,
+                expand_ocl_on_poo
+            )
             self._calc_ocl = calculate_ocl_limit
             self._spend_ocl = spend_ocl
-            self._get_balance = get_ocl_balance
+            self._auto_repay_ocl = auto_repay_ocl
+            self._expand_on_poo = expand_ocl_on_poo
             self._subsystems["ocl_engine"] = True
             logger.info("OCL Engine loaded successfully")
         except (ImportError, Exception) as e:

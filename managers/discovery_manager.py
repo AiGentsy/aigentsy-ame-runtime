@@ -126,11 +126,11 @@ class DiscoveryManager:
         # 4. Internet Domination Engine
         try:
             from internet_domination_engine import (
-                InternetDominationEngine,
-                discover_opportunities
+                RealScrapers,
+                include_domination_engine
             )
-            self._internet_engine = InternetDominationEngine()
-            self._discover_internet = discover_opportunities
+            self._real_scrapers = RealScrapers()
+            self._include_domination = include_domination_engine
             self._subsystems["internet_domination"] = True
             logger.info("Internet Domination Engine loaded successfully")
         except (ImportError, Exception) as e:
@@ -237,12 +237,8 @@ class DiscoveryManager:
 
         # 10. Pain Point Detector
         try:
-            from pain_point_detector import (
-                PainPointDetector,
-                detect_pain_points
-            )
+            from pain_point_detector import PainPointDetector
             self._pain_detector = PainPointDetector()
-            self._detect_pain = detect_pain_points
             self._subsystems["pain_detector"] = True
             logger.info("Pain Point Detector loaded successfully")
         except (ImportError, Exception) as e:
@@ -251,8 +247,16 @@ class DiscoveryManager:
 
         # 11. Deal Graph
         try:
-            from dealgraph import DealGraph
-            self._deal_graph = DealGraph()
+            from dealgraph import (
+                create_deal,
+                get_deal_summary,
+                transition_state,
+                calculate_revenue_split
+            )
+            self._create_deal = create_deal
+            self._deal_summary = get_deal_summary
+            self._transition_state = transition_state
+            self._revenue_split = calculate_revenue_split
             self._subsystems["deal_graph"] = True
             logger.info("Deal Graph loaded successfully")
         except (ImportError, Exception) as e:
@@ -261,9 +265,11 @@ class DiscoveryManager:
 
         # 12. Signal Ingestion
         try:
-            from signal_ingestion import ingest_signals, get_signal_stats
-            self._ingest_signals = ingest_signals
-            self._signal_stats = get_signal_stats
+            from real_signal_ingestion import (
+                RealSignalIngestionEngine,
+                get_signal_engine
+            )
+            self._signal_engine = get_signal_engine()
             self._subsystems["signal_ingestion"] = True
             logger.info("Signal Ingestion loaded successfully")
         except (ImportError, Exception) as e:
@@ -273,11 +279,12 @@ class DiscoveryManager:
         # 13. Platform Recruitment Engine
         try:
             from platform_recruitment_engine import (
-                PlatformRecruitmentEngine,
-                recruit_from_platforms
+                RecruitmentEngine,
+                get_recruitment_engine,
+                get_all_platform_pitches
             )
-            self._recruitment_engine = PlatformRecruitmentEngine()
-            self._recruit = recruit_from_platforms
+            self._recruitment_engine = get_recruitment_engine()
+            self._platform_pitches = get_all_platform_pitches
             self._subsystems["platform_recruitment"] = True
             logger.info("Platform Recruitment Engine loaded successfully")
         except (ImportError, Exception) as e:
@@ -287,11 +294,15 @@ class DiscoveryManager:
         # 14. Advanced Discovery Dimensions
         try:
             from advanced_discovery_dimensions import (
-                AdvancedDiscoveryDimensions,
-                discover_by_dimensions
+                PredictiveIntelligenceEngine,
+                NetworkAmplificationEngine,
+                OpportunityCreationEngine,
+                EmergentPatternDetector
             )
-            self._advanced_dims = AdvancedDiscoveryDimensions()
-            self._discover_dims = discover_by_dimensions
+            self._predictive_intel = PredictiveIntelligenceEngine()
+            self._network_amp = NetworkAmplificationEngine()
+            self._opportunity_creator = OpportunityCreationEngine()
+            self._pattern_detector = EmergentPatternDetector()
             self._subsystems["advanced_dimensions"] = True
             logger.info("Advanced Discovery Dimensions loaded successfully")
         except (ImportError, Exception) as e:
