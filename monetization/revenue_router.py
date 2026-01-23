@@ -221,3 +221,12 @@ def split_with_premium(gross: float, premium_config: Dict[str, Any] = None, **kw
 def split_jv(gross: float, jv_parties: Dict[str, float], **kwargs) -> Dict[str, float]:
     """Split for JV deals"""
     return _default_router.split_jv(gross, jv_parties, **kwargs)
+
+
+def split(gross: float, **kwargs) -> Dict[str, float]:
+    """
+    Split revenue - primary export function.
+
+    Alias for split_revenue() to match expected import signature.
+    """
+    return _default_router.split(gross, **kwargs)

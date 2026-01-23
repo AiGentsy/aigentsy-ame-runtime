@@ -224,3 +224,33 @@ def suggest_price(
 def explain_price(base_price: float, **kwargs) -> Dict[str, Any]:
     """Get price explanation using default arm"""
     return _default_arm.explain(base_price, **kwargs)
+
+
+def suggest(
+    base_price: float,
+    *,
+    fx_rate: float = 1.0,
+    load_pct: float = 0.3,
+    wave_score: float = 0.2,
+    cogs: float = 0.0,
+    min_margin: float = 0.25,
+    **kwargs  # Accept extra kwargs for compatibility
+) -> float:
+    """
+    Suggest optimal price - primary export function.
+
+    Alias for suggest_price() to match expected import signature.
+    """
+    return _default_arm.suggest(
+        base_price,
+        fx_rate=fx_rate,
+        load_pct=load_pct,
+        wave_score=wave_score,
+        cogs=cogs,
+        min_margin=min_margin
+    )
+
+
+def get_pricing_arm() -> PricingArm:
+    """Get the default pricing arm instance"""
+    return _default_arm

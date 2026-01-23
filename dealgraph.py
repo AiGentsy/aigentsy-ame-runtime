@@ -28,7 +28,8 @@ class DealState(str, Enum):
 # Platform fee structure
 PLATFORM_FEE_PERCENT = 0.028  # 2.8% platform cut
 PLATFORM_FEE_FIXED = 0.28     # $0.28 per transaction
-INSURANCE_POOL_CUT = 0.0   
+INSURANCE_POOL_CUT = 0.0
+PLATFORM_FEE = PLATFORM_FEE_PERCENT  # Alias for compatibility   
 
 
 def create_deal(

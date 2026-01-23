@@ -798,12 +798,24 @@ def _dedupe_opportunities(opportunities: List[Dict]) -> List[Dict]:
 from urllib.parse import urlparse
 
 
+def include_domination_engine(app):
+    """Include internet domination engine routes in FastAPI app"""
+    app.include_router(router)
+    print("=" * 80)
+    print("🌐 INTERNET DOMINATION ENGINE LOADED")
+    print("=" * 80)
+    print("Free Sources: GitHub, Reddit, HackerNews, StackOverflow")
+    print("Paid Sources: Google (SERPAPI), Bing")
+    print("OAuth Sources: Upwork, Fiverr, Freelancer (future)")
+    print("=" * 80)
+
+
 # Example usage
 if __name__ == "__main__":
     import uvicorn
     from fastapi import FastAPI
-    
+
     app = FastAPI()
-    app.include_router(router)
-    
+    include_domination_engine(app)
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1240,6 +1240,210 @@ async def get_canary_metrics() -> Dict[str, Any]:
 # FASTAPI INTEGRATION - GAPHARVESTER II
 # ═══════════════════════════════════════════════════════════════════════════════
 
+async def uacr_scan_twitter(
+    keywords: List[str] = None,
+    max_results: int = 100
+) -> Dict[str, Any]:
+    """
+    Scan Twitter for abandoned checkout signals.
+
+    Looks for:
+    - "should I buy" + product mentions
+    - "can't decide between" + options
+    - "looking for recommendations"
+    - "anyone tried" + product category
+    """
+    keywords = keywords or ["should I buy", "can't decide", "recommendations", "anyone tried"]
+
+    # Simulated scan results
+    signals = []
+    for i in range(min(max_results, 25)):
+        signal = {
+            "id": f"tw_signal_{uuid4().hex[:8]}",
+            "platform": "twitter",
+            "content": f"Sample purchase intent signal {i+1}",
+            "user_id": f"user_{uuid4().hex[:6]}",
+            "detected_intent": "purchase_consideration",
+            "confidence": 0.75 + (i % 25) * 0.01,
+            "category": ["tech", "saas", "consumer"][i % 3],
+            "timestamp": _now()
+        }
+        signals.append(signal)
+        UACR_SIGNALS[signal["id"]] = signal
+
+    return {
+        "ok": True,
+        "platform": "twitter",
+        "keywords_used": keywords,
+        "signals_found": len(signals),
+        "signals": signals[:10],  # Return first 10 as sample
+        "total_ingested": len(UACR_SIGNALS)
+    }
+
+
+async def payments_optimize_routing(
+    merchant_id: str,
+    transactions: List[Dict] = None
+) -> Dict[str, Any]:
+    """
+    Optimize payment routing to minimize interchange fees.
+
+    Analyzes transactions and routes to optimal PSP.
+    """
+    transactions = transactions or []
+
+    # Simulate optimization
+    optimized = []
+    total_savings = 0.0
+
+    for txn in transactions[:50]:
+        amount = txn.get("amount", 100)
+        current_fee = amount * 0.029  # Standard 2.9%
+        optimal_fee = amount * 0.022  # Optimized 2.2%
+        savings = current_fee - optimal_fee
+
+        optimized.append({
+            "txn_id": txn.get("id", f"txn_{uuid4().hex[:8]}"),
+            "amount": amount,
+            "current_psp": "stripe",
+            "optimal_psp": "adyen",
+            "current_fee": round(current_fee, 2),
+            "optimal_fee": round(optimal_fee, 2),
+            "savings": round(savings, 2)
+        })
+        total_savings += savings
+
+    return {
+        "ok": True,
+        "merchant_id": merchant_id,
+        "transactions_analyzed": len(optimized),
+        "total_savings": round(total_savings, 2),
+        "savings_bps": 70,  # 70 basis points
+        "recommendations": optimized[:10]
+    }
+
+
+async def receivables_scan_stripe(
+    account_id: str = None,
+    days_overdue: int = 30
+) -> Dict[str, Any]:
+    """
+    Scan Stripe for unpaid invoices/receivables.
+
+    Returns list of overdue invoices eligible for advance.
+    """
+    # Simulated Stripe scan
+    invoices = []
+    for i in range(15):
+        invoice = {
+            "id": f"inv_{uuid4().hex[:8]}",
+            "stripe_account": account_id or "acct_default",
+            "amount_due": 500 + (i * 100),
+            "currency": "usd",
+            "days_overdue": days_overdue + (i % 30),
+            "customer_email": f"customer{i}@example.com",
+            "eligible_for_advance": True,
+            "advance_rate": 0.85,  # 85% of face value
+            "created_at": _now()
+        }
+        invoices.append(invoice)
+        RECEIVABLES_INVOICES[invoice["id"]] = invoice
+
+    total_receivables = sum(inv["amount_due"] for inv in invoices)
+    total_advanceable = total_receivables * 0.85
+
+    return {
+        "ok": True,
+        "platform": "stripe",
+        "account_id": account_id or "acct_default",
+        "invoices_found": len(invoices),
+        "total_receivables": total_receivables,
+        "total_advanceable": total_advanceable,
+        "invoices": invoices[:10]  # Return first 10
+    }
+
+
+async def uacr_batch_quote(
+    signal_ids: List[str] = None,
+    max_quotes: int = 50
+) -> Dict[str, Any]:
+    """
+    Batch quote multiple UACR signals at once.
+
+    Creates OAA-style quotes for abandoned checkout recovery.
+    """
+    signals_to_quote = []
+
+    if signal_ids:
+        signals_to_quote = [UACR_SIGNALS.get(sid) for sid in signal_ids if sid in UACR_SIGNALS]
+    else:
+        signals_to_quote = list(UACR_SIGNALS.values())[:max_quotes]
+
+    quotes_created = []
+    for signal in signals_to_quote:
+        if signal:
+            quote = {
+                "quote_id": f"uacr_quote_{uuid4().hex[:8]}",
+                "signal_id": signal.get("id"),
+                "platform": signal.get("platform"),
+                "spread_pct": 0.08,  # 8% recovery fee
+                "quoted_at": _now(),
+                "valid_until": _now(),
+                "status": "pending"
+            }
+            UACR_QUOTES[quote["quote_id"]] = quote
+            quotes_created.append(quote)
+
+    return {
+        "ok": True,
+        "quotes_created": len(quotes_created),
+        "total_signals": len(UACR_SIGNALS),
+        "quotes": quotes_created[:10]  # Return first 10 as sample
+    }
+
+
+async def uacr_scan_instagram(
+    hashtags: List[str] = None,
+    max_results: int = 100
+) -> Dict[str, Any]:
+    """
+    Scan Instagram for abandoned checkout signals.
+
+    Looks for:
+    - Product review posts
+    - "Should I get this" stories
+    - Wishlist posts
+    - Comparison posts
+    """
+    hashtags = hashtags or ["shouldibuy", "help", "recommendations", "wishlist"]
+
+    # Simulated scan results
+    signals = []
+    for i in range(min(max_results, 20)):
+        signal = {
+            "id": f"ig_signal_{uuid4().hex[:8]}",
+            "platform": "instagram",
+            "content": f"Instagram purchase intent signal {i+1}",
+            "user_id": f"ig_user_{uuid4().hex[:6]}",
+            "detected_intent": "purchase_consideration",
+            "confidence": 0.70 + (i % 20) * 0.015,
+            "category": ["fashion", "tech", "beauty"][i % 3],
+            "hashtags": hashtags,
+            "timestamp": _now()
+        }
+        signals.append(signal)
+        UACR_SIGNALS[signal["id"]] = signal
+
+    return {
+        "ok": True,
+        "platform": "instagram",
+        "hashtags_used": hashtags,
+        "signals_found": len(signals),
+        "signals": signals[:10],
+        "total_ingested": len(UACR_SIGNALS)
+    }
+
+
 def include_gapharvester_ii(app):
     """
     Add all GapHarvester II endpoints to FastAPI app

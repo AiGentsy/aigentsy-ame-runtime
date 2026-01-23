@@ -840,6 +840,76 @@ async def offernet_get_stats() -> Dict[str, Any]:
     }
 
 
+async def tranche_check_settlements() -> Dict[str, Any]:
+    """
+    Check all tranches for pending settlements.
+
+    Returns list of tranches with matured deals ready to settle.
+    """
+    pending = []
+    total_value = 0.0
+
+    for tranche_id, tranche in TRANCHES.items():
+        if tranche.get("status") == "active":
+            # Check if any underlying deals have settled
+            settled_deals = [d for d in tranche.get("underlying_deals", []) if d.get("status") == "settled"]
+            if settled_deals:
+                settlement_value = sum(d.get("value", 0) for d in settled_deals)
+                pending.append({
+                    "tranche_id": tranche_id,
+                    "type": tranche.get("type"),
+                    "settled_deals": len(settled_deals),
+                    "settlement_value": settlement_value,
+                    "investors": tranche.get("investors", [])
+                })
+                total_value += settlement_value
+
+    return {
+        "ok": True,
+        "timestamp": _now(),
+        "pending_settlements": len(pending),
+        "total_settlement_value": total_value,
+        "tranches": pending
+    }
+
+
+async def ifx_market_making_cycle(
+    max_quotes: int = 100,
+    min_spread_bps: int = 10,
+    max_spread_bps: int = 30
+) -> Dict[str, Any]:
+    """
+    Run a full IFX market-making cycle.
+
+    1. Quote discovered intents
+    2. Hedge exposure
+    3. Return cycle summary
+    """
+    # Step 1: Auto-quote
+    quotes = await market_maker_auto_quote_intents(
+        max_quotes=max_quotes,
+        min_spread_bps=min_spread_bps,
+        max_spread_bps=max_spread_bps
+    )
+
+    # Step 2: Hedge
+    hedges = await market_maker_hedge(policy="kelly", hedge_ratio=0.5)
+
+    # Step 3: Get exposure
+    exposure = await market_maker_get_exposure()
+
+    return {
+        "ok": True,
+        "cycle_id": f"mm_cycle_{uuid4().hex[:8]}",
+        "timestamp": _now(),
+        "quotes_created": quotes.get("quotes_created", 0),
+        "hedges_executed": hedges.get("hedges_executed", 0),
+        "net_exposure": exposure.get("metrics", {}).get("net_exposure_usd", 0),
+        "gross_exposure": exposure.get("metrics", {}).get("gross_exposure_usd", 0),
+        "pnl_estimate": exposure.get("metrics", {}).get("unrealized_pnl", 0)
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # FASTAPI INTEGRATION - MARKET MAKER EXTENSIONS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -971,3 +1041,7 @@ def include_market_maker_extensions(app):
     print("📍 Completes USCL vision")
     print("📍 Status: GET /market-maker/status")
     print("=" * 80)
+
+
+# Alias for compatibility
+include_market_maker = include_market_maker_extensions
