@@ -219,8 +219,8 @@ async def run_traced_cycle() -> Dict[str, Any]:
 
     # Import orchestrators
     try:
-        from universal_revenue_orchestrator import UnifiedRevenueOrchestrator
-        orchestrator = UnifiedRevenueOrchestrator()
+        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
+        orchestrator = UniversalRevenueOrchestrator()
     except ImportError as e:
         return {
             "trace_id": trace_id,
@@ -476,7 +476,7 @@ async def system_check():
 
     # Check orchestrator imports
     try:
-        from universal_revenue_orchestrator import UnifiedRevenueOrchestrator
+        from universal_revenue_orchestrator import UniversalRevenueOrchestrator
         checks["unified_orchestrator"] = "✓"
     except Exception as e:
         checks["unified_orchestrator"] = f"✗ {e}"
