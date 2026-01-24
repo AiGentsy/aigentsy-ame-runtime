@@ -42661,6 +42661,32 @@ async def brain_training_trigger(body: Dict = Body(...)):
 # EXECUTION DEBUG ENDPOINTS - Troubleshoot why executions fail
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@app.get("/unified/fabric/status")
+async def unified_fabric_status():
+    """Check if Universal Fabric (browser automation) is operational"""
+    try:
+        from universal_fulfillment_fabric import get_fabric_status, PLAYWRIGHT_AVAILABLE
+        status = get_fabric_status()
+        return {
+            "ok": True,
+            "fabric_available": status.get("playwright_available", False),
+            "browser_automation": status.get("playwright_available", False),
+            "ai_vision": status.get("ai_available", False),
+            "rate_limit": status.get("rate_limit", {}),
+            "max_ev_auto_execute": status.get("max_ev_auto_execute", 50),
+            "execution_priority": "fabric_first_then_api",
+            "total_executions": status.get("total_executions", 0),
+            "recent_logs": status.get("recent_logs", [])[:5],
+            "hackernews_ready": status.get("hackernews_credentials", False)
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "fabric_available": False,
+            "error": str(e),
+            "execution_priority": "api_only"
+        }
+
 @app.get("/unified/execution/debug")
 async def unified_execution_debug():
     """Get detailed execution debug information"""

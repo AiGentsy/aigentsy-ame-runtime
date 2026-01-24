@@ -358,10 +358,18 @@ class ExecutionManager:
         logger.info(f"ExecutionManager: {available}/{total} subsystems loaded")
 
     async def execute_with_verification(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task with full verification pipeline"""
+        """
+        Execute task with full verification pipeline.
+
+        PRIORITY ORDER:
+        1. Universal Fabric (browser automation) - works on ANY platform
+        2. Platform-specific APIs (if fabric unavailable)
+        3. Fallback connectors
+        """
         task_id = task.get("task_id", f"exec_{uuid4().hex[:8]}")
+        platform = task.get("platform", "unknown")
         start_time = datetime.now(timezone.utc)
-        result = {"ok": False, "task_id": task_id}
+        result = {"ok": False, "task_id": task_id, "platform": platform}
 
         try:
             # Step 1: Compliance check (if available)
@@ -369,12 +377,39 @@ class ExecutionManager:
                 user_id = task.get("user_id", "system")
                 compliance = await self._ensure_compliance(user_id, task)
                 if not compliance.get("compliant", True):
-                    return {"ok": False, "error": "compliance_failed", "details": compliance}
+                    return {"ok": False, "error": "compliance_failed", "details": compliance, "method": "blocked"}
 
-            # Step 2: Execute via appropriate channel
-            execution_result = await self._route_execution(task)
+            # Step 2: PRIORITY 1 - Try Universal Fabric (browser automation)
+            if self._subsystems.get("fabric"):
+                fabric_result = await self._execute_via_fabric(task)
+                if fabric_result.get("ok"):
+                    execution_result = fabric_result
+                    execution_result["method"] = "fabric"
+                    logger.info(f"✅ {platform} executed via fabric")
+                elif fabric_result.get("queued"):
+                    # Fabric queued for manual approval - still a valid response
+                    return {**fabric_result, "method": "fabric_queued", "task_id": task_id}
+                else:
+                    # Fabric failed, try fallback
+                    logger.warning(f"⚠️ Fabric failed for {platform}: {fabric_result.get('error')}, trying API fallback")
+                    execution_result = await self._route_execution(task)
+                    execution_result["method"] = "api_fallback"
+            else:
+                # No fabric available, use API routing
+                execution_result = await self._route_execution(task)
+                execution_result["method"] = "api"
 
             if not execution_result.get("ok"):
+                error_info = {
+                    "task_id": task_id,
+                    "platform": platform,
+                    "type": task.get("type", "unknown"),
+                    "error": execution_result.get("error", "Unknown error"),
+                    "error_type": execution_result.get("error_type", "ExecutionError"),
+                    "method": execution_result.get("method", "unknown"),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                self._track_error(error_info)
                 return execution_result
 
             # Step 3: Verify deliverable (if available)
@@ -542,6 +577,93 @@ class ExecutionManager:
             return {"ok": False, "error": f"No connector for {platform}"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    async def _execute_via_fabric(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute task via Universal Fabric (browser automation).
+
+        This is the PRIMARY execution method - works on any platform without APIs.
+        """
+        platform = task.get("platform", "unknown")
+        action = task.get("action", task.get("type", "execute"))
+
+        # Map platform to URL if not provided
+        platform_urls = {
+            "twitter": "https://twitter.com",
+            "hackernews": "https://news.ycombinator.com",
+            "linkedin": "https://linkedin.com",
+            "reddit": "https://reddit.com",
+            "fiverr": "https://fiverr.com",
+            "upwork": "https://upwork.com",
+            "github": "https://github.com",
+            "producthunt": "https://producthunt.com",
+            "indiehackers": "https://indiehackers.com",
+            "dribbble": "https://dribbble.com",
+            "99designs": "https://99designs.com",
+        }
+
+        url = task.get("url") or task.get("job_url") or task.get("post_url") or platform_urls.get(platform)
+
+        if not url:
+            return {"ok": False, "error": f"No URL for platform: {platform}"}
+
+        # Build PDL name for fabric
+        pdl_name = f"{platform}.{action}"
+
+        # Get expected value for auto-execute threshold check
+        ev_estimate = float(task.get("ev", task.get("value", 0)) or 0)
+
+        try:
+            # Try fabric_execute first (handles PDL routing)
+            if callable(self._fabric_execute):
+                result = await self._fabric_execute(
+                    pdl_name=pdl_name,
+                    params={
+                        "url": url,
+                        **task.get("data", {}),
+                        **task.get("params", {}),
+                        "title": task.get("title", ""),
+                        "description": task.get("description", ""),
+                        "content": task.get("content", ""),
+                        "message": task.get("message", ""),
+                    },
+                    ev_estimate=ev_estimate,
+                    dry_run=task.get("dry_run", False)
+                )
+                return {
+                    "ok": result.get("ok", False),
+                    "output": result,
+                    "executor": "fabric",
+                    "method": "fabric",
+                    "platform": platform,
+                    "execution_id": result.get("execution_id"),
+                    "verification": result.get("verification", {}),
+                    "queued": result.get("queued", False),
+                    "error": result.get("error") if not result.get("ok") else None
+                }
+
+            # Fallback to execute_universal directly
+            if callable(self._execute_fabric):
+                result = await self._execute_fabric(
+                    pdl_name=pdl_name,
+                    url=url,
+                    data=task.get("data", task),
+                    ev_estimate=ev_estimate
+                )
+                return {
+                    "ok": result.get("ok", False),
+                    "output": result,
+                    "executor": "fabric",
+                    "method": "fabric",
+                    "platform": platform,
+                    "error": result.get("error") if not result.get("ok") else None
+                }
+
+            return {"ok": False, "error": "Fabric functions not available"}
+
+        except Exception as e:
+            logger.error(f"Fabric execution error for {platform}: {e}")
+            return {"ok": False, "error": str(e), "error_type": type(e).__name__}
 
     async def verify_deliverable(self, execution_result: Dict[str, Any]) -> Dict[str, Any]:
         """Verify a deliverable against SLA"""
