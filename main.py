@@ -42524,6 +42524,46 @@ async def accretion_budget_weights(body: Dict = Body(...)):
     weights = await _master_playbook.get_budget_weights(platform_kpis)
     return {"ok": True, "weights": weights}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORCHESTRATOR ALIASES - Convenience endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/orchestrator/kpis")
+async def orchestrator_kpis():
+    """Get comprehensive KPIs (alias for /accretion/kpis)"""
+    if not MASTER_PLAYBOOK_AVAILABLE:
+        return {"ok": False, "error": "master_playbook not available"}
+
+    kpis = _master_playbook.get_kpis()
+    return {
+        "ok": True,
+        "playbook_loaded": True,
+        "playbook_version": "1.0.0",
+        "brain_policy_version": "1.0.0",
+        "brain_confidence": 0.8 if BRAIN_TRAINER_AVAILABLE else 0.0,
+        "modules_loaded": _master_playbook.get_stats()["modules_loaded"],
+        "kpis": kpis
+    }
+
+@app.get("/unified/playbook/status")
+async def unified_playbook_status():
+    """Get master playbook and brain trainer status"""
+    playbook_stats = _master_playbook.get_stats() if MASTER_PLAYBOOK_AVAILABLE else None
+    trainer_stats = _brain_trainer.get_stats() if BRAIN_TRAINER_AVAILABLE else None
+
+    return {
+        "ok": True,
+        "playbook_loaded": MASTER_PLAYBOOK_AVAILABLE,
+        "playbook_version": "1.0.0" if MASTER_PLAYBOOK_AVAILABLE else None,
+        "brain_policy_version": "1.0.0" if BRAIN_TRAINER_AVAILABLE else None,
+        "brain_confidence": 0.8 if BRAIN_TRAINER_AVAILABLE else 0.0,
+        "accretion_modules": playbook_stats["module_status"] if playbook_stats else {},
+        "modules_loaded": playbook_stats["modules_loaded"] if playbook_stats else 0,
+        "modules_total": playbook_stats["modules_total"] if playbook_stats else 0,
+        "training_cycles": trainer_stats["training_cycles"] if trainer_stats else 0,
+        "buffered_outcomes": trainer_stats["buffered_outcomes"] if trainer_stats else 0
+    }
+
 print("")
 print("╔" + "═" * 78 + "╗")
 print("║" + " " * 10 + "ULTIMATE ACCRETION PACK - PROFIT MAXIMIZATION STACK" + " " * 17 + "║")
