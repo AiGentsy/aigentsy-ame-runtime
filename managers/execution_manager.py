@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import asyncio
 import logging
+import os
 
 logger = logging.getLogger("execution_manager")
 
@@ -630,32 +631,59 @@ class ExecutionManager:
                     ev_estimate=ev_estimate,
                     dry_run=task.get("dry_run", False)
                 )
-                return {
-                    "ok": result.get("ok", False),
-                    "output": result,
-                    "executor": "fabric",
-                    "method": "fabric",
-                    "platform": platform,
-                    "execution_id": result.get("execution_id"),
-                    "verification": result.get("verification", {}),
-                    "queued": result.get("queued", False),
-                    "error": result.get("error") if not result.get("ok") else None
-                }
 
-            # Fallback to execute_universal directly
+                # If PDL not found, fall back to execute_universal directly
+                pdl_not_found = "PDL not found" in result.get("error", "")
+                if result.get("ok") or result.get("queued") or not pdl_not_found:
+                    return {
+                        "ok": result.get("ok", False),
+                        "output": result,
+                        "executor": "fabric",
+                        "method": "fabric",
+                        "platform": platform,
+                        "execution_id": result.get("execution_id"),
+                        "verification": result.get("verification", {}),
+                        "queued": result.get("queued", False),
+                        "error": result.get("error") if not result.get("ok") else None
+                    }
+
+                # PDL not found - try execute_universal directly with the URL
+                logger.info(f"PDL {pdl_name} not found, trying execute_universal directly")
+
+            # Fallback to execute_universal directly (browser automation)
             if callable(self._execute_fabric):
+                # Get credentials if platform has them configured
+                credentials = None
+                username_key = f"{platform.upper()}_USERNAME"
+                password_key = f"{platform.upper()}_PASSWORD"
+                if os.environ.get(username_key) and os.environ.get(password_key):
+                    credentials = {
+                        "username": os.environ.get(username_key),
+                        "password": os.environ.get(password_key)
+                    }
+
                 result = await self._execute_fabric(
                     pdl_name=pdl_name,
                     url=url,
-                    data=task.get("data", task),
-                    ev_estimate=ev_estimate
+                    data={
+                        **task.get("data", {}),
+                        **task.get("params", {}),
+                        "title": task.get("title", ""),
+                        "description": task.get("description", ""),
+                        "content": task.get("content", ""),
+                        "message": task.get("message", ""),
+                        "url": url,
+                    },
+                    ev_estimate=ev_estimate,
+                    credentials=credentials
                 )
                 return {
                     "ok": result.get("ok", False),
                     "output": result,
-                    "executor": "fabric",
-                    "method": "fabric",
+                    "executor": "fabric/universal",
+                    "method": "fabric_universal",
                     "platform": platform,
+                    "execution_id": result.get("execution_id"),
                     "error": result.get("error") if not result.get("ok") else None
                 }
 
@@ -733,8 +761,6 @@ class ExecutionManager:
 
     def get_debug_info(self) -> Dict[str, Any]:
         """Get detailed debug information for troubleshooting"""
-        import os
-
         # Check which API credentials are configured (without revealing values)
         api_credentials = {
             "twitter": {
