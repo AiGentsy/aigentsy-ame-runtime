@@ -1603,25 +1603,51 @@ class UnifiedExecutor:
             results["phases"]["revenue_discovery"] = {"ok": False, "error": str(e)}
 
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 6: EXECUTE (Top 20 via ExecutionManager)
+        # PHASE 6: EXECUTE (Top 20 via ExecutionManager with Fabric priority)
         # ═══════════════════════════════════════════════════════════════════
         executed = []
+        execution_errors = []
         try:
             if self._manager_status.get("execution_manager") and scored:
                 for opp in scored[:20]:
+                    # Extract platform and URL from opportunity for fabric routing
+                    platform = opp.get("platform") or opp.get("source", "").split("/")[0] or "unknown"
+                    url = (opp.get("url") or opp.get("job_url") or opp.get("post_url") or
+                           opp.get("link") or opp.get("data", {}).get("url", ""))
+
                     exec_result = await self.execution_mgr.execute_with_verification({
                         "type": opp.get("type", "opportunity"),
+                        "platform": platform,
+                        "url": url,
+                        "action": opp.get("action", "execute"),
+                        "title": opp.get("title", ""),
+                        "description": opp.get("description", ""),
+                        "content": opp.get("content", ""),
+                        "ev": opp.get("ev", opp.get("value", 0)),
+                        "data": opp,
                         "opportunity": opp,
                         "task_id": f"{cycle_id}_{uuid4().hex[:4]}"
                     })
+
+                    method = exec_result.get("method", "unknown")
                     if exec_result.get("ok"):
-                        executed.append({"opportunity": opp, "result": exec_result})
+                        executed.append({"opportunity": opp, "result": exec_result, "method": method})
                         results["opportunities_executed"] += 1
+                        logger.info(f"✅ {platform} executed via {method}")
+                    else:
+                        execution_errors.append({
+                            "platform": platform,
+                            "error": exec_result.get("error", "Unknown"),
+                            "method": method
+                        })
+                        logger.warning(f"❌ {platform} failed via {method}: {exec_result.get('error', '')[:50]}")
 
                 results["phases"]["execution"] = {
                     "ok": True,
                     "attempted": min(20, len(scored)),
-                    "succeeded": len(executed)
+                    "succeeded": len(executed),
+                    "failed": len(execution_errors),
+                    "errors": execution_errors[:5]  # First 5 errors
                 }
                 results["managers_used"].append("execution_manager")
             else:
