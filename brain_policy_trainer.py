@@ -57,8 +57,8 @@ class BrainPolicyTrainer:
         """Initialize learning modules"""
         # Causal Uplift Trainer
         try:
-            from learning.causal_uplift_trainer import get_causal_uplift_trainer
-            self.causal_uplift = get_causal_uplift_trainer()
+            from learning.causal_uplift_trainer import get_causal_trainer
+            self.causal_uplift = get_causal_trainer()
             logger.info("✓ Causal Uplift Trainer loaded")
         except ImportError as e:
             logger.warning(f"Causal Uplift not available: {e}")
@@ -75,8 +75,8 @@ class BrainPolicyTrainer:
 
         # Hierarchical Bandits
         try:
-            from learning.hier_bandits import get_hierarchical_bandits
-            self.hier_bandits = get_hierarchical_bandits()
+            from learning.hier_bandits import get_hier_bandits
+            self.hier_bandits = get_hier_bandits()
             logger.info("✓ Hierarchical Bandits loaded")
         except ImportError as e:
             logger.warning(f"Hierarchical Bandits not available: {e}")
