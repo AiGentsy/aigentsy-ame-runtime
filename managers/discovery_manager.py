@@ -557,6 +557,55 @@ class DiscoveryManager:
 
         return enriched
 
+    async def enrich_with_network(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Enrich opportunities with network/relationship data from deal graph"""
+        enriched = []
+
+        for opp in opportunities:
+            enriched_opp = {**opp}
+
+            # Enrich with autonomous deal graph network data
+            if self._subsystems.get("autonomous_deal_graph") and hasattr(self, '_auto_deal_graph'):
+                try:
+                    # Find related entities/relationships
+                    if hasattr(self._auto_deal_graph, 'find_related'):
+                        related = self._auto_deal_graph.find_related(opp.get("id", ""))
+                        enriched_opp["network_connections"] = related
+
+                    # Get introduction opportunities
+                    if hasattr(self._auto_deal_graph, 'get_intro_opportunities'):
+                        intros = self._auto_deal_graph.get_intro_opportunities(opp)
+                        enriched_opp["intro_opportunities"] = intros
+
+                    # Calculate network value multiplier
+                    if hasattr(self._auto_deal_graph, 'calculate_network_value'):
+                        network_value = self._auto_deal_graph.calculate_network_value(opp)
+                        enriched_opp["network_value_multiplier"] = network_value
+                    else:
+                        # Default multiplier based on connections
+                        connections = len(enriched_opp.get("network_connections", []))
+                        enriched_opp["network_value_multiplier"] = 1.0 + (connections * 0.1)
+
+                except Exception as e:
+                    logger.warning(f"Network enrichment error: {e}")
+                    enriched_opp["network_value_multiplier"] = 1.0
+
+            # Enrich with relationship graph if available
+            if self._subsystems.get("autonomous_deal_graph") and hasattr(self, '_relationship_graph'):
+                try:
+                    if callable(self._relationship_graph):
+                        graph = self._relationship_graph()
+                        if hasattr(graph, 'get_relationships'):
+                            enriched_opp["relationships"] = graph.get_relationships(opp.get("id", ""))
+                except Exception as e:
+                    logger.warning(f"Relationship enrichment error: {e}")
+
+            # Add network enrichment timestamp
+            enriched_opp["network_enriched_at"] = datetime.now(timezone.utc).isoformat()
+            enriched.append(enriched_opp)
+
+        return enriched
+
     def get_status(self) -> Dict[str, Any]:
         """Get discovery manager status"""
         available = sum(1 for v in self._subsystems.values() if v)
