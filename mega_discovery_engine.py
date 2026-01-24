@@ -199,7 +199,13 @@ class MegaDiscoveryEngine:
         if ENGINES_AVAILABLE.get('ultimate') and ultimate_discover:
             print("   📡 Ultimate Discovery (27 platforms)...")
             try:
-                result = await ultimate_discover({})
+                # Fix: Pass username and user_profile as required by discover_all_opportunities
+                default_profile = {
+                    "platforms": ["twitter", "hackernews", "reddit", "linkedin"],
+                    "interests": ["ai", "automation", "business"],
+                    "max_budget": 10000
+                }
+                result = await ultimate_discover("wade", default_profile)
                 opps = result.get("opportunities", [])
                 for opp in opps:
                     opp['_source_engine'] = 'ultimate'
@@ -214,8 +220,19 @@ class MegaDiscoveryEngine:
         if ENGINES_AVAILABLE.get('alpha') and self._alpha_engine:
             print("   📡 Alpha Discovery (7 dimensions)...")
             try:
-                result = await self._alpha_engine.discover_opportunities({})
-                opps = result.get("opportunities", [])
+                # Fix: Use discover_and_route() which is the actual method
+                result = await self._alpha_engine.discover_and_route()
+                # Extract opportunities from routing structure
+                opps = []
+                routing = result.get("routing", {})
+                for route_type in ['user_routed', 'aigentsy_routed', 'held']:
+                    route_data = routing.get(route_type, {})
+                    route_opps = route_data.get('opportunities', [])
+                    for item in route_opps:
+                        if isinstance(item, dict) and 'opportunity' in item:
+                            opps.append(item['opportunity'])
+                        elif isinstance(item, dict):
+                            opps.append(item)
                 for opp in opps:
                     opp['_source_engine'] = 'alpha'
                 all_opportunities.extend(opps)
@@ -229,10 +246,13 @@ class MegaDiscoveryEngine:
         if ENGINES_AVAILABLE.get('explicit') and self._explicit_engine:
             print("   📡 Explicit Marketplace Scrapers...")
             try:
+                # Fix: scrape_all() returns a List[Dict], not a dict with 'opportunities' key
                 result = await self._explicit_engine.scrape_all()
-                opps = result.get("opportunities", [])
+                # Result is a list directly
+                opps = result if isinstance(result, list) else result.get("opportunities", [])
                 for opp in opps:
-                    opp['_source_engine'] = 'explicit'
+                    if isinstance(opp, dict):
+                        opp['_source_engine'] = 'explicit'
                 all_opportunities.extend(opps)
                 engine_results['explicit'] = {"count": len(opps), "status": "ok"}
                 print(f"      ✅ {len(opps)} opportunities")
@@ -245,10 +265,13 @@ class MegaDiscoveryEngine:
             print("   📡 Advanced Discovery (Predictive)...")
             try:
                 engine = PredictiveIntelligenceEngine()
-                result = await engine.predict_opportunities({})
-                opps = result.get("predictions", [])
+                # Fix: Use predict_all_opportunities() which is the actual method
+                result = await engine.predict_all_opportunities()
+                # Result is a list of opportunity dicts
+                opps = result if isinstance(result, list) else result.get("predictions", [])
                 for opp in opps:
-                    opp['_source_engine'] = 'advanced'
+                    if isinstance(opp, dict):
+                        opp['_source_engine'] = 'advanced'
                 all_opportunities.extend(opps)
                 engine_results['advanced'] = {"count": len(opps), "status": "ok"}
                 print(f"      ✅ {len(opps)} predictions")
