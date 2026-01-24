@@ -38,6 +38,8 @@ class ExecutionManager:
         self._executions: List[Dict] = []
         self._verified_count: int = 0
         self._quality_scores: List[float] = []
+        self._execution_errors: List[Dict] = []  # Track last N errors
+        self._max_error_history: int = 50
         self._init_subsystems()
 
     def _init_subsystems(self):
@@ -400,9 +402,25 @@ class ExecutionManager:
 
         except Exception as e:
             logger.error(f"Execution error: {e}")
-            result = {"ok": False, "error": str(e), "task_id": task_id}
+            error_info = {
+                "task_id": task_id,
+                "platform": task.get("platform", "unknown"),
+                "type": task.get("type", "unknown"),
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            self._track_error(error_info)
+            result = {"ok": False, "error": str(e), "error_type": type(e).__name__, "task_id": task_id}
 
         return result
+
+    def _track_error(self, error_info: Dict[str, Any]):
+        """Track execution error for debugging"""
+        self._execution_errors.append(error_info)
+        # Keep only last N errors
+        if len(self._execution_errors) > self._max_error_history:
+            self._execution_errors = self._execution_errors[-self._max_error_history:]
 
     async def _route_execution(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Route task to appropriate execution system"""
@@ -589,6 +607,139 @@ class ExecutionManager:
                 "quality_score": round(avg_quality, 2)
             },
             "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    def get_debug_info(self) -> Dict[str, Any]:
+        """Get detailed debug information for troubleshooting"""
+        import os
+
+        # Check which API credentials are configured (without revealing values)
+        api_credentials = {
+            "twitter": {
+                "TWITTER_API_KEY": bool(os.environ.get("TWITTER_API_KEY")),
+                "TWITTER_API_SECRET": bool(os.environ.get("TWITTER_API_SECRET")),
+                "TWITTER_ACCESS_TOKEN": bool(os.environ.get("TWITTER_ACCESS_TOKEN")),
+                "TWITTER_BEARER_TOKEN": bool(os.environ.get("TWITTER_BEARER_TOKEN")),
+            },
+            "instagram": {
+                "INSTAGRAM_ACCESS_TOKEN": bool(os.environ.get("INSTAGRAM_ACCESS_TOKEN")),
+                "INSTAGRAM_BUSINESS_ID": bool(os.environ.get("INSTAGRAM_BUSINESS_ID")),
+            },
+            "linkedin": {
+                "LINKEDIN_ACCESS_TOKEN": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN")),
+                "LINKEDIN_CLIENT_ID": bool(os.environ.get("LINKEDIN_CLIENT_ID")),
+                "LINKEDIN_CLIENT_SECRET": bool(os.environ.get("LINKEDIN_CLIENT_SECRET")),
+            },
+            "github": {
+                "GITHUB_TOKEN": bool(os.environ.get("GITHUB_TOKEN")),
+            },
+            "stripe": {
+                "STRIPE_SECRET_KEY": bool(os.environ.get("STRIPE_SECRET_KEY")),
+                "STRIPE_WEBHOOK_SECRET": bool(os.environ.get("STRIPE_WEBHOOK_SECRET")),
+            },
+            "shopify": {
+                "SHOPIFY_ADMIN_TOKEN": bool(os.environ.get("SHOPIFY_ADMIN_TOKEN")),
+                "SHOPIFY_WEBHOOK_SECRET": bool(os.environ.get("SHOPIFY_WEBHOOK_SECRET")),
+            },
+            "twilio": {
+                "TWILIO_ACCOUNT_SID": bool(os.environ.get("TWILIO_ACCOUNT_SID")),
+                "TWILIO_AUTH_TOKEN": bool(os.environ.get("TWILIO_AUTH_TOKEN")),
+                "TWILIO_PHONE_NUMBER": bool(os.environ.get("TWILIO_PHONE_NUMBER")),
+            },
+            "resend": {
+                "RESEND_API_KEY": bool(os.environ.get("RESEND_API_KEY")),
+            },
+            "ai_models": {
+                "OPENROUTER_API_KEY": bool(os.environ.get("OPENROUTER_API_KEY")),
+                "PERPLEXITY_API_KEY": bool(os.environ.get("PERPLEXITY_API_KEY")),
+                "GEMINI_API_KEY": bool(os.environ.get("GEMINI_API_KEY")),
+                "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            },
+            "media": {
+                "RUNWAY_API_KEY": bool(os.environ.get("RUNWAY_API_KEY")),
+                "STABILITY_API_KEY": bool(os.environ.get("STABILITY_API_KEY")),
+            },
+            "upwork": {
+                "UPWORK_API_KEY": bool(os.environ.get("UPWORK_API_KEY")),
+                "UPWORK_API_SECRET": bool(os.environ.get("UPWORK_API_SECRET")),
+            },
+            "fiverr": {
+                "FIVERR_API_KEY": bool(os.environ.get("FIVERR_API_KEY")),
+                "FIVERR_SESSION": bool(os.environ.get("FIVERR_SESSION")),
+            },
+        }
+
+        # Count configured vs total for each platform
+        credential_summary = {}
+        for platform, creds in api_credentials.items():
+            configured = sum(1 for v in creds.values() if v)
+            total = len(creds)
+            credential_summary[platform] = {
+                "configured": configured,
+                "total": total,
+                "ready": configured == total,
+                "missing": [k for k, v in creds.items() if not v]
+            }
+
+        return {
+            "ok": True,
+            "credentials": credential_summary,
+            "credentials_detail": api_credentials,
+            "subsystems": self._subsystems,
+            "recent_errors": self._execution_errors[-10:],  # Last 10 errors
+            "error_count": len(self._execution_errors),
+            "execution_stats": {
+                "total_executions": len(self._executions),
+                "successful": sum(1 for e in self._executions if e.get("ok")),
+                "failed": sum(1 for e in self._executions if not e.get("ok")),
+                "verified": self._verified_count
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    def get_recent_errors(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent execution errors"""
+        return self._execution_errors[-limit:]
+
+    async def execute_batch_with_errors(self, opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Execute batch of opportunities and return detailed error info"""
+        results = []
+        errors = []
+        succeeded = 0
+        failed = 0
+
+        for opp in opportunities:
+            try:
+                result = await self.execute_with_verification(opp)
+                results.append(result)
+                if result.get("ok"):
+                    succeeded += 1
+                else:
+                    failed += 1
+                    errors.append({
+                        "opportunity_id": opp.get("id", "unknown"),
+                        "platform": opp.get("platform", "unknown"),
+                        "type": opp.get("type", "unknown"),
+                        "error": result.get("error", "Unknown error"),
+                        "error_type": result.get("error_type", "UnknownError")
+                    })
+            except Exception as e:
+                failed += 1
+                errors.append({
+                    "opportunity_id": opp.get("id", "unknown"),
+                    "platform": opp.get("platform", "unknown"),
+                    "type": opp.get("type", "unknown"),
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                })
+
+        return {
+            "ok": succeeded > 0,
+            "attempted": len(opportunities),
+            "succeeded": succeeded,
+            "failed": failed,
+            "errors": errors[:20],  # Limit to 20 errors in response
+            "results": results
         }
 
 

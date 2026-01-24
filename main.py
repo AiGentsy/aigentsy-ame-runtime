@@ -42657,6 +42657,143 @@ async def brain_training_trigger(body: Dict = Body(...)):
         }
     }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXECUTION DEBUG ENDPOINTS - Troubleshoot why executions fail
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/unified/execution/debug")
+async def unified_execution_debug():
+    """Get detailed execution debug information"""
+    from managers.execution_manager import get_execution_manager
+    exec_mgr = get_execution_manager()
+    return exec_mgr.get_debug_info()
+
+@app.get("/unified/execution/errors")
+async def unified_execution_errors():
+    """Get recent execution errors"""
+    from managers.execution_manager import get_execution_manager
+    exec_mgr = get_execution_manager()
+    return {
+        "ok": True,
+        "errors": exec_mgr.get_recent_errors(limit=20),
+        "total_errors": len(exec_mgr._execution_errors)
+    }
+
+@app.get("/platform_apis/status")
+async def platform_apis_status():
+    """Check which platform APIs are authenticated"""
+    import os
+
+    platforms = {
+        "twitter": {
+            "authenticated": all([
+                os.environ.get("TWITTER_API_KEY"),
+                os.environ.get("TWITTER_API_SECRET"),
+                os.environ.get("TWITTER_ACCESS_TOKEN")
+            ]),
+            "keys_configured": {
+                "api_key": bool(os.environ.get("TWITTER_API_KEY")),
+                "api_secret": bool(os.environ.get("TWITTER_API_SECRET")),
+                "access_token": bool(os.environ.get("TWITTER_ACCESS_TOKEN")),
+                "bearer_token": bool(os.environ.get("TWITTER_BEARER_TOKEN")),
+            }
+        },
+        "linkedin": {
+            "authenticated": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN")),
+            "keys_configured": {
+                "access_token": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN")),
+                "client_id": bool(os.environ.get("LINKEDIN_CLIENT_ID")),
+                "client_secret": bool(os.environ.get("LINKEDIN_CLIENT_SECRET")),
+            }
+        },
+        "instagram": {
+            "authenticated": all([
+                os.environ.get("INSTAGRAM_ACCESS_TOKEN"),
+                os.environ.get("INSTAGRAM_BUSINESS_ID")
+            ]),
+            "keys_configured": {
+                "access_token": bool(os.environ.get("INSTAGRAM_ACCESS_TOKEN")),
+                "business_id": bool(os.environ.get("INSTAGRAM_BUSINESS_ID")),
+            }
+        },
+        "github": {
+            "authenticated": bool(os.environ.get("GITHUB_TOKEN")),
+            "keys_configured": {
+                "token": bool(os.environ.get("GITHUB_TOKEN")),
+            }
+        },
+        "upwork": {
+            "authenticated": all([
+                os.environ.get("UPWORK_API_KEY"),
+                os.environ.get("UPWORK_API_SECRET")
+            ]),
+            "keys_configured": {
+                "api_key": bool(os.environ.get("UPWORK_API_KEY")),
+                "api_secret": bool(os.environ.get("UPWORK_API_SECRET")),
+            }
+        },
+        "fiverr": {
+            "authenticated": bool(os.environ.get("FIVERR_API_KEY") or os.environ.get("FIVERR_SESSION")),
+            "keys_configured": {
+                "api_key": bool(os.environ.get("FIVERR_API_KEY")),
+                "session": bool(os.environ.get("FIVERR_SESSION")),
+            }
+        },
+        "stripe": {
+            "authenticated": bool(os.environ.get("STRIPE_SECRET_KEY")),
+            "keys_configured": {
+                "secret_key": bool(os.environ.get("STRIPE_SECRET_KEY")),
+                "webhook_secret": bool(os.environ.get("STRIPE_WEBHOOK_SECRET")),
+            }
+        },
+        "shopify": {
+            "authenticated": bool(os.environ.get("SHOPIFY_ADMIN_TOKEN")),
+            "keys_configured": {
+                "admin_token": bool(os.environ.get("SHOPIFY_ADMIN_TOKEN")),
+                "webhook_secret": bool(os.environ.get("SHOPIFY_WEBHOOK_SECRET")),
+            }
+        },
+        "twilio": {
+            "authenticated": all([
+                os.environ.get("TWILIO_ACCOUNT_SID"),
+                os.environ.get("TWILIO_AUTH_TOKEN")
+            ]),
+            "keys_configured": {
+                "account_sid": bool(os.environ.get("TWILIO_ACCOUNT_SID")),
+                "auth_token": bool(os.environ.get("TWILIO_AUTH_TOKEN")),
+                "phone_number": bool(os.environ.get("TWILIO_PHONE_NUMBER")),
+            }
+        },
+        "resend": {
+            "authenticated": bool(os.environ.get("RESEND_API_KEY")),
+            "keys_configured": {
+                "api_key": bool(os.environ.get("RESEND_API_KEY")),
+            }
+        },
+        "ai_providers": {
+            "openrouter": bool(os.environ.get("OPENROUTER_API_KEY")),
+            "perplexity": bool(os.environ.get("PERPLEXITY_API_KEY")),
+            "gemini": bool(os.environ.get("GEMINI_API_KEY")),
+            "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "runway": bool(os.environ.get("RUNWAY_API_KEY")),
+            "stability": bool(os.environ.get("STABILITY_API_KEY")),
+        }
+    }
+
+    # Summary
+    authenticated_count = sum(1 for p in platforms.values() if isinstance(p, dict) and p.get("authenticated"))
+    total_platforms = len([p for p in platforms.values() if isinstance(p, dict) and "authenticated" in p])
+
+    return {
+        "ok": True,
+        "summary": {
+            "authenticated": authenticated_count,
+            "total": total_platforms,
+            "percentage": round(authenticated_count / total_platforms * 100, 1) if total_platforms else 0
+        },
+        "platforms": platforms
+    }
+
 print("")
 print("╔" + "═" * 78 + "╗")
 print("║" + " " * 10 + "ULTIMATE ACCRETION PACK - PROFIT MAXIMIZATION STACK" + " " * 17 + "║")
