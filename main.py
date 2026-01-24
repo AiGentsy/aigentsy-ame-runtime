@@ -42564,6 +42564,61 @@ async def unified_playbook_status():
         "buffered_outcomes": trainer_stats["buffered_outcomes"] if trainer_stats else 0
     }
 
+@app.get("/brain/training/status")
+async def brain_training_status():
+    """Get brain policy trainer status"""
+    if not BRAIN_TRAINER_AVAILABLE:
+        return {"ok": False, "error": "brain_trainer not available"}
+
+    stats = _brain_trainer.get_stats()
+    last_training = stats.get("last_training")
+
+    # Calculate next training time (interval after last training)
+    next_training = None
+    if last_training:
+        from datetime import datetime, timedelta
+        try:
+            last_dt = datetime.fromisoformat(last_training.replace('Z', '+00:00'))
+            next_dt = last_dt + timedelta(minutes=stats["training_interval_minutes"])
+            next_training = next_dt.isoformat()
+        except:
+            pass
+
+    return {
+        "ok": True,
+        "last_training_at": last_training,
+        "next_training_at": next_training,
+        "current_policy_version": "1.0.0",
+        "confidence_score": 0.8 if stats["training_cycles"] > 0 else 0.5,
+        "training_samples": stats["buffered_outcomes"],
+        "training_cycles": stats["training_cycles"],
+        "training_interval_minutes": stats["training_interval_minutes"],
+        "modules": stats["modules"],
+        "latest_training": stats.get("latest_training")
+    }
+
+@app.post("/brain/training/trigger")
+async def brain_training_trigger(body: Dict = Body(...)):
+    """Manually trigger a training cycle"""
+    if not BRAIN_TRAINER_AVAILABLE:
+        return {"ok": False, "error": "brain_trainer not available"}
+
+    outcomes = body.get("outcomes", None)
+    result = await _brain_trainer.train_and_publish_policy(outcomes)
+
+    return {
+        "ok": True,
+        "training_result": {
+            "timestamp": result.timestamp.isoformat(),
+            "outcomes_processed": result.outcomes_processed,
+            "uplift_scores": result.uplift_scores,
+            "shapley_values": result.shapley_values,
+            "experiments_graduated": result.experiments_graduated,
+            "policy_updates": result.policy_updates,
+            "metrics": result.metrics
+        }
+    }
+
 print("")
 print("╔" + "═" * 78 + "╗")
 print("║" + " " * 10 + "ULTIMATE ACCRETION PACK - PROFIT MAXIMIZATION STACK" + " " * 17 + "║")
