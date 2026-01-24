@@ -9578,6 +9578,44 @@ async def metahive_summary(request: Request):
         enabled = [u for u in users if u.get("metahive", {}).get("enabled")]
         return {"ok": True, "members": len(enabled)}
 
+@app.get("/metahive/stats")
+async def metahive_stats():
+    """Get MetaHive collective intelligence statistics"""
+    # Get stats from metahive_brain
+    hive_stats = get_hive_stats()
+    top_patterns = get_top_patterns(limit=10)
+
+    # Get member count
+    members = 0
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            data = await _jsonbin_get(client)
+            users = data.get("record", [])
+            members = len([u for u in users if u.get("metahive", {}).get("enabled")])
+    except:
+        pass
+
+    stats = hive_stats.get("stats", {}) if isinstance(hive_stats, dict) else {}
+    patterns = top_patterns.get("patterns", []) if isinstance(top_patterns, dict) else []
+
+    # Extract platform stats from patterns
+    platform_counts = {}
+    for p in patterns:
+        platform = p.get("platform", "unknown") if isinstance(p, dict) else "unknown"
+        platform_counts[platform] = platform_counts.get(platform, 0) + 1
+
+    top_platforms = sorted(platform_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    return {
+        "ok": True,
+        "total_patterns": stats.get("total_patterns", len(patterns)),
+        "patterns_last_24h": stats.get("patterns_24h", 0),
+        "top_platforms": dict(top_platforms),
+        "members": members,
+        "top_patterns": patterns[:5],
+        "raw_stats": stats
+    }
+
 # === TEMPLATE CATALOG ROUTES (non-destructive) ===
 try:
     from fastapi import APIRouter
