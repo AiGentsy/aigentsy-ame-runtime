@@ -42382,5 +42382,173 @@ print("=" * 80)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ULTIMATE ACCRETION PACK - 12 Profit-Maximizing Intelligence Layers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Master Playbook - Unified orchestrator for all 12 intelligence modules
+try:
+    from master_playbook import get_master_playbook, evaluate_opportunity, record_outcome, get_kpis
+
+    _master_playbook = get_master_playbook()
+    playbook_stats = _master_playbook.get_stats()
+
+    print("=" * 80)
+    print("🧠 MASTER PLAYBOOK ACTIVATED - Ultimate Accretion Pack")
+    print("=" * 80)
+    print(f"Modules Loaded: {playbook_stats['modules_loaded']}/{playbook_stats['modules_total']}")
+    for module, loaded in playbook_stats['module_status'].items():
+        icon = "✅" if loaded else "❌"
+        print(f"  {icon} {module}")
+    print("=" * 80)
+    MASTER_PLAYBOOK_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ master_playbook not available: {e}")
+    MASTER_PLAYBOOK_AVAILABLE = False
+    _master_playbook = None
+
+# Brain Policy Trainer - Autonomous learning system
+try:
+    from brain_policy_trainer import get_brain_trainer, train_policy, buffer_outcome, maybe_train
+
+    _brain_trainer = get_brain_trainer()
+    trainer_stats = _brain_trainer.get_stats()
+
+    print("=" * 80)
+    print("🎓 BRAIN POLICY TRAINER ACTIVATED - Autonomous Learning")
+    print("=" * 80)
+    print(f"Training Cycles: {trainer_stats['training_cycles']}")
+    print(f"Buffered Outcomes: {trainer_stats['buffered_outcomes']}")
+    print(f"Training Interval: {trainer_stats['training_interval_minutes']} minutes")
+    for module, loaded in trainer_stats['modules'].items():
+        icon = "✅" if loaded else "❌"
+        print(f"  {icon} {module}")
+    print("=" * 80)
+    BRAIN_TRAINER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ brain_policy_trainer not available: {e}")
+    BRAIN_TRAINER_AVAILABLE = False
+    _brain_trainer = None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ULTIMATE ACCRETION PACK ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/accretion/status")
+async def accretion_status():
+    """Get Ultimate Accretion Pack status"""
+    result = {
+        "master_playbook": {
+            "available": MASTER_PLAYBOOK_AVAILABLE,
+            "stats": _master_playbook.get_stats() if _master_playbook else None
+        },
+        "brain_trainer": {
+            "available": BRAIN_TRAINER_AVAILABLE,
+            "stats": _brain_trainer.get_stats() if _brain_trainer else None
+        }
+    }
+
+    # Add KPIs if available
+    if _master_playbook:
+        result["kpis"] = _master_playbook.get_kpis()
+
+    return result
+
+@app.post("/accretion/evaluate")
+async def accretion_evaluate(body: Dict = Body(...)):
+    """Evaluate opportunity with all 12 intelligence layers"""
+    if not MASTER_PLAYBOOK_AVAILABLE:
+        return {"ok": False, "error": "master_playbook not available"}
+
+    opportunity = body.get("opportunity", body)
+    result = await _master_playbook.evaluate_opportunity(opportunity)
+    return {"ok": True, "evaluation": result}
+
+@app.post("/accretion/record-outcome")
+async def accretion_record_outcome(body: Dict = Body(...)):
+    """Record execution outcome to all learning systems"""
+    if not MASTER_PLAYBOOK_AVAILABLE:
+        return {"ok": False, "error": "master_playbook not available"}
+
+    await _master_playbook.record_outcome(body)
+
+    # Also buffer for brain trainer
+    if BRAIN_TRAINER_AVAILABLE:
+        _brain_trainer.buffer_outcome(body)
+
+    return {"ok": True, "recorded": True}
+
+@app.post("/accretion/train")
+async def accretion_train(body: Dict = Body(...)):
+    """Trigger training cycle"""
+    if not BRAIN_TRAINER_AVAILABLE:
+        return {"ok": False, "error": "brain_trainer not available"}
+
+    outcomes = body.get("outcomes", None)
+    result = await _brain_trainer.train_and_publish_policy(outcomes)
+
+    return {
+        "ok": True,
+        "training_result": {
+            "outcomes_processed": result.outcomes_processed,
+            "uplift_scores": result.uplift_scores,
+            "shapley_values": result.shapley_values,
+            "experiments_graduated": result.experiments_graduated,
+            "policy_updates": result.policy_updates
+        }
+    }
+
+@app.get("/accretion/kpis")
+async def accretion_kpis():
+    """Get comprehensive KPIs from all systems"""
+    if not MASTER_PLAYBOOK_AVAILABLE:
+        return {"ok": False, "error": "master_playbook not available"}
+
+    return {"ok": True, "kpis": _master_playbook.get_kpis()}
+
+@app.get("/accretion/engine-rankings")
+async def accretion_engine_rankings():
+    """Get current engine rankings from training"""
+    if not BRAIN_TRAINER_AVAILABLE:
+        return {"ok": False, "error": "brain_trainer not available"}
+
+    rankings = _brain_trainer.get_engine_rankings()
+    return {"ok": True, "rankings": rankings}
+
+@app.post("/accretion/budget-weights")
+async def accretion_budget_weights(body: Dict = Body(...)):
+    """Get optimal budget allocation weights"""
+    if not MASTER_PLAYBOOK_AVAILABLE:
+        return {"ok": False, "error": "master_playbook not available"}
+
+    platform_kpis = body.get("platform_kpis", {})
+    weights = await _master_playbook.get_budget_weights(platform_kpis)
+    return {"ok": True, "weights": weights}
+
+print("")
+print("╔" + "═" * 78 + "╗")
+print("║" + " " * 10 + "ULTIMATE ACCRETION PACK - PROFIT MAXIMIZATION STACK" + " " * 17 + "║")
+print("╚" + "═" * 78 + "╝")
+print("")
+print("Tier 1 - Revenue:      ltv_oracle, price_arm_v2, attention_router")
+print("Tier 2 - Learning:     causal_uplift_trainer, hier_bandits")
+print("Tier 3 - Capital:      r3_allocator (Kelly criterion)")
+print("Tier 4 - Quality:      aigx_incentives, adversarial_guard")
+print("Tier 5 - Accountability: policy_shapley, policy_lab, kpi_board")
+print("")
+print("Integration:           master_playbook, brain_policy_trainer")
+print("")
+print("Endpoints:")
+print("  GET  /accretion/status          - Full system status")
+print("  POST /accretion/evaluate        - Evaluate opportunity (all 12 layers)")
+print("  POST /accretion/record-outcome  - Record outcome for learning")
+print("  POST /accretion/train           - Trigger training cycle")
+print("  GET  /accretion/kpis            - Comprehensive KPIs")
+print("  GET  /accretion/engine-rankings - Current engine rankings")
+print("  POST /accretion/budget-weights  - Optimal budget allocation")
+print("")
+print("=" * 80)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # END SECTION 44B
 # ═══════════════════════════════════════════════════════════════════════════════
