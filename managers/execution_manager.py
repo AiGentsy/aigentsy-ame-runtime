@@ -299,38 +299,34 @@ class ExecutionManager:
             logger.warning(f"Universal Platform Adapter not available: {e}")
             self._subsystems["universal_platform_adapter"] = False
 
-        # 14. Dribbble Portfolio Automation
+        # 14. Dribbble Portfolio Automation (lazy init - requires graphics_engine)
         try:
             from dribbble_portfolio_automation import (
                 DribbbleAutomation,
                 TrendAnalyzer,
-                ContentGenerator,
                 PortfolioManager,
                 ClientInquiryManager
             )
-            self._dribbble = DribbbleAutomation()
-            self._dribbble_trends = TrendAnalyzer
-            self._dribbble_content = ContentGenerator
-            self._dribbble_portfolio = PortfolioManager
-            self._dribbble_inquiries = ClientInquiryManager
+            self._dribbble_class = DribbbleAutomation  # Lazy - needs graphics_engine
+            self._dribbble_trends = TrendAnalyzer()
+            self._dribbble_portfolio = PortfolioManager()
+            self._dribbble_inquiries = ClientInquiryManager()
             self._subsystems["dribbble_portfolio"] = True
             logger.info("Dribbble Portfolio Automation loaded successfully")
         except (ImportError, Exception) as e:
             logger.warning(f"Dribbble portfolio not available: {e}")
             self._subsystems["dribbble_portfolio"] = False
 
-        # 15. 99designs Automation
+        # 15. 99designs Automation (lazy init - requires graphics_engine)
         try:
             from ninety_nine_designs_automation import (
                 DesignContestAutomation,
                 ContestDiscovery,
-                ContestEntryGenerator,
                 ContestSubmissionManager
             )
-            self._ninety_nine = DesignContestAutomation()
-            self._contest_discovery = ContestDiscovery
-            self._entry_generator = ContestEntryGenerator
-            self._submission_mgr = ContestSubmissionManager
+            self._ninety_nine_class = DesignContestAutomation  # Lazy - needs graphics_engine
+            self._contest_discovery = ContestDiscovery()
+            self._submission_mgr = ContestSubmissionManager()
             self._subsystems["ninety_nine_designs"] = True
             logger.info("99designs Automation loaded successfully")
         except (ImportError, Exception) as e:
