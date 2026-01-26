@@ -1506,24 +1506,68 @@ class UnifiedExecutor:
         }
 
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 1: DISCOVERY (15+ sources via DiscoveryManager)
+        # PHASE 1: DISCOVERY (Use MegaDiscoveryEngine for 1000+ opportunities)
         # ═══════════════════════════════════════════════════════════════════
         opportunities = []
         try:
-            if self._manager_status.get("discovery_manager"):
-                opportunities = await self.discovery_mgr.discover_all_sources()
-                results["phases"]["discovery"] = {
-                    "ok": True,
-                    "count": len(opportunities),
-                    "sources": self.discovery_mgr._sources_used
-                }
-                results["total_opportunities"] = len(opportunities)
-                results["managers_used"].append("discovery_manager")
-            else:
-                # Fallback to legacy discovery
-                discovery_result = await self._execute_discovery({"type": "discover_opportunities"})
-                opportunities = discovery_result.get("output", [])
-                results["phases"]["discovery"] = {"ok": True, "count": len(opportunities), "fallback": True}
+            # PRIORITY 1: Use MegaDiscoveryEngine (finds 1000+ opportunities)
+            try:
+                from mega_discovery_engine import MegaDiscoveryEngine
+                mega_engine = MegaDiscoveryEngine()
+                mega_result = mega_engine.discover_all(enable_filters=True)
+
+                if mega_result.get("ok"):
+                    # Extract opportunities from mega discovery results
+                    dr = mega_result.get("discovery_results", {})
+                    routing = dr.get("routing", {})
+
+                    # Combine user_routed and aigentsy_routed opportunities
+                    for route_type in ["user_routed", "aigentsy_routed"]:
+                        route_data = routing.get(route_type, {})
+                        for item in route_data.get("opportunities", []):
+                            if isinstance(item, dict):
+                                opp = item.get("opportunity", item)
+                                opportunities.append(opp)
+
+                    # Also add execute_now opportunities
+                    for opp in dr.get("execute_now", []):
+                        if opp not in opportunities:
+                            opportunities.append(opp)
+
+                    results["phases"]["discovery"] = {
+                        "ok": True,
+                        "count": len(opportunities),
+                        "sources": ["mega_discovery"],
+                        "engine": "MegaDiscoveryEngine",
+                        "total_discovered": dr.get("total_opportunities_discovered", 0),
+                        "after_filters": dr.get("total_opportunities_filtered", 0)
+                    }
+                    results["total_opportunities"] = len(opportunities)
+                    results["managers_used"].append("mega_discovery")
+                    logger.info(f"✅ MegaDiscovery found {len(opportunities)} opportunities")
+                else:
+                    raise Exception("MegaDiscovery returned not ok")
+
+            except Exception as mega_error:
+                logger.warning(f"MegaDiscovery failed: {mega_error}, falling back to DiscoveryManager")
+
+                # FALLBACK: Use DiscoveryManager
+                if self._manager_status.get("discovery_manager"):
+                    opportunities = await self.discovery_mgr.discover_all_sources()
+                    results["phases"]["discovery"] = {
+                        "ok": True,
+                        "count": len(opportunities),
+                        "sources": self.discovery_mgr._sources_used,
+                        "fallback": "discovery_manager"
+                    }
+                    results["total_opportunities"] = len(opportunities)
+                    results["managers_used"].append("discovery_manager")
+                else:
+                    # Legacy fallback
+                    discovery_result = await self._execute_discovery({"type": "discover_opportunities"})
+                    opportunities = discovery_result.get("output", [])
+                    results["phases"]["discovery"] = {"ok": True, "count": len(opportunities), "fallback": "legacy"}
+
         except Exception as e:
             results["phases"]["discovery"] = {"ok": False, "error": str(e)}
 
@@ -1543,19 +1587,20 @@ class UnifiedExecutor:
         # PHASE 3: SCORE (Intelligence scoring via IntelligenceManager)
         # ═══════════════════════════════════════════════════════════════════
         scored = []
+        MAX_TO_SCORE = 200  # Increased from 100
         try:
             if self._manager_status.get("intelligence_manager") and opportunities:
-                scored = await self.intelligence_mgr.score_opportunities(opportunities[:100])
+                scored = await self.intelligence_mgr.score_opportunities(opportunities[:MAX_TO_SCORE])
                 results["phases"]["scoring"] = {"ok": True, "scored": len(scored)}
                 results["opportunities_scored"] = len(scored)
                 results["managers_used"].append("intelligence_manager")
             else:
-                # Fallback to simple scoring
-                scored = sorted(opportunities[:50], key=lambda x: x.get("ev", 0), reverse=True)
+                # Fallback to simple scoring by EV
+                scored = sorted(opportunities[:100], key=lambda x: x.get("ev", x.get("value", 0)), reverse=True)
                 results["phases"]["scoring"] = {"ok": True, "count": len(scored), "fallback": True}
         except Exception as e:
             results["phases"]["scoring"] = {"ok": False, "error": str(e)}
-            scored = opportunities[:20]
+            scored = opportunities[:50]  # Increased fallback from 20
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 4: FINANCE (OCL P2P lending check via FinancialManager)
@@ -1603,13 +1648,14 @@ class UnifiedExecutor:
             results["phases"]["revenue_discovery"] = {"ok": False, "error": str(e)}
 
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 6: EXECUTE (Top 20 via ExecutionManager with Fabric priority)
+        # PHASE 6: EXECUTE (Top 50 via ExecutionManager with Fabric priority)
         # ═══════════════════════════════════════════════════════════════════
         executed = []
         execution_errors = []
+        MAX_EXECUTIONS_PER_CYCLE = 50  # Increased from 20
         try:
             if self._manager_status.get("execution_manager") and scored:
-                for opp in scored[:20]:
+                for opp in scored[:MAX_EXECUTIONS_PER_CYCLE]:
                     # Extract platform and URL from opportunity for fabric routing
                     platform = opp.get("platform") or opp.get("source", "").split("/")[0] or "unknown"
                     url = (opp.get("url") or opp.get("job_url") or opp.get("post_url") or
@@ -1644,10 +1690,10 @@ class UnifiedExecutor:
 
                 results["phases"]["execution"] = {
                     "ok": True,
-                    "attempted": min(20, len(scored)),
+                    "attempted": min(MAX_EXECUTIONS_PER_CYCLE, len(scored)),
                     "succeeded": len(executed),
                     "failed": len(execution_errors),
-                    "errors": execution_errors[:5]  # First 5 errors
+                    "errors": execution_errors[:10]  # First 10 errors for debugging
                 }
                 results["managers_used"].append("execution_manager")
             else:
