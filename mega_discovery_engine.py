@@ -518,8 +518,8 @@ class MegaDiscoveryEngine:
             "outliers_removed": 0,
             "stale_removed": 0,
             "low_probability_removed": 0,
-            "freshness_mode": "hybrid_v2",  # v2 = lenient for legacy sources
-            "code_version": "2026-01-26-hybrid"
+            "freshness_mode": "disabled",  # Stale filter disabled - scoring handles freshness
+            "code_version": "2026-01-26-v3"
         }
 
         # P95 cap for outliers
@@ -542,40 +542,15 @@ class MegaDiscoveryEngine:
                 stats['outliers_removed'] += 1
                 continue
 
-            # FRESHNESS CHECK - Hybrid approach:
-            # - Real-time sources (source='stream'): use platform-specific HOURS
-            # - Legacy sources: use max_age_days (more lenient)
-            platform = (opp.get('platform', '') or '').lower()
-            source = opp.get('source', '').lower()
-
-            # Determine max age based on source type
-            if source in ('stream', 'webhook', 'rss', 'real_time'):
-                # Real-time sources: strict platform-specific hours
-                max_age_hours = get_platform_freshness_hours(platform)
-            else:
-                # Legacy sources: use max_age_days converted to hours
-                # This is much more lenient (90 days = 2160 hours)
-                max_age_hours = max_age_days * 24
-
-            # Check freshness
-            created = opp.get('created_at') or opp.get('posted_at') or opp.get('discovered_at')
-            if created:
-                try:
-                    if isinstance(created, str):
-                        dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
-                    else:
-                        dt = created
-
-                    # Calculate age in HOURS
-                    age_hours = (now - dt).total_seconds() / 3600
-
-                    if age_hours > max_age_hours:
-                        stats['stale_removed'] += 1
-                        continue
-                except:
-                    # Can't parse date - FAIL OPEN (include it)
-                    pass
-            # No date = assume fresh (FAIL OPEN)
+            # FRESHNESS: DISABLED for now
+            # The stale filter was removing 80%+ of opportunities, even with 90-day window.
+            # Real opportunities from GitHub/HN can be months old but still valid.
+            # Scoring system handles freshness prioritization instead.
+            #
+            # TODO: Re-enable with smarter logic that considers:
+            # - Whether the opportunity is still "open" (not closed/resolved)
+            # - Platform-specific validity windows
+            # - User engagement recency
 
             # Low probability check
             wp = opp.get('win_probability', 0.5)
