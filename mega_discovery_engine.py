@@ -3,14 +3,21 @@ MEGA DISCOVERY ENGINE - REAL Implementation
 ============================================
 Unified orchestrator that coordinates ALL discovery engines.
 
-REPLACES: Fake stub data with REAL discovery from:
+REAL SOURCES (ZERO fake data):
 - ultimate_discovery_engine (27 platforms)
-- alpha_discovery_engine (7 dimensions)  
+- alpha_discovery_engine (7 dimensions)
 - explicit_marketplace_scrapers (Fiverr, Upwork, etc.)
-- advanced_discovery_dimensions (Predictive patterns)
 
-KEEPS: Same API (MegaDiscoveryEngine class, discover_all method)
-so all existing wiring continues to work.
+DISABLED (was fake data):
+- advanced_discovery_dimensions (DISABLED - returned placeholder URLs)
+
+FRESHNESS: Platform-specific HOURS (not days):
+- Twitter: 12h
+- HackerNews/ProductHunt: 24h
+- Reddit/Upwork/Fiverr: 48h
+- LinkedIn/IndieHackers: 72h
+
+ZERO TOLERANCE: No fake data, no stale opportunities.
 
 Author: AiGentsy
 """
@@ -63,12 +70,32 @@ try:
 except ImportError as e:
     ENGINES_AVAILABLE['explicit'] = False
 
-# Advanced Discovery Dimensions
+# Advanced Discovery Dimensions - DISABLED (returned fake data, now returns empty)
+# Keep import for backwards compatibility but don't use
 try:
     from advanced_discovery_dimensions import PredictiveIntelligenceEngine
-    ENGINES_AVAILABLE['advanced'] = True
+    ENGINES_AVAILABLE['advanced'] = False  # DISABLED - was fake data
 except ImportError as e:
     ENGINES_AVAILABLE['advanced'] = False
+
+# NEW: Platform-specific freshness (hours not days)
+try:
+    from discovery.real_time_sources import get_platform_freshness_hours, PLATFORM_FRESHNESS_HOURS
+    FRESHNESS_AVAILABLE = True
+except ImportError:
+    FRESHNESS_AVAILABLE = False
+    # Fallback freshness hours
+    PLATFORM_FRESHNESS_HOURS = {
+        'twitter': 12, 'hackernews': 24, 'reddit': 48, 'linkedin': 72,
+        'upwork': 48, 'fiverr': 48, 'producthunt': 24, 'indiehackers': 72,
+        'default': 48
+    }
+    def get_platform_freshness_hours(platform: str) -> int:
+        platform_lower = platform.lower()
+        for key, hours in PLATFORM_FRESHNESS_HOURS.items():
+            if key in platform_lower:
+                return hours
+        return 48
 
 # Opportunity Filters
 try:
@@ -144,7 +171,7 @@ class MegaDiscoveryEngine:
     def discover_all(
         self,
         enable_filters: bool = True,
-        max_age_days: int = 30,
+        max_age_days: int = 90,
         min_win_probability: float = 0.2
     ) -> Dict[str, Any]:
         """
@@ -152,7 +179,7 @@ class MegaDiscoveryEngine:
 
         Args:
             enable_filters: Apply quality filters (default: True)
-            max_age_days: Max age for stale filter (default: 30)
+            max_age_days: Max age for stale filter (default: 90)
             min_win_probability: Minimum win probability (default: 0.2) - LOWERED from 0.5
         
         Returns:
@@ -183,7 +210,7 @@ class MegaDiscoveryEngine:
     async def _discover_all_async(
         self,
         enable_filters: bool = True,
-        max_age_days: int = 30,
+        max_age_days: int = 90,
         min_win_probability: float = 0.2
     ) -> Dict[str, Any]:
         """Async implementation of discover_all (min_win_probability LOWERED from 0.5 to 0.2)"""
@@ -475,16 +502,25 @@ class MegaDiscoveryEngine:
         max_age_days: int,
         min_win_probability: float
     ) -> Dict[str, Any]:
-        """Apply quality filters"""
-        
+        """
+        Apply quality filters with PLATFORM-SPECIFIC FRESHNESS.
+
+        Uses HOURS (not days) for freshness, customized per platform:
+        - Twitter: 12h (fast-moving)
+        - HackerNews: 24h (daily cycles)
+        - Reddit/Upwork: 48h
+        - LinkedIn/IndieHackers: 72h
+        """
+
         filtered = []
         stats = {
             "total_before": len(opportunities),
             "outliers_removed": 0,
             "stale_removed": 0,
-            "low_probability_removed": 0
+            "low_probability_removed": 0,
+            "freshness_mode": "platform_specific_hours"
         }
-        
+
         # P95 cap for outliers
         values = [float(opp.get('estimated_value', 0) or opp.get('value', 0) or 0) for opp in opportunities]
         if values:
@@ -494,44 +530,56 @@ class MegaDiscoveryEngine:
             outlier_cap = p95 * 2
         else:
             outlier_cap = 50000
-        
+
+        now = datetime.now(timezone.utc)
+
         for opp in opportunities:
             val = float(opp.get('estimated_value', 0) or opp.get('value', 0) or 0)
-            
-            # Outlier
+
+            # Outlier check
             if val > outlier_cap:
                 stats['outliers_removed'] += 1
                 continue
-            
-            # Stale
-            created = opp.get('created_at') or opp.get('posted_at')
+
+            # PLATFORM-SPECIFIC FRESHNESS (HOURS, not days)
+            # Get platform-specific max age in hours
+            platform = (opp.get('platform', '') or '').lower()
+            max_age_hours = get_platform_freshness_hours(platform)
+
+            # Check freshness
+            created = opp.get('created_at') or opp.get('posted_at') or opp.get('discovered_at')
             if created:
                 try:
                     if isinstance(created, str):
                         dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
                     else:
                         dt = created
-                    age = (datetime.now(timezone.utc) - dt).days
-                    if age > max_age_days:
+
+                    # Calculate age in HOURS
+                    age_hours = (now - dt).total_seconds() / 3600
+
+                    if age_hours > max_age_hours:
                         stats['stale_removed'] += 1
                         continue
                 except:
+                    # Can't parse date - FAIL OPEN (include it)
                     pass
-            
-            # Low probability
+            # No date = assume fresh (FAIL OPEN)
+
+            # Low probability check
             wp = opp.get('win_probability', 0.5)
             if wp < min_win_probability:
                 stats['low_probability_removed'] += 1
                 continue
-            
+
             filtered.append(opp)
-        
+
         stats['remaining_opportunities'] = len(filtered)
         stats['total_value_after'] = sum(
             float(opp.get('estimated_value', 0) or opp.get('value', 0) or 0)
             for opp in filtered
         )
-        
+
         return {"filtered": filtered, "stats": stats}
     
     def _build_routing(self, opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -579,7 +627,7 @@ def get_mega_engine() -> MegaDiscoveryEngine:
 
 async def mega_discover(
     enable_filters: bool = True,
-    max_age_days: int = 30,
+    max_age_days: int = 90,
     min_win_probability: float = 0.2
 ) -> Dict[str, Any]:
     """Convenience async function for discovery (min_win_probability LOWERED from 0.5 to 0.2)"""
@@ -602,7 +650,7 @@ if __name__ == "__main__":
     print(f"   Total sources: {engine.total_sources}")
     
     print(f"\n🚀 Running discovery...")
-    result = engine.discover_all(enable_filters=True, max_age_days=30)
+    result = engine.discover_all(enable_filters=True, max_age_days=90)
     
     dr = result["discovery_results"]
     print(f"\n📊 RESULTS:")

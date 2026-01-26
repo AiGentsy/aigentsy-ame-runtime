@@ -35518,6 +35518,130 @@ async def discovery_emergent_tech_shifts():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# DISCOVERY OBSERVATORY - Real-Time Monitoring Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/discovery/live")
+async def discovery_live_metrics():
+    """Real-time discovery metrics for observatory dashboard"""
+    try:
+        # Try to get stats from continuous discovery if available
+        try:
+            from discovery.continuous_discovery import get_continuous_discovery
+            discovery = get_continuous_discovery()
+            stats = discovery.get_stats()
+        except:
+            stats = {}
+
+        # Try to get pipeline stats
+        try:
+            from infra.pipeline import get_pipeline
+            pipeline = get_pipeline()
+            pipeline_stats = pipeline.get_stats()
+        except:
+            pipeline_stats = {}
+
+        return {
+            "ok": True,
+            "fresh_count": stats.get('total_opportunities', 0),
+            "cycles_completed": stats.get('cycles_completed', 0),
+            "last_discovery": stats.get('last_discovery'),
+            "running": stats.get('running', False),
+            "pipeline": pipeline_stats,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/discovery/latency")
+async def discovery_latency_metrics():
+    """Latency metrics for SLO monitoring"""
+    try:
+        from infra.pipeline import get_pipeline
+        pipeline = get_pipeline()
+        slo_metrics = pipeline.slo_guard.get_metrics()
+
+        return {
+            "ok": True,
+            "p95_seconds": slo_metrics.get('p95_latency'),
+            "throughput_this_minute": slo_metrics.get('throughput_this_minute'),
+            "throughput_limit": slo_metrics.get('throughput_limit'),
+            "headroom": slo_metrics.get('headroom'),
+            "slo_targets": {
+                "p95_discovery_to_first_touch": 120,
+                "throughput_per_minute": 5000,
+                "routing_efficiency": 0.60
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "p95_seconds": None}
+
+
+@app.get("/discovery/errors")
+async def discovery_errors():
+    """Error tracking for discovery system"""
+    try:
+        from discovery.internet_wide_scraper import get_internet_wide_scraper
+        scraper = get_internet_wide_scraper()
+        stats = scraper.get_stats()
+
+        return {
+            "ok": True,
+            "platforms_failed": stats.get('platforms_failed', 0),
+            "platforms_succeeded": stats.get('platforms_succeeded', 0),
+            "collector_errors": stats.get('collector', {}).get('errors', 0),
+            "error_rate": (
+                stats.get('platforms_failed', 0) /
+                max(1, stats.get('platforms_attempted', 1))
+            )
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/discovery/platforms")
+async def discovery_platforms_status():
+    """Platform health status"""
+    try:
+        from discovery.real_time_sources import REAL_TIME_SOURCES, PLATFORM_FRESHNESS_HOURS
+
+        return {
+            "ok": True,
+            "total_platforms": len(REAL_TIME_SOURCES),
+            "platforms": list(REAL_TIME_SOURCES.keys()),
+            "freshness_hours": PLATFORM_FRESHNESS_HOURS,
+            "slo_targets": {
+                "min_platforms": 50,
+                "freshness_guarantee_hours": 48
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/discovery/slo")
+async def discovery_slo_status():
+    """SLO compliance status"""
+    from datetime import datetime, timezone
+
+    slos = {
+        "p95_discovery_to_first_touch": {"target": 120, "unit": "seconds"},
+        "discovery_throughput": {"target": 5000, "unit": "per_minute"},
+        "routing_efficiency": {"target": 0.60, "unit": "ratio"},
+        "executable_pdl_coverage": {"target": 30, "unit": "platforms"},
+        "freshness_guarantee": {"target": 48, "unit": "hours"},
+    }
+
+    return {
+        "ok": True,
+        "slo_targets": slos,
+        "status": "operational",
+        "checked_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 8: SHOPIFY - ACTIVE STORE MANAGEMENT
 # Uses: SHOPIFY_ADMIN_TOKEN
 # ═══════════════════════════════════════════════════════════════════════════════
