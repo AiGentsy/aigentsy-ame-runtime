@@ -35,11 +35,12 @@ class ExplicitMarketplaceScrapers:
         """Scrape all platforms - SCALED UP"""
         
         if platforms is None:
-            platforms = ['github', 'reddit', 'hackernews']
-        
+            platforms = ['reddit', 'hackernews']  # GitHub DISABLED - against their ToS
+
         tasks = []
-        if 'github' in platforms:
-            tasks.append(self.scrape_github_scaled())
+        # GitHub DISABLED - against their ToS
+        # if 'github' in platforms:
+        #     tasks.append(self.scrape_github_scaled())
         if 'reddit' in platforms:
             tasks.append(self.scrape_reddit_scaled())
         if 'hackernews' in platforms:

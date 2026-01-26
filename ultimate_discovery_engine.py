@@ -168,8 +168,8 @@ def calculate_fulfillability(opportunity: Dict[str, Any]) -> Dict[str, Any]:
 
 PLATFORM_CONFIGS = {
     # EXISTING PLATFORMS
-    "github": {"enabled": True, "rate_limit_per_hour": 60},
-    "github_bounties": {"enabled": True, "rate_limit_per_hour": 60},
+    "github": {"enabled": False, "rate_limit_per_hour": 60},  # DISABLED - against GitHub ToS
+    "github_bounties": {"enabled": False, "rate_limit_per_hour": 60},  # DISABLED - against GitHub ToS
     "reddit": {"enabled": True, "rate_limit_per_hour": 100},
     "hackernews": {"enabled": True, "rate_limit_per_hour": 60},
     "upwork": {"enabled": True, "rate_limit_per_hour": 60},
