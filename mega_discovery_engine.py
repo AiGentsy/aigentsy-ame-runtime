@@ -145,15 +145,15 @@ class MegaDiscoveryEngine:
         self,
         enable_filters: bool = True,
         max_age_days: int = 30,
-        min_win_probability: float = 0.5
+        min_win_probability: float = 0.2
     ) -> Dict[str, Any]:
         """
         Run discovery across ALL available engines (synchronous wrapper).
-        
+
         Args:
             enable_filters: Apply quality filters (default: True)
             max_age_days: Max age for stale filter (default: 30)
-            min_win_probability: Minimum win probability (default: 0.5)
+            min_win_probability: Minimum win probability (default: 0.2) - LOWERED from 0.5
         
         Returns:
             Unified discovery results
@@ -184,9 +184,9 @@ class MegaDiscoveryEngine:
         self,
         enable_filters: bool = True,
         max_age_days: int = 30,
-        min_win_probability: float = 0.5
+        min_win_probability: float = 0.2
     ) -> Dict[str, Any]:
-        """Async implementation of discover_all"""
+        """Async implementation of discover_all (min_win_probability LOWERED from 0.5 to 0.2)"""
         
         start_time = datetime.now(timezone.utc)
         
@@ -286,7 +286,39 @@ class MegaDiscoveryEngine:
         deduplicated = self._deduplicate(all_opportunities)
         duplicates_removed = total_discovered - len(deduplicated)
         print(f"   🔄 Removed {duplicates_removed} duplicates")
-        
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FAIL-OPEN DEFAULTS: Ensure all opportunities have required fields
+        # Never drop real opportunities for missing fields
+        # ═══════════════════════════════════════════════════════════════════
+        platform_defaults = {
+            'hackernews': {'win_probability': 0.6, 'payment_proximity': 0.6},
+            'indiehackers': {'win_probability': 0.6, 'payment_proximity': 0.6},
+            'producthunt': {'win_probability': 0.5, 'payment_proximity': 0.5},
+            'reddit': {'win_probability': 0.5, 'payment_proximity': 0.4},
+            'linkedin': {'win_probability': 0.6, 'payment_proximity': 0.6},
+            'twitter': {'win_probability': 0.4, 'payment_proximity': 0.3},
+            'upwork': {'win_probability': 0.7, 'payment_proximity': 0.8},
+            'fiverr': {'win_probability': 0.7, 'payment_proximity': 0.8},
+            'freelancer': {'win_probability': 0.6, 'payment_proximity': 0.7},
+        }
+
+        for opp in deduplicated:
+            platform = opp.get('platform', '').lower()
+            defaults = platform_defaults.get(platform, {})
+
+            # Apply platform-specific defaults, then generic defaults
+            opp.setdefault('win_probability', defaults.get('win_probability', 0.4))
+            opp.setdefault('payment_proximity', defaults.get('payment_proximity', 0.4))
+            opp.setdefault('value', 100.0)
+            opp.setdefault('estimated_value', opp.get('value', 100.0))
+            opp.setdefault('time_to_cash_hours', 72.0)
+            opp.setdefault('network_score', 1.0)
+            opp.setdefault('risk_score', 0.3)
+            opp.setdefault('learning_value', 1.0)
+
+        print(f"   ✅ Applied fail-open defaults to {len(deduplicated)} opportunities")
+
         # Calculate scores
         scored = self._calculate_scores(deduplicated)
         
@@ -548,9 +580,9 @@ def get_mega_engine() -> MegaDiscoveryEngine:
 async def mega_discover(
     enable_filters: bool = True,
     max_age_days: int = 30,
-    min_win_probability: float = 0.5
+    min_win_probability: float = 0.2
 ) -> Dict[str, Any]:
-    """Convenience async function for discovery"""
+    """Convenience async function for discovery (min_win_probability LOWERED from 0.5 to 0.2)"""
     engine = get_mega_engine()
     return await engine._discover_all_async(enable_filters, max_age_days, min_win_probability)
 

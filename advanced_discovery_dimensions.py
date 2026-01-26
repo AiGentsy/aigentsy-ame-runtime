@@ -20,172 +20,70 @@ from datetime import datetime, timezone, timedelta
 class PredictiveIntelligenceEngine:
     """
     Predicts opportunities BEFORE they're posted
-    
-    Leading Indicators:
-    - Funding events → Hiring in 30-60 days
-    - Product launches → Service needs in 2-4 weeks  
-    - Regulatory changes → Compliance demand
-    - Tech deprecations → Migration opportunities
+
+    DISABLED: All prediction methods now return empty lists.
+    The previous implementation returned FAKE STUB DATA with placeholder URLs
+    like 'https://crunchbase.com/example' which is unacceptable.
+
+    TODO: Implement real API integrations:
+    - Crunchbase API for funding events
+    - ProductHunt API for launches
+    - Regulations.gov API for compliance
+    - GitHub API for deprecation notices
+
+    Until real implementations exist, this returns EMPTY (not fake).
     """
-    
+
     async def predict_all_opportunities(self) -> List[Dict]:
-        """Run all predictive analysis"""
-        
+        """
+        DISABLED - Returns empty list until real implementation.
+
+        Previous implementation returned FAKE DATA - that's been removed.
+        Zero tolerance for stub/placeholder data.
+        """
         print("\n🔮 DIMENSION 4: PREDICTIVE INTELLIGENCE")
-        print("   Predicting opportunities before they exist...")
-        
-        tasks = [
-            self.predict_from_funding_events(),
-            self.predict_from_product_launches(),
-            self.predict_from_regulatory_changes(),
-            self.predict_from_tech_changes()
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        all_predictions = []
-        for result in results:
-            if isinstance(result, list):
-                all_predictions.extend(result)
-        
-        print(f"   ✅ Found {len(all_predictions)} predictive opportunities")
-        
-        return all_predictions
-    
+        print("   ⚠️ DISABLED - No fake data. Returning empty until real API implementation.")
+        return []  # Empty, not fake
+
     async def predict_from_funding_events(self) -> List[Dict]:
         """
-        Company raises funding → They'll hire in 30-60 days
+        DISABLED - Previously returned fake data with URLs like:
+        'https://crunchbase.com/example'
+
+        TODO: Implement real Crunchbase API integration
         """
-        
-        print("   💰 Funding → Hiring: Predicting hiring waves...")
-        
-        opportunities = [
-            {
-                'id': 'predict_funding_1',
-                'platform': 'predictive',
-                'source': 'predictive_intelligence',
-                'prediction_type': 'funding_to_hiring',
-                'type': 'software_development',
-                'title': 'Predictive: TechCo raised $10M → Will hire 5-10 engineers',
-                'description': 'Series A funding announced, typical hiring timeline: 45 days',
-                'url': 'https://crunchbase.com/example',
-                'value': 8000.0,
-                'urgency': 'medium',
-                'predicted_date': (datetime.now(timezone.utc) + timedelta(days=45)).isoformat(),
-                'confidence': 0.85,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'source_data': {
-                    'company': 'TechCo',
-                    'funding_amount': 10000000,
-                    'funding_stage': 'Series A',
-                    'predicted_roles': ['engineer', 'product_manager', 'designer']
-                }
-            }
-        ]
-        
-        print(f"   ✅ Funding predictions: {len(opportunities)} opportunities")
-        return opportunities
+        print("   💰 Funding → Hiring: DISABLED (needs real Crunchbase API)")
+        return []  # Empty, not fake data
     
     async def predict_from_product_launches(self) -> List[Dict]:
         """
-        Product launches on ProductHunt → Will need services in 2-4 weeks
+        DISABLED - Previously returned fake data with URLs like:
+        'https://producthunt.com/example'
+
+        TODO: Implement real ProductHunt API integration
         """
-        
-        print("   🚀 Launches → Services: Predicting post-launch needs...")
-        
-        opportunities = [
-            {
-                'id': 'predict_launch_1',
-                'platform': 'predictive',
-                'source': 'predictive_intelligence',
-                'prediction_type': 'launch_to_services',
-                'type': 'marketing',
-                'title': 'Predictive: New SaaS launched → Will need SEO in 2 weeks',
-                'description': 'ProductHunt #3 today, typical pattern: SEO needed in Week 2',
-                'url': 'https://producthunt.com/example',
-                'value': 3000.0,
-                'urgency': 'high',
-                'predicted_date': (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),
-                'confidence': 0.80,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'source_data': {
-                    'product': 'NewSaaS',
-                    'launch_date': datetime.now(timezone.utc).isoformat(),
-                    'predicted_needs': ['seo', 'content_marketing', 'growth']
-                }
-            }
-        ]
-        
-        print(f"   ✅ Launch predictions: {len(opportunities)} opportunities")
-        return opportunities
+        print("   🚀 Launches → Services: DISABLED (needs real ProductHunt API)")
+        return []  # Empty, not fake data
     
     async def predict_from_regulatory_changes(self) -> List[Dict]:
         """
-        New regulations → Compliance demand surge
+        DISABLED - Previously returned fake data with URLs like:
+        'https://regulations.gov/example'
+
+        TODO: Implement real regulations.gov API integration
         """
-        
-        print("   ⚖️ Regulations → Compliance: Predicting compliance waves...")
-        
-        opportunities = [
-            {
-                'id': 'predict_reg_1',
-                'platform': 'predictive',
-                'source': 'predictive_intelligence',
-                'prediction_type': 'regulatory_to_compliance',
-                'type': 'business_consulting',
-                'title': 'Predictive: New privacy law → 1000+ companies need compliance',
-                'description': 'Privacy law effective in 3 months, companies scrambling',
-                'url': 'https://regulations.gov/example',
-                'value': 5000.0,
-                'urgency': 'critical',
-                'predicted_date': (datetime.now(timezone.utc) + timedelta(days=90)).isoformat(),
-                'confidence': 0.95,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'source_data': {
-                    'regulation': 'Privacy Act 2025',
-                    'effective_date': '2025-03-01',
-                    'affected_companies': 1000,
-                    'services_needed': ['compliance_audit', 'legal_consulting']
-                }
-            }
-        ]
-        
-        print(f"   ✅ Regulatory predictions: {len(opportunities)} opportunities")
-        return opportunities
+        print("   ⚖️ Regulations → Compliance: DISABLED (needs real API)")
+        return []  # Empty, not fake data
     
     async def predict_from_tech_changes(self) -> List[Dict]:
         """
-        Framework deprecation → Migration opportunities
+        DISABLED - Previously returned fake data with URLs like:
+        'https://github.com/framework/announcement'
+
+        TODO: Implement real GitHub API for deprecation notices
         """
-        
-        print("   🔧 Tech Changes → Migration: Predicting tech shifts...")
-        
-        opportunities = [
-            {
-                'id': 'predict_tech_1',
-                'platform': 'predictive',
-                'source': 'predictive_intelligence',
-                'prediction_type': 'tech_deprecation',
-                'type': 'software_development',
-                'title': 'Predictive: Framework X deprecating → 500 companies need migration',
-                'description': 'EOL announced, companies need migration to alternative',
-                'url': 'https://github.com/framework/announcement',
-                'value': 10000.0,
-                'urgency': 'high',
-                'predicted_date': (datetime.now(timezone.utc) + timedelta(days=180)).isoformat(),
-                'confidence': 0.90,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'source_data': {
-                    'deprecated_tech': 'Framework X',
-                    'eol_date': '2025-06-01',
-                    'affected_projects': 500,
-                    'migration_to': 'Framework Y'
-                }
-            }
-        ]
-        
-        print(f"   ✅ Tech change predictions: {len(opportunities)} opportunities")
-        return opportunities
+        print("   🔧 Tech Changes → Migration: DISABLED (needs real API)")
+        return []  # Empty, not fake data
 
 
 # ============================================================
