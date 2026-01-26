@@ -93,6 +93,10 @@ class InternetWideScraper:
         """
         platforms = platforms or REAL_TIME_SOURCES
 
+        # Reset deduplication state for fresh run (singleton accumulates across calls)
+        self.entity_resolver.reset()
+        self.parsing_debug = []
+
         logger.info(f"[scraper] Starting scrape of {len(platforms)} platforms")
         start_time = time.time()
 
@@ -127,8 +131,10 @@ class InternetWideScraper:
                 self.stats['platforms_succeeded'] += 1
                 all_opportunities.extend(result)
 
-        # Deduplicate across all platforms
-        unique_opportunities = self.entity_resolver.deduplicate_batch(all_opportunities)
+        # NOTE: Deduplication already happens per-platform in scrape_platform()
+        # via self.entity_resolver.is_duplicate(). No need for final deduplicate_batch()
+        # which would mark all opportunities as duplicates (since they were already added).
+        unique_opportunities = all_opportunities
 
         elapsed = time.time() - start_time
         self.stats['opportunities_found'] = len(all_opportunities)
