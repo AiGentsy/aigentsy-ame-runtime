@@ -214,14 +214,50 @@ class MegaDiscoveryEngine:
         min_win_probability: float = 0.2
     ) -> Dict[str, Any]:
         """Async implementation of discover_all (min_win_probability LOWERED from 0.5 to 0.2)"""
-        
+
         start_time = datetime.now(timezone.utc)
-        
+
         print(f"🚀 MEGA DISCOVERY ENGINE: Scanning {self.total_sources} sources...")
-        
+
         all_opportunities = []
         engine_results = {}
-        
+        internet_wide_success = False
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 0: InternetWideScraper (69 platforms) - NEW ULTIMATE SYSTEM
+        # ═══════════════════════════════════════════════════════════════════
+        print("   🌐 InternetWideScraper (69 platforms)...")
+        try:
+            from discovery.internet_wide_scraper import InternetWideScraper
+
+            config = {
+                'timeout': 15,
+                'max_concurrent': 15  # Conservative to avoid rate limits
+            }
+
+            scraper = InternetWideScraper(config)
+            internet_opps = await scraper.scrape_all_platforms()
+
+            for opp in internet_opps:
+                opp['_source_engine'] = 'internet_wide'
+
+            all_opportunities.extend(internet_opps)
+            engine_results['internet_wide'] = {
+                "count": len(internet_opps),
+                "status": "ok",
+                "platforms_available": 69
+            }
+            internet_wide_success = len(internet_opps) > 0
+            print(f"      ✅ {len(internet_opps)} opportunities from 69 platforms")
+
+        except Exception as e:
+            engine_results['internet_wide'] = {"error": str(e)}
+            print(f"      ⚠️ InternetWideScraper: {e} (falling back to legacy)")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # LEGACY ENGINES (fallback if internet_wide fails or for additional opps)
+        # ═══════════════════════════════════════════════════════════════════
+
         # 1. Ultimate Discovery (27 platforms)
         if ENGINES_AVAILABLE.get('ultimate') and ultimate_discover:
             print("   📡 Ultimate Discovery (27 platforms)...")
