@@ -78,6 +78,9 @@ class InternetWideScraper:
             'total_time_seconds': 0,
         }
 
+        # Debug: Track parsing results per platform
+        self.parsing_debug = []
+
     async def scrape_all_platforms(self, platforms: Optional[Dict[str, str]] = None) -> List[Dict]:
         """
         Scrape all platforms in parallel with rate limiting.
@@ -148,6 +151,15 @@ class InternetWideScraper:
         Scrape single platform with full enrichment pipeline.
         """
         opportunities = []
+        debug_info = {
+            'platform': platform,
+            'url': url,
+            'content_length': 0,
+            'parser_used': 'none',
+            'raw_opportunities': 0,
+            'enriched_opportunities': 0,
+            'error': None
+        }
 
         try:
             # Extract host for rate limiting
@@ -161,16 +173,25 @@ class InternetWideScraper:
                 html = await self.collector.fetch_rendered(url)
 
             if not html:
+                debug_info['error'] = 'no_content'
+                self.parsing_debug.append(debug_info)
                 logger.debug(f"[scraper] {platform}: No content")
                 return []
 
+            debug_info['content_length'] = len(html)
+
             # Parse based on content type
             if url.endswith('.json') or 'json' in url:
+                debug_info['parser_used'] = 'json'
                 opportunities = await self._parse_json(html, platform, url)
             elif url.endswith('.rss') or 'rss' in url:
+                debug_info['parser_used'] = 'rss'
                 opportunities = await self._parse_rss(html, platform, url)
             else:
+                debug_info['parser_used'] = 'html'
                 opportunities = await self._parse_html(html, platform, url)
+
+            debug_info['raw_opportunities'] = len(opportunities)
 
             # Enrich each opportunity
             enriched = []
@@ -194,13 +215,19 @@ class InternetWideScraper:
 
                 enriched.append(opp)
 
+            debug_info['enriched_opportunities'] = len(enriched)
+            self.parsing_debug.append(debug_info)
             logger.info(f"[scraper] {platform}: {len(enriched)} opportunities")
             return enriched
 
         except asyncio.TimeoutError:
+            debug_info['error'] = 'timeout'
+            self.parsing_debug.append(debug_info)
             logger.warning(f"[scraper] {platform}: timeout")
             return []
         except Exception as e:
+            debug_info['error'] = str(e)
+            self.parsing_debug.append(debug_info)
             logger.warning(f"[scraper] {platform}: {e}")
             return []
 
@@ -436,16 +463,34 @@ class InternetWideScraper:
 
     def get_stats(self) -> Dict:
         """Get scraper stats"""
+        # Get top 10 platforms with issues (0 opportunities despite content)
+        problematic = [
+            p for p in self.parsing_debug
+            if p.get('content_length', 0) > 500 and p.get('raw_opportunities', 0) == 0
+        ][:10]
+
+        # Get successful platforms
+        successful = [
+            p for p in self.parsing_debug
+            if p.get('raw_opportunities', 0) > 0
+        ][:10]
+
         return {
             **self.stats,
             'collector': self.collector.get_stats(),
             'entity_resolver': self.entity_resolver.get_stats(),
             'i18n': self.i18n.get_stats(),
+            'parsing_debug': {
+                'total_platforms': len(self.parsing_debug),
+                'problematic_platforms': problematic,
+                'successful_platforms': successful,
+            }
         }
 
     def reset_stats(self):
         """Reset stats for new run"""
         self.stats = {k: 0 for k in self.stats}
+        self.parsing_debug = []
         self.entity_resolver.reset()
 
 

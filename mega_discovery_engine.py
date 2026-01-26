@@ -251,6 +251,7 @@ class MegaDiscoveryEngine:
                 "platforms_succeeded": scraper_stats.get('platforms_succeeded', 0),
                 "platforms_failed": scraper_stats.get('platforms_failed', 0),
                 "collector_stats": scraper_stats.get('collector', {}),
+                "parsing_debug": scraper_stats.get('parsing_debug', {}),
                 "debug_info": {
                     "httpx_available": scraper.collector is not None,
                     "time_seconds": scraper_stats.get('total_time_seconds', 0)
@@ -565,7 +566,7 @@ class MegaDiscoveryEngine:
             "stale_removed": 0,
             "low_probability_removed": 0,
             "freshness_mode": "disabled",  # Stale filter disabled - scoring handles freshness
-            "code_version": "2026-01-26-v5-debug-stats"
+            "code_version": "2026-01-26-v6-parsing-debug"
         }
 
         # P95 cap for outliers
