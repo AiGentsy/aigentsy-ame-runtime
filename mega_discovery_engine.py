@@ -541,10 +541,20 @@ class MegaDiscoveryEngine:
                 stats['outliers_removed'] += 1
                 continue
 
-            # PLATFORM-SPECIFIC FRESHNESS (HOURS, not days)
-            # Get platform-specific max age in hours
+            # FRESHNESS CHECK - Hybrid approach:
+            # - Real-time sources (source='stream'): use platform-specific HOURS
+            # - Legacy sources: use max_age_days (more lenient)
             platform = (opp.get('platform', '') or '').lower()
-            max_age_hours = get_platform_freshness_hours(platform)
+            source = opp.get('source', '').lower()
+
+            # Determine max age based on source type
+            if source in ('stream', 'webhook', 'rss', 'real_time'):
+                # Real-time sources: strict platform-specific hours
+                max_age_hours = get_platform_freshness_hours(platform)
+            else:
+                # Legacy sources: use max_age_days converted to hours
+                # This is much more lenient (90 days = 2160 hours)
+                max_age_hours = max_age_days * 24
 
             # Check freshness
             created = opp.get('created_at') or opp.get('posted_at') or opp.get('discovered_at')

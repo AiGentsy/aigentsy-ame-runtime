@@ -30,45 +30,40 @@ import os
 class PainPointDetector:
     """
     Detects opportunities from complaints and pain points
+
+    DISABLED: All methods return empty lists.
+    Previous implementation returned FAKE STUB DATA with placeholder URLs
+    like 'https://producthunt.com/example' which is unacceptable.
+
+    TODO: Implement real API integrations:
+    - Twitter API for complaint detection
+    - App Store API for reviews
+    - Reddit API for complaints
+    - Quora/YouTube APIs
+
+    Until real implementations exist, this returns EMPTY (not fake).
     """
-    
+
     def __init__(self):
         # API keys
         self.twitter_bearer = os.getenv('TWITTER_BEARER_TOKEN')
         self.reddit_client_id = os.getenv('REDDIT_CLIENT_ID')
         self.reddit_secret = os.getenv('REDDIT_CLIENT_SECRET')
-    
+
     async def detect_all_pain_points(self) -> List[Dict]:
         """
-        Run all pain point detection in parallel
+        DISABLED - Returns empty list until real implementation.
+
+        Previous implementation returned FAKE DATA with URLs like:
+        - https://twitter.com/simulated
+        - https://apps.apple.com/app/example
+        - https://producthunt.com/example
+
+        ZERO TOLERANCE for fake/placeholder data.
         """
-        
         print("\n🔍 DIMENSION 2: PAIN POINT DETECTION")
-        print("   Searching for complaints and problems...")
-        
-        tasks = [
-            self.detect_twitter_pain_points(),
-            self.detect_app_store_pain_points(),
-            self.detect_reddit_complaints(),
-            self.detect_github_stale_issues(),
-            self.detect_quora_questions(),
-            self.detect_youtube_requests(),
-            self.detect_producthunt_feedback()
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Flatten results
-        all_pain_points = []
-        for result in results:
-            if isinstance(result, list):
-                all_pain_points.extend(result)
-            elif isinstance(result, Exception):
-                print(f"   ⚠️  Detector error: {result}")
-        
-        print(f"   ✅ Found {len(all_pain_points)} pain point opportunities")
-        
-        return all_pain_points
+        print("   ⚠️ DISABLED - No fake data. Returning empty until real API implementation.")
+        return []  # Empty, not fake
     
     # ========================================
     # TWITTER PAIN POINT DETECTION
