@@ -242,13 +242,23 @@ class MegaDiscoveryEngine:
                 opp['_source_engine'] = 'internet_wide'
 
             all_opportunities.extend(internet_opps)
+            scraper_stats = scraper.get_stats()
             engine_results['internet_wide'] = {
                 "count": len(internet_opps),
                 "status": "ok",
-                "platforms_available": 69
+                "platforms_available": 69,
+                "platforms_attempted": scraper_stats.get('platforms_attempted', 0),
+                "platforms_succeeded": scraper_stats.get('platforms_succeeded', 0),
+                "platforms_failed": scraper_stats.get('platforms_failed', 0),
+                "collector_stats": scraper_stats.get('collector', {}),
+                "debug_info": {
+                    "httpx_available": scraper.collector is not None,
+                    "time_seconds": scraper_stats.get('total_time_seconds', 0)
+                }
             }
             internet_wide_success = len(internet_opps) > 0
             print(f"      ✅ {len(internet_opps)} opportunities from 69 platforms")
+            print(f"      📊 Stats: {scraper_stats.get('platforms_succeeded', 0)}/{scraper_stats.get('platforms_attempted', 0)} platforms")
 
         except Exception as e:
             engine_results['internet_wide'] = {"error": str(e)}
@@ -555,7 +565,7 @@ class MegaDiscoveryEngine:
             "stale_removed": 0,
             "low_probability_removed": 0,
             "freshness_mode": "disabled",  # Stale filter disabled - scoring handles freshness
-            "code_version": "2026-01-26-v4-internet-wide"
+            "code_version": "2026-01-26-v5-debug-stats"
         }
 
         # P95 cap for outliers
