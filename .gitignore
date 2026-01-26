@@ -25,6 +25,9 @@ ENV/
 *.db
 *.swp
 
+# Test output files
+full_cycle_*.json
+
 # Environment and secrets
 .env
 .env.*
