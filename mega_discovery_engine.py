@@ -555,7 +555,7 @@ class MegaDiscoveryEngine:
             "stale_removed": 0,
             "low_probability_removed": 0,
             "freshness_mode": "disabled",  # Stale filter disabled - scoring handles freshness
-            "code_version": "2026-01-26-v3"
+            "code_version": "2026-01-26-v4-internet-wide"
         }
 
         # P95 cap for outliers
