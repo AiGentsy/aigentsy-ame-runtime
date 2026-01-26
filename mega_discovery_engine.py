@@ -518,7 +518,8 @@ class MegaDiscoveryEngine:
             "outliers_removed": 0,
             "stale_removed": 0,
             "low_probability_removed": 0,
-            "freshness_mode": "platform_specific_hours"
+            "freshness_mode": "hybrid_v2",  # v2 = lenient for legacy sources
+            "code_version": "2026-01-26-hybrid"
         }
 
         # P95 cap for outliers
