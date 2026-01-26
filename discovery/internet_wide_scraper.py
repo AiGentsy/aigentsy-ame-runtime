@@ -187,10 +187,21 @@ class InternetWideScraper:
             debug_info['content_length'] = len(html)
 
             # Parse based on content type
-            if url.endswith('.json') or 'json' in url:
+            # Detect JSON by URL or content inspection (many APIs don't have .json in URL)
+            content_stripped = html.strip()
+            is_json = (
+                url.endswith('.json') or
+                'json' in url or
+                '/api/' in url or
+                '/api' in url or
+                (content_stripped.startswith('{') or content_stripped.startswith('['))
+            )
+            is_rss = url.endswith('.rss') or 'rss' in url or content_stripped.startswith('<?xml')
+
+            if is_json:
                 debug_info['parser_used'] = 'json'
                 opportunities = await self._parse_json(html, platform, url)
-            elif url.endswith('.rss') or 'rss' in url:
+            elif is_rss:
                 debug_info['parser_used'] = 'rss'
                 opportunities = await self._parse_rss(html, platform, url)
             else:
