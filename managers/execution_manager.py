@@ -358,6 +358,13 @@ class ExecutionManager:
         total = len(self._subsystems)
         logger.info(f"ExecutionManager: {available}/{total} subsystems loaded")
 
+    def _is_github_url(self, url: str) -> bool:
+        """Check if URL is from GitHub - BLOCKED for ToS compliance"""
+        if not url:
+            return False
+        url_lower = url.lower()
+        return 'github.com' in url_lower or 'github.io' in url_lower
+
     async def execute_with_verification(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute task with full verification pipeline.
@@ -371,6 +378,23 @@ class ExecutionManager:
         platform = task.get("platform", "unknown")
         start_time = datetime.now(timezone.utc)
         result = {"ok": False, "task_id": task_id, "platform": platform}
+
+        # ═══════════════════════════════════════════════════════════════════
+        # GITHUB BLOCKER - CRITICAL: Block ALL GitHub URLs (ToS compliance)
+        # ═══════════════════════════════════════════════════════════════════
+        url = task.get("url", "") or task.get("job_url", "") or task.get("post_url", "")
+        if self._is_github_url(url) or platform.lower() == "github":
+            logger.warning(f"🚫 BLOCKED GitHub execution: {url} (ToS compliance)")
+            return {
+                "ok": False,
+                "success": False,
+                "error": "GitHub execution blocked - violates GitHub ToS",
+                "platform": "github",
+                "blocked": True,
+                "reason": "github_tos_compliance",
+                "task_id": task_id,
+                "method": "blocked"
+            }
 
         try:
             # Step 1: Compliance check (if available)
@@ -588,7 +612,14 @@ class ExecutionManager:
         platform = task.get("platform", "unknown")
         action = task.get("action", task.get("type", "execute"))
 
-        # Map platform to URL if not provided
+        # ═══════════════════════════════════════════════════════════════════
+        # GITHUB BLOCKER (Belt & Suspenders) - Block at fabric layer too
+        # ═══════════════════════════════════════════════════════════════════
+        if platform.lower() == "github":
+            logger.warning(f"🚫 BLOCKED GitHub platform at fabric layer (ToS compliance)")
+            return {"ok": False, "error": "GitHub blocked - ToS compliance", "blocked": True}
+
+        # Map platform to URL if not provided (GitHub REMOVED)
         platform_urls = {
             "twitter": "https://twitter.com",
             "hackernews": "https://news.ycombinator.com",
@@ -596,7 +627,7 @@ class ExecutionManager:
             "reddit": "https://reddit.com",
             "fiverr": "https://fiverr.com",
             "upwork": "https://upwork.com",
-            "github": "https://github.com",
+            # "github": REMOVED - ToS compliance
             "producthunt": "https://producthunt.com",
             "indiehackers": "https://indiehackers.com",
             "dribbble": "https://dribbble.com",
@@ -604,6 +635,11 @@ class ExecutionManager:
         }
 
         url = task.get("url") or task.get("job_url") or task.get("post_url") or platform_urls.get(platform)
+
+        # Block GitHub URLs at fabric layer
+        if url and self._is_github_url(url):
+            logger.warning(f"🚫 BLOCKED GitHub URL at fabric layer: {url} (ToS compliance)")
+            return {"ok": False, "error": "GitHub URLs blocked - ToS compliance", "blocked": True}
 
         if not url:
             return {"ok": False, "error": f"No URL for platform: {platform}"}

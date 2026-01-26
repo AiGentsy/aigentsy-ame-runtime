@@ -389,10 +389,11 @@ class DiscoveryManager:
                 logger.warning(f"Alpha discovery error: {e}")
 
         # 2. Ultimate Discovery (multi-platform)
+        # NOTE: GitHub REMOVED - violates GitHub ToS
         if self._subsystems.get("ultimate_discovery"):
             try:
                 scrapers = [
-                    ("github", self._scrape_github),
+                    # ("github", self._scrape_github),  # DISABLED - GitHub ToS compliance
                     ("reddit", self._scrape_reddit),
                     ("hackernews", self._scrape_hackernews),
                     ("upwork", self._scrape_upwork),
@@ -532,10 +533,29 @@ class DiscoveryManager:
             except Exception as e:
                 logger.warning(f"Deal graph error: {e}")
 
-        self._opportunities_found += len(all_opportunities)
+        # ═══════════════════════════════════════════════════════════════════
+        # GITHUB FILTER - Remove any GitHub opportunities (ToS compliance)
+        # ═══════════════════════════════════════════════════════════════════
+        filtered_opportunities = []
+        github_blocked = 0
+        for opp in all_opportunities:
+            url = opp.get("url", "") or opp.get("job_url", "") or opp.get("post_url", "") or ""
+            platform = opp.get("platform", "") or opp.get("source", "")
+            url_lower = url.lower()
+            platform_lower = platform.lower()
+
+            if 'github.com' in url_lower or 'github.io' in url_lower or 'github' in platform_lower:
+                github_blocked += 1
+                continue  # Skip GitHub opportunities
+            filtered_opportunities.append(opp)
+
+        if github_blocked > 0:
+            logger.warning(f"🚫 Filtered out {github_blocked} GitHub opportunities (ToS compliance)")
+
+        self._opportunities_found += len(filtered_opportunities)
         self._sources_used = sources_used
 
-        return all_opportunities
+        return filtered_opportunities
 
     async def enrich_opportunities(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich opportunities with additional data"""

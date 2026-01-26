@@ -741,6 +741,20 @@ async def execute_universal(
             "retry_after_seconds": 3600
         }
 
+    # ═══════════════════════════════════════════════════════════════════
+    # GITHUB BLOCKER - CRITICAL: Block ALL GitHub URLs (ToS compliance)
+    # ═══════════════════════════════════════════════════════════════════
+    url_lower = url.lower() if url else ""
+    if 'github.com' in url_lower or 'github.io' in url_lower:
+        logger.warning(f"🚫 BLOCKED GitHub URL in fabric: {url} (ToS compliance)")
+        return {
+            "ok": False,
+            "error": "GitHub URLs are blocked - violates GitHub Terms of Service",
+            "blocked": True,
+            "reason": "github_tos_compliance",
+            "url": url
+        }
+
     # Check EV threshold for auto-execute
     if ev_estimate > MAX_EV_AUTO_EXECUTE and not dry_run:
         return {
@@ -957,6 +971,21 @@ async def fabric_execute(
 
     if not pdl:
         return {"ok": False, "error": f"PDL not found: {pdl_name}"}
+
+    # ═══════════════════════════════════════════════════════════════════
+    # GITHUB BLOCKER - Block at fabric_execute entry point
+    # ═══════════════════════════════════════════════════════════════════
+    url = params.get("url") or params.get("job_url") or params.get("post_url") or ""
+    url_lower = url.lower()
+    platform = pdl.platform.lower() if hasattr(pdl, 'platform') else ""
+    if 'github.com' in url_lower or 'github.io' in url_lower or platform == 'github':
+        logger.warning(f"🚫 BLOCKED GitHub in fabric_execute: {url} (ToS compliance)")
+        return {
+            "ok": False,
+            "error": "GitHub blocked - violates GitHub Terms of Service",
+            "blocked": True,
+            "reason": "github_tos_compliance"
+        }
 
     actual_method = pdl.get_execution_method()
 
