@@ -1103,6 +1103,24 @@ app.include_router(execution_router)
 app.include_router(autonomous_router)
 
 # ============================================================================
+# ACCESS PANEL - Unified Opportunity Pipeline
+# ============================================================================
+try:
+    from routes.access_panel import get_access_panel_router
+    access_panel_router = get_access_panel_router()
+    if access_panel_router:
+        app.include_router(access_panel_router)
+        print("=" * 80)
+        print("ACCESS PANEL LOADED - Unified Discovery Pipeline")
+        print("=" * 80)
+        print("  Endpoints: /access-panel/discover, /access-panel/opportunities")
+        print("  Components: Enrichment, Routing, Risk Assessment")
+        print("  Integration: AttentionRouter, R3 Allocator, ExecutionManager")
+        print("=" * 80)
+except Exception as e:
+    print(f"Access Panel load error: {e}")
+
+# ============================================================================
 # FULFILLMENT FABRIC (Universal Connector Bus + COI Runtime)
 # ============================================================================
 try:
