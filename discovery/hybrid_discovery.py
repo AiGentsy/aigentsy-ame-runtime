@@ -177,15 +177,10 @@ class HybridDiscoveryEngine:
         return final_opportunities
 
     async def _phase1_perplexity(self) -> List[Dict]:
-        """Phase 1: Use Perplexity for broad discovery"""
-        if self._has_perplexity and self._perplexity_engine:
-            try:
-                return await self._perplexity_engine.discover_all()
-            except Exception as e:
-                logger.error(f"Perplexity discovery failed: {e}")
-                self.stats['errors'].append({'phase': 1, 'error': str(e)})
-
-        # Fallback: direct Perplexity API call
+        """Phase 1: Use Perplexity for broad discovery with DIVERSIFIED queries"""
+        # IMPORTANT: Always use our diversified queries (150+ queries across 16 categories)
+        # The old _perplexity_engine only uses generic queries that return Reddit-only results
+        logger.info("🎯 Using diversified Perplexity queries (150+ queries, 16 categories)")
         return await self._direct_perplexity_search()
 
     async def _direct_perplexity_search(self) -> List[Dict]:
