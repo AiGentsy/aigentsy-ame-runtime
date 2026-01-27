@@ -88,39 +88,64 @@ class HybridDiscoveryEngine:
         """
         Complete hybrid discovery with contact enrichment.
 
+        THREE-PHASE APPROACH:
+        1. PERPLEXITY (PRIMARY) - Discovers across ENTIRE INTERNET
+        2. DIRECT APIs (ENRICHMENT) - Adds author/contact info to Perplexity results
+        3. DIRECT PLATFORMS (SUPPLEMENT) - Adds platform-native opps with built-in contact
+
         Returns opportunities with contact info ready for outreach.
         """
-        logger.info("=== HYBRID DISCOVERY: Phase 1 (Perplexity) ===")
+        logger.info("=" * 80)
+        logger.info("🔍 HYBRID DISCOVERY - PERPLEXITY PRIMARY")
+        logger.info("=" * 80)
 
-        # Phase 1: Perplexity-first discovery
-        raw_opportunities = await self._phase1_perplexity()
-        self.stats['phase1_discovered'] = len(raw_opportunities)
-        logger.info(f"Phase 1: {len(raw_opportunities)} opportunities discovered")
+        # ===================================================================
+        # PHASE 1: PERPLEXITY - DISCOVER ACROSS ENTIRE INTERNET (PRIMARY)
+        # ===================================================================
+        logger.info("\n📡 PHASE 1: Perplexity Internet-Wide Discovery (PRIMARY)")
 
-        # Phase 1.5: Add direct platform discoveries (these have author info built-in)
-        # Put these FIRST - they're higher quality because they have real contact info
-        logger.info(f"=== HYBRID DISCOVERY: Phase 1.5 (Direct Platform APIs) ===")
-        platform_opps = await self._phase1_5_direct_platforms()
-        logger.info(f"Phase 1.5: {len(platform_opps)} opportunities from direct platform APIs")
+        perplexity_opportunities = await self._phase1_perplexity()
+        self.stats['phase1_discovered'] = len(perplexity_opportunities)
+        logger.info(f"✅ Phase 1: {len(perplexity_opportunities)} opportunities from Perplexity")
 
-        # Combine: platform opps FIRST (higher quality), then perplexity opps
-        combined = platform_opps + raw_opportunities
-        logger.info(f"Combined: {len(combined)} total ({len(platform_opps)} platform + {len(raw_opportunities)} perplexity)")
+        # ===================================================================
+        # PHASE 2: ENRICH PERPLEXITY RESULTS WITH CONTACT INFO
+        # ===================================================================
+        logger.info(f"\n🔗 PHASE 2: Enriching Perplexity Results with Direct APIs")
 
-        # Limit for enrichment (to avoid rate limits)
-        opportunities_to_enrich = combined[:max_opportunities]
+        # Limit before enrichment to avoid rate limits
+        opps_to_enrich = perplexity_opportunities[:max_opportunities]
+        enriched = await self._phase2_enrich(opps_to_enrich)
 
-        # Phase 2: Enrich remaining opportunities with direct platform APIs
-        logger.info(f"=== HYBRID DISCOVERY: Phase 2 (Enrichment) ===")
-        enriched = await self._phase2_enrich(opportunities_to_enrich)
+        # Count enrichment success
+        enriched_with_contact = sum(1 for o in enriched if self._has_contact(o))
+        logger.info(f"✅ Phase 2: {enriched_with_contact}/{len(enriched)} enriched with contact info")
 
-        # Count how many have contact
-        with_contact = sum(1 for o in enriched if self._has_contact(o))
-        self.stats['phase2_enriched'] = len(enriched)
-        self.stats['phase2_with_contact'] = with_contact
+        # ===================================================================
+        # PHASE 3: SUPPLEMENT WITH DIRECT PLATFORM DISCOVERIES
+        # ===================================================================
+        # Only add direct platform opps if we need more opportunities
+        remaining_slots = max_opportunities - len(enriched)
 
-        logger.info(f"Phase 2: {with_contact}/{len(enriched)} opportunities have contact info")
-        logger.info(f"Contact rate: {with_contact/len(enriched)*100:.1f}%" if enriched else "0%")
+        if remaining_slots > 0:
+            logger.info(f"\n📍 PHASE 3: Supplementing with Direct Platform APIs ({remaining_slots} slots)")
+            platform_opps = await self._phase1_5_direct_platforms()
+
+            # Add platform opps (these have contact built-in)
+            for opp in platform_opps[:remaining_slots]:
+                enriched.append(opp)
+
+            logger.info(f"✅ Phase 3: Added {min(len(platform_opps), remaining_slots)} platform opportunities")
+        else:
+            logger.info(f"\n📍 PHASE 3: Skipped (already have {len(enriched)} opportunities)")
+
+        # Final stats
+        logger.info("\n" + "=" * 80)
+        logger.info("📊 HYBRID DISCOVERY COMPLETE")
+        logger.info("=" * 80)
+        logger.info(f"   Total opportunities: {len(enriched)}")
+        logger.info(f"   With contact info:   {with_contact} ({with_contact/len(enriched)*100:.1f}%)" if enriched else "   With contact: 0")
+        logger.info(f"   Ready for outreach:  {with_contact}")
 
         return enriched
 
@@ -809,20 +834,92 @@ class HybridDiscoveryEngine:
         return enriched
 
     def _basic_enrich(self, opp: Dict) -> Dict:
-        """Basic enrichment for platforms without direct API access"""
+        """
+        Basic enrichment for platforms without direct API access.
+
+        Extracts ALL contact methods from opportunity body:
+        - Email addresses
+        - Twitter handles (@username)
+        - LinkedIn URLs
+        - Discord usernames
+        - Telegram handles
+        - Phone numbers
+        - Website URLs with contact pages
+        """
         if self._has_extractor and self._enrich_contact:
             try:
                 opp = self._enrich_contact(opp)
             except Exception:
                 pass
 
-        # Extract email from body if present
-        body = opp.get('body', '') or opp.get('summary', '') or ''
-        email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', body)
+        # Combine all text fields for extraction
+        text = ' '.join([
+            opp.get('body', '') or '',
+            opp.get('summary', '') or '',
+            opp.get('title', '') or '',
+            opp.get('description', '') or '',
+        ])
+
+        if not text.strip():
+            return opp
+
+        opp['contact'] = opp.get('contact', {})
+
+        # 1. Extract email (highest priority)
+        email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
         if email_match:
-            opp['contact'] = opp.get('contact', {})
-            opp['contact']['email'] = email_match.group(0)
-            opp['contact']['preferred_outreach'] = 'email'
+            email = email_match.group(0)
+            # Filter out common non-contact emails
+            if not any(x in email.lower() for x in ['example.com', 'test.com', 'noreply', 'no-reply']):
+                opp['contact']['email'] = email
+                opp['contact']['preferred_outreach'] = 'email'
+
+        # 2. Extract Twitter handle
+        twitter_match = re.search(r'(?:twitter\.com/|@)([a-zA-Z0-9_]{1,15})\b', text, re.IGNORECASE)
+        if twitter_match:
+            handle = twitter_match.group(1)
+            if handle.lower() not in ['twitter', 'x', 'com']:
+                opp['contact']['twitter_handle'] = handle
+                if not opp['contact'].get('preferred_outreach'):
+                    opp['contact']['preferred_outreach'] = 'twitter_dm'
+
+        # 3. Extract LinkedIn URL/ID
+        linkedin_match = re.search(r'linkedin\.com/in/([a-zA-Z0-9-]+)', text, re.IGNORECASE)
+        if linkedin_match:
+            opp['contact']['linkedin_id'] = linkedin_match.group(1)
+            if not opp['contact'].get('preferred_outreach'):
+                opp['contact']['preferred_outreach'] = 'linkedin_message'
+
+        # 4. Extract Discord username
+        discord_match = re.search(r'(?:discord(?:\.gg)?[:\s]+)?([a-zA-Z0-9_]+#\d{4})', text, re.IGNORECASE)
+        if discord_match:
+            opp['contact']['discord'] = discord_match.group(1)
+
+        # 5. Extract Telegram handle
+        telegram_match = re.search(r'(?:t\.me/|telegram[:\s]+@?)([a-zA-Z0-9_]{5,32})', text, re.IGNORECASE)
+        if telegram_match:
+            opp['contact']['telegram'] = telegram_match.group(1)
+
+        # 6. Extract phone number (basic pattern)
+        phone_match = re.search(r'\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', text)
+        if phone_match:
+            opp['contact']['phone'] = phone_match.group(0)
+            if not opp['contact'].get('preferred_outreach'):
+                opp['contact']['preferred_outreach'] = 'sms'
+
+        # 7. Extract Instagram handle
+        insta_match = re.search(r'(?:instagram\.com/|ig[:\s]+@?)([a-zA-Z0-9_.]+)', text, re.IGNORECASE)
+        if insta_match:
+            handle = insta_match.group(1)
+            if handle.lower() not in ['instagram', 'com', 'p', 'reel']:
+                opp['contact']['instagram_handle'] = handle
+                if not opp['contact'].get('preferred_outreach'):
+                    opp['contact']['preferred_outreach'] = 'instagram_dm'
+
+        # Set platform if we found any contact
+        if opp['contact'] and not opp['contact'].get('platform'):
+            opp['contact']['platform'] = opp.get('platform', 'other')
+            opp['contact']['extraction_source'] = 'text_extraction'
 
         return opp
 
