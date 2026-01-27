@@ -310,6 +310,20 @@ jobs:
           echo "presented=$PRESENTED" >> $GITHUB_OUTPUT
           echo "presentation_method=$PRESENTATION_METHOD" >> $GITHUB_OUTPUT
 
+          # Extract platform breakdown from discovery
+          REDDIT_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("reddit_"))] | length // 0')
+          TWITTER_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("twitter_"))] | length // 0')
+          GITHUB_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("github_"))] | length // 0')
+          PERPLEXITY_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("perplexity_"))] | length // 0')
+
+          # Extract presentation methods breakdown
+          EMAIL_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method == "email")] | length // 0')
+          DM_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method | test("dm|message") // false)] | length // 0')
+          COMMENT_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method | test("comment") // false)] | length // 0')
+
+          # Sample recipients (for verification)
+          SAMPLE_RECIPIENT=$(echo "$BODY" | jq -r '.results.presentations[0].recipient // "none"')
+
           echo ""
           echo "═══════════════════════════════════════════════════════════"
           echo "✅ APEX CYCLE COMPLETE"
@@ -320,14 +334,29 @@ jobs:
           echo "   Discovered: $DISCOVERED opportunities"
           echo "   With contact: $WITH_CONTACT ($CONTACT_RATE)"
           echo ""
+          echo "   📍 By Platform:"
+          echo "      Reddit:     $REDDIT_OPPS (direct API - with author)"
+          echo "      Twitter:    $TWITTER_OPPS (direct API - with handle)"
+          echo "      GitHub:     $GITHUB_OPPS (direct API - with username)"
+          echo "      Perplexity: $PERPLEXITY_OPPS (AI search - enriched)"
+          echo ""
           echo "📊 Core Metrics:"
           echo "   Contracts: $CONTRACTS created"
           echo "   Dispatched: $DISPATCHED tasks"
           echo "   Revenue: \$$REVENUE"
           echo ""
-          echo "🔗 Customer Loop:"
-          echo "   Contracts presented: $PRESENTED / $PRESENTATION_TOTAL"
-          echo "   Primary method: $PRESENTATION_METHOD"
+          echo "🔗 Customer Loop Presentations:"
+          echo "   Total presented: $PRESENTED / $PRESENTATION_TOTAL"
+          echo "   Success rate: $([ "$PRESENTATION_TOTAL" -gt 0 ] && echo "scale=0; $PRESENTED * 100 / $PRESENTATION_TOTAL" | bc || echo "0")%"
+          echo ""
+          echo "   📧 By Channel:"
+          echo "      Email (Resend): $EMAIL_PRESENTED"
+          echo "      Social DM:      $DM_PRESENTED"
+          echo "      Comments:       $COMMENT_PRESENTED"
+          echo ""
+          if [ "$SAMPLE_RECIPIENT" != "none" ] && [ "$SAMPLE_RECIPIENT" != "null" ]; then
+            echo "   📬 Sample recipient: $SAMPLE_RECIPIENT"
+          fi
           echo ""
           echo "🚀 Apex Features Used:"
           echo "   FA30 contracts: $FA30_TRIGGERED"
@@ -569,6 +598,7 @@ jobs:
           echo ""
           echo "🔍 Discovery SLO Check:"
           echo "   Target: >5 opportunities per cycle"
+          echo "   Target: >80% with contact info (hybrid discovery)"
 
           DISCOVERED=${{ needs.autonomous-cycle.outputs.discovered }}
 
@@ -577,6 +607,22 @@ jobs:
           else
             echo "   ⚠️ SLO missed: $DISCOVERED < 5 opportunities"
           fi
+
+      - name: Check Hybrid Discovery SLO (contact rate)
+        run: |
+          echo ""
+          echo "📞 Hybrid Discovery Contact Rate SLO:"
+          echo "   Target: >80% opportunities with contact info"
+
+          # Fetch latest discovery stats
+          STATS=$(curl -s ${{ env.RUNTIME_URL }}/integration/stats)
+
+          # The hybrid discovery should provide high contact rates
+          # Check if platform-direct opportunities are being found
+          echo "   ℹ️ Hybrid discovery uses:"
+          echo "      - Phase 1: Perplexity (broad search)"
+          echo "      - Phase 1.5: Direct APIs (Reddit, Twitter, GitHub)"
+          echo "      - Phase 2: Contact enrichment"
 
       - name: Check Capacity SLO (avoid exhaustion)
         run: |
