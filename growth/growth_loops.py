@@ -310,6 +310,112 @@ class GrowthLoops:
             'pending_referrals': sum(1 for r in self.referrals.values() if r.status == 'pending'),
         }
 
+    def nba_from_artifacts(
+        self,
+        artifacts: List[str],
+        current_pack: str,
+        opportunity: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Next Best Action: Suggest follow-up pack from completed artifacts.
+
+        Args:
+            artifacts: List of artifact URLs/paths from completed work
+            current_pack: Pack just completed
+            opportunity: Original opportunity
+
+        Returns:
+            NBA suggestion with 1-click SOW params, or None
+        """
+        # NBA mapping: current_pack → recommended next pack
+        nba_map = {
+            'web_dev': {
+                'next': 'devops',
+                'trigger_keywords': ['deploy', 'production', 'hosting'],
+                'value_mult': 0.4,
+                'pitch': 'Deploy your app with CI/CD and monitoring',
+            },
+            'design': {
+                'next': 'web_dev',
+                'trigger_keywords': ['design', 'mockup', 'figma'],
+                'value_mult': 2.5,
+                'pitch': 'Turn your designs into a working application',
+            },
+            'mobile_dev': {
+                'next': 'devops',
+                'trigger_keywords': ['app', 'build', 'release'],
+                'value_mult': 0.3,
+                'pitch': 'Set up app store deployment pipeline',
+            },
+            'data_ml': {
+                'next': 'devops',
+                'trigger_keywords': ['model', 'training', 'pipeline'],
+                'value_mult': 0.5,
+                'pitch': 'Deploy your model to production with monitoring',
+            },
+            'writing': {
+                'next': 'design',
+                'trigger_keywords': ['content', 'copy', 'article'],
+                'value_mult': 0.8,
+                'pitch': 'Create visuals to complement your content',
+            },
+            'automation': {
+                'next': 'devops',
+                'trigger_keywords': ['script', 'automation', 'workflow'],
+                'value_mult': 0.4,
+                'pitch': 'Add monitoring and scheduling for your automation',
+            },
+            'devops': {
+                'next': 'web_dev',
+                'trigger_keywords': ['infrastructure', 'deploy'],
+                'value_mult': 1.5,
+                'pitch': 'Build features on your new infrastructure',
+            },
+        }
+
+        nba_config = nba_map.get(current_pack)
+        if not nba_config:
+            return None
+
+        # Check if artifacts suggest the NBA
+        artifact_text = ' '.join(artifacts).lower()
+        triggered = any(kw in artifact_text for kw in nba_config['trigger_keywords'])
+
+        # Always suggest, but boost confidence if triggered
+        base_value = opportunity.get('value', 1000)
+        estimated_value = round(base_value * nba_config['value_mult'], 2)
+
+        nba = {
+            'type': 'nba_upsell',
+            'source_pack': current_pack,
+            'recommended_pack': nba_config['next'],
+            'pitch': nba_config['pitch'],
+            'estimated_value_usd': estimated_value,
+            'confidence': 0.7 if triggered else 0.4,
+            'one_click_params': {
+                'opportunity_id': opportunity.get('id'),
+                'pack': nba_config['next'],
+                'value': estimated_value,
+                'source': 'nba_upsell',
+            },
+        }
+
+        # Track as growth opportunity
+        self._create_growth_opportunity(
+            type='upsell',
+            source_opportunity_id=opportunity.get('id', ''),
+            source_contract_id='',
+            title=f"NBA: {nba_config['pitch']}",
+            description=f"Follow-up to {current_pack} completion",
+            estimated_value=estimated_value,
+            probability=nba['confidence'],
+            tags=[current_pack, nba_config['next'], 'nba'],
+        )
+
+        logger.info(f"NBA generated: {current_pack} → {nba_config['next']} (${estimated_value})")
+
+        return nba
+
     def get_stats(self) -> Dict[str, Any]:
         """Get growth loop stats"""
         return {

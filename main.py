@@ -1139,6 +1139,23 @@ except Exception as e:
     print(f"Integration routes load error: {e}")
 
 # ============================================================================
+# CLIENT ROOM - Real-Time Project Dashboard for Clients
+# ============================================================================
+try:
+    from routes.client_room import get_client_room_router
+    client_room_router = get_client_room_router()
+    if client_room_router:
+        app.include_router(client_room_router)
+        print("=" * 80)
+        print("CLIENT ROOM LOADED - Real-Time Project Dashboard")
+        print("=" * 80)
+        print("  Endpoints: /client-room/{id}, /client-room/{id}/timeline, /client-room/{id}/milestones")
+        print("  Features: Green Light Timeline, Payment Rails, Artifact Previews, Proof Cards")
+        print("=" * 80)
+except Exception as e:
+    print(f"Client Room load error: {e}")
+
+# ============================================================================
 # API STATUS - Premium API Credentials & Monitoring
 # ============================================================================
 try:

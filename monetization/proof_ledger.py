@@ -212,6 +212,71 @@ class ProofOfOutcomeLedger:
         """Get proof by ID"""
         return self.proofs.get(proof_id)
 
+    def render_share_card(self, proof_id: str, anonymize: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Render shareable proof card for Wall of Wins / testimonials.
+
+        Args:
+            proof_id: The proof ID
+            anonymize: Whether to anonymize client details
+
+        Returns:
+            Share card data for rendering, or None
+        """
+        proof = self.proofs.get(proof_id)
+        if not proof or not proof.verified:
+            return None
+
+        # Anonymize client info if requested
+        client_display = "Client" if anonymize else proof.opportunity_id
+
+        # Generate share URLs
+        share_card = {
+            'id': proof.id,
+            'title': proof.title,
+            'description': proof.description[:200] + '...' if len(proof.description) > 200 else proof.description,
+            'client': client_display,
+            'verified': True,
+            'verified_at': proof.verified_at,
+            'hash_preview': proof.hash[:16],
+            'public_url': proof.public_url,
+            'artifact_count': len(proof.artifacts),
+            'share_links': {
+                'linkedin': f"https://www.linkedin.com/sharing/share-offsite/?url={proof.public_url}",
+                'twitter': f"https://twitter.com/intent/tweet?url={proof.public_url}&text=Completed: {proof.title}",
+                'copy': proof.public_url,
+            },
+            'embed_html': f'''<div class="aigentsy-proof-card" data-proof-id="{proof.id}">
+  <h3>{proof.title}</h3>
+  <p>Verified ✓</p>
+  <a href="{proof.public_url}">View Proof</a>
+</div>''',
+        }
+
+        return share_card
+
+    def get_wall_of_wins(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get Wall of Wins - collection of verified proof cards.
+
+        Returns anonymized, shareable proof cards for public display.
+        """
+        verified = self.get_verified_proofs()
+
+        # Sort by verification date (newest first)
+        verified.sort(
+            key=lambda p: p.verified_at or p.created_at,
+            reverse=True
+        )
+
+        cards = []
+        for proof in verified[:limit]:
+            card = self.render_share_card(proof.id, anonymize=True)
+            if card:
+                cards.append(card)
+
+        return cards
+
     def get_stats(self) -> Dict[str, Any]:
         """Get ledger stats"""
         return {

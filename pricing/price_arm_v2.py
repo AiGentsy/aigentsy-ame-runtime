@@ -328,6 +328,123 @@ class PriceArmV2:
 
         logger.debug(f"Conversion recorded: {segment}/{price_tier} = {new_rate:.2%}")
 
+    def detect_scope_creep(
+        self,
+        original_scope: str,
+        current_scope: str,
+        comment_count: int = 0,
+        revision_count: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Scope Protection: Detect scope creep and recommend adjustments.
+
+        Args:
+            original_scope: Original SOW scope text
+            current_scope: Current/updated scope text
+            comment_count: Number of client comments
+            revision_count: Number of revisions requested
+
+        Returns:
+            Scope creep assessment with recommendations
+        """
+        # Calculate scope diff
+        original_len = len(original_scope)
+        current_len = len(current_scope)
+        diff_pct = (current_len - original_len) / max(1, original_len) * 100
+
+        # Risk signals
+        signals = []
+        risk_score = 0.0
+
+        # Signal 1: Scope growth
+        if diff_pct > 30:
+            signals.append(f"scope_growth_{diff_pct:.0f}pct")
+            risk_score += 0.3
+        elif diff_pct > 15:
+            signals.append(f"scope_growth_{diff_pct:.0f}pct")
+            risk_score += 0.15
+
+        # Signal 2: Comment volume
+        if comment_count > 20:
+            signals.append(f"high_comments_{comment_count}")
+            risk_score += 0.25
+        elif comment_count > 10:
+            signals.append(f"moderate_comments_{comment_count}")
+            risk_score += 0.1
+
+        # Signal 3: Revision count
+        if revision_count > 3:
+            signals.append(f"many_revisions_{revision_count}")
+            risk_score += 0.2
+        elif revision_count > 2:
+            signals.append(f"revisions_{revision_count}")
+            risk_score += 0.1
+
+        # Determine recommendation
+        recommendation = None
+        if risk_score >= 0.5:
+            recommendation = {
+                'action': 'split_scope',
+                'reason': 'Significant scope creep detected',
+                'suggested_uplift_pct': min(50, int(risk_score * 100)),
+                'suggest_new_milestone': True,
+            }
+        elif risk_score >= 0.25:
+            recommendation = {
+                'action': 'adjust_ceiling',
+                'reason': 'Moderate scope creep detected',
+                'suggested_uplift_pct': min(25, int(risk_score * 50)),
+                'suggest_new_milestone': False,
+            }
+
+        result = {
+            'scope_creep_detected': risk_score >= 0.25,
+            'risk_score': round(risk_score, 2),
+            'signals': signals,
+            'diff_pct': round(diff_pct, 1),
+            'recommendation': recommendation,
+        }
+
+        if recommendation:
+            logger.warning(f"Scope creep detected: {signals}, risk={risk_score:.2f}")
+
+        return result
+
+    def recommend_split(
+        self,
+        opportunity: Dict[str, Any],
+        step_diffs: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Analyze step diffs from proof ledger and recommend scope split.
+
+        Args:
+            opportunity: The opportunity
+            step_diffs: List of step diff records from proof ledger
+
+        Returns:
+            Split recommendation or None
+        """
+        if not step_diffs:
+            return None
+
+        # Calculate total diff volume
+        total_additions = sum(d.get('additions', 0) for d in step_diffs)
+        total_deletions = sum(d.get('deletions', 0) for d in step_diffs)
+        total_churn = total_additions + total_deletions
+
+        # Threshold: > 500 lines of churn suggests scope issues
+        if total_churn > 500:
+            base_value = opportunity.get('value', 1000)
+            return {
+                'recommend_split': True,
+                'reason': f'High code churn ({total_churn} lines)',
+                'suggested_new_value': round(base_value * 0.3, 2),
+                'suggested_scope': 'Additional features and modifications',
+            }
+
+        return None
+
     def get_stats(self) -> Dict[str, Any]:
         """Get pricing statistics"""
         return {

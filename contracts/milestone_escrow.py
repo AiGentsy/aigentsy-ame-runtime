@@ -29,8 +29,17 @@ PAYPAL_ENABLED = bool(os.getenv('PAYPAL_CLIENT_ID'))
 
 
 @dataclass
+class PaymentRail:
+    """A payment rail option for a milestone"""
+    type: str  # 'cash' or 'credit+aigx'
+    paylink_url: str
+    amount_usd: float
+    assurance: Optional[Dict[str, Any]] = None  # AIGx assurance details
+
+
+@dataclass
 class MilestonePaylink:
-    """A paylink for a milestone"""
+    """A paylink for a milestone with multiple payment rails"""
     id: str
     milestone_id: str
     amount_usd: float
@@ -42,6 +51,9 @@ class MilestonePaylink:
     released_at: Optional[str] = None
     aigx_badge_id: Optional[str] = None
     aigx_assurance_amount: float = 0.0
+    # Two-rail payment options
+    rails: List[PaymentRail] = field(default_factory=list)
+    selected_rail: Optional[str] = None  # Which rail client chose
 
 
 @dataclass
@@ -114,11 +126,17 @@ class MilestoneEscrow:
                 psp=self._select_psp(amount),
             )
 
-            # Generate paylink URL
-            paylink.paylink_url = await self._generate_paylink(paylink, opportunity)
+            # Generate paylink URL (cash rail)
+            cash_link = await self._generate_paylink(paylink, opportunity)
+            paylink.paylink_url = cash_link
 
             # Attach AIGx micro-assurance
             paylink.aigx_badge_id, paylink.aigx_assurance_amount = self._attach_aigx_badge(amount)
+
+            # Generate two-rail payment options
+            paylink.rails = await self._generate_payment_rails(
+                paylink, opportunity, cash_link
+            )
 
             milestones.append(paylink)
 
@@ -193,6 +211,48 @@ class MilestoneEscrow:
         badge_id = f"aigx_{hashlib.md5(f'{amount}_{datetime.now().isoformat()}'.encode()).hexdigest()[:8]}"
 
         return badge_id, assurance_amount
+
+    async def _generate_payment_rails(
+        self,
+        paylink: MilestonePaylink,
+        opportunity: Dict[str, Any],
+        cash_link: str,
+    ) -> List[PaymentRail]:
+        """
+        Generate two-rail payment options.
+
+        Rails:
+        1. Cash: Standard payment
+        2. Credit+AIGx: Outcome credits with micro-assurance (slightly higher)
+        """
+        rails = []
+
+        # Rail 1: Cash (standard)
+        rails.append(PaymentRail(
+            type='cash',
+            paylink_url=cash_link,
+            amount_usd=paylink.amount_usd,
+            assurance=None,
+        ))
+
+        # Rail 2: Credit+AIGx (5% premium for assurance)
+        credit_amount = round(paylink.amount_usd * 1.05, 2)
+        credit_link = f"https://pay.aigentsy.com/{paylink.id}?type=credit&amount={credit_amount}"
+
+        rails.append(PaymentRail(
+            type='credit+aigx',
+            paylink_url=credit_link,
+            amount_usd=credit_amount,
+            assurance={
+                'token': 'AIGx',
+                'coverage': 'micro',
+                'fee': 0.02,
+                'badge_id': paylink.aigx_badge_id,
+                'assurance_amount': paylink.aigx_assurance_amount,
+            },
+        ))
+
+        return rails
 
     def _generate_client_room_url(self, contract: EscrowContract) -> str:
         """Generate signed client room URL"""

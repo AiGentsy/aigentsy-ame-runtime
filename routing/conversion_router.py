@@ -94,6 +94,22 @@ class ConversionRouter:
         """Compute weighted routing score"""
         enrichment = opportunity.get('enrichment', {})
 
+        # HARD GATE 1: Capacity check - don't accept what we can't fulfill
+        if not self._check_capacity(opportunity):
+            logger.debug(f"Hard gate: No capacity for {opportunity.get('id')}")
+            return 0.0
+
+        # HARD GATE 2: SLO health check
+        slo_health = enrichment.get('slo_health', 1.0)
+        if slo_health < 0.6:
+            logger.debug(f"Hard gate: SLO unhealthy ({slo_health}) for {opportunity.get('id')}")
+            return 0.0
+
+        # HARD GATE 3: Anti-abuse block
+        if enrichment.get('risk_block', False):
+            logger.debug(f"Hard gate: Risk blocked for {opportunity.get('id')}")
+            return 0.0
+
         # Get individual scores
         payment_proximity = enrichment.get('payment_proximity', 0.0)
         contactability = enrichment.get('contact_score', 0.0)
@@ -114,7 +130,28 @@ class ConversionRouter:
             self.weights['risk_penalty'] * risk_score
         )
 
+        # Apply capacity multiplier (prefer opps we can fulfill now)
+        capacity_mult = enrichment.get('capacity_multiplier', 1.0)
+        score *= capacity_mult
+
         return max(0.0, min(1.0, score))
+
+    def _check_capacity(self, opportunity: Dict) -> bool:
+        """Check if we have capacity to fulfill this opportunity"""
+        try:
+            from workforce.dispatcher import get_workforce_dispatcher
+            dispatcher = get_workforce_dispatcher()
+            capacity = dispatcher.get_capacity()
+
+            # Check if at least one tier has availability
+            for tier, data in capacity.items():
+                if data.get('available', 0) > 0:
+                    return True
+
+            return False
+        except Exception:
+            # If dispatcher not available, assume capacity
+            return True
 
     def route(self, opportunity: Dict) -> Dict:
         """

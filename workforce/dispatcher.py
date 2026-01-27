@@ -80,7 +80,23 @@ class WorkforceDispatcher:
     2. Check if pdl_action → PDL tier
     3. Check complexity/QA requirements → HUMAN tiers
     4. Consider capacity and SLA
+
+    Plan B Auto-Swap:
+    - If step exceeds p95 by >20%, swap executor tier
+    - Fabric → Hybrid → Human-Premium escalation
     """
+
+    # P95 benchmarks per tier (in seconds)
+    P95_BENCHMARKS = {
+        WorkforceTier.FABRIC: 300,      # 5 minutes
+        WorkforceTier.PDL: 120,          # 2 minutes
+        WorkforceTier.HUMAN_PREMIUM: 7200,  # 2 hours
+        WorkforceTier.HUMAN_STANDARD: 3600,  # 1 hour
+        WorkforceTier.HYBRID: 2700,      # 45 minutes
+    }
+
+    # Swap threshold (20% over p95)
+    SWAP_THRESHOLD = 1.2
 
     def __init__(self):
         self.tasks: Dict[str, WorkforceTask] = {}
@@ -191,6 +207,101 @@ class WorkforceDispatcher:
             return TaskPriority.NORMAL
         else:
             return TaskPriority.LOW
+
+    def should_swap(self, task: WorkforceTask) -> Optional[WorkforceTier]:
+        """
+        Plan B Auto-Swap: Check if task should swap to higher tier.
+
+        Returns new tier if swap needed, None otherwise.
+        """
+        if not task.started_at:
+            return None
+
+        # Calculate elapsed time
+        start = datetime.fromisoformat(task.started_at.replace('Z', '+00:00'))
+        elapsed_seconds = (datetime.now(timezone.utc) - start).total_seconds()
+
+        # Get p95 benchmark for current tier
+        p95 = self.P95_BENCHMARKS.get(task.tier, 300)
+
+        # Check if exceeded threshold
+        if elapsed_seconds > p95 * self.SWAP_THRESHOLD:
+            # Determine swap target
+            swap_chain = {
+                WorkforceTier.FABRIC: WorkforceTier.HYBRID,
+                WorkforceTier.PDL: WorkforceTier.HYBRID,
+                WorkforceTier.HYBRID: WorkforceTier.HUMAN_PREMIUM,
+                WorkforceTier.HUMAN_STANDARD: WorkforceTier.HUMAN_PREMIUM,
+            }
+
+            new_tier = swap_chain.get(task.tier)
+            if new_tier:
+                logger.warning(
+                    f"Plan B swap triggered: {task.id} "
+                    f"{task.tier.value} → {new_tier.value} "
+                    f"(elapsed: {elapsed_seconds:.0f}s, p95: {p95}s)"
+                )
+                return new_tier
+
+        return None
+
+    async def execute_with_swap(self, task: WorkforceTask) -> Dict[str, Any]:
+        """
+        Execute task with automatic tier swap on stall.
+
+        Monitors execution and swaps tier if p95 exceeded.
+        """
+        original_tier = task.tier
+        swap_count = 0
+        max_swaps = 2
+
+        while swap_count < max_swaps:
+            # Check for swap
+            new_tier = self.should_swap(task)
+            if new_tier and new_tier != task.tier:
+                # Record swap in proof ledger
+                try:
+                    from monetization.proof_ledger import get_proof_ledger
+                    ledger = get_proof_ledger()
+                    ledger.create_proof(
+                        opportunity_id=task.plan_id,
+                        title=f"Tier Swap: {task.tier.value} → {new_tier.value}",
+                        description=f"Auto-swap triggered for task {task.id}",
+                        proof_type="tier_swap",
+                        evidence={
+                            'original_tier': original_tier.value,
+                            'new_tier': new_tier.value,
+                            'swap_count': swap_count + 1,
+                            'reason': 'p95_exceeded',
+                        }
+                    )
+                except Exception:
+                    pass
+
+                # Perform swap
+                task.tier = new_tier
+                swap_count += 1
+                self.stats['tier_swaps'] = self.stats.get('tier_swaps', 0) + 1
+
+            # Try execution
+            if task.tier in [WorkforceTier.FABRIC, WorkforceTier.PDL]:
+                await self._execute_ai_task(task)
+                if task.status == "completed":
+                    break
+            else:
+                # Human tiers - mark as assigned and return
+                task.status = "assigned"
+                break
+
+            await asyncio.sleep(1)  # Brief pause before retry
+
+        return {
+            'task_id': task.id,
+            'final_tier': task.tier.value,
+            'original_tier': original_tier.value,
+            'swap_count': swap_count,
+            'status': task.status,
+        }
 
     async def _fallback_dispatch(self, task: WorkforceTask) -> WorkforceTask:
         """Fallback to alternative tier if primary full"""
