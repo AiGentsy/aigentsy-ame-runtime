@@ -15,6 +15,7 @@ from .internet_wide_scraper import InternetWideScraper
 from .streams import StreamIngestor
 from .continuous_discovery import ContinuousDiscovery
 from .hybrid_discovery import HybridDiscoveryEngine, get_hybrid_discovery, discover_with_contact
+from .multi_source_discovery import MultiSourceDiscovery, get_multi_source_discovery, discover_all
 
 __all__ = [
     'REAL_TIME_SOURCES',
@@ -31,4 +32,8 @@ __all__ = [
     'HybridDiscoveryEngine',
     'get_hybrid_discovery',
     'discover_with_contact',
+    # Multi-source discovery (ALL configured APIs in parallel)
+    'MultiSourceDiscovery',
+    'get_multi_source_discovery',
+    'discover_all',
 ]

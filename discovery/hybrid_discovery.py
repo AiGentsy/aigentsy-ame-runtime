@@ -91,7 +91,66 @@ class HybridDiscoveryEngine:
 
     async def discover_with_contact(self, max_opportunities: int = 100) -> List[Dict]:
         """
-        Complete hybrid discovery with contact enrichment.
+        Complete multi-source discovery with contact enrichment.
+
+        USES MultiSourceDiscovery for parallel execution across ALL configured APIs:
+        - Perplexity (PRIMARY) - Internet-wide search
+        - Twitter (SOCIAL) - Real-time hiring tweets
+        - GitHub (OPEN SOURCE) - Bounties and help-wanted
+        - OpenRouter (BACKUP) - Perplexity via OpenRouter
+        - Reddit (DIRECT) - r/forhire posts
+
+        Returns opportunities with contact info ready for outreach.
+        """
+        logger.info("=" * 80)
+        logger.info("MULTI-SOURCE DISCOVERY - ALL CONFIGURED APIS")
+        logger.info("=" * 80)
+
+        # Use MultiSourceDiscovery for parallel execution across all APIs
+        try:
+            from discovery.multi_source_discovery import MultiSourceDiscovery
+            multi_discovery = MultiSourceDiscovery()
+            opportunities = await multi_discovery.discover(max_opportunities)
+
+            # Get stats from multi-source discovery
+            ms_stats = multi_discovery.get_stats()
+            self.stats['phase1_discovered'] = ms_stats.get('total_discovered', 0)
+            self.stats['phase2_with_contact'] = ms_stats.get('with_contact', 0)
+            self.stats['platforms_hit'] = dict(ms_stats.get('by_platform', {}))
+
+            logger.info(f"MultiSourceDiscovery returned {len(opportunities)} opportunities")
+
+        except ImportError as e:
+            logger.warning(f"MultiSourceDiscovery not available: {e}")
+            logger.info("Falling back to legacy hybrid discovery...")
+            opportunities = await self._legacy_discover_with_contact(max_opportunities)
+
+        # Additional enrichment pass for opportunities missing contact
+        enriched_count = 0
+        for opp in opportunities:
+            if not self._has_contact(opp):
+                opp = self._basic_enrich(opp)
+                if self._has_contact(opp):
+                    enriched_count += 1
+
+        # Final stats
+        with_contact = sum(1 for o in opportunities if self._has_contact(o))
+        self.stats['phase2_enriched'] = len(opportunities)
+        self.stats['phase2_with_contact'] = with_contact
+
+        logger.info("\n" + "=" * 80)
+        logger.info("DISCOVERY COMPLETE")
+        logger.info("=" * 80)
+        logger.info(f"   Total opportunities: {len(opportunities)}")
+        logger.info(f"   With contact info:   {with_contact} ({with_contact/len(opportunities)*100:.1f}%)" if opportunities else "   With contact: 0")
+        logger.info(f"   Additional enriched: {enriched_count}")
+        logger.info(f"   Ready for outreach:  {with_contact}")
+
+        return opportunities
+
+    async def _legacy_discover_with_contact(self, max_opportunities: int = 100) -> List[Dict]:
+        """
+        Legacy hybrid discovery - used as fallback if MultiSourceDiscovery unavailable.
 
         THREE-PHASE APPROACH:
         1. PERPLEXITY (PRIMARY) - Discovers across ENTIRE INTERNET
@@ -100,51 +159,27 @@ class HybridDiscoveryEngine:
 
         Returns opportunities with contact info ready for outreach.
         """
-        logger.info("=" * 80)
-        logger.info("🔍 HYBRID DISCOVERY - PERPLEXITY PRIMARY")
-        logger.info("=" * 80)
+        logger.info("LEGACY HYBRID DISCOVERY - PERPLEXITY PRIMARY")
 
-        # ===================================================================
-        # PHASE 1: PERPLEXITY - DISCOVER ACROSS ENTIRE INTERNET (PRIMARY)
-        # ===================================================================
-        logger.info("\n📡 PHASE 1: Perplexity Internet-Wide Discovery (PRIMARY)")
-
+        # Phase 1: Perplexity
         perplexity_opportunities = await self._phase1_perplexity()
         self.stats['phase1_discovered'] = len(perplexity_opportunities)
-        logger.info(f"✅ Phase 1: {len(perplexity_opportunities)} opportunities from Perplexity")
+        logger.info(f"Phase 1: {len(perplexity_opportunities)} opportunities from Perplexity")
 
-        # ===================================================================
-        # PHASE 2: ENRICH PERPLEXITY RESULTS WITH CONTACT INFO
-        # ===================================================================
-        logger.info(f"\n🔗 PHASE 2: Enriching Perplexity Results with Direct APIs")
-
-        # Limit before enrichment to avoid rate limits
+        # Phase 2: Enrich
         opps_to_enrich = perplexity_opportunities[:max_opportunities]
         enriched = await self._phase2_enrich(opps_to_enrich)
-
-        # Count enrichment success
         enriched_with_contact = sum(1 for o in enriched if self._has_contact(o))
-        logger.info(f"✅ Phase 2: {enriched_with_contact}/{len(enriched)} enriched with contact info")
+        logger.info(f"Phase 2: {enriched_with_contact}/{len(enriched)} enriched with contact info")
 
-        # ===================================================================
-        # PHASE 3: ALWAYS ADD DIRECT PLATFORM DISCOVERIES
-        # ===================================================================
-        # These have contact info built-in, so ALWAYS include them
-        logger.info(f"\n📍 PHASE 3: Adding Direct Platform APIs (guaranteed contact info)")
+        # Phase 3: Direct platform APIs
         platform_opps = await self._phase1_5_direct_platforms()
-        logger.info(f"✅ Phase 3: {len(platform_opps)} opportunities from direct platforms")
+        logger.info(f"Phase 3: {len(platform_opps)} opportunities from direct platforms")
 
-        # ===================================================================
-        # COMBINE & PRIORITIZE: PLATFORM DIVERSITY + Contact info
-        # ===================================================================
-        # KEY FIX: Interleave results from different platforms to ensure diversity
-        # Without this, Reddit dominates because direct API returns ~20 results with contact
-
-        # Group ALL opportunities by platform
+        # Combine and interleave
         by_platform = {}
         all_seen_urls = set()
 
-        # Add Perplexity results FIRST (higher priority for diverse platforms)
         for opp in enriched:
             url = opp.get('url', '')
             if url and url not in all_seen_urls:
@@ -154,7 +189,6 @@ class HybridDiscoveryEngine:
                     by_platform[platform] = []
                 by_platform[platform].append(opp)
 
-        # Add direct platform results SECOND (fills in with guaranteed contact)
         for opp in platform_opps:
             url = opp.get('url', '')
             if url and url not in all_seen_urls:
@@ -164,18 +198,9 @@ class HybridDiscoveryEngine:
                     by_platform[platform] = []
                 by_platform[platform].append(opp)
 
-        # Log platform distribution before interleaving
-        logger.info(f"📊 Platform distribution:")
-        for platform, opps in sorted(by_platform.items(), key=lambda x: -len(x[1])):
-            with_contact = sum(1 for o in opps if self._has_contact(o))
-            logger.info(f"   {platform}: {len(opps)} ({with_contact} with contact)")
-
-        # INTERLEAVE: Take from each platform in round-robin to ensure diversity
+        # Interleave by platform
         final_opportunities = []
         platforms = list(by_platform.keys())
-
-        # Priority order: Platforms with GUARANTEED contact first (Reddit, GitHub from direct API)
-        # Then other platforms from Perplexity
         priority_platforms = ['reddit', 'github', 'twitter', 'linkedin', 'upwork', 'freelancer', 'fiverr', 'hackernews']
         ordered_platforms = []
         for p in priority_platforms:
@@ -185,9 +210,6 @@ class HybridDiscoveryEngine:
             if p not in ordered_platforms:
                 ordered_platforms.append(p)
 
-        logger.info(f"📋 Platform order: {ordered_platforms}")
-
-        # Round-robin interleaving
         round_num = 0
         while len(final_opportunities) < max_opportunities:
             added_this_round = False
@@ -197,13 +219,11 @@ class HybridDiscoveryEngine:
                 opps = by_platform.get(platform, [])
                 if round_num < len(opps):
                     opp = opps[round_num]
-                    # Prefer opportunities with contact
-                    if self._has_contact(opp) or round_num < 2:  # Always take first 2 from each platform
+                    if self._has_contact(opp) or round_num < 2:
                         final_opportunities.append(opp)
                         added_this_round = True
 
             if not added_this_round:
-                # No more opportunities with contact, add remaining
                 for platform in ordered_platforms:
                     opps = by_platform.get(platform, [])
                     for opp in opps[round_num:]:
@@ -214,20 +234,6 @@ class HybridDiscoveryEngine:
                 break
 
             round_num += 1
-
-        # Final stats
-        with_contact = sum(1 for o in final_opportunities if self._has_contact(o))
-        self.stats['phase2_enriched'] = len(final_opportunities)
-        self.stats['phase2_with_contact'] = with_contact
-
-        logger.info("\n" + "=" * 80)
-        logger.info("📊 HYBRID DISCOVERY COMPLETE")
-        logger.info("=" * 80)
-        logger.info(f"   Total opportunities: {len(final_opportunities)}")
-        logger.info(f"   With contact info:   {with_contact} ({with_contact/len(final_opportunities)*100:.1f}%)" if final_opportunities else "   With contact: 0")
-        logger.info(f"   Platform-sourced:    {len([o for o in final_opportunities if o.get('source', '').endswith('_api')])}")
-        logger.info(f"   Perplexity-sourced:  {len([o for o in final_opportunities if 'perplexity' in o.get('id', '')])}")
-        logger.info(f"   Ready for outreach:  {with_contact}")
 
         return final_opportunities
 
