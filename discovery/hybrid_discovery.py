@@ -60,9 +60,14 @@ class HybridDiscoveryEngine:
         }
 
         # Platform API configs
+        # Twitter: check for bearer token OR API key (for OAuth)
         self.twitter_bearer = os.getenv('TWITTER_BEARER_TOKEN')
+        self.twitter_api_key = os.getenv('TWITTER_API_KEY')
+        self.twitter_configured = bool(self.twitter_bearer or self.twitter_api_key)
         self.github_token = os.getenv('GITHUB_TOKEN')
         self.reddit_configured = True  # Reddit JSON API is public
+        self.linkedin_token = os.getenv('LINKEDIN_ACCESS_TOKEN')
+        self.instagram_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
 
         # Import existing discovery if available
         try:
@@ -251,11 +256,13 @@ class HybridDiscoveryEngine:
             opportunities.extend(reddit_opps)
             logger.info(f"Reddit direct: {len(reddit_opps)} opportunities with author info")
 
-        # Twitter: Search for hiring tweets
-        if self.twitter_bearer:
+        # Twitter: Search for hiring tweets (using bearer token if available)
+        if self.twitter_configured and self.twitter_bearer:
             twitter_opps = await self._discover_twitter_direct()
             opportunities.extend(twitter_opps)
             logger.info(f"Twitter direct: {len(twitter_opps)} opportunities with author info")
+        elif self.twitter_configured:
+            logger.info(f"Twitter: API key available but bearer token needed for search API")
 
         # GitHub: Search for bounty/help-wanted issues
         if self.github_token or True:  # GitHub search works without auth (with rate limits)
