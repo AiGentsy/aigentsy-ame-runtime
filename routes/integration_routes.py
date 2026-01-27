@@ -278,7 +278,7 @@ if FASTAPI_AVAILABLE:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "llama-3.1-sonar-small-128k-online",
+                        "model": "sonar",
                         "messages": [
                             {"role": "system", "content": "Return a JSON array of job opportunities."},
                             {"role": "user", "content": test_query}

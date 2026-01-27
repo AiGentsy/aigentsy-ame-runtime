@@ -500,7 +500,7 @@ JSON only:"""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "llama-3.1-sonar-small-128k-online",  # Perplexity online model with web search
+                        "model": "sonar",  # Perplexity online model with web search
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -628,7 +628,7 @@ JSON only:"""
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": "llama-3.1-sonar-small-128k-online",
+                            "model": "sonar",
                             "messages": [
                                 {"role": "system", "content": "You are a job opportunity finder. Return only valid JSON arrays."},
                                 {"role": "user", "content": query}
