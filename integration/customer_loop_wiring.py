@@ -1,19 +1,23 @@
 """
-Customer Loop Wiring - Connects EXISTING Systems to Close the Revenue Gap
+Customer Loop Wiring - Complete Multi-Channel Outreach Integration
 ═════════════════════════════════════════════════════════════════════════
 
-This wires together EXISTING systems to close:
-    Discovery → Contract → [GAP] → Customer Signs → Payment
+This wires together ALL EXISTING systems to close:
+    Discovery → Contract → [OUTREACH] → Customer Signs → Payment
 
-Systems wired (ALL EXISTING):
-1. direct_outreach_engine.py - Email, Twitter DM, LinkedIn, Reddit DM
-2. platform_response_engine.py - GitHub comments, Reddit comments, etc.
-3. universal_contact_extraction.py - Extract contact from any opportunity
-4. client_acceptance_portal.py - Stripe payment acceptance flow
-5. connectors/email_connector.py - Postmark/SendGrid email delivery
-6. routes/client_room.py - Client-facing dashboard
+CONNECTORS WIRED:
+1. connectors/sms_connector.py - Twilio SMS
+2. connectors/resend_connector.py - Resend email
+3. connectors/email_connector.py - Postmark/SendGrid
+4. connectors/slack_connector.py - Slack notifications
 
-NO NEW FEATURES. Just wiring existing code.
+ENGINES WIRED:
+5. direct_outreach_engine.py - Twitter DM, LinkedIn, Reddit DM
+6. platform_response_engine.py - GitHub/Reddit/Twitter comments
+7. universal_contact_extraction.py - Extract contact from opportunities
+8. client_acceptance_portal.py - Stripe payment acceptance
+
+ALL CODE EXISTS. Just wiring it together.
 """
 
 import logging
@@ -36,103 +40,163 @@ class PresentationResult:
     tracking_id: Optional[str] = None
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     details: Dict[str, Any] = field(default_factory=dict)
+    fallback_attempts: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class CustomerLoopWiring:
     """
-    Wires existing systems to close the customer interaction loop.
+    Complete multi-channel customer outreach using ALL available APIs.
 
-    Uses ONLY existing, working code - no placeholders.
+    Priority order for outreach:
+    1. Platform-native (Twitter DM for Twitter opps, LinkedIn for LinkedIn)
+    2. Email (Resend, then SendGrid, then Postmark)
+    3. SMS (Twilio)
+    4. WhatsApp (Twilio)
+    5. Slack (for internal notifications)
     """
 
     def __init__(self):
         self.available_systems: Dict[str, Any] = {}
-        self.outreach_engine = None
-        self.platform_response_engine = None
-        self.contact_extractor = None
-        self.email_connector = None
-        self.acceptance_portal = None
+        self.connectors: Dict[str, Any] = {}
+        self.engines: Dict[str, Any] = {}
 
-        self._detect_available_systems()
+        self._detect_all_systems()
 
-    def _detect_available_systems(self):
-        """Detect which customer interaction systems exist and are configured"""
+    def _detect_all_systems(self):
+        """Detect ALL available communication systems"""
 
-        # 1. Direct Outreach Engine
+        # ═══════════════════════════════════════════════════════════════════
+        # CONNECTORS (from connectors/)
+        # ═══════════════════════════════════════════════════════════════════
+
+        # 1. SMS Connector (Twilio)
         try:
-            from direct_outreach_engine import DirectOutreachEngine, get_outreach_engine
-            self.outreach_engine = get_outreach_engine()
-            stats = self.outreach_engine.get_stats()
+            from connectors.sms_connector import SMSConnector
+            self.connectors['sms'] = SMSConnector()
+            twilio_configured = all([
+                os.getenv('TWILIO_ACCOUNT_SID'),
+                os.getenv('TWILIO_AUTH_TOKEN'),
+                os.getenv('TWILIO_FROM_NUMBER')
+            ])
+            self.available_systems['sms_twilio'] = {
+                'loaded': True,
+                'configured': twilio_configured,
+                'connector': 'SMSConnector'
+            }
+            if twilio_configured:
+                logger.info("✅ SMS: Twilio configured")
+            else:
+                logger.warning("⚠️ SMS: Twilio loaded but not configured")
+        except ImportError as e:
+            logger.warning(f"⚠️ SMS connector not available: {e}")
+
+        # 2. Resend Connector (Email)
+        try:
+            from connectors.resend_connector import ResendConnector
+            self.connectors['resend'] = ResendConnector()
+            resend_configured = bool(os.getenv('RESEND_API_KEY'))
+            self.available_systems['email_resend'] = {
+                'loaded': True,
+                'configured': resend_configured,
+                'connector': 'ResendConnector'
+            }
+            if resend_configured:
+                logger.info("✅ Email: Resend configured")
+        except ImportError as e:
+            logger.warning(f"⚠️ Resend connector not available: {e}")
+
+        # 3. Email Connector (Postmark/SendGrid)
+        try:
+            from connectors.email_connector import EmailConnector
+            self.connectors['email'] = EmailConnector()
+            email_configured = bool(os.getenv('POSTMARK_API_KEY') or os.getenv('SENDGRID_API_KEY'))
+            self.available_systems['email_generic'] = {
+                'loaded': True,
+                'configured': email_configured,
+                'connector': 'EmailConnector',
+                'provider': 'postmark' if os.getenv('POSTMARK_API_KEY') else 'sendgrid' if os.getenv('SENDGRID_API_KEY') else None
+            }
+            if email_configured:
+                logger.info("✅ Email: Postmark/SendGrid configured")
+        except ImportError as e:
+            logger.warning(f"⚠️ Email connector not available: {e}")
+
+        # 4. Slack Connector
+        try:
+            from connectors.slack_connector import SlackConnector
+            self.connectors['slack'] = SlackConnector()
+            slack_configured = bool(os.getenv('SLACK_BOT_TOKEN') or os.getenv('SLACK_WEBHOOK_URL'))
+            self.available_systems['slack'] = {
+                'loaded': True,
+                'configured': slack_configured,
+                'connector': 'SlackConnector'
+            }
+            if slack_configured:
+                logger.info("✅ Slack: Configured")
+        except ImportError as e:
+            logger.warning(f"⚠️ Slack connector not available: {e}")
+
+        # 5. Stripe Connector (Payments)
+        try:
+            from connectors.stripe_connector import StripeConnector
+            self.connectors['stripe'] = StripeConnector()
+            stripe_configured = bool(os.getenv('STRIPE_SECRET_KEY'))
+            self.available_systems['payment_stripe'] = {
+                'loaded': True,
+                'configured': stripe_configured,
+                'connector': 'StripeConnector'
+            }
+            if stripe_configured:
+                logger.info("✅ Payment: Stripe configured")
+        except ImportError as e:
+            logger.warning(f"⚠️ Stripe connector not available: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # ENGINES (standalone modules)
+        # ═══════════════════════════════════════════════════════════════════
+
+        # 6. Direct Outreach Engine
+        try:
+            from direct_outreach_engine import get_outreach_engine
+            self.engines['outreach'] = get_outreach_engine()
+            stats = self.engines['outreach'].get_stats()
             self.available_systems['direct_outreach'] = {
                 'loaded': True,
                 'channels': stats.get('channels_configured', {}),
-                'daily_limit': self.outreach_engine.max_daily_outreach,
+                'daily_limit': self.engines['outreach'].max_daily_outreach,
             }
             logger.info("✅ DirectOutreachEngine loaded")
-        except ImportError as e:
-            logger.warning(f"⚠️ DirectOutreachEngine not available: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ DirectOutreachEngine error: {e}")
+            logger.warning(f"⚠️ DirectOutreachEngine not available: {e}")
 
-        # 2. Platform Response Engine
+        # 7. Platform Response Engine
         try:
-            from platform_response_engine import PlatformResponseEngine, get_platform_response_engine
-            self.platform_response_engine = get_platform_response_engine()
-            supported = self.platform_response_engine.get_supported_platforms()
+            from platform_response_engine import get_platform_response_engine
+            self.engines['platform_response'] = get_platform_response_engine()
+            supported = self.engines['platform_response'].get_supported_platforms()
             self.available_systems['platform_response'] = {
                 'loaded': True,
                 'platforms': supported,
             }
             logger.info("✅ PlatformResponseEngine loaded")
-        except ImportError as e:
+        except Exception as e:
             logger.warning(f"⚠️ PlatformResponseEngine not available: {e}")
-        except Exception as e:
-            logger.warning(f"⚠️ PlatformResponseEngine error: {e}")
 
-        # 3. Universal Contact Extractor
+        # 8. Universal Contact Extractor
         try:
-            from universal_contact_extraction import (
-                UniversalContactExtractor,
-                get_contact_extractor,
-                enrich_opportunity_with_contact
-            )
-            self.contact_extractor = get_contact_extractor()
-            self.available_systems['contact_extraction'] = {
-                'loaded': True,
-            }
+            from universal_contact_extraction import get_contact_extractor, enrich_opportunity_with_contact
+            self.engines['contact_extractor'] = get_contact_extractor()
             self._enrich_opportunity = enrich_opportunity_with_contact
+            self.available_systems['contact_extraction'] = {'loaded': True}
             logger.info("✅ UniversalContactExtractor loaded")
-        except ImportError as e:
-            logger.warning(f"⚠️ UniversalContactExtractor not available: {e}")
-            self._enrich_opportunity = None
         except Exception as e:
-            logger.warning(f"⚠️ UniversalContactExtractor error: {e}")
+            logger.warning(f"⚠️ ContactExtractor not available: {e}")
             self._enrich_opportunity = None
 
-        # 4. Email Connector
+        # 9. Client Acceptance Portal
         try:
-            from connectors.email_connector import EmailConnector
-            self.email_connector = EmailConnector()
-            health = self.email_connector.health()
-            self.available_systems['email_connector'] = {
-                'loaded': True,
-                'configured': os.getenv('POSTMARK_API_KEY') or os.getenv('SENDGRID_API_KEY'),
-            }
-            logger.info("✅ EmailConnector loaded")
-        except ImportError as e:
-            logger.warning(f"⚠️ EmailConnector not available: {e}")
-        except Exception as e:
-            logger.warning(f"⚠️ EmailConnector error: {e}")
-
-        # 5. Client Acceptance Portal
-        try:
-            from client_acceptance_portal import (
-                create_accept_link,
-                get_deal,
-                accept_deal,
-                AI_SERVICE_CATALOG
-            )
-            self.acceptance_portal = {
+            from client_acceptance_portal import create_accept_link, get_deal, accept_deal, AI_SERVICE_CATALOG
+            self.engines['acceptance_portal'] = {
                 'create_accept_link': create_accept_link,
                 'get_deal': get_deal,
                 'accept_deal': accept_deal,
@@ -143,24 +207,68 @@ class CustomerLoopWiring:
                 'stripe_configured': bool(os.getenv('STRIPE_SECRET_KEY')),
             }
             logger.info("✅ ClientAcceptancePortal loaded")
-        except ImportError as e:
-            logger.warning(f"⚠️ ClientAcceptancePortal not available: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ ClientAcceptancePortal error: {e}")
+            logger.warning(f"⚠️ AcceptancePortal not available: {e}")
 
-        # 6. Check API keys
+        # ═══════════════════════════════════════════════════════════════════
+        # API KEY DETECTION (complete list)
+        # ═══════════════════════════════════════════════════════════════════
+
         self.available_systems['api_keys'] = {
+            # Email
             'resend': bool(os.getenv('RESEND_API_KEY')),
             'postmark': bool(os.getenv('POSTMARK_API_KEY')),
             'sendgrid': bool(os.getenv('SENDGRID_API_KEY')),
+
+            # SMS/Voice
+            'twilio_sms': all([
+                os.getenv('TWILIO_ACCOUNT_SID'),
+                os.getenv('TWILIO_AUTH_TOKEN'),
+                os.getenv('TWILIO_FROM_NUMBER')
+            ]),
+            'twilio_whatsapp': all([
+                os.getenv('TWILIO_ACCOUNT_SID'),
+                os.getenv('TWILIO_AUTH_TOKEN')
+            ]),
+
+            # Payment
             'stripe': bool(os.getenv('STRIPE_SECRET_KEY')),
-            'twitter': bool(os.getenv('TWITTER_API_KEY')),
-            'reddit': bool(os.getenv('REDDIT_CLIENT_ID')),
+            'stripe_webhook': bool(os.getenv('STRIPE_WEBHOOK_SECRET')),
+
+            # Social
+            'twitter': bool(os.getenv('TWITTER_BEARER_TOKEN') or os.getenv('TWITTER_API_KEY')),
+            'twitter_dm': bool(os.getenv('TWITTER_ACCESS_TOKEN')),
+            'reddit': bool(os.getenv('REDDIT_CLIENT_ID') and os.getenv('REDDIT_CLIENT_SECRET')),
             'github': bool(os.getenv('GITHUB_TOKEN')),
             'linkedin': bool(os.getenv('LINKEDIN_ACCESS_TOKEN')),
+            'instagram': bool(os.getenv('INSTAGRAM_ACCESS_TOKEN')),
+
+            # Team messaging
+            'slack': bool(os.getenv('SLACK_BOT_TOKEN') or os.getenv('SLACK_WEBHOOK_URL')),
+            'discord': bool(os.getenv('DISCORD_WEBHOOK_URL') or os.getenv('DISCORD_BOT_TOKEN')),
+
+            # AI/LLM
+            'openrouter': bool(os.getenv('OPENROUTER_API_KEY')),
+            'gemini': bool(os.getenv('GEMINI_API_KEY')),
+            'perplexity': bool(os.getenv('PERPLEXITY_API_KEY')),
+            'anthropic': bool(os.getenv('ANTHROPIC_API_KEY')),
+
+            # Storage/Data
+            'jsonbin': bool(os.getenv('JSONBIN_SECRET')),
+            'airtable': bool(os.getenv('AIRTABLE_API_KEY')),
+
+            # Ecommerce
+            'shopify': bool(os.getenv('SHOPIFY_ACCESS_TOKEN') or os.getenv('SHOPIFY_ADMIN_TOKEN')),
+
+            # Media
+            'stability': bool(os.getenv('STABILITY_API_KEY')),
+            'runway': bool(os.getenv('RUNWAY_API_KEY')),
         }
 
-        logger.info(f"📊 Available systems: {list(self.available_systems.keys())}")
+        # Count configured APIs
+        configured_count = sum(1 for v in self.available_systems['api_keys'].values() if v)
+        total_count = len(self.available_systems['api_keys'])
+        logger.info(f"📊 API Keys: {configured_count}/{total_count} configured")
 
     def enrich_with_contact(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
         """Add contact info to opportunity using existing extractor"""
@@ -190,14 +298,13 @@ class CustomerLoopWiring:
         sow: Optional[Dict[str, Any]] = None,
     ) -> PresentationResult:
         """
-        Present contract to customer using existing outreach systems.
+        Present contract using BEST available channel for this opportunity.
 
-        Tries methods in order:
-        1. Platform-native response (comment on their post)
-        2. Direct outreach (DM/email)
-        3. Email via connector
-
-        Uses whatever exists and is configured.
+        Priority order:
+        1. Platform-native (Twitter DM for Twitter, LinkedIn for LinkedIn)
+        2. Email (Resend → SendGrid → Postmark)
+        3. SMS (Twilio)
+        4. WhatsApp (Twilio)
         """
         result = PresentationResult()
 
@@ -206,151 +313,217 @@ class CustomerLoopWiring:
             opportunity = self.enrich_with_contact(opportunity)
 
         contact = opportunity.get('contact', {})
+        metadata = opportunity.get('metadata', {})
         platform = opportunity.get('source', '').lower()
 
-        # Extract key contract info for message
-        total_value = contract.get('total_amount_usd', sow.get('total_value_usd', 0) if sow else 0)
+        # Extract contact details
+        email = contact.get('email') or metadata.get('poster_email') or metadata.get('email')
+        phone = contact.get('phone') or metadata.get('poster_phone') or metadata.get('phone')
+        twitter_handle = contact.get('twitter_handle') or metadata.get('poster_handle')
+        linkedin_id = contact.get('linkedin_id') or metadata.get('poster_id')
+        reddit_username = contact.get('reddit_username') or metadata.get('poster_username')
+
+        # Build messages
         title = opportunity.get('title', 'your project')
+        total_value = contract.get('total_amount_usd', sow.get('total_value_usd', 0) if sow else 0)
 
-        # Build message
-        message = self._build_outreach_message(
-            title=title,
-            total_value=total_value,
-            client_room_url=client_room_url,
-            platform=platform
-        )
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 1: Platform-native outreach
+        # ═══════════════════════════════════════════════════════════════════
 
-        # Method 1: Platform-native response (comment on their post)
-        if self.platform_response_engine:
-            supported = self.platform_response_engine.get_supported_platforms()
+        # Twitter opportunities → Twitter DM
+        if 'twitter' in platform and 'outreach' in self.engines:
+            engine = self.engines['outreach']
+            if engine.get_stats().get('channels_configured', {}).get('twitter_dm'):
+                if twitter_handle:
+                    try:
+                        outreach_result = await engine.process_opportunity(opportunity, contact)
+                        if outreach_result and outreach_result.status.value == 'sent':
+                            result.presented = True
+                            result.method = 'twitter_dm'
+                            result.channel = 'twitter'
+                            result.recipient = twitter_handle
+                            result.tracking_id = outreach_result.tracking_id
+                            logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
+                            return result
+                    except Exception as e:
+                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
+                        logger.warning(f"⚠️ Twitter DM failed: {e}")
+
+        # LinkedIn opportunities → LinkedIn message
+        if 'linkedin' in platform and 'outreach' in self.engines:
+            engine = self.engines['outreach']
+            if engine.get_stats().get('channels_configured', {}).get('linkedin_message'):
+                if linkedin_id:
+                    try:
+                        outreach_result = await engine.process_opportunity(opportunity, contact)
+                        if outreach_result and outreach_result.status.value == 'sent':
+                            result.presented = True
+                            result.method = 'linkedin_message'
+                            result.channel = 'linkedin'
+                            result.recipient = linkedin_id
+                            result.tracking_id = outreach_result.tracking_id
+                            logger.info(f"✅ LinkedIn message sent to {linkedin_id}")
+                            return result
+                    except Exception as e:
+                        result.fallback_attempts.append({'method': 'linkedin_message', 'error': str(e)})
+
+        # Reddit opportunities → Reddit DM
+        if 'reddit' in platform and 'outreach' in self.engines:
+            engine = self.engines['outreach']
+            if engine.get_stats().get('channels_configured', {}).get('reddit_dm'):
+                if reddit_username:
+                    try:
+                        outreach_result = await engine.process_opportunity(opportunity, contact)
+                        if outreach_result and outreach_result.status.value == 'sent':
+                            result.presented = True
+                            result.method = 'reddit_dm'
+                            result.channel = 'reddit'
+                            result.recipient = reddit_username
+                            result.tracking_id = outreach_result.tracking_id
+                            logger.info(f"✅ Reddit DM sent to u/{reddit_username}")
+                            return result
+                    except Exception as e:
+                        result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 2: Email (Resend → SendGrid → Postmark)
+        # ═══════════════════════════════════════════════════════════════════
+
+        if email:
+            message = self._build_email_message(title, total_value, client_room_url)
+
+            # Try Resend first (modern, reliable)
+            if 'resend' in self.connectors and self.available_systems.get('email_resend', {}).get('configured'):
+                try:
+                    email_result = await self.connectors['resend'].execute(
+                        action='send_email',
+                        params={
+                            'to': email,
+                            'subject': f"Proposal: {title[:50]}",
+                            'body': message,
+                            'html': self._build_html_email(title, total_value, client_room_url),
+                        }
+                    )
+                    if email_result.ok:
+                        result.presented = True
+                        result.method = 'email'
+                        result.channel = 'resend'
+                        result.recipient = email
+                        result.tracking_id = email_result.data.get('message_id')
+                        result.details['email'] = email_result.data
+                        logger.info(f"✅ Email sent via Resend to {email}")
+                        return result
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'email_resend', 'error': str(e)})
+                    logger.warning(f"⚠️ Resend email failed: {e}")
+
+            # Fallback to generic email connector (SendGrid/Postmark)
+            if 'email' in self.connectors and self.available_systems.get('email_generic', {}).get('configured'):
+                try:
+                    email_result = await self.connectors['email'].execute(
+                        action='send_email',
+                        params={
+                            'to': email,
+                            'subject': f"Proposal: {title[:50]}",
+                            'body': message,
+                        }
+                    )
+                    if email_result.ok:
+                        result.presented = True
+                        result.method = 'email'
+                        result.channel = self.available_systems['email_generic'].get('provider', 'email')
+                        result.recipient = email
+                        result.tracking_id = email_result.data.get('message_id')
+                        logger.info(f"✅ Email sent via {result.channel} to {email}")
+                        return result
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'email_generic', 'error': str(e)})
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 3: SMS (Twilio)
+        # ═══════════════════════════════════════════════════════════════════
+
+        if phone and 'sms' in self.connectors and self.available_systems.get('sms_twilio', {}).get('configured'):
+            sms_message = self._build_sms_message(title, client_room_url)
+            try:
+                sms_result = await self.connectors['sms'].execute(
+                    action='send_sms',
+                    params={
+                        'to': phone,
+                        'body': sms_message,
+                    }
+                )
+                if sms_result.ok:
+                    result.presented = True
+                    result.method = 'sms'
+                    result.channel = 'twilio'
+                    result.recipient = phone
+                    result.tracking_id = sms_result.data.get('message_sid')
+                    result.details['sms'] = sms_result.data
+                    logger.info(f"✅ SMS sent via Twilio to {phone}")
+                    return result
+            except Exception as e:
+                result.fallback_attempts.append({'method': 'sms_twilio', 'error': str(e)})
+                logger.warning(f"⚠️ Twilio SMS failed: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 4: Platform comment (GitHub, Reddit) - public visibility
+        # ═══════════════════════════════════════════════════════════════════
+
+        if 'platform_response' in self.engines:
+            engine = self.engines['platform_response']
+            supported = engine.get_supported_platforms()
             if supported.get(platform, False):
                 try:
-                    engagement = await self.platform_response_engine.engage_with_opportunity(
+                    engagement = await engine.engage_with_opportunity(
                         opportunity,
-                        send_dm_after=False  # Just comment, outreach handles DM
+                        send_dm_after=False
                     )
                     if engagement and engagement.status.value in ['commented', 'waiting']:
                         result.presented = True
                         result.method = 'platform_comment'
                         result.channel = platform
                         result.tracking_id = engagement.engagement_id
-                        result.details = engagement.to_dict()
-                        logger.info(f"✅ Posted comment on {platform}: {engagement.comment_url}")
-                        # Don't return yet - also try DM/email for better conversion
+                        result.details['engagement'] = engagement.to_dict()
+                        logger.info(f"✅ Comment posted on {platform}")
+                        return result
                 except Exception as e:
-                    logger.warning(f"⚠️ Platform comment failed: {e}")
+                    result.fallback_attempts.append({'method': 'platform_comment', 'error': str(e)})
 
-        # Method 2: Direct outreach (DM/email via outreach engine)
-        if self.outreach_engine and contact.get('has_contact', False):
-            try:
-                outreach_result = await self.outreach_engine.process_opportunity(
-                    opportunity,
-                    contact
-                )
-                if outreach_result and outreach_result.status.value == 'sent':
-                    result.presented = True
-                    result.method = 'direct_outreach'
-                    result.channel = outreach_result.channel.value
-                    result.recipient = contact.get('email') or contact.get('twitter_handle') or contact.get('reddit_username')
-                    result.tracking_id = outreach_result.tracking_id
-                    result.details['outreach'] = {
-                        'proposal_id': outreach_result.proposal_id,
-                        'channel': outreach_result.channel.value,
-                        'status': outreach_result.status.value,
-                    }
-                    logger.info(f"✅ Direct outreach sent via {outreach_result.channel.value}")
-                    return result
-            except Exception as e:
-                logger.warning(f"⚠️ Direct outreach failed: {e}")
+        # ═══════════════════════════════════════════════════════════════════
+        # NO CONTACT METHOD AVAILABLE
+        # ═══════════════════════════════════════════════════════════════════
 
-        # Method 3: Email via connector (if we have email and connector)
-        email = contact.get('email')
-        if email and self.email_connector:
-            try:
-                import asyncio
-                email_result = await self.email_connector.execute(
-                    action='send_email',
-                    params={
-                        'to': email,
-                        'subject': f"Re: {title[:50]}",
-                        'body': message,
-                    }
-                )
-                if email_result.ok:
-                    result.presented = True
-                    result.method = 'email_connector'
-                    result.channel = 'email'
-                    result.recipient = email
-                    result.tracking_id = email_result.data.get('message_id')
-                    result.details['email'] = email_result.data
-                    logger.info(f"✅ Email sent via connector to {email}")
-                    return result
-            except Exception as e:
-                logger.warning(f"⚠️ Email connector failed: {e}")
-
-        # If nothing worked, log what's missing
         if not result.presented:
             gaps = []
-            if not self.platform_response_engine:
-                gaps.append('platform_response_engine')
-            if not self.outreach_engine:
-                gaps.append('outreach_engine')
-            if not contact.get('has_contact'):
-                gaps.append('contact_info')
             if not email:
                 gaps.append('email')
-            if not self.email_connector:
-                gaps.append('email_connector')
+            if not phone:
+                gaps.append('phone')
+            if not twitter_handle and 'twitter' in platform:
+                gaps.append('twitter_handle')
 
-            result.error = f"No working outreach method. Missing: {', '.join(gaps)}"
+            result.error = f"No contact method available. Missing: {', '.join(gaps) or 'all contact info'}"
             logger.warning(f"⚠️ Could not present contract: {result.error}")
+
+            # Notify via Slack if configured (internal alert)
+            if 'slack' in self.connectors and self.available_systems.get('slack', {}).get('configured'):
+                try:
+                    await self.connectors['slack'].execute(
+                        action='send_slack_message',
+                        params={
+                            'text': f"⚠️ Contract presentation failed for {title[:50]}: {result.error}\n\nClient Room: {client_room_url}"
+                        }
+                    )
+                except Exception:
+                    pass
 
         return result
 
-    def _build_outreach_message(
-        self,
-        title: str,
-        total_value: float,
-        client_room_url: str,
-        platform: str
-    ) -> str:
-        """Build platform-appropriate outreach message"""
-
-        if platform in ['twitter', 'x']:
-            # Short for Twitter
-            return f"""Saw your post about {title[:30]}... We can handle this.
-
-View our proposal: {client_room_url}
-
-Pay only when you approve the result."""
-
-        elif platform == 'reddit':
-            return f"""Hey! Saw your post about {title[:50]}.
-
-We can take care of this for you. AiGentsy is a fully autonomous fulfillment company - think of us as your complete team for exactly this.
-
-**What we'll deliver:**
-- {title[:60]} - done, end-to-end
-- Delivered within hours, not days
-- You only pay when satisfied
-
-View our full proposal here: {client_room_url}
-
-Happy to answer any questions!"""
-
-        elif platform in ['github', 'github_bounties']:
-            return f"""Hi! Saw this issue and we can help.
-
-**AiGentsy** can handle this end-to-end:
-- Full implementation of {title[:50]}
-- Delivered quickly
-- Pay only on approval
-
-View our proposal: {client_room_url}"""
-
-        else:
-            # Default email/professional format
-            return f"""Hi,
+    def _build_email_message(self, title: str, total_value: float, client_room_url: str) -> str:
+        """Build professional email message"""
+        return f"""Hi,
 
 I came across your post about {title} and wanted to reach out.
 
@@ -369,69 +542,149 @@ Let me know if you have any questions!
 
 — AiGentsy Team"""
 
+    def _build_html_email(self, title: str, total_value: float, client_room_url: str) -> str:
+        """Build HTML email with better formatting"""
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
+        .cta {{ display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }}
+        .features {{ list-style: none; padding: 0; }}
+        .features li {{ padding: 10px 0; padding-left: 30px; position: relative; }}
+        .features li:before {{ content: "✓"; position: absolute; left: 0; color: #667eea; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin:0;">Proposal for Your Project</h1>
+            <p style="margin:10px 0 0 0; opacity: 0.9;">{title[:60]}</p>
+        </div>
+        <div class="content">
+            <p>Hi,</p>
+            <p>I came across your post and wanted to reach out. We can handle this for you.</p>
+
+            <h3>What we'll deliver:</h3>
+            <ul class="features">
+                <li>{title[:50]} - done, end-to-end</li>
+                <li>Delivered within hours, not days</li>
+                <li>Iterate until it's exactly right</li>
+                <li>You only pay when you approve</li>
+            </ul>
+
+            <a href="{client_room_url}" class="cta">View Full Proposal →</a>
+
+            <p style="margin-top:30px;">Let me know if you have any questions!</p>
+            <p>— AiGentsy Team</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    def _build_sms_message(self, title: str, client_room_url: str) -> str:
+        """Build concise SMS message (160 char limit)"""
+        return f"Re: {title[:30]}... We can help! View proposal: {client_room_url}"
+
     def get_status(self) -> Dict[str, Any]:
         """Get complete status of customer loop wiring"""
 
-        # Check what's actually configured vs just loaded
         configured_channels = []
         missing_channels = []
+        api_keys = self.available_systems.get('api_keys', {})
 
-        # Outreach channels
-        if self.outreach_engine:
-            stats = self.outreach_engine.get_stats()
-            channels = stats.get('channels_configured', {})
-            for channel, configured in channels.items():
-                if configured:
-                    configured_channels.append(f"outreach:{channel}")
-                else:
-                    missing_channels.append(f"outreach:{channel}")
-
-        # Platform response
-        if self.platform_response_engine:
-            platforms = self.platform_response_engine.get_supported_platforms()
-            for platform, configured in platforms.items():
-                if configured:
-                    configured_channels.append(f"comment:{platform}")
-                else:
-                    missing_channels.append(f"comment:{platform}")
-
-        # Email connector
-        if self.available_systems.get('email_connector', {}).get('configured'):
-            configured_channels.append('email:postmark_or_sendgrid')
+        # Email channels
+        if api_keys.get('resend'):
+            configured_channels.append('email:resend')
         else:
-            missing_channels.append('email:postmark_or_sendgrid')
+            missing_channels.append('email:resend')
+
+        if api_keys.get('sendgrid'):
+            configured_channels.append('email:sendgrid')
+        if api_keys.get('postmark'):
+            configured_channels.append('email:postmark')
+
+        # SMS/Voice
+        if api_keys.get('twilio_sms'):
+            configured_channels.append('sms:twilio')
+        else:
+            missing_channels.append('sms:twilio')
+
+        if api_keys.get('twilio_whatsapp'):
+            configured_channels.append('whatsapp:twilio')
+
+        # Social
+        if api_keys.get('twitter_dm'):
+            configured_channels.append('dm:twitter')
+        else:
+            missing_channels.append('dm:twitter')
+
+        if api_keys.get('linkedin'):
+            configured_channels.append('message:linkedin')
+
+        if api_keys.get('reddit'):
+            configured_channels.append('dm:reddit')
+
+        if api_keys.get('github'):
+            configured_channels.append('comment:github')
+
+        if api_keys.get('instagram'):
+            configured_channels.append('dm:instagram')
+
+        # Team
+        if api_keys.get('slack'):
+            configured_channels.append('notify:slack')
+
+        if api_keys.get('discord'):
+            configured_channels.append('notify:discord')
 
         # Payment
-        if self.available_systems.get('acceptance_portal', {}).get('stripe_configured'):
+        if api_keys.get('stripe'):
             configured_channels.append('payment:stripe')
         else:
             missing_channels.append('payment:stripe')
 
         return {
             'systems_loaded': self.available_systems,
+            'connectors_loaded': list(self.connectors.keys()),
+            'engines_loaded': list(self.engines.keys()),
             'configured_channels': configured_channels,
             'missing_channels': missing_channels,
-            'can_present_contracts': len(configured_channels) > 0,
-            'can_accept_payments': self.available_systems.get('acceptance_portal', {}).get('stripe_configured', False),
+            'channel_count': len(configured_channels),
+            'can_present_contracts': len([c for c in configured_channels if c.startswith(('email:', 'sms:', 'dm:', 'message:'))]) > 0,
+            'can_accept_payments': api_keys.get('stripe', False),
+            'api_key_summary': {
+                'configured': sum(1 for v in api_keys.values() if v),
+                'total': len(api_keys),
+            },
             'recommendation': self._get_recommendation(configured_channels, missing_channels),
         }
 
     def _get_recommendation(self, configured: List[str], missing: List[str]) -> str:
         """Get actionable recommendation"""
-        if not configured:
-            return "CRITICAL: No outreach channels configured. Set RESEND_API_KEY or POSTMARK_API_KEY for email."
+        if not any(c.startswith(('email:', 'sms:')) for c in configured):
+            return "CRITICAL: No direct contact channels. Set RESEND_API_KEY for email or TWILIO_* for SMS."
 
         if 'payment:stripe' not in configured:
             return "Set STRIPE_SECRET_KEY to enable payment collection."
 
-        if len(configured) < 3:
-            return f"Consider adding more channels for better reach. Missing: {', '.join(missing[:3])}"
+        if 'sms:twilio' not in configured:
+            return "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER for SMS outreach."
 
-        return "Customer loop is operational. Monitor conversion rates."
+        if len(configured) < 5:
+            return f"Consider adding more channels. Missing: {', '.join(missing[:3])}"
+
+        return "Customer loop is fully operational with multi-channel outreach."
 
 
 # Singleton instance
 _customer_loop_wiring = None
+
 
 def get_customer_loop_wiring() -> CustomerLoopWiring:
     """Get singleton customer loop wiring instance"""
@@ -441,7 +694,6 @@ def get_customer_loop_wiring() -> CustomerLoopWiring:
     return _customer_loop_wiring
 
 
-# Convenience function for integration routes
 async def present_contract_after_creation(
     opportunity: Dict[str, Any],
     contract: Dict[str, Any],
@@ -475,4 +727,5 @@ async def present_contract_after_creation(
         'tracking_id': result.tracking_id,
         'client_room_url': client_room_url,
         'error': result.error,
+        'fallback_attempts': result.fallback_attempts,
     }

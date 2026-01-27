@@ -138,31 +138,47 @@ jobs:
             exit 1
           fi
 
-      - name: Check Customer Loop Status
+      - name: Check Customer Loop Status (Multi-Channel)
         id: customer_loop
         run: |
-          echo "🔗 Checking Customer Loop Wiring..."
+          echo "🔗 Checking Multi-Channel Customer Loop..."
 
           LOOP_STATUS=$(curl -s ${{ env.RUNTIME_URL }}/integration/customer-loop-status)
 
           CAN_PRESENT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_present_contracts // false')
           CAN_ACCEPT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_accept_payments // false')
-          CONFIGURED=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels | length // 0')
-          MISSING=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.missing_channels | length // 0')
+          CHANNEL_COUNT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.channel_count // 0')
+          CONFIGURED_APIS=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.api_key_summary.configured // 0')
+          TOTAL_APIS=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.api_key_summary.total // 0')
 
           echo "📊 Customer Loop Status:"
           echo "   Can present contracts: $CAN_PRESENT"
           echo "   Can accept payments: $CAN_ACCEPT"
-          echo "   Configured channels: $CONFIGURED"
-          echo "   Missing channels: $MISSING"
+          echo "   Configured channels: $CHANNEL_COUNT"
+          echo "   API Keys: $CONFIGURED_APIS/$TOTAL_APIS configured"
 
           echo "can_present=$CAN_PRESENT" >> $GITHUB_OUTPUT
           echo "can_accept=$CAN_ACCEPT" >> $GITHUB_OUTPUT
+          echo "channel_count=$CHANNEL_COUNT" >> $GITHUB_OUTPUT
+
+          # Show configured channels
+          echo ""
+          echo "✅ Configured Channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[]' 2>/dev/null | while read channel; do
+            echo "   • $channel"
+          done
+
+          # Show loaded connectors
+          echo ""
+          echo "🔌 Loaded Connectors:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.connectors_loaded[]' 2>/dev/null | while read conn; do
+            echo "   • $conn"
+          done
 
           if [ "$CAN_PRESENT" = "false" ]; then
+            echo ""
             echo "⚠️ Warning: No outreach channels configured"
-            echo "   Contracts will be created but not presented to customers"
-            echo "   Set RESEND_API_KEY or POSTMARK_API_KEY to enable"
+            echo "   Set RESEND_API_KEY for email or TWILIO_* for SMS"
           fi
 
           if [ "$CAN_ACCEPT" = "false" ]; then
@@ -171,7 +187,8 @@ jobs:
           fi
 
           RECOMMENDATION=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.recommendation // "No recommendation"')
-          echo "   Recommendation: $RECOMMENDATION"
+          echo ""
+          echo "📋 Recommendation: $RECOMMENDATION"
 
   # ============================================================================
   # MAIN: Full-Stack Autonomous Cycle with Apex Features
@@ -448,21 +465,35 @@ jobs:
       - name: Check Customer Loop Status (Post-Cycle)
         run: |
           echo ""
-          echo "🔗 Customer Loop Status:"
+          echo "🔗 Multi-Channel Customer Loop Status:"
 
           LOOP_STATUS=$(curl -s ${{ env.RUNTIME_URL }}/integration/customer-loop-status)
 
           CAN_PRESENT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_present_contracts // false')
           CAN_ACCEPT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_accept_payments // false')
-          CONFIGURED=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels // []')
-          MISSING=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.missing_channels // []')
+          CHANNEL_COUNT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.channel_count // 0')
 
           echo "   Can present contracts: $CAN_PRESENT"
           echo "   Can accept payments: $CAN_ACCEPT"
-          echo "   Configured: $CONFIGURED"
+          echo "   Active channels: $CHANNEL_COUNT"
+
+          # Show channel breakdown by type
+          echo ""
+          echo "   📧 Email channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[] | select(startswith("email:"))' 2>/dev/null | while read ch; do echo "      • $ch"; done
+
+          echo "   📱 SMS/Voice channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[] | select(startswith("sms:") or startswith("whatsapp:"))' 2>/dev/null | while read ch; do echo "      • $ch"; done
+
+          echo "   💬 Social DM channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[] | select(startswith("dm:") or startswith("message:"))' 2>/dev/null | while read ch; do echo "      • $ch"; done
+
+          echo "   💳 Payment channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[] | select(startswith("payment:"))' 2>/dev/null | while read ch; do echo "      • $ch"; done
 
           # Check presentation history
           RECENT=$(echo "$LOOP_STATUS" | jq -r '.presentation_history.total_executions // 0')
+          echo ""
           echo "   Total presentation attempts: $RECENT"
 
           RECOMMENDATION=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.recommendation // "None"')
