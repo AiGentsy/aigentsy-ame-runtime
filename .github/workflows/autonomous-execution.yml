@@ -11,7 +11,7 @@ on:
       max_opportunities:
         description: 'Max opportunities to process'
         required: false
-        default: '10'
+        default: '100'
       auto_execute:
         description: 'Auto-execute contracts'
         required: false
@@ -145,7 +145,7 @@ jobs:
     name: Apex Autonomous Cycle
     runs-on: ubuntu-latest
     needs: health-check
-    timeout-minutes: 14
+    timeout-minutes: 20
     outputs:
       discovered: ${{ steps.execute.outputs.discovered }}
       contracts: ${{ steps.execute.outputs.contracts }}

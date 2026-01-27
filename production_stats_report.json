@@ -1,0 +1,523 @@
+{
+  "timestamp": "2026-01-27T11:04:10.566019",
+  "analysis": {
+    "system_health": {
+      "total_systems": 47,
+      "target_systems": 47,
+      "health_percentage": 100.0,
+      "status": "healthy"
+    },
+    "contract_performance": {
+      "total_contracts": 20,
+      "total_revenue_usd": 1180777.5,
+      "avg_contract_value": 59038.875,
+      "milestones_funded": 0,
+      "milestones_released": 0,
+      "sows_generated": 20,
+      "sow_total_value": 1686825.0
+    },
+    "execution_performance": {
+      "plans_created": 20,
+      "plans_completed": 0,
+      "runbooks_loaded": 7,
+      "tasks_dispatched": 98,
+      "tasks_completed": 98,
+      "task_completion_rate": 100.0,
+      "fabric_tasks": 38,
+      "human_tasks": 0,
+      "tasks_per_contract": 4.9
+    },
+    "efficiency_metrics": {
+      "revenue_per_task": 12048.75,
+      "revenue_per_plan": 59038.875,
+      "fabric_percentage": 38.775510204081634
+    }
+  },
+  "raw_data": {
+    "stats": {
+      "ok": true,
+      "stats": {
+        "timestamp": "2026-01-27T16:04:09.916461+00:00",
+        "integration": {
+          "contracts_created": 20,
+          "executions_run": 2
+        },
+        "systems": {
+          "total_loaded": 47,
+          "total_failed": 0,
+          "engines_loaded": 22,
+          "oracles_loaded": 6,
+          "brain_loaded": 9,
+          "agents_loaded": 5,
+          "managers_loaded": 5,
+          "load_started": "2026-01-27T15:43:58.407453+00:00",
+          "load_completed": "2026-01-27T15:43:58.407968+00:00",
+          "total_revenue_usd": 0.0,
+          "total_executions": 0,
+          "systems": {
+            "discovery_manager": {
+              "category": "managers",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "execution_manager": {
+              "category": "managers",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "revenue_manager": {
+              "category": "managers",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "financial_manager": {
+              "category": "managers",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "intelligence_manager": {
+              "category": "managers",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "ultimate_discovery_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "research_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "auto_spawn_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "social_autoposting_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "conversation_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "direct_outreach_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "platform_response_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "deliverable_verification_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.03,
+              "calls": 0
+            },
+            "video_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "audio_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "graphics_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "profit_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "badge_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "booster_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "franchise_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "subscription_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "contract_payment_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "reply_detection_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "mega_discovery_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "ocl_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "slo_engine": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "universal_fulfillment_fabric": {
+              "category": "engines",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "outcome_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "pricing_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "price_floor_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "compliance_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "outcomes_insurance_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "ltv_oracle": {
+              "category": "oracles",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "brain_policy": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "brain_exploration": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "brain_placement": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "brain_feature_store": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "brain_policy_trainer": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "causal_uplift": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "hier_bandits": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "attention_router": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "price_arm_v2": {
+              "category": "brain",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "agent_registry": {
+              "category": "agents",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.01,
+              "calls": 0
+            },
+            "venture_builder_agent": {
+              "category": "agents",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "aigent_growth_agent": {
+              "category": "agents",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "agent_spending": {
+              "category": "agents",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            },
+            "agent_factoring": {
+              "category": "agents",
+              "loaded": true,
+              "error": null,
+              "load_time_ms": 0.0,
+              "calls": 0
+            }
+          }
+        },
+        "orchestrator": {
+          "plans_created": 20,
+          "plans_completed": 0,
+          "plans_failed": 0,
+          "avg_completion_minutes": 0,
+          "active_plans": 12,
+          "runbooks_loaded": 7
+        },
+        "sow_generator": {
+          "sows_generated": 20,
+          "sows_signed": 0,
+          "total_value_usd": 1686825.0,
+          "active_sows": 20
+        },
+        "escrow": {
+          "contracts_created": 20,
+          "milestones_funded": 0,
+          "milestones_released": 0,
+          "total_value_usd": 1180777.5,
+          "total_released_usd": 0.0,
+          "active_contracts": 20
+        },
+        "qa": {
+          "gates_created": 0,
+          "gates_passed": 0,
+          "gates_failed": 0,
+          "checks_run": 0,
+          "active_gates": 0
+        },
+        "workforce": {
+          "tasks_dispatched": 98,
+          "tasks_completed": 98,
+          "tasks_failed": 0,
+          "fabric_tasks": 38,
+          "pdl_tasks": 60,
+          "human_tasks": 0,
+          "avg_completion_minutes": 0,
+          "active_tasks": 0,
+          "queued_tasks": 0
+        }
+      }
+    },
+    "health": {
+      "status": "healthy",
+      "timestamp": "2026-01-27T16:04:10.118058+00:00",
+      "components": {
+        "system_loader": true,
+        "orchestrator": true,
+        "sow_generator": true,
+        "escrow": true,
+        "qa_checklists": true,
+        "workforce_dispatcher": true,
+        "discovery_manager": true
+      },
+      "systems_health": {
+        "healthy": true,
+        "loaded": 47,
+        "total": 47,
+        "coverage_pct": 100.0,
+        "categories": {
+          "managers": 5,
+          "engines": 22,
+          "oracles": 6,
+          "brain": 9,
+          "agents": 5
+        }
+      },
+      "loaded": 7,
+      "total": 7,
+      "coverage_pct": 100.0
+    },
+    "capacity": {
+      "ok": true,
+      "capacity": {
+        "fabric": {
+          "capacity": 100,
+          "active": 0,
+          "available": 100,
+          "utilization_pct": 0.0,
+          "avg_completion_minutes": 5,
+          "success_rate": 0.95
+        },
+        "pdl": {
+          "capacity": 50,
+          "active": 0,
+          "available": 50,
+          "utilization_pct": 0.0,
+          "avg_completion_minutes": 2,
+          "success_rate": 0.95
+        },
+        "human_premium": {
+          "capacity": 5,
+          "active": 0,
+          "available": 5,
+          "utilization_pct": 0.0,
+          "avg_completion_minutes": 120,
+          "success_rate": 0.95
+        },
+        "human_standard": {
+          "capacity": 20,
+          "active": 0,
+          "available": 20,
+          "utilization_pct": 0.0,
+          "avg_completion_minutes": 60,
+          "success_rate": 0.95
+        },
+        "hybrid": {
+          "capacity": 10,
+          "active": 0,
+          "available": 10,
+          "utilization_pct": 0.0,
+          "avg_completion_minutes": 45,
+          "success_rate": 0.95
+        }
+      },
+      "stats": {
+        "tasks_dispatched": 98,
+        "tasks_completed": 98,
+        "tasks_failed": 0,
+        "fabric_tasks": 38,
+        "pdl_tasks": 60,
+        "human_tasks": 0,
+        "avg_completion_minutes": 0,
+        "active_tasks": 0,
+        "queued_tasks": 0
+      }
+    },
+    "wall_of_wins": {
+      "ok": true,
+      "wall_of_wins": [],
+      "count": 0,
+      "generated_at": "2026-01-27T16:04:10.539814+00:00Z"
+    }
+  }
+}
