@@ -1121,6 +1121,21 @@ except Exception as e:
     print(f"Access Panel load error: {e}")
 
 # ============================================================================
+# API STATUS - Premium API Credentials & Monitoring
+# ============================================================================
+try:
+    from routes.api_status import router as api_status_router, log_api_status_on_startup
+    app.include_router(api_status_router)
+    print("=" * 80)
+    print("API STATUS LOADED - Premium API Monitoring")
+    print("=" * 80)
+    print("  Endpoints: /api/status, /api/credentials/missing, /api/packs")
+    print("  APIs: Twitter v2, Instagram, LinkedIn, Perplexity, Gemini, etc.")
+    print("=" * 80)
+except Exception as e:
+    print(f"API Status load error: {e}")
+
+# ============================================================================
 # FULFILLMENT FABRIC (Universal Connector Bus + COI Runtime)
 # ============================================================================
 try:
@@ -6345,6 +6360,13 @@ async def startup_event():
     await _load_market_maker_state()
     asyncio.create_task(_mm_state_autosave_job())
     print("Background tasks started: auto-bid, auto-release, mm-state-autosave")
+
+    # Log API credentials status on startup
+    try:
+        from routes.api_status import log_api_status_on_startup
+        log_api_status_on_startup()
+    except Exception as e:
+        print(f"Could not log API status: {e}")
     
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)

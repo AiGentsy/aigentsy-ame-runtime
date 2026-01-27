@@ -1,5 +1,5 @@
 """
-PLATFORM PACKS: 106 Platform Implementations for Internet-Wide Discovery
+PLATFORM PACKS: 126+ Platform Implementations for Internet-Wide Discovery
 
 Categories:
 - Core packs (5): Upwork, HackerNews, Reddit, RemoteOK, GitHub
@@ -12,8 +12,9 @@ Categories:
 - International (10): Seek AU, TotalJobs UK, etc.
 - Craigslist cities (5): SF, NYC, LA, Chicago, Boston
 - Niche/Specialized (10): Crypto, Web3, AI, ML, etc.
+- Premium API (15): Twitter v2, Instagram, LinkedIn, Perplexity, Gemini, etc.
 
-Total: 106 platform packs
+Total: 126+ platform packs (111 scraping + 15 API)
 """
 
 import logging
@@ -107,6 +108,31 @@ except ImportError as e:
     NICHE_SPECIALIZED_PACKS = []
     logger.warning(f"Could not load niche/specialized: {e}")
 
+# Premium API Packs (15 new high-priority sources)
+try:
+    from .twitter_v2_api import TWITTER_V2_PACK
+    from .instagram_business_api import INSTAGRAM_PACK
+    from .linkedin_api import LINKEDIN_PACK
+    from .perplexity_discovery import PERPLEXITY_PACK
+    from .gemini_discovery import GEMINI_PACK
+    from .github_enhanced import GITHUB_ENHANCED_PACK
+    from .premium_api_packs import PREMIUM_API_PACKS
+
+    # Collect all API pack configs
+    API_PACK_CONFIGS = [
+        TWITTER_V2_PACK,
+        INSTAGRAM_PACK,
+        LINKEDIN_PACK,
+        PERPLEXITY_PACK,
+        GEMINI_PACK,
+        GITHUB_ENHANCED_PACK,
+    ] + PREMIUM_API_PACKS
+
+    logger.info(f"Loaded {len(API_PACK_CONFIGS)} premium API packs")
+except ImportError as e:
+    API_PACK_CONFIGS = []
+    logger.warning(f"Could not load premium API packs: {e}")
+
 
 # Aggregate all packs
 ALL_PACKS = (
@@ -148,7 +174,18 @@ def get_packs_by_category():
         'international': INTERNATIONAL_PACKS,
         'craigslist': CRAIGSLIST_PACKS,
         'niche_specialized': NICHE_SPECIALIZED_PACKS,
+        'premium_api': API_PACK_CONFIGS,
     }
+
+
+def get_api_packs():
+    """Get list of premium API pack configurations"""
+    return API_PACK_CONFIGS
+
+
+def get_api_pack_count():
+    """Get count of premium API packs"""
+    return len(API_PACK_CONFIGS)
 
 
 __all__ = [
@@ -171,9 +208,12 @@ __all__ = [
     'INTERNATIONAL_PACKS',
     'CRAIGSLIST_PACKS',
     'NICHE_SPECIALIZED_PACKS',
+    'API_PACK_CONFIGS',
 
     # Helper functions
     'get_all_packs',
     'get_pack_count',
     'get_packs_by_category',
+    'get_api_packs',
+    'get_api_pack_count',
 ]
