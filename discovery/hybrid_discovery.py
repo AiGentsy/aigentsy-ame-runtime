@@ -482,43 +482,15 @@ class HybridDiscoveryEngine:
             elif 'indie hacker' in query_lower or 'product hunt' in query_lower or 'hacker news' in query_lower:
                 target_platform = 'hackernews'
 
-            # Build enhanced prompt with explicit JSON structure and platform targeting
-            platform_hint = ""
-            if target_platform:
-                platform_hint = f"\nFocus on finding opportunities from {target_platform.upper()} specifically."
+            # Build simple prompt for reliable JSON response
+            system_prompt = """Return ONLY a JSON array of job opportunities. No explanations."""
 
-            system_prompt = f"""You are a job opportunity finder searching the internet for REAL, RECENT job postings and freelance opportunities.
+            user_prompt = f"""Find 5 recent job postings matching: {query}
 
-CRITICAL: Return ONLY a valid JSON array. No explanations, no markdown code blocks, just raw JSON.
+Return as JSON array with format:
+[{{"title": "...", "url": "...", "platform": "twitter/linkedin/upwork/reddit", "contact": "email or @handle"}}]
 
-Each opportunity MUST have this exact structure:
-[
-  {{
-    "title": "Job title or opportunity description",
-    "url": "Full URL to the actual post (e.g., twitter.com/user/status/123, linkedin.com/jobs/view/123)",
-    "platform": "twitter/linkedin/upwork/reddit/github/web",
-    "description": "Brief description of what they're looking for",
-    "contact": "Email address, @twitterhandle, or username if visible in the post"
-  }}
-]
-
-IMPORTANT RULES:
-- Only include REAL opportunities you find in your search
-- URLs must be actual links to the posts (not example.com)
-- Include the poster's contact info if visible (email, @handle, username)
-- Focus on opportunities from the LAST 7 DAYS
-- Platform field must accurately reflect where the opportunity was posted{platform_hint}"""
-
-            user_prompt = f"""Search the internet and find 5-10 real job/project opportunities matching: {query}
-
-Requirements:
-- Must be actual, real job postings or project requests (not made up)
-- Include the real, working URL for each opportunity
-- Extract any contact info visible in the post
-- Only include opportunities posted in the last week
-- Include opportunities from the specified platform if mentioned
-
-Return ONLY the JSON array, nothing else."""
+JSON only:"""
 
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
@@ -528,12 +500,12 @@ Return ONLY the JSON array, nothing else."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "sonar",  # Use simpler model name
+                        "model": "llama-3.1-sonar-small-128k-online",  # Perplexity online model with web search
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        "max_tokens": 2000,  # Reduced for faster response
+                        "max_tokens": 2000,
                         "temperature": 0.1
                     }
                 )
