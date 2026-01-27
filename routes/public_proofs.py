@@ -286,6 +286,57 @@ async def get_proof_stats(
     return {"ok": True, "stats": stats}
 
 
+@router.get("/proofs/wall-of-wins")
+async def get_wall_of_wins(
+    limit: int = Query(default=20, ge=1, le=100)
+) -> Dict[str, Any]:
+    """
+    Get Wall of Wins - verified proof cards for public display.
+
+    Returns anonymized, shareable proof cards showcasing successful outcomes.
+    """
+    try:
+        from monetization.proof_ledger import get_proof_ledger
+        ledger = get_proof_ledger()
+        cards = ledger.get_wall_of_wins(limit=limit)
+        return {
+            "ok": True,
+            "wall_of_wins": cards,
+            "count": len(cards),
+            "generated_at": _now_iso()
+        }
+    except Exception as e:
+        return {
+            "ok": True,
+            "wall_of_wins": [],
+            "count": 0,
+            "message": "No verified proofs yet",
+            "generated_at": _now_iso()
+        }
+
+
+@router.get("/proofs/share-card/{proof_id}")
+async def get_share_card(proof_id: str) -> Dict[str, Any]:
+    """
+    Get shareable proof card for a specific proof.
+    """
+    try:
+        from monetization.proof_ledger import get_proof_ledger
+        ledger = get_proof_ledger()
+        card = ledger.render_share_card(proof_id, anonymize=True)
+        if not card:
+            if FASTAPI_AVAILABLE:
+                raise HTTPException(status_code=404, detail="Proof not found or not verified")
+            return {"ok": False, "error": "not_found"}
+        return {"ok": True, "share_card": card}
+    except HTTPException:
+        raise
+    except Exception as e:
+        if FASTAPI_AVAILABLE:
+            raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/proofs/verify")
 async def verify_proof(
     execution_id: str = Query(...),
