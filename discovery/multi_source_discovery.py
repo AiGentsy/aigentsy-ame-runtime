@@ -756,15 +756,25 @@ JSON only:"""
                                 if not contact.get('email') and not contact.get('twitter_handle'):
                                     contact['preferred_outreach'] = 'linkedin_message'
 
-                            # 4. Phone number
+                            # 4. Phone number (with validation)
                             phone_match = re.search(
                                 r'\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
                                 full_text
                             )
                             if phone_match:
-                                contact['phone'] = phone_match.group(0)
-                                if not contact.get('email'):
-                                    contact['preferred_outreach'] = 'sms'
+                                # Validate and normalize phone
+                                try:
+                                    from enrichment.ai_contact_extractor import normalize_phone_number
+                                    normalized = normalize_phone_number(phone_match.group(0))
+                                    if normalized:
+                                        contact['phone'] = normalized
+                                        if not contact.get('email'):
+                                            contact['preferred_outreach'] = 'sms'
+                                except ImportError:
+                                    # Fallback without validation
+                                    contact['phone'] = phone_match.group(0)
+                                    if not contact.get('email'):
+                                        contact['preferred_outreach'] = 'sms'
 
                             # 5. Discord
                             discord_match = re.search(
@@ -803,116 +813,82 @@ JSON only:"""
 
     async def _ai_contact_enrichment(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Use AI (OpenRouter) to extract contact info from opportunity text/body.
+        Use AI (OpenRouter + Gemini) to extract contact info from opportunity text/body.
 
         For opportunities missing contact info, analyzes the body text
         to extract email, phone, Twitter handle, etc.
+
+        Uses the enrichment.ai_contact_extractor module for:
+        - Phone number validation and normalization
+        - Email validation
+        - AI-powered extraction with fallback
         """
-        api_key = self.sources.get('openrouter', {}).get('api_key')
-        if not api_key:
+        # Check if we have any AI available
+        has_openrouter = bool(self.sources.get('openrouter', {}).get('api_key'))
+        has_gemini = bool(os.getenv('GEMINI_API_KEY'))
+
+        if not has_openrouter and not has_gemini:
+            logger.info("  No AI available for contact enrichment (need OpenRouter or Gemini)")
             return opportunities
 
-        # Find opportunities missing contact
+        # Find opportunities missing usable contact (email/phone/twitter)
         needs_enrichment = [
             (i, opp) for i, opp in enumerate(opportunities)
-            if not self._has_contact(opp) and opp.get('body')
+            if not self._has_usable_contact(opp) and opp.get('body')
         ]
 
         if not needs_enrichment:
-            logger.info("  All opportunities already have contact info")
+            logger.info("  All opportunities already have usable contact info")
             return opportunities
 
-        logger.info(f"  Enriching {len(needs_enrichment)} opportunities missing contact...")
+        logger.info(f"  AI enriching {len(needs_enrichment)} opportunities...")
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            for idx, opp in needs_enrichment[:10]:  # Limit to 10 to avoid cost
-                body = opp.get('body', '')[:2000]  # Truncate to save tokens
-                title = opp.get('title', '')
+        # Import AI extractor
+        try:
+            from enrichment.ai_contact_extractor import extract_contact_with_ai
+        except ImportError:
+            logger.warning("  AI contact extractor not available")
+            return opportunities
 
-                if not body.strip():
-                    continue
+        for idx, opp in needs_enrichment[:15]:  # Limit to 15 to control cost
+            body = opp.get('body', '')
+            title = opp.get('title', '')
+            url = opp.get('url', '')
 
-                try:
-                    response = await client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                            "HTTP-Referer": "https://aigentsy.com",
-                            "X-Title": "AiGentsy Contact Extraction"
-                        },
-                        json={
-                            "model": "anthropic/claude-3-haiku",
-                            "messages": [
-                                {
-                                    "role": "user",
-                                    "content": f"""Extract contact information from this job posting.
+            if not body.strip():
+                continue
 
-Title: {title}
-Body: {body}
+            # Combine title and body for analysis
+            text = f"Title: {title}\n\nBody: {body}"
 
-Return ONLY a JSON object with any contact info found:
-{{"email": "...", "phone": "...", "twitter": "@...", "linkedin": "..."}}
+            contact = await extract_contact_with_ai(text, url)
 
-If nothing found, return: {{"found": false}}
+            if contact:
+                # Merge with existing contact (preserve reddit/github usernames)
+                existing = opp.get('contact', {})
+                merged = {**existing, **contact}
+                opportunities[idx]['contact'] = merged
+                logger.info(f"    Enriched: {opp.get('id')[:20]} -> {contact.get('preferred_outreach')}")
 
-JSON only:"""
-                                }
-                            ],
-                            "temperature": 0,
-                            "max_tokens": 200
-                        }
-                    )
+            await asyncio.sleep(0.3)  # Rate limit
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-
-                        # Parse JSON
-                        json_match = re.search(r'\{[^{}]*\}', content)
-                        if json_match:
-                            try:
-                                contact_data = json.loads(json_match.group(0))
-
-                                if contact_data.get('found') is False:
-                                    continue
-
-                                # Build contact object
-                                contact = {}
-                                if contact_data.get('email'):
-                                    contact['email'] = contact_data['email'].lower()
-                                    contact['preferred_outreach'] = 'email'
-                                if contact_data.get('phone'):
-                                    contact['phone'] = contact_data['phone']
-                                    if not contact.get('preferred_outreach'):
-                                        contact['preferred_outreach'] = 'sms'
-                                if contact_data.get('twitter'):
-                                    handle = contact_data['twitter'].lstrip('@')
-                                    contact['twitter_handle'] = handle
-                                    if not contact.get('preferred_outreach'):
-                                        contact['preferred_outreach'] = 'twitter_dm'
-                                if contact_data.get('linkedin'):
-                                    contact['linkedin_id'] = contact_data['linkedin']
-                                    if not contact.get('preferred_outreach'):
-                                        contact['preferred_outreach'] = 'linkedin_message'
-
-                                if contact:
-                                    contact['extraction_source'] = 'ai_openrouter'
-                                    opportunities[idx]['contact'] = contact
-                                    logger.info(f"    Enriched: {opp.get('id')} -> {contact.get('preferred_outreach')}")
-
-                            except json.JSONDecodeError:
-                                pass
-
-                    await asyncio.sleep(0.5)  # Rate limit
-
-                except Exception as e:
-                    logger.debug(f"AI enrichment error: {e}")
-
-        enriched_count = sum(1 for i, _ in needs_enrichment if self._has_contact(opportunities[i]))
-        logger.info(f"  AI enriched {enriched_count}/{len(needs_enrichment)} opportunities")
+        enriched_count = sum(1 for i, _ in needs_enrichment if self._has_usable_contact(opportunities[i]))
+        logger.info(f"  AI enriched {enriched_count}/{len(needs_enrichment)} opportunities with usable contact")
 
         return opportunities
+
+    def _has_usable_contact(self, opportunity: Dict[str, Any]) -> bool:
+        """Check if opportunity has USABLE contact info (email, phone, or twitter for DM)."""
+        contact = opportunity.get('contact', {})
+        if not contact:
+            return False
+
+        # Usable = can actually reach out
+        return bool(
+            contact.get('email') or
+            contact.get('phone') or
+            contact.get('twitter_handle')
+        )
 
     def _detect_platform(self, url: str) -> str:
         """Detect platform from URL."""
@@ -948,21 +924,35 @@ JSON only:"""
         return 'web'
 
     def _parse_contact_string(self, contact_str: str) -> Optional[Dict[str, Any]]:
-        """Parse contact string into structured format."""
+        """Parse contact string into structured format with validation."""
         if not contact_str:
             return None
 
         contact = {}
 
-        # Email extraction
+        # Import validators
+        try:
+            from enrichment.ai_contact_extractor import validate_email, normalize_phone_number
+            has_validators = True
+        except ImportError:
+            has_validators = False
+
+        # Email extraction with validation
         email_match = re.search(
             r'[\w.+-]+@[\w-]+\.[\w.-]+',
             contact_str,
             re.IGNORECASE
         )
         if email_match:
-            contact['email'] = email_match.group(0).lower()
-            contact['preferred_outreach'] = 'email'
+            raw_email = email_match.group(0).lower()
+            if has_validators:
+                validated = validate_email(raw_email)
+                if validated:
+                    contact['email'] = validated
+                    contact['preferred_outreach'] = 'email'
+            else:
+                contact['email'] = raw_email
+                contact['preferred_outreach'] = 'email'
 
         # Twitter handle extraction
         twitter_match = re.search(r'@([a-zA-Z0-9_]{1,15})', contact_str)
@@ -971,15 +961,23 @@ JSON only:"""
             if 'preferred_outreach' not in contact:
                 contact['preferred_outreach'] = 'twitter_dm'
 
-        # Phone number extraction
+        # Phone number extraction with validation
         phone_match = re.search(
             r'\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
             contact_str
         )
         if phone_match:
-            contact['phone'] = phone_match.group(0)
-            if 'preferred_outreach' not in contact:
-                contact['preferred_outreach'] = 'sms'
+            raw_phone = phone_match.group(0)
+            if has_validators:
+                normalized = normalize_phone_number(raw_phone)
+                if normalized:
+                    contact['phone'] = normalized
+                    if 'preferred_outreach' not in contact:
+                        contact['preferred_outreach'] = 'sms'
+            else:
+                contact['phone'] = raw_phone
+                if 'preferred_outreach' not in contact:
+                    contact['preferred_outreach'] = 'sms'
 
         return contact if contact else None
 
