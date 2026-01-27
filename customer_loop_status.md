@@ -1,7 +1,8 @@
 # Customer Loop Status Report
 
 **Generated:** 2026-01-27
-**Status:** SYSTEMS EXIST - Need API Keys Configuration
+**Updated:** 2026-01-27 (Post Multi-Channel Integration)
+**Status:** FULLY WIRED - Discovery Source Gap Identified
 
 ---
 
@@ -308,6 +309,95 @@ To close the customer loop and start collecting real revenue:
 3. Deploy
 4. Run `/integration/discover-and-execute`
 5. Contracts will now be presented to customers automatically
+
+---
+
+---
+
+## Part 7: Discovery Source Gap (CRITICAL FINDING)
+
+### The Real Issue
+
+After multi-channel integration, presentations still fail with:
+```
+"error": "No working outreach method. Missing: contact_info, email"
+```
+
+**Why?** Perplexity discovery returns AI-generated summaries, NOT the original posts.
+
+```
+Perplexity Result (what we get):
+{
+  "title": "Need app built for...",
+  "url": "https://reddit.com/r/forhire/...",
+  "body": "[AI summary of post]"  // NO USERNAME, NO EMAIL
+}
+
+Original Post (what we need):
+{
+  "title": "Need app built for...",
+  "author": "u/realuser123",         // CONTACT INFO
+  "body": "email me at guy@email.com" // CONTACT INFO
+}
+```
+
+### The Fix (2 Options)
+
+**Option A: Direct Platform APIs (Best)**
+```python
+# Instead of Perplexity-first, use direct APIs:
+- Reddit API → Returns author username for every post
+- Twitter API → Returns poster handle for every tweet
+- GitHub API → Returns username for every issue
+- LinkedIn API → Returns poster profile
+```
+
+**Option B: Source URL Fetch (Fallback)**
+```python
+# After Perplexity discovery, fetch original source:
+for opp in opportunities:
+    if not opp.get('contact'):
+        source_url = opp.get('url')
+        original_page = await fetch_and_parse(source_url)
+        opp['contact'] = extract_contact_from_page(original_page)
+```
+
+### Existing Code That Can Help
+
+| File | Purpose |
+|------|---------|
+| `platforms/packs/reddit_api.py` | Direct Reddit API |
+| `platforms/packs/twitter_v2_api.py` | Direct Twitter API |
+| `platforms/packs/github_enhanced.py` | Direct GitHub API |
+| `universal_contact_extraction.py` | Extract from any platform |
+| `enrichment/contact_scoring.py` | Score and validate contacts |
+
+### Immediate Action
+
+Switch from Perplexity-only discovery to platform-specific discovery:
+
+```python
+# In discovery/perplexity_first.py or managers/discovery_manager.py:
+
+# CURRENT (returns summaries without contact):
+opportunities = await perplexity.search(query)
+
+# BETTER (returns original posts with contact):
+opportunities = []
+opportunities += await reddit_api.search_subreddits(['forhire', 'freelance'])
+opportunities += await twitter_api.search_hashtags(['needdev', 'hireme'])
+opportunities += await github_api.search_issues(['help wanted', 'bounty'])
+```
+
+This will give us:
+- Reddit: `author` field with username
+- Twitter: `user.screen_name` with handle
+- GitHub: `user.login` with username
+
+Then the existing contact extraction will work:
+```
+Discovery → Contact Extracted → Outreach Successful → Contract Presented
+```
 
 ---
 
