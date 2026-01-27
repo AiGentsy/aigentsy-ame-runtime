@@ -262,31 +262,38 @@ class HybridDiscoveryEngine:
 
         logger.info(f"🔍 Running {total_queries} Perplexity queries in batches of {batch_size}")
 
-        # Only run first 20 queries to avoid rate limits (Perplexity has strict limits)
-        queries_to_run = queries[:20]
+        # Only run first 10 queries to test (avoid rate limits)
+        queries_to_run = queries[:10]
 
         for i in range(0, len(queries_to_run), batch_size):
             batch = queries_to_run[i:i + batch_size]
+            logger.info(f"📡 Running batch {i//batch_size + 1}: {len(batch)} queries")
+
             batch_results = await asyncio.gather(*[
                 self._run_single_perplexity_query(q) for q in batch
             ], return_exceptions=True)
 
             for j, result in enumerate(batch_results):
+                query_preview = batch[j][:50] if j < len(batch) else "?"
                 if isinstance(result, Exception):
                     failed_queries += 1
-                    logger.debug(f"Query {i+j+1} failed: {result}")
+                    logger.warning(f"Query {i+j+1} ({query_preview}...) FAILED: {type(result).__name__}: {result}")
                 elif isinstance(result, list):
                     successful_queries += 1
                     total_results += len(result)
                     opportunities.extend(result)
+                    if result:
+                        logger.info(f"Query {i+j+1} returned {len(result)} results")
                 else:
                     failed_queries += 1
+                    logger.warning(f"Query {i+j+1} returned unexpected type: {type(result)}")
 
             # Longer delay between batches to respect rate limits
             if i + batch_size < len(queries_to_run):
-                await asyncio.sleep(2)  # Increased from 0.5 to 2 seconds
+                logger.info(f"Waiting 3s before next batch...")
+                await asyncio.sleep(3)
 
-        logger.info(f"📊 Perplexity summary: {total_results} opportunities from {successful_queries}/{len(queries_to_run)} queries ({failed_queries} failed)")
+        logger.info(f"📊 Perplexity summary: {total_results} opportunities from {successful_queries}/{len(queries_to_run)} successful queries ({failed_queries} failed)")
         return opportunities
 
     def _get_diversified_queries(self) -> List[str]:
@@ -513,7 +520,7 @@ Requirements:
 
 Return ONLY the JSON array, nothing else."""
 
-            async with httpx.AsyncClient(timeout=45) as client:
+            async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
                     "https://api.perplexity.ai/chat/completions",
                     headers={
@@ -521,15 +528,13 @@ Return ONLY the JSON array, nothing else."""
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "llama-3.1-sonar-large-128k-online",  # Use larger model for better results
+                        "model": "sonar",  # Use simpler model name
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        "max_tokens": 4000,
-                        "temperature": 0.1,  # Lower temperature for more focused results
-                        "return_related_questions": False,
-                        "search_recency_filter": "week"  # Focus on recent results
+                        "max_tokens": 2000,  # Reduced for faster response
+                        "temperature": 0.1
                     }
                 )
 
