@@ -14,6 +14,7 @@ from .entity_resolution import EntityResolver
 from .internet_wide_scraper import InternetWideScraper
 from .streams import StreamIngestor
 from .continuous_discovery import ContinuousDiscovery
+from .hybrid_discovery import HybridDiscoveryEngine, get_hybrid_discovery, discover_with_contact
 
 __all__ = [
     'REAL_TIME_SOURCES',
@@ -25,5 +26,9 @@ __all__ = [
     'EntityResolver',
     'InternetWideScraper',
     'StreamIngestor',
-    'ContinuousDiscovery'
+    'ContinuousDiscovery',
+    # Hybrid discovery (Perplexity + Direct API enrichment)
+    'HybridDiscoveryEngine',
+    'get_hybrid_discovery',
+    'discover_with_contact',
 ]
