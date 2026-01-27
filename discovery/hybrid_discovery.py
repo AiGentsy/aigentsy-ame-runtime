@@ -98,13 +98,17 @@ class HybridDiscoveryEngine:
         logger.info(f"Phase 1: {len(raw_opportunities)} opportunities discovered")
 
         # Phase 1.5: Add direct platform discoveries (these have author info built-in)
+        # Put these FIRST - they're higher quality because they have real contact info
         logger.info(f"=== HYBRID DISCOVERY: Phase 1.5 (Direct Platform APIs) ===")
         platform_opps = await self._phase1_5_direct_platforms()
-        raw_opportunities.extend(platform_opps)
-        logger.info(f"Phase 1.5: Added {len(platform_opps)} opportunities from direct platform APIs")
+        logger.info(f"Phase 1.5: {len(platform_opps)} opportunities from direct platform APIs")
+
+        # Combine: platform opps FIRST (higher quality), then perplexity opps
+        combined = platform_opps + raw_opportunities
+        logger.info(f"Combined: {len(combined)} total ({len(platform_opps)} platform + {len(raw_opportunities)} perplexity)")
 
         # Limit for enrichment (to avoid rate limits)
-        opportunities_to_enrich = raw_opportunities[:max_opportunities]
+        opportunities_to_enrich = combined[:max_opportunities]
 
         # Phase 2: Enrich remaining opportunities with direct platform APIs
         logger.info(f"=== HYBRID DISCOVERY: Phase 2 (Enrichment) ===")
