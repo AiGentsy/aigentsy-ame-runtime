@@ -117,6 +117,16 @@ if FASTAPI_AVAILABLE:
     # Store for active contracts
     _contracts_cache: Dict[str, Dict] = {}
     _execution_results: Dict[str, Dict] = {}
+    _presentation_results: Dict[str, Dict] = {}  # Track contract presentations
+
+    def _get_customer_loop_wiring():
+        """Get customer loop wiring for outreach"""
+        try:
+            from integration.customer_loop_wiring import get_customer_loop_wiring
+            return get_customer_loop_wiring()
+        except Exception as e:
+            logger.debug(f"Customer loop wiring not available: {e}")
+            return None
 
     @router.get("/stats")
     async def get_integration_stats():
@@ -391,6 +401,61 @@ if FASTAPI_AVAILABLE:
                     'status': 'success' if contracts else 'no_contracts',
                     'count': len(contracts),
                 }
+
+                # Step 4b: Present contracts to customers (WIRING EXISTING OUTREACH)
+                logger.info(f"[{execution_id}] Step 4b: Presenting contracts to customers...")
+                wiring = _get_customer_loop_wiring()
+                presentations = []
+
+                if wiring and contracts:
+                    for contract_data in contracts:
+                        try:
+                            from integration.customer_loop_wiring import present_contract_after_creation
+                            opp_id = contract_data.get('opportunity_id')
+
+                            # Find the opportunity
+                            opp_for_presentation = None
+                            for o in opportunities:
+                                if o.get('id') == opp_id:
+                                    opp_for_presentation = o
+                                    break
+
+                            if opp_for_presentation:
+                                presentation = await present_contract_after_creation(
+                                    opportunity=opp_for_presentation,
+                                    contract=contract_data.get('escrow', {}),
+                                    sow=contract_data.get('sow'),
+                                )
+                                presentations.append({
+                                    'opportunity_id': opp_id,
+                                    **presentation
+                                })
+
+                                if presentation.get('presented'):
+                                    logger.info(f"✅ Contract presented via {presentation.get('method')}")
+                                else:
+                                    logger.warning(f"⚠️ Contract not presented: {presentation.get('error')}")
+
+                        except Exception as e:
+                            logger.warning(f"[{execution_id}] Presentation failed for {contract_data.get('opportunity_id')}: {e}")
+                            presentations.append({
+                                'opportunity_id': contract_data.get('opportunity_id'),
+                                'presented': False,
+                                'error': str(e),
+                            })
+
+                    results['steps']['presentation'] = {
+                        'status': 'success' if any(p.get('presented') for p in presentations) else 'no_presentations',
+                        'presented': len([p for p in presentations if p.get('presented')]),
+                        'total': len(presentations),
+                    }
+                    results['presentations'] = presentations
+                    _presentation_results[execution_id] = presentations
+                else:
+                    results['steps']['presentation'] = {
+                        'status': 'skipped',
+                        'reason': 'wiring not available or no contracts'
+                    }
             else:
                 results['steps']['contracts'] = {'status': 'skipped', 'reason': 'auto_contract=false'}
 
@@ -597,6 +662,71 @@ if FASTAPI_AVAILABLE:
         return {
             'ok': True,
             'execution': result,
+        }
+
+
+    @router.get("/customer-loop-status")
+    async def get_customer_loop_status():
+        """
+        Get customer loop wiring status.
+
+        Shows which outreach/presentation systems are configured
+        and what's needed to close the customer loop.
+        """
+        wiring = _get_customer_loop_wiring()
+        if not wiring:
+            return {
+                'ok': False,
+                'error': 'Customer loop wiring not loaded',
+                'recommendation': 'Check integration/customer_loop_wiring.py exists',
+            }
+
+        status = wiring.get_status()
+
+        return {
+            'ok': True,
+            'customer_loop': status,
+            'presentation_history': {
+                'total_executions': len(_presentation_results),
+                'recent': list(_presentation_results.values())[-5:] if _presentation_results else [],
+            }
+        }
+
+    @router.get("/wall-of-wins")
+    async def get_wall_of_wins():
+        """
+        Get Wall of Wins - completed contracts with real revenue.
+
+        Only shows contracts where:
+        - Customer signed SOW
+        - At least one milestone funded
+        - Work delivered and approved
+        """
+        escrow = _get_escrow()
+        if not escrow:
+            return {'ok': True, 'wall_of_wins': [], 'count': 0}
+
+        # Get completed contracts (milestones released)
+        wins = []
+        stats = escrow.get_stats()
+
+        # Build wall of wins from completed milestones
+        for contract_id, contract_dict in _contracts_cache.items():
+            released = contract_dict.get('released_amount_usd', 0)
+            if released > 0:
+                wins.append({
+                    'contract_id': contract_id,
+                    'title': contract_dict.get('title', 'Project'),
+                    'revenue_usd': released,
+                    'completed_at': contract_dict.get('completed_at'),
+                })
+
+        return {
+            'ok': True,
+            'wall_of_wins': wins,
+            'count': len(wins),
+            'total_revenue_usd': sum(w.get('revenue_usd', 0) for w in wins),
+            'generated_at': datetime.now(timezone.utc).isoformat() + 'Z',
         }
 
 
