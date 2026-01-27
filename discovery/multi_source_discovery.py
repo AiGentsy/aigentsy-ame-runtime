@@ -84,7 +84,13 @@ class MultiSourceDiscovery:
                 'priority': 2,
                 'description': 'Twitter search with @handles'
             }
-            logger.info("  [2] Twitter Bearer Token - Social search")
+            logger.info(f"  [2] Twitter Bearer Token - Social search (token length: {len(twitter_bearer)})")
+        else:
+            # Check what Twitter keys ARE available
+            has_api_key = bool(os.getenv('TWITTER_API_KEY'))
+            has_access = bool(os.getenv('TWITTER_ACCESS_TOKEN'))
+            logger.warning(f"  [!] TWITTER_BEARER_TOKEN not set (API_KEY={has_api_key}, ACCESS_TOKEN={has_access})")
+            logger.warning("      Twitter SEARCH requires Bearer Token, not OAuth keys")
 
         # GITHUB - Open source bounties
         github_token = os.getenv('GITHUB_TOKEN')
@@ -418,6 +424,10 @@ Only include REAL opportunities with actual URLs."""
         bearer_token = self.sources['twitter']['bearer_token']
         opportunities = []
 
+        logger.info(f"  [twitter] Starting Twitter discovery...")
+        logger.info(f"  [twitter] Bearer token present: {bool(bearer_token)}")
+        logger.info(f"  [twitter] Bearer token length: {len(bearer_token) if bearer_token else 0}")
+
         queries = [
             "hiring developer",
             "looking for engineer",
@@ -486,10 +496,18 @@ Only include REAL opportunities with actual URLs."""
                             })
 
                     elif response.status_code == 429:
-                        logger.warning("  [twitter] Rate limit hit")
+                        logger.warning("  [twitter] Rate limit hit - stopping Twitter search")
+                        break
+                    elif response.status_code == 401:
+                        logger.error(f"  [twitter] UNAUTHORIZED (401) - Bearer token may be invalid")
+                        logger.error(f"  [twitter] Response: {response.text[:200]}")
+                        break
+                    elif response.status_code == 403:
+                        logger.error(f"  [twitter] FORBIDDEN (403) - API access denied")
+                        logger.error(f"  [twitter] Response: {response.text[:200]}")
                         break
                     else:
-                        logger.debug(f"  [twitter] Error {response.status_code}")
+                        logger.warning(f"  [twitter] Error {response.status_code}: {response.text[:100]}")
 
                     # Small delay between queries
                     await asyncio.sleep(0.5)

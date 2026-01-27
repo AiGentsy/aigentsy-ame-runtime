@@ -303,6 +303,151 @@ if FASTAPI_AVAILABLE:
                 'key_preview': f"{perplexity_key[:8]}...{perplexity_key[-4:]}"
             }
 
+    @router.get("/debug/multi-source")
+    async def debug_multi_source():
+        """
+        Debug endpoint to check MultiSourceDiscovery configuration.
+
+        Shows which APIs are detected and available for discovery.
+        """
+        import os
+
+        result = {
+            'ok': True,
+            'discovery_sources': {},
+            'api_keys_detected': {},
+            'twitter_details': {}
+        }
+
+        # Check each API key
+        api_checks = {
+            'PERPLEXITY_API_KEY': 'perplexity',
+            'TWITTER_BEARER_TOKEN': 'twitter_search',
+            'TWITTER_API_KEY': 'twitter_oauth',
+            'TWITTER_ACCESS_TOKEN': 'twitter_dm',
+            'GITHUB_TOKEN': 'github',
+            'OPENROUTER_API_KEY': 'openrouter',
+            'GEMINI_API_KEY': 'gemini',
+            'REDDIT_CLIENT_ID': 'reddit_oauth'
+        }
+
+        for env_var, name in api_checks.items():
+            value = os.getenv(env_var)
+            result['api_keys_detected'][name] = {
+                'configured': bool(value),
+                'env_var': env_var,
+                'length': len(value) if value else 0
+            }
+
+        # Twitter-specific details
+        twitter_bearer = os.getenv('TWITTER_BEARER_TOKEN')
+        result['twitter_details'] = {
+            'bearer_token_exists': bool(twitter_bearer),
+            'bearer_token_length': len(twitter_bearer) if twitter_bearer else 0,
+            'bearer_token_preview': f"{twitter_bearer[:10]}...{twitter_bearer[-4:]}" if twitter_bearer and len(twitter_bearer) > 14 else None,
+            'api_key_exists': bool(os.getenv('TWITTER_API_KEY')),
+            'access_token_exists': bool(os.getenv('TWITTER_ACCESS_TOKEN')),
+            'can_search': bool(twitter_bearer),
+            'can_dm': bool(os.getenv('TWITTER_ACCESS_TOKEN'))
+        }
+
+        # Try to instantiate MultiSourceDiscovery to see what it detects
+        try:
+            from discovery.multi_source_discovery import MultiSourceDiscovery
+            msd = MultiSourceDiscovery()
+            result['discovery_sources'] = {
+                'enabled': list(msd.sources.keys()),
+                'count': len(msd.sources),
+                'details': {k: v.get('description', '') for k, v in msd.sources.items()}
+            }
+        except Exception as e:
+            result['discovery_sources'] = {
+                'error': f"{type(e).__name__}: {str(e)}"
+            }
+
+        return result
+
+    @router.get("/debug/twitter")
+    async def debug_twitter():
+        """
+        Debug endpoint to test Twitter API directly.
+
+        Tests Bearer Token authentication and search functionality.
+        """
+        import os
+        import httpx
+
+        twitter_bearer = os.getenv('TWITTER_BEARER_TOKEN')
+
+        result = {
+            'ok': False,
+            'bearer_token': {
+                'exists': bool(twitter_bearer),
+                'length': len(twitter_bearer) if twitter_bearer else 0,
+                'preview': f"{twitter_bearer[:10]}..." if twitter_bearer and len(twitter_bearer) > 10 else None
+            },
+            'api_test': None
+        }
+
+        if not twitter_bearer:
+            result['error'] = 'TWITTER_BEARER_TOKEN not configured'
+            result['hint'] = 'Add TWITTER_BEARER_TOKEN to Render environment variables'
+            return result
+
+        # Test the API
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    "https://api.twitter.com/2/tweets/search/recent",
+                    headers={"Authorization": f"Bearer {twitter_bearer}"},
+                    params={
+                        "query": "hiring developer -is:retweet",
+                        "max_results": 10,
+                        "tweet.fields": "author_id",
+                        "expansions": "author_id",
+                        "user.fields": "username"
+                    }
+                )
+
+                result['api_test'] = {
+                    'status_code': response.status_code,
+                    'success': response.status_code == 200
+                }
+
+                if response.status_code == 200:
+                    data = response.json()
+                    tweets = data.get('data', [])
+                    users = {u['id']: u for u in data.get('includes', {}).get('users', [])}
+
+                    result['ok'] = True
+                    result['api_test']['tweets_found'] = len(tweets)
+                    result['api_test']['sample_tweets'] = []
+
+                    for tweet in tweets[:3]:
+                        user = users.get(tweet.get('author_id'), {})
+                        result['api_test']['sample_tweets'].append({
+                            'id': tweet.get('id'),
+                            'username': user.get('username'),
+                            'text_preview': tweet.get('text', '')[:100]
+                        })
+                elif response.status_code == 401:
+                    result['error'] = 'UNAUTHORIZED - Bearer token is invalid or expired'
+                    result['api_test']['response'] = response.text[:300]
+                elif response.status_code == 403:
+                    result['error'] = 'FORBIDDEN - API access denied (may need elevated access)'
+                    result['api_test']['response'] = response.text[:300]
+                elif response.status_code == 429:
+                    result['error'] = 'RATE LIMITED - Too many requests'
+                    result['api_test']['response'] = response.text[:300]
+                else:
+                    result['error'] = f'HTTP {response.status_code}'
+                    result['api_test']['response'] = response.text[:300]
+
+        except Exception as e:
+            result['error'] = f"{type(e).__name__}: {str(e)}"
+
+        return result
+
     @router.get("/capacity")
     async def get_capacity():
         """
