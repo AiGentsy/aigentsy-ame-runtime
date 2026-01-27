@@ -189,17 +189,50 @@ class HybridDiscoveryEngine:
         return await self._direct_perplexity_search()
 
     async def _direct_perplexity_search(self) -> List[Dict]:
-        """Direct Perplexity API search as fallback"""
+        """
+        Direct Perplexity API search - DIVERSIFIED ACROSS ALL PLATFORMS.
+
+        Queries target opportunities with EMAIL, TWITTER, LINKEDIN, INSTAGRAM contact info.
+        """
         if not self.perplexity_key:
             logger.warning("No Perplexity API key, skipping Phase 1")
             return []
 
         opportunities = []
 
+        # DIVERSIFIED QUERIES - target opportunities with contact info across ALL platforms
         queries = [
-            "Find active freelance job postings on Reddit r/forhire, r/hiring, r/slavelabour posted today. Return JSON array with title, url, platform for each.",
-            "Search Twitter for people hiring developers or designers today. Return JSON array with tweet text, author, url.",
-            "Find GitHub issues labeled 'bounty' or 'help wanted' with payment. Return JSON array.",
+            # === EMAIL-BASED (highest conversion) ===
+            """Find job postings that include email contact for developers. Search across job boards,
+            forums, and social media. Return JSON: [{"title": "...", "url": "...", "email": "...", "platform": "..."}]""",
+
+            # === TWITTER OPPORTUNITIES ===
+            """Find tweets from people hiring developers or looking for freelancers. Include the
+            Twitter handle of the poster. Return JSON: [{"title": "...", "url": "...", "twitter_handle": "@...", "platform": "twitter"}]""",
+
+            # === LINKEDIN OPPORTUNITIES ===
+            """Find LinkedIn posts about hiring developers, seeking consultants, or looking for
+            freelancers. Include LinkedIn profile URLs. Return JSON: [{"title": "...", "url": "...", "linkedin_url": "...", "platform": "linkedin"}]""",
+
+            # === UPWORK/FREELANCE PLATFORMS ===
+            """Find active job postings on Upwork, Freelancer, Fiverr for web development,
+            mobile apps, Python, data science. Return JSON: [{"title": "...", "url": "...", "platform": "upwork/freelancer/fiverr", "budget": "..."}]""",
+
+            # === GITHUB BOUNTIES ===
+            """Find GitHub issues with bounties, paid work, or help wanted labels that offer payment.
+            Include the repository URL and poster. Return JSON: [{"title": "...", "url": "...", "github_user": "...", "bounty": "...", "platform": "github"}]""",
+
+            # === REDDIT (with email extraction) ===
+            """Find Reddit posts in r/forhire, r/hiring, r/slavelabour where people are hiring AND
+            include their email address in the post. Return JSON: [{"title": "...", "url": "...", "email": "...", "reddit_user": "...", "platform": "reddit"}]""",
+
+            # === STARTUP/CONSULTING ===
+            """Find startup hiring posts, CTO positions, or consulting opportunities that include
+            contact email or LinkedIn. Return JSON: [{"title": "...", "url": "...", "contact": "...", "platform": "..."}]""",
+
+            # === DISCORD/TELEGRAM ===
+            """Find Discord servers or Telegram groups hiring developers or moderators. Include
+            invite links or contact info. Return JSON: [{"title": "...", "url": "...", "platform": "discord/telegram"}]""",
         ]
 
         async with httpx.AsyncClient(timeout=30) as client:

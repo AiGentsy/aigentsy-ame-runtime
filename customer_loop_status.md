@@ -471,3 +471,107 @@ Discovery → Contact Extracted → Outreach Successful → Contract Presented
 ---
 
 *Hybrid discovery implementation complete. Customer loop is now operational.*
+
+---
+
+## Part 9: Direct API Implementation & Diversified Discovery (✅ COMPLETED)
+
+**Date:** 2026-01-27
+
+### Problem Identified
+
+Previous implementation had two issues:
+1. **Perplexity queries only finding Reddit** - not diversified across platforms
+2. **Platform APIs not actually called** - delegating to engines that weren't working
+
+### Solutions Implemented
+
+#### 1. Diversified Perplexity Queries (`discovery/hybrid_discovery.py`)
+
+Now queries 8 different categories:
+```
+1. Email-based opportunities (highest conversion)
+2. Twitter opportunities with @handles
+3. LinkedIn opportunities with profile URLs
+4. Upwork/Freelancer/Fiverr jobs
+5. GitHub bounties with usernames
+6. Reddit posts with email addresses
+7. Startup/consulting opportunities
+8. Discord/Telegram communities
+```
+
+#### 2. Direct API Implementations (`integration/customer_loop_wiring.py`)
+
+Added direct httpx API calls that bypass engines:
+
+| Method | API Used | Requirements |
+|--------|----------|--------------|
+| `_send_twitter_dm_direct()` | Twitter API v2 | `TWITTER_BEARER_TOKEN` + OAuth 1.0a |
+| `_send_linkedin_message_direct()` | LinkedIn Messaging API | `LINKEDIN_ACCESS_TOKEN` |
+| `_send_instagram_dm_direct()` | Instagram Graph API | `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_BUSINESS_ID` |
+| `_send_reddit_dm_direct()` | Reddit OAuth API | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` |
+| `_send_github_issue_comment_direct()` | GitHub REST API | `GITHUB_TOKEN` |
+
+### Updated Priority 1 Outreach Flow
+
+```
+Opportunity Detected
+        ↓
+┌───────┴───────┐
+│ Platform Type │
+└───────┬───────┘
+        ↓
+┌─────────────────────────────────────┐
+│ Twitter → _send_twitter_dm_direct() │
+│ LinkedIn → _send_linkedin_message_direct() │
+│ Instagram → _send_instagram_dm_direct() │
+│ Reddit → _send_reddit_dm_direct() │
+│ GitHub → _send_github_issue_comment_direct() │
+└─────────────────────────────────────┘
+        ↓
+   Success? → Return
+        ↓
+   Fallback to Email (Priority 2)
+```
+
+### Expected Impact
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Platform diversity | Reddit only | Twitter, LinkedIn, GitHub, Upwork, Email |
+| API utilization | Engine delegation | Direct API calls |
+| Presentation channels | Email only | Twitter DM, LinkedIn, Instagram, Reddit DM, GitHub, Email |
+| Expected presentation rate | 6% | 20-40% |
+
+### To Maximize Presentation Rate
+
+Configure these API keys in Render:
+
+```bash
+# Twitter (for Twitter DM)
+TWITTER_BEARER_TOKEN=...
+TWITTER_API_KEY=...
+TWITTER_API_SECRET=...
+TWITTER_ACCESS_TOKEN=...
+TWITTER_ACCESS_SECRET=...
+
+# LinkedIn (for LinkedIn messages)
+LINKEDIN_ACCESS_TOKEN=...
+
+# Instagram (for Instagram DM)
+INSTAGRAM_ACCESS_TOKEN=...
+INSTAGRAM_BUSINESS_ID=...
+
+# Reddit (for Reddit DM)
+REDDIT_CLIENT_ID=...
+REDDIT_CLIENT_SECRET=...
+REDDIT_USERNAME=...
+REDDIT_PASSWORD=...
+
+# GitHub (for issue comments)
+GITHUB_TOKEN=...
+```
+
+---
+
+*Direct API implementations complete. Customer loop now uses ALL configured APIs.*

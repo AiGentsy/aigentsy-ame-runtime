@@ -22,6 +22,7 @@ ALL CODE EXISTS. Just wiring it together.
 
 import logging
 import os
+import httpx
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -368,80 +369,173 @@ class CustomerLoopWiring:
         total_value = contract.get('total_amount_usd', sow.get('total_value_usd', 0) if sow else 0)
 
         # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 1: Platform-native outreach
+        # PRIORITY 1: Platform-native outreach (DIRECT API CALLS)
         # ═══════════════════════════════════════════════════════════════════
 
-        # Twitter opportunities → Twitter DM
-        if 'twitter' in platform and 'outreach' in self.engines:
-            engine = self.engines['outreach']
-            if engine.get_stats().get('channels_configured', {}).get('twitter_dm'):
-                if twitter_handle:
-                    try:
-                        outreach_result = await engine.process_opportunity(opportunity, contact)
-                        if outreach_result and outreach_result.status.value == 'sent':
-                            result.presented = True
-                            result.method = 'twitter_dm'
-                            result.channel = 'twitter'
-                            result.recipient = twitter_handle
-                            result.tracking_id = outreach_result.tracking_id
-                            logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
-                            return result
-                    except Exception as e:
-                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
-                        logger.warning(f"⚠️ Twitter DM failed: {e}")
+        # Build DM message for platform outreach
+        dm_message = f"""Hi! I saw your post about {title[:50]}.
 
-        # LinkedIn opportunities → LinkedIn message
-        if 'linkedin' in platform and 'outreach' in self.engines:
-            engine = self.engines['outreach']
-            if engine.get_stats().get('channels_configured', {}).get('linkedin_message'):
-                if linkedin_id:
-                    try:
-                        outreach_result = await engine.process_opportunity(opportunity, contact)
-                        if outreach_result and outreach_result.status.value == 'sent':
-                            result.presented = True
-                            result.method = 'linkedin_message'
-                            result.channel = 'linkedin'
-                            result.recipient = linkedin_id
-                            result.tracking_id = outreach_result.tracking_id
-                            logger.info(f"✅ LinkedIn message sent to {linkedin_id}")
-                            return result
-                    except Exception as e:
-                        result.fallback_attempts.append({'method': 'linkedin_message', 'error': str(e)})
+We can help with this. AiGentsy delivers within hours - you only pay when you approve.
 
-        # Reddit opportunities → Reddit DM
-        if 'reddit' in platform and 'outreach' in self.engines:
-            engine = self.engines['outreach']
-            if engine.get_stats().get('channels_configured', {}).get('reddit_dm'):
-                if reddit_username:
-                    try:
-                        outreach_result = await engine.process_opportunity(opportunity, contact)
-                        if outreach_result and outreach_result.status.value == 'sent':
-                            result.presented = True
-                            result.method = 'reddit_dm'
-                            result.channel = 'reddit'
-                            result.recipient = reddit_username
-                            result.tracking_id = outreach_result.tracking_id
-                            logger.info(f"✅ Reddit DM sent to u/{reddit_username}")
-                            return result
-                    except Exception as e:
-                        result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
+View our full proposal here:
+{client_room_url}
 
-        # GitHub opportunities → GitHub comment on issue
-        if ('github' in platform or github_username) and 'platform_response' in self.engines:
-            engine = self.engines['platform_response']
-            if engine.get_supported_platforms().get('github'):
+Let me know if you have questions!"""
+
+        # Twitter opportunities → Twitter DM (DIRECT API)
+        if ('twitter' in platform or twitter_handle) and self.available_systems.get('api_keys', {}).get('twitter_dm'):
+            if twitter_handle:
                 try:
-                    engagement = await engine.engage_with_opportunity(opportunity, send_dm_after=False)
-                    if engagement and engagement.status.value in ['commented', 'sent']:
+                    logger.info(f"📤 Attempting Twitter DM to @{twitter_handle}...")
+                    dm_result = await self._send_twitter_dm_direct(twitter_handle, dm_message)
+                    if dm_result.get('success'):
                         result.presented = True
-                        result.method = 'github_comment'
-                        result.channel = 'github'
-                        result.recipient = github_username or 'issue author'
-                        result.tracking_id = engagement.engagement_id
-                        logger.info(f"✅ GitHub comment posted for {github_username}")
+                        result.method = 'twitter_dm'
+                        result.channel = 'twitter'
+                        result.recipient = f"@{twitter_handle.lstrip('@')}"
+                        result.tracking_id = dm_result.get('message_id')
+                        result.details['twitter_dm'] = dm_result
+                        logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
                         return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'twitter_dm',
+                            'error': dm_result.get('error'),
+                            'details': dm_result.get('details')
+                        })
+                        logger.warning(f"⚠️ Twitter DM failed: {dm_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
+                    logger.warning(f"⚠️ Twitter DM exception: {e}")
+
+        # LinkedIn opportunities → LinkedIn message (DIRECT API)
+        if ('linkedin' in platform or linkedin_id) and self.available_systems.get('api_keys', {}).get('linkedin'):
+            if linkedin_id:
+                try:
+                    logger.info(f"📤 Attempting LinkedIn message to {linkedin_id}...")
+                    msg_result = await self._send_linkedin_message_direct(linkedin_id, dm_message)
+                    if msg_result.get('success'):
+                        result.presented = True
+                        result.method = 'linkedin_message'
+                        result.channel = 'linkedin'
+                        result.recipient = linkedin_id
+                        result.tracking_id = msg_result.get('message_id')
+                        result.details['linkedin_message'] = msg_result
+                        logger.info(f"✅ LinkedIn message sent to {linkedin_id}")
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'linkedin_message',
+                            'error': msg_result.get('error'),
+                            'details': msg_result.get('details')
+                        })
+                        logger.warning(f"⚠️ LinkedIn message failed: {msg_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'linkedin_message', 'error': str(e)})
+                    logger.warning(f"⚠️ LinkedIn message exception: {e}")
+
+        # Instagram opportunities → Instagram DM (DIRECT API)
+        instagram_id = contact.get('instagram_id') or metadata.get('instagram_id')
+        if ('instagram' in platform or instagram_id) and self.available_systems.get('api_keys', {}).get('instagram_business'):
+            if instagram_id:
+                try:
+                    logger.info(f"📤 Attempting Instagram DM to {instagram_id}...")
+                    dm_result = await self._send_instagram_dm_direct(instagram_id, dm_message)
+                    if dm_result.get('success'):
+                        result.presented = True
+                        result.method = 'instagram_dm'
+                        result.channel = 'instagram'
+                        result.recipient = instagram_id
+                        result.tracking_id = dm_result.get('message_id')
+                        result.details['instagram_dm'] = dm_result
+                        logger.info(f"✅ Instagram DM sent to {instagram_id}")
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'instagram_dm',
+                            'error': dm_result.get('error'),
+                            'details': dm_result.get('details')
+                        })
+                        logger.warning(f"⚠️ Instagram DM failed: {dm_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'instagram_dm', 'error': str(e)})
+                    logger.warning(f"⚠️ Instagram DM exception: {e}")
+
+        # Reddit opportunities → Reddit DM (DIRECT API)
+        if ('reddit' in platform or reddit_username) and self.available_systems.get('api_keys', {}).get('reddit'):
+            if reddit_username:
+                try:
+                    logger.info(f"📤 Attempting Reddit DM to u/{reddit_username}...")
+                    dm_result = await self._send_reddit_dm_direct(
+                        reddit_username,
+                        f"Re: {title[:60]}",
+                        dm_message
+                    )
+                    if dm_result.get('success'):
+                        result.presented = True
+                        result.method = 'reddit_dm'
+                        result.channel = 'reddit'
+                        result.recipient = f"u/{reddit_username.lstrip('u/')}"
+                        result.tracking_id = f"reddit_dm_{reddit_username}"
+                        result.details['reddit_dm'] = dm_result
+                        logger.info(f"✅ Reddit DM sent to u/{reddit_username}")
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'reddit_dm',
+                            'error': dm_result.get('error'),
+                            'details': dm_result.get('details')
+                        })
+                        logger.warning(f"⚠️ Reddit DM failed: {dm_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
+                    logger.warning(f"⚠️ Reddit DM exception: {e}")
+
+        # GitHub opportunities → GitHub comment on issue (DIRECT API)
+        if ('github' in platform or github_username) and self.available_systems.get('api_keys', {}).get('github'):
+            url = opportunity.get('url', '') or opportunity.get('canonical_url', '')
+            # Parse GitHub issue URL: https://github.com/owner/repo/issues/123
+            if 'github.com' in url and '/issues/' in url:
+                try:
+                    parts = url.split('github.com/')[1].split('/')
+                    if len(parts) >= 4 and parts[2] == 'issues':
+                        repo_owner = parts[0]
+                        repo_name = parts[1]
+                        issue_number = int(parts[3].split('?')[0].split('#')[0])
+
+                        github_comment = f"""Hi @{github_username or 'there'}! 👋
+
+I saw this issue and wanted to reach out. We can help with this.
+
+**AiGentsy** delivers within hours, not days - and you only pay when you approve the work.
+
+📋 **View our full proposal:** {client_room_url}
+
+Let me know if you have any questions!"""
+
+                        logger.info(f"📤 Attempting GitHub comment on {repo_owner}/{repo_name}#{issue_number}...")
+                        comment_result = await self._send_github_issue_comment_direct(
+                            repo_owner, repo_name, issue_number, github_comment
+                        )
+                        if comment_result.get('success'):
+                            result.presented = True
+                            result.method = 'github_comment'
+                            result.channel = 'github'
+                            result.recipient = github_username or f"{repo_owner}/{repo_name}#{issue_number}"
+                            result.tracking_id = str(comment_result.get('comment_id'))
+                            result.details['github_comment'] = comment_result
+                            logger.info(f"✅ GitHub comment posted on {repo_owner}/{repo_name}#{issue_number}")
+                            return result
+                        else:
+                            result.fallback_attempts.append({
+                                'method': 'github_comment',
+                                'error': comment_result.get('error'),
+                                'details': comment_result.get('details')
+                            })
+                            logger.warning(f"⚠️ GitHub comment failed: {comment_result.get('error')}")
                 except Exception as e:
                     result.fallback_attempts.append({'method': 'github_comment', 'error': str(e)})
+                    logger.warning(f"⚠️ GitHub comment exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 2: Email (Resend → SendGrid → Postmark)
@@ -715,6 +809,375 @@ Let me know if you have any questions!
     def _build_sms_message(self, title: str, client_room_url: str) -> str:
         """Build concise SMS message (160 char limit)"""
         return f"Re: {title[:30]}... We can help! View proposal: {client_room_url}"
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DIRECT API IMPLEMENTATIONS (bypass engines, guaranteed to work)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _send_twitter_dm_direct(
+        self,
+        twitter_handle: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """
+        Send Twitter DM using Twitter API v2 directly.
+
+        Requires: TWITTER_BEARER_TOKEN and TWITTER_ACCESS_TOKEN
+        """
+        bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
+        access_token = os.getenv('TWITTER_ACCESS_TOKEN')
+        access_secret = os.getenv('TWITTER_ACCESS_SECRET')
+        api_key = os.getenv('TWITTER_API_KEY')
+        api_secret = os.getenv('TWITTER_API_SECRET')
+
+        if not bearer_token:
+            return {'success': False, 'error': 'TWITTER_BEARER_TOKEN not configured'}
+
+        # Clean the handle
+        handle = twitter_handle.lstrip('@')
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Step 1: Look up user ID from handle
+            lookup_response = await client.get(
+                f"https://api.twitter.com/2/users/by/username/{handle}",
+                headers={"Authorization": f"Bearer {bearer_token}"}
+            )
+
+            if not lookup_response.is_success:
+                return {
+                    'success': False,
+                    'error': f'User lookup failed: {lookup_response.status_code}',
+                    'details': lookup_response.text
+                }
+
+            user_data = lookup_response.json()
+            if 'data' not in user_data:
+                return {'success': False, 'error': f'User @{handle} not found'}
+
+            recipient_id = user_data['data']['id']
+
+            # Step 2: Send DM using OAuth 1.0a (required for DMs)
+            # Twitter DMs require OAuth 1.0a, not just Bearer token
+            if all([api_key, api_secret, access_token, access_secret]):
+                from requests_oauthlib import OAuth1
+                import requests
+
+                auth = OAuth1(
+                    api_key,
+                    client_secret=api_secret,
+                    resource_owner_key=access_token,
+                    resource_owner_secret=access_secret
+                )
+
+                dm_response = requests.post(
+                    "https://api.twitter.com/2/dm_conversations/with/:participant_id/messages".replace(
+                        ":participant_id", recipient_id
+                    ),
+                    json={"text": message[:10000]},  # Twitter DM limit
+                    auth=auth
+                )
+
+                if dm_response.status_code in [200, 201]:
+                    dm_data = dm_response.json()
+                    return {
+                        'success': True,
+                        'message_id': dm_data.get('data', {}).get('dm_event_id'),
+                        'recipient_id': recipient_id,
+                        'recipient_handle': handle
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f'DM send failed: {dm_response.status_code}',
+                        'details': dm_response.text
+                    }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Twitter OAuth 1.0a credentials not fully configured (need API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)'
+                }
+
+    async def _send_linkedin_message_direct(
+        self,
+        linkedin_id: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """
+        Send LinkedIn message using LinkedIn Messaging API directly.
+
+        Requires: LINKEDIN_ACCESS_TOKEN with messaging permissions
+        Note: LinkedIn messaging API requires approved app and member URN
+        """
+        access_token = os.getenv('LINKEDIN_ACCESS_TOKEN')
+
+        if not access_token:
+            return {'success': False, 'error': 'LINKEDIN_ACCESS_TOKEN not configured'}
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # LinkedIn messaging requires the recipient's member URN
+            # Format: urn:li:person:{member_id} or urn:li:member:{member_id}
+
+            # First, get our own profile to get sender URN
+            profile_response = await client.get(
+                "https://api.linkedin.com/v2/me",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Restli-Protocol-Version": "2.0.0"
+                }
+            )
+
+            if not profile_response.is_success:
+                return {
+                    'success': False,
+                    'error': f'Profile lookup failed: {profile_response.status_code}',
+                    'details': profile_response.text
+                }
+
+            sender_id = profile_response.json().get('id')
+            sender_urn = f"urn:li:person:{sender_id}"
+
+            # Construct recipient URN
+            recipient_urn = linkedin_id if linkedin_id.startswith('urn:') else f"urn:li:person:{linkedin_id}"
+
+            # Send message via LinkedIn Messaging API
+            message_payload = {
+                "recipients": [recipient_urn],
+                "message": {
+                    "body": message[:3000]  # LinkedIn message limit
+                }
+            }
+
+            msg_response = await client.post(
+                "https://api.linkedin.com/v2/messages",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0"
+                },
+                json=message_payload
+            )
+
+            if msg_response.is_success:
+                return {
+                    'success': True,
+                    'message_id': msg_response.headers.get('x-restli-id', 'sent'),
+                    'recipient_urn': recipient_urn
+                }
+            else:
+                # Try InMail as fallback (for non-connections)
+                inmail_response = await client.post(
+                    "https://api.linkedin.com/v2/inMails",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    },
+                    json={
+                        "recipients": [{"person": {"~path": f"/people/{linkedin_id}"}}],
+                        "subject": "Project Proposal",
+                        "body": message[:3000]
+                    }
+                )
+
+                if inmail_response.is_success:
+                    return {
+                        'success': True,
+                        'message_id': inmail_response.headers.get('x-restli-id', 'sent'),
+                        'method': 'inmail',
+                        'recipient_urn': recipient_urn
+                    }
+
+                return {
+                    'success': False,
+                    'error': f'Message send failed: {msg_response.status_code}',
+                    'details': msg_response.text
+                }
+
+    async def _send_instagram_dm_direct(
+        self,
+        instagram_id: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """
+        Send Instagram DM using Instagram Graph API directly.
+
+        Requires: INSTAGRAM_ACCESS_TOKEN with instagram_manage_messages permission
+        Note: Only works for business/creator accounts responding to users who messaged first
+        """
+        access_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+        business_id = os.getenv('INSTAGRAM_BUSINESS_ID')
+
+        if not access_token:
+            return {'success': False, 'error': 'INSTAGRAM_ACCESS_TOKEN not configured'}
+
+        if not business_id:
+            return {'success': False, 'error': 'INSTAGRAM_BUSINESS_ID not configured'}
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Instagram messaging via Graph API
+            # Note: Can only message users who have messaged the business account first
+
+            # Get Instagram-scoped user ID (IGSID) from username
+            user_lookup = await client.get(
+                f"https://graph.facebook.com/v18.0/{business_id}",
+                params={
+                    "fields": "business_discovery.username(" + instagram_id + "){id,username}",
+                    "access_token": access_token
+                }
+            )
+
+            if not user_lookup.is_success:
+                return {
+                    'success': False,
+                    'error': f'User lookup failed: {user_lookup.status_code}',
+                    'details': user_lookup.text
+                }
+
+            # Send message
+            msg_response = await client.post(
+                f"https://graph.facebook.com/v18.0/{business_id}/messages",
+                params={"access_token": access_token},
+                json={
+                    "recipient": {"id": instagram_id},
+                    "message": {"text": message[:1000]}  # Instagram limit
+                }
+            )
+
+            if msg_response.is_success:
+                msg_data = msg_response.json()
+                return {
+                    'success': True,
+                    'message_id': msg_data.get('message_id'),
+                    'recipient_id': instagram_id
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Message send failed: {msg_response.status_code}',
+                    'details': msg_response.text
+                }
+
+    async def _send_reddit_dm_direct(
+        self,
+        reddit_username: str,
+        subject: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """
+        Send Reddit private message using Reddit API directly.
+
+        Requires: REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD
+        """
+        client_id = os.getenv('REDDIT_CLIENT_ID')
+        client_secret = os.getenv('REDDIT_CLIENT_SECRET')
+        username = os.getenv('REDDIT_USERNAME')
+        password = os.getenv('REDDIT_PASSWORD')
+
+        if not all([client_id, client_secret, username, password]):
+            return {
+                'success': False,
+                'error': 'Reddit credentials not fully configured (need CLIENT_ID, CLIENT_SECRET, USERNAME, PASSWORD)'
+            }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Step 1: Get OAuth token
+            auth_response = await client.post(
+                "https://www.reddit.com/api/v1/access_token",
+                data={
+                    "grant_type": "password",
+                    "username": username,
+                    "password": password
+                },
+                auth=(client_id, client_secret),
+                headers={"User-Agent": "AiGentsy/1.0"}
+            )
+
+            if not auth_response.is_success:
+                return {
+                    'success': False,
+                    'error': f'OAuth failed: {auth_response.status_code}',
+                    'details': auth_response.text
+                }
+
+            token = auth_response.json().get('access_token')
+
+            # Step 2: Send private message
+            msg_response = await client.post(
+                "https://oauth.reddit.com/api/compose",
+                data={
+                    "api_type": "json",
+                    "subject": subject[:100],  # Reddit subject limit
+                    "text": message[:10000],  # Reddit message limit
+                    "to": reddit_username.lstrip('u/')
+                },
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "AiGentsy/1.0"
+                }
+            )
+
+            if msg_response.is_success:
+                response_data = msg_response.json()
+                errors = response_data.get('json', {}).get('errors', [])
+                if not errors:
+                    return {
+                        'success': True,
+                        'recipient': reddit_username,
+                        'subject': subject
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Reddit API errors: {errors}'
+                    }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Message send failed: {msg_response.status_code}',
+                    'details': msg_response.text
+                }
+
+    async def _send_github_issue_comment_direct(
+        self,
+        repo_owner: str,
+        repo_name: str,
+        issue_number: int,
+        comment: str
+    ) -> Dict[str, Any]:
+        """
+        Post GitHub issue comment using GitHub API directly.
+
+        Requires: GITHUB_TOKEN with repo scope
+        """
+        token = os.getenv('GITHUB_TOKEN')
+
+        if not token:
+            return {'success': False, 'error': 'GITHUB_TOKEN not configured'}
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{issue_number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                },
+                json={"body": comment}
+            )
+
+            if response.is_success:
+                data = response.json()
+                return {
+                    'success': True,
+                    'comment_id': data.get('id'),
+                    'html_url': data.get('html_url')
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Comment failed: {response.status_code}',
+                    'details': response.text
+                }
 
     def get_status(self) -> Dict[str, Any]:
         """Get complete status of customer loop wiring"""
