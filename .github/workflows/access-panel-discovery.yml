@@ -1,0 +1,296 @@
+name: Access Panel Discovery - Production
+
+on:
+  schedule:
+    # Every 15 minutes (96 cycles/day)
+    - cron: '*/15 * * * *'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      force_full_discovery:
+        description: 'Force full discovery (skip cache)'
+        required: false
+        default: 'false'
+      use_perplexity_first:
+        description: 'Use Perplexity-first strategy'
+        required: false
+        default: 'true'
+
+env:
+  BACKEND_URL: https://aigentsy-ame-runtime.onrender.com
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 1: PRE-FLIGHT HEALTH CHECK
+  # ═══════════════════════════════════════════════════════════════════
+  health-check:
+    name: Pre-flight Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      healthy: ${{ steps.health.outputs.healthy }}
+      api_count: ${{ steps.api.outputs.api_count }}
+
+    steps:
+      - name: Check Backend Health
+        id: health
+        run: |
+          echo "Checking backend health..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" $BACKEND_URL/health)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "HTTP Code: $HTTP_CODE"
+          echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Backend unhealthy: HTTP $HTTP_CODE"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
+
+          if [ "$STATUS" = "ok" ] || [ "$STATUS" = "healthy" ]; then
+            echo "Backend healthy"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          else
+            echo "Backend status: $STATUS"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Check API Credentials
+        id: api
+        run: |
+          echo "Checking API credentials..."
+
+          RESPONSE=$(curl -s $BACKEND_URL/api/status 2>/dev/null || echo '{"ok":false}')
+
+          echo "$RESPONSE" | jq '.' 2>/dev/null || echo "Response: $RESPONSE"
+
+          LOADED=$(echo "$RESPONSE" | jq -r '.total_loaded // 0')
+          COVERAGE=$(echo "$RESPONSE" | jq -r '.coverage_pct // 0')
+
+          echo "api_count=$LOADED" >> $GITHUB_OUTPUT
+
+          echo "API Credentials: $LOADED loaded ($COVERAGE% coverage)"
+
+          if [ "$LOADED" -lt 3 ]; then
+            echo "Warning: Only $LOADED APIs configured"
+            echo "Discovery may be limited"
+          fi
+
+      - name: Check Access Panel Status
+        run: |
+          echo "Checking Access Panel..."
+
+          curl -s $BACKEND_URL/access-panel/overview 2>/dev/null | \
+            jq '{
+              platforms: .platforms,
+              discovery: .discovery,
+              uptime: .uptime_seconds
+            }' 2>/dev/null || echo "Access Panel endpoint not available"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 2: PERPLEXITY-FIRST DISCOVERY
+  # ═══════════════════════════════════════════════════════════════════
+  discovery:
+    name: Run Discovery Cycle
+    runs-on: ubuntu-latest
+    needs: health-check
+    if: needs.health-check.outputs.healthy == 'true'
+    timeout-minutes: 12
+    outputs:
+      discovered: ${{ steps.discover.outputs.discovered }}
+      routed: ${{ steps.discover.outputs.routed }}
+
+    steps:
+      - name: Trigger Perplexity-First Discovery
+        id: discover
+        run: |
+          echo "Starting Perplexity-first discovery..."
+
+          # Try the mega-discover endpoint first
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            $BACKEND_URL/execution/mega-discover \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"trigger\": \"github_actions\",
+              \"cycle_id\": \"${{ github.run_id }}\",
+              \"use_perplexity_first\": ${{ github.event.inputs.use_perplexity_first || 'true' }},
+              \"force_full\": ${{ github.event.inputs.force_full_discovery || 'false' }}
+            }" \
+            --max-time 600 2>/dev/null)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "HTTP Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+
+            DISCOVERED=$(echo "$BODY" | jq -r '.total_opportunities_discovered // .total // 0')
+            ROUTED=$(echo "$BODY" | jq -r '.routed // 0')
+
+            echo "discovered=$DISCOVERED" >> $GITHUB_OUTPUT
+            echo "routed=$ROUTED" >> $GITHUB_OUTPUT
+
+            echo "Discovery complete:"
+            echo "  Discovered: $DISCOVERED"
+            echo "  Routed: $ROUTED"
+          else
+            echo "Discovery endpoint returned HTTP $HTTP_CODE"
+            echo "Trying fallback endpoint..."
+
+            # Fallback to access-panel discover
+            RESPONSE=$(curl -s -X POST $BACKEND_URL/access-panel/discover \
+              -H "Content-Type: application/json" \
+              -d '{"strategy": "perplexity_first"}' \
+              --max-time 300 2>/dev/null)
+
+            echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
+
+            DISCOVERED=$(echo "$RESPONSE" | jq -r '.total // 0')
+            echo "discovered=$DISCOVERED" >> $GITHUB_OUTPUT
+            echo "routed=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate Discovery Results
+        run: |
+          DISCOVERED=${{ steps.discover.outputs.discovered }}
+
+          echo "Validating discovery results..."
+          echo "Total discovered: $DISCOVERED"
+
+          if [ "$DISCOVERED" -lt 10 ]; then
+            echo "Warning: Very low discovery count ($DISCOVERED)"
+            echo "Check Perplexity API key and platform health"
+          elif [ "$DISCOVERED" -lt 100 ]; then
+            echo "Note: Low discovery count ($DISCOVERED)"
+            echo "This may indicate API issues"
+          else
+            echo "Discovery yield is healthy: $DISCOVERED opportunities"
+          fi
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 3: POST-CYCLE MONITORING
+  # ═══════════════════════════════════════════════════════════════════
+  monitoring:
+    name: Post-Cycle Monitoring
+    runs-on: ubuntu-latest
+    needs: [health-check, discovery]
+    if: always()
+    timeout-minutes: 3
+
+    steps:
+      - name: Collect Platform Metrics
+        run: |
+          echo "Collecting platform metrics..."
+
+          curl -s $BACKEND_URL/api/packs 2>/dev/null | \
+            jq '{
+              total_packs: .total_packs,
+              ready: .ready,
+              missing_credentials: .missing_credentials
+            }' 2>/dev/null || echo "API packs endpoint not available"
+
+      - name: Check Discovery Stats
+        run: |
+          echo "Checking discovery stats..."
+
+          curl -s $BACKEND_URL/access-panel/stats 2>/dev/null | \
+            jq '.' 2>/dev/null || echo "Stats endpoint not available"
+
+      - name: Platform Health Summary
+        run: |
+          echo "Platform health summary..."
+
+          # Get pack registry stats
+          curl -s $BACKEND_URL/access-panel/platforms 2>/dev/null | \
+            jq '{
+              total: .total,
+              by_category: .by_category
+            }' 2>/dev/null || echo "Platforms endpoint not available"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 4: ALERT ON FAILURE
+  # ═══════════════════════════════════════════════════════════════════
+  alert:
+    name: Alert on Failure
+    runs-on: ubuntu-latest
+    needs: [health-check, discovery]
+    if: failure()
+    timeout-minutes: 2
+
+    steps:
+      - name: Log Failure Details
+        run: |
+          echo "============================================"
+          echo "DISCOVERY CYCLE FAILURE"
+          echo "============================================"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "Health Check: ${{ needs.health-check.outputs.healthy }}"
+          echo "APIs Loaded: ${{ needs.health-check.outputs.api_count }}"
+          echo "Discovered: ${{ needs.discovery.outputs.discovered }}"
+          echo "============================================"
+
+          # Check current system status
+          curl -s $BACKEND_URL/health 2>/dev/null | jq '.' || echo "Health check failed"
+
+      - name: Recommend Actions
+        run: |
+          echo "Recommended actions:"
+          echo "1. Check Render logs for errors"
+          echo "2. Verify API credentials in environment"
+          echo "3. Check Perplexity API status"
+          echo "4. Review platform pack health"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 5: WEEKLY SUMMARY (Sunday midnight)
+  # ═══════════════════════════════════════════════════════════════════
+  weekly-summary:
+    name: Weekly Performance Summary
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 0 * * 0'
+    timeout-minutes: 5
+
+    steps:
+      - name: Generate Weekly Report
+        run: |
+          echo "============================================"
+          echo "WEEKLY ACCESS PANEL SUMMARY"
+          echo "============================================"
+          echo "Week ending: $(date -u +%Y-%m-%d)"
+          echo ""
+
+          # Get close rates
+          echo "Close Rates:"
+          curl -s $BACKEND_URL/access/closerate 2>/dev/null | \
+            jq '{
+              funnel: .funnel,
+              rates: .rates,
+              revenue: .revenue
+            }' 2>/dev/null || echo "Close rate data not available"
+
+          echo ""
+          echo "API Status:"
+          curl -s $BACKEND_URL/api/status 2>/dev/null | \
+            jq '{
+              total_loaded: .total_loaded,
+              coverage_pct: .coverage_pct
+            }' 2>/dev/null || echo "API status not available"
+
+          echo ""
+          echo "Platform Coverage:"
+          curl -s $BACKEND_URL/api/packs 2>/dev/null | \
+            jq '{
+              total_packs: .total_packs,
+              ready: .ready
+            }' 2>/dev/null || echo "Platform data not available"

@@ -64,6 +64,7 @@ if FASTAPI_AVAILABLE:
         max_results: int = 100
         enrich: bool = True
         route: bool = True
+        strategy: str = "perplexity_first"  # perplexity_first, standard, scraping_only
 
     class DiscoverResponse(BaseModel):
         ok: bool
@@ -89,21 +90,36 @@ if FASTAPI_AVAILABLE:
         """
         Trigger opportunity discovery.
 
-        - Runs discovery across configured platforms
+        Strategies:
+        - perplexity_first: Use Perplexity AI as primary (recommended)
+        - standard: Use all packs in parallel
+        - scraping_only: Only use scraping packs
+
         - Enriches opportunities with scores
         - Routes for prioritization
         """
         start_time = time.time()
-
-        if not DISCOVERY_AVAILABLE:
-            raise HTTPException(503, "Discovery manager not available")
+        strategy_used = request.strategy
 
         try:
-            discovery_manager = get_discovery_manager()
+            opportunities = []
 
-            # Run discovery
-            results = await discovery_manager.discover_all()
-            opportunities = results.get('opportunities', [])
+            # Strategy: Perplexity-First (recommended)
+            if request.strategy == "perplexity_first":
+                try:
+                    from discovery.perplexity_first import discover_with_perplexity_first
+                    results = await discover_with_perplexity_first()
+                    opportunities = results.get('opportunities', [])
+                    logger.info(f"Perplexity-first: {len(opportunities)} opportunities")
+                except Exception as e:
+                    logger.warning(f"Perplexity-first failed: {e}, falling back to standard")
+                    strategy_used = "standard_fallback"
+
+            # Fallback or explicit standard strategy
+            if not opportunities and DISCOVERY_AVAILABLE:
+                discovery_manager = get_discovery_manager()
+                results = await discovery_manager.discover_all()
+                opportunities = results.get('opportunities', [])
 
             # Limit results
             opportunities = opportunities[:request.max_results]
@@ -132,6 +148,7 @@ if FASTAPI_AVAILABLE:
                 stats={
                     'total_discovered': len(opportunities),
                     'platforms': list(set(o.get('platform', '') for o in opportunities)),
+                    'strategy': strategy_used,
                 },
                 timing_ms=elapsed_ms,
             )
