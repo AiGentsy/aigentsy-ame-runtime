@@ -489,9 +489,57 @@ class HybridDiscoveryEngine:
         return queries
 
     async def _run_single_perplexity_query(self, query: str) -> List[Dict]:
-        """Execute a single Perplexity query and parse results."""
+        """
+        Execute a single Perplexity query with improved prompting.
+
+        Key improvements:
+        - Explicit JSON structure in prompt
+        - Platform detection from URLs
+        - Better error logging
+        """
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            # Determine if query targets a specific platform
+            target_platform = None
+            if 'site:twitter.com' in query or 'site:x.com' in query:
+                target_platform = 'twitter'
+            elif 'site:linkedin.com' in query:
+                target_platform = 'linkedin'
+            elif 'site:upwork.com' in query:
+                target_platform = 'upwork'
+            elif 'site:reddit.com' in query:
+                target_platform = 'reddit'
+            elif 'site:github.com' in query:
+                target_platform = 'github'
+
+            # Build enhanced prompt with explicit JSON structure
+            system_prompt = """You are a job opportunity finder searching the internet for real opportunities.
+
+IMPORTANT: Return ONLY a valid JSON array. No explanations, no markdown, just JSON.
+
+Each opportunity must have this exact structure:
+[
+  {
+    "title": "Job title or opportunity description",
+    "url": "Full URL to the opportunity",
+    "platform": "twitter/linkedin/upwork/reddit/github/web",
+    "description": "Brief description",
+    "contact": "Email, @handle, or username if visible"
+  }
+]
+
+Focus on RECENT opportunities (last 7 days). Include the actual URL where the opportunity was posted."""
+
+            user_prompt = f"""Find 10 real job/project opportunities matching: {query}
+
+Requirements:
+- Must be actual job postings or project requests
+- Include the real URL for each opportunity
+- Extract any contact info (email, @handle, username)
+- Focus on opportunities from the last week
+
+Return as JSON array only."""
+
+            async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(
                     "https://api.perplexity.ai/chat/completions",
                     headers={
@@ -499,27 +547,95 @@ class HybridDiscoveryEngine:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "llama-3.1-sonar-small-128k-online",
+                        "model": "llama-3.1-sonar-large-128k-online",  # Use larger model for better results
                         "messages": [
-                            {"role": "system", "content": "You are a job opportunity finder. Return ONLY valid JSON arrays. No explanations."},
-                            {"role": "user", "content": query}
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
                         ],
                         "max_tokens": 4000,
-                        "temperature": 0.2,
-                        "return_related_questions": False
+                        "temperature": 0.1,  # Lower temperature for more focused results
+                        "return_related_questions": False,
+                        "search_recency_filter": "week"  # Focus on recent results
                     }
                 )
 
                 if response.is_success:
                     data = response.json()
                     content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-                    return self._parse_json_from_text(content)
+
+                    # Parse JSON
+                    results = self._parse_json_from_text(content)
+
+                    # Post-process: detect platform from URL if not set
+                    processed = []
+                    for r in results:
+                        if isinstance(r, dict):
+                            url = r.get('url', '')
+
+                            # Detect platform from URL
+                            detected_platform = self._detect_platform_from_url(url)
+                            if detected_platform:
+                                r['platform'] = detected_platform
+                            elif target_platform:
+                                r['platform'] = target_platform
+                            elif not r.get('platform'):
+                                r['platform'] = 'web'
+
+                            # Add source tracking
+                            r['source'] = f'perplexity_{r.get("platform", "web")}'
+
+                            # Generate ID
+                            r['id'] = f"pplx_{hashlib.md5(url.encode()).hexdigest()[:12]}"
+
+                            processed.append(r)
+
+                    if processed:
+                        platforms = set([p.get('platform') for p in processed])
+                        logger.info(f"📡 Perplexity: {len(processed)} results, platforms: {platforms}")
+
+                    return processed
                 else:
-                    logger.warning(f"Perplexity API error: {response.status_code}")
+                    logger.warning(f"Perplexity API error: {response.status_code} - {response.text[:200]}")
                     return []
         except Exception as e:
             logger.error(f"Perplexity query failed: {e}")
             return []
+
+    def _detect_platform_from_url(self, url: str) -> Optional[str]:
+        """Detect platform from URL."""
+        if not url:
+            return None
+
+        url_lower = url.lower()
+
+        if 'twitter.com' in url_lower or 'x.com' in url_lower:
+            return 'twitter'
+        elif 'linkedin.com' in url_lower:
+            return 'linkedin'
+        elif 'github.com' in url_lower:
+            return 'github'
+        elif 'reddit.com' in url_lower or 'redd.it' in url_lower:
+            return 'reddit'
+        elif 'upwork.com' in url_lower:
+            return 'upwork'
+        elif 'freelancer.com' in url_lower:
+            return 'freelancer'
+        elif 'fiverr.com' in url_lower:
+            return 'fiverr'
+        elif 'indiehackers.com' in url_lower:
+            return 'indiehackers'
+        elif 'news.ycombinator.com' in url_lower:
+            return 'hackernews'
+        elif 'producthunt.com' in url_lower:
+            return 'producthunt'
+        elif 'wellfound.com' in url_lower or 'angel.co' in url_lower:
+            return 'angellist'
+        elif 'weworkremotely.com' in url_lower:
+            return 'weworkremotely'
+        elif 'remoteok.io' in url_lower or 'remoteok.com' in url_lower:
+            return 'remoteok'
+
+        return None
 
     async def _direct_perplexity_search_legacy(self) -> List[Dict]:
         """Legacy method - kept for reference."""
