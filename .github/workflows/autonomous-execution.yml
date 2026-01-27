@@ -138,6 +138,41 @@ jobs:
             exit 1
           fi
 
+      - name: Check Customer Loop Status
+        id: customer_loop
+        run: |
+          echo "🔗 Checking Customer Loop Wiring..."
+
+          LOOP_STATUS=$(curl -s ${{ env.RUNTIME_URL }}/integration/customer-loop-status)
+
+          CAN_PRESENT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_present_contracts // false')
+          CAN_ACCEPT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_accept_payments // false')
+          CONFIGURED=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels | length // 0')
+          MISSING=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.missing_channels | length // 0')
+
+          echo "📊 Customer Loop Status:"
+          echo "   Can present contracts: $CAN_PRESENT"
+          echo "   Can accept payments: $CAN_ACCEPT"
+          echo "   Configured channels: $CONFIGURED"
+          echo "   Missing channels: $MISSING"
+
+          echo "can_present=$CAN_PRESENT" >> $GITHUB_OUTPUT
+          echo "can_accept=$CAN_ACCEPT" >> $GITHUB_OUTPUT
+
+          if [ "$CAN_PRESENT" = "false" ]; then
+            echo "⚠️ Warning: No outreach channels configured"
+            echo "   Contracts will be created but not presented to customers"
+            echo "   Set RESEND_API_KEY or POSTMARK_API_KEY to enable"
+          fi
+
+          if [ "$CAN_ACCEPT" = "false" ]; then
+            echo "⚠️ Warning: Stripe not configured"
+            echo "   Set STRIPE_SECRET_KEY to enable payment collection"
+          fi
+
+          RECOMMENDATION=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.recommendation // "No recommendation"')
+          echo "   Recommendation: $RECOMMENDATION"
+
   # ============================================================================
   # MAIN: Full-Stack Autonomous Cycle with Apex Features
   # ============================================================================
@@ -152,6 +187,8 @@ jobs:
       revenue: ${{ steps.execute.outputs.revenue }}
       fa30_triggered: ${{ steps.execute.outputs.fa30_triggered }}
       dual_track_used: ${{ steps.execute.outputs.dual_track_used }}
+      presented: ${{ steps.execute.outputs.presented }}
+      presentation_method: ${{ steps.execute.outputs.presentation_method }}
 
     steps:
       - name: Check Execution Similarity (Pre-flight Learning)
@@ -232,12 +269,19 @@ jobs:
           HOT_STARTS=$(echo "$BODY" | jq -r '.results.apex.hot_start_kits_applied // 0')
           LANGUAGES=$(echo "$BODY" | jq -r '.results.apex.languages_detected // "en"')
 
+          # Extract customer loop / presentation metrics
+          PRESENTED=$(echo "$BODY" | jq -r '.results.steps.presentation.presented // 0')
+          PRESENTATION_TOTAL=$(echo "$BODY" | jq -r '.results.steps.presentation.total // 0')
+          PRESENTATION_METHOD=$(echo "$BODY" | jq -r '.results.presentations[0].method // "none"')
+
           echo "discovered=$DISCOVERED" >> $GITHUB_OUTPUT
           echo "contracts=$CONTRACTS" >> $GITHUB_OUTPUT
           echo "dispatched=$DISPATCHED" >> $GITHUB_OUTPUT
           echo "revenue=$REVENUE" >> $GITHUB_OUTPUT
           echo "fa30_triggered=$FA30_TRIGGERED" >> $GITHUB_OUTPUT
           echo "dual_track_used=$DUAL_TRACK_USED" >> $GITHUB_OUTPUT
+          echo "presented=$PRESENTED" >> $GITHUB_OUTPUT
+          echo "presentation_method=$PRESENTATION_METHOD" >> $GITHUB_OUTPUT
 
           echo ""
           echo "═══════════════════════════════════════════════════════════"
@@ -249,6 +293,10 @@ jobs:
           echo "   Contracts: $CONTRACTS created"
           echo "   Dispatched: $DISPATCHED tasks"
           echo "   Revenue: \$$REVENUE"
+          echo ""
+          echo "🔗 Customer Loop:"
+          echo "   Contracts presented: $PRESENTED / $PRESENTATION_TOTAL"
+          echo "   Primary method: $PRESENTATION_METHOD"
           echo ""
           echo "🚀 Apex Features Used:"
           echo "   FA30 contracts: $FA30_TRIGGERED"
@@ -385,15 +433,40 @@ jobs:
           echo ""
           echo "🏆 Wall of Wins:"
 
-          WINS=$(curl -s ${{ env.RUNTIME_URL }}/proofs/wall-of-wins?limit=5)
+          WINS=$(curl -s ${{ env.RUNTIME_URL }}/integration/wall-of-wins)
 
           WIN_COUNT=$(echo "$WINS" | jq -r '.count // 0')
-          echo "   Total verified proofs: $WIN_COUNT"
+          TOTAL_REVENUE=$(echo "$WINS" | jq -r '.total_revenue_usd // 0')
+          echo "   Completed contracts: $WIN_COUNT"
+          echo "   Total revenue collected: \$$TOTAL_REVENUE"
 
           if [ "$WIN_COUNT" -gt 0 ]; then
             echo "   Recent wins:"
-            echo "$WINS" | jq -r '.wall_of_wins[:3][] | "     - \(.title)"' 2>/dev/null || true
+            echo "$WINS" | jq -r '.wall_of_wins[:3][] | "     - \(.title): $\(.revenue_usd)"' 2>/dev/null || true
           fi
+
+      - name: Check Customer Loop Status (Post-Cycle)
+        run: |
+          echo ""
+          echo "🔗 Customer Loop Status:"
+
+          LOOP_STATUS=$(curl -s ${{ env.RUNTIME_URL }}/integration/customer-loop-status)
+
+          CAN_PRESENT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_present_contracts // false')
+          CAN_ACCEPT=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_accept_payments // false')
+          CONFIGURED=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels // []')
+          MISSING=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.missing_channels // []')
+
+          echo "   Can present contracts: $CAN_PRESENT"
+          echo "   Can accept payments: $CAN_ACCEPT"
+          echo "   Configured: $CONFIGURED"
+
+          # Check presentation history
+          RECENT=$(echo "$LOOP_STATUS" | jq -r '.presentation_history.total_executions // 0')
+          echo "   Total presentation attempts: $RECENT"
+
+          RECOMMENDATION=$(echo "$LOOP_STATUS" | jq -r '.customer_loop.recommendation // "None"')
+          echo "   📋 Recommendation: $RECOMMENDATION"
 
       - name: Check Shadow Selector Health
         run: |
@@ -473,6 +546,29 @@ jobs:
             echo "   ✅ SLO met: ${UTILIZATION}% utilization"
           else
             echo "   ⚠️ SLO at risk: ${UTILIZATION}% utilization"
+          fi
+
+      - name: Check Customer Loop SLO (contracts presented)
+        run: |
+          echo ""
+          echo "🔗 Customer Loop SLO Check:"
+          echo "   Target: >50% of contracts presented to customers"
+
+          CONTRACTS=${{ needs.autonomous-cycle.outputs.contracts }}
+          PRESENTED=${{ needs.autonomous-cycle.outputs.presented }}
+
+          if [ "$CONTRACTS" -gt 0 ]; then
+            PRESENTATION_RATE=$(echo "scale=1; $PRESENTED * 100 / $CONTRACTS" | bc)
+            echo "   Presentation rate: ${PRESENTATION_RATE}% ($PRESENTED/$CONTRACTS)"
+
+            if (( $(echo "$PRESENTATION_RATE >= 50" | bc -l) )); then
+              echo "   ✅ SLO met: Contracts being presented to customers"
+            else
+              echo "   ⚠️ SLO missed: Low presentation rate"
+              echo "   Action: Configure outreach channels (RESEND_API_KEY, etc.)"
+            fi
+          else
+            echo "   ℹ️ No contracts this cycle - skipping SLO check"
           fi
 
   # ============================================================================
@@ -564,9 +660,17 @@ jobs:
           }'
 
           echo ""
-          echo "🏆 Wall of Wins:"
-          WINS=$(curl -s ${{ env.RUNTIME_URL }}/proofs/wall-of-wins?limit=10)
-          echo "   Verified proofs this week: $(echo "$WINS" | jq -r '.count // 0')"
+          echo "🏆 Wall of Wins (Real Revenue):"
+          WINS=$(curl -s ${{ env.RUNTIME_URL }}/integration/wall-of-wins)
+          echo "   Completed contracts: $(echo "$WINS" | jq -r '.count // 0')"
+          echo "   Total revenue collected: \$$(echo "$WINS" | jq -r '.total_revenue_usd // 0')"
+
+          echo ""
+          echo "🔗 Customer Loop Performance:"
+          LOOP_STATUS=$(curl -s ${{ env.RUNTIME_URL }}/integration/customer-loop-status)
+          echo "   Configured channels: $(echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels | length // 0')"
+          echo "   Can present contracts: $(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_present_contracts // false')"
+          echo "   Can accept payments: $(echo "$LOOP_STATUS" | jq -r '.customer_loop.can_accept_payments // false')"
 
       - name: Calculate Week-over-Week Growth
         run: |
