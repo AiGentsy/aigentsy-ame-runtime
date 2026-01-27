@@ -248,6 +248,61 @@ if FASTAPI_AVAILABLE:
 
         return health
 
+    @router.get("/debug/perplexity")
+    async def debug_perplexity():
+        """
+        Debug endpoint to test Perplexity API directly.
+
+        Returns raw API response to diagnose issues.
+        """
+        import os
+        import httpx
+
+        perplexity_key = os.getenv('PERPLEXITY_API_KEY')
+        if not perplexity_key:
+            return {
+                'ok': False,
+                'error': 'PERPLEXITY_API_KEY not configured',
+                'key_preview': None
+            }
+
+        # Test with a simple query
+        test_query = "Find 3 recent hiring posts for developers on Twitter"
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {perplexity_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-sonar-small-128k-online",
+                        "messages": [
+                            {"role": "system", "content": "Return a JSON array of job opportunities."},
+                            {"role": "user", "content": test_query}
+                        ],
+                        "max_tokens": 1000,
+                        "temperature": 0.1
+                    }
+                )
+
+                return {
+                    'ok': response.is_success,
+                    'status_code': response.status_code,
+                    'key_preview': f"{perplexity_key[:8]}...{perplexity_key[-4:]}",
+                    'query': test_query,
+                    'response_preview': response.text[:1000] if response.text else None,
+                    'headers': dict(response.headers)
+                }
+        except Exception as e:
+            return {
+                'ok': False,
+                'error': f"{type(e).__name__}: {str(e)}",
+                'key_preview': f"{perplexity_key[:8]}...{perplexity_key[-4:]}"
+            }
+
     @router.get("/capacity")
     async def get_capacity():
         """
