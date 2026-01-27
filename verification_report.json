@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-01-27T11:38:27.759748",
+  "is_simulated": true,
+  "escrow": {
+    "contracts_created": 100,
+    "total_value_usd": 2639163.1000000043,
+    "milestones_funded": 0,
+    "milestones_released": 0,
+    "funded_amount_usd": 0,
+    "released_amount_usd": 0,
+    "active_contracts": 100
+  },
+  "sow": {
+    "sows_generated": 100,
+    "sows_signed": 0,
+    "total_value_usd": 3770233.0,
+    "active_sows": 100
+  },
+  "orchestrator": {
+    "plans_created": 100,
+    "plans_completed": 0,
+    "plans_failed": 0,
+    "active_plans": 100,
+    "runbooks_loaded": 7
+  },
+  "workforce": {
+    "tasks_dispatched": 487,
+    "tasks_completed": 487,
+    "tasks_failed": 0,
+    "fabric_tasks": 143,
+    "pdl_tasks": 344,
+    "human_tasks": 0,
+    "active_tasks": 0
+  },
+  "code_analysis": {
+    "contract": {
+      "file_exists": true,
+      "has_stripe_import": true,
+      "has_real_stripe_calls": false,
+      "has_simulated_paylinks": false,
+      "paylink_pattern": null,
+      "paylink_generation": "Generates pseudo-random paylink URLs (not real Stripe)"
+    },
+    "discovery": {
+      "discovery_manager_exists": false,
+      "uses_real_apis": false,
+      "uses_perplexity": false,
+      "creates_real_opportunities": false
+    }
+  }
+}
