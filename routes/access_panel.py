@@ -362,6 +362,38 @@ if FASTAPI_AVAILABLE:
 
         return health
 
+    @router.get("/debug/perplexity")
+    async def debug_perplexity():
+        """Debug endpoint for Perplexity discovery issues"""
+        debug_info = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'perplexity_first': None,
+            'perplexity_pack': None,
+        }
+
+        # Check Perplexity-first discovery
+        try:
+            from discovery.perplexity_first import get_perplexity_first_discovery
+            discovery = get_perplexity_first_discovery()
+            debug_info['perplexity_first'] = discovery.get_debug_info()
+        except Exception as e:
+            debug_info['perplexity_first'] = {'error': str(e)}
+
+        # Check Perplexity pack
+        try:
+            from platforms.packs.perplexity_discovery import PERPLEXITY_PACK
+            import os
+            debug_info['perplexity_pack'] = {
+                'name': PERPLEXITY_PACK.get('name'),
+                'priority': PERPLEXITY_PACK.get('priority'),
+                'api_key_configured': bool(os.getenv('PERPLEXITY_API_KEY')),
+                'api_key_prefix': os.getenv('PERPLEXITY_API_KEY', '')[:8] + '...' if os.getenv('PERPLEXITY_API_KEY') else None
+            }
+        except Exception as e:
+            debug_info['perplexity_pack'] = {'error': str(e)}
+
+        return debug_info
+
 
 def get_access_panel_router():
     """Get Access Panel router for app registration"""

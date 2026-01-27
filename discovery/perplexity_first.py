@@ -81,6 +81,9 @@ class PerplexityFirstDiscovery:
             'total_opportunities': 0,
             'errors': 0
         }
+        # Error tracking for debugging
+        self.recent_errors: List[Dict] = []
+        self.last_perplexity_response: Optional[Dict] = None
 
     async def discover_all(self) -> List[Dict]:
         """
@@ -178,6 +181,13 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
 
                     if response.status_code == 200:
                         data = response.json()
+                        self.last_perplexity_response = {
+                            'query_num': i,
+                            'status': 200,
+                            'model': data.get('model'),
+                            'usage': data.get('usage'),
+                            'timestamp': datetime.now(timezone.utc).isoformat()
+                        }
                         content = data['choices'][0]['message']['content']
 
                         # Parse JSON
@@ -192,10 +202,26 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
                         logger.info(f"Query {i}: Found {len(opportunities)} opportunities")
 
                     else:
-                        logger.warning(f"Perplexity API error: {response.status_code}")
+                        error_detail = {
+                            'type': 'api_error',
+                            'query_num': i,
+                            'status_code': response.status_code,
+                            'response_text': response.text[:500],
+                            'timestamp': datetime.now(timezone.utc).isoformat()
+                        }
+                        self.recent_errors.append(error_detail)
+                        logger.warning(f"Perplexity API error: {response.status_code} - {response.text[:200]}")
                         self.stats['errors'] += 1
 
                 except Exception as e:
+                    error_detail = {
+                        'type': 'exception',
+                        'query_num': i,
+                        'error': str(e),
+                        'error_type': type(e).__name__,
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    self.recent_errors.append(error_detail)
                     logger.error(f"Perplexity query {i} failed: {e}")
                     self.stats['errors'] += 1
 
@@ -396,6 +422,17 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
     def get_stats(self) -> Dict:
         """Get discovery statistics"""
         return self.stats.copy()
+
+    def get_debug_info(self) -> Dict:
+        """Get detailed debug information"""
+        return {
+            'stats': self.stats.copy(),
+            'perplexity_key_configured': bool(self.perplexity_key),
+            'perplexity_key_prefix': self.perplexity_key[:8] + '...' if self.perplexity_key else None,
+            'recent_errors': self.recent_errors[-10:],  # Last 10 errors
+            'last_perplexity_response': self.last_perplexity_response,
+            'total_errors': len(self.recent_errors)
+        }
 
 
 # Global instance
