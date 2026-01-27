@@ -306,35 +306,25 @@ class HybridDiscoveryEngine:
         queries = []
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 1: TWITTER/X OPPORTUNITIES (highest priority for DM outreach)
+        # CATEGORY 1: POSTS WITH EMAIL ADDRESSES (highest conversion)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "Twitter tweet hiring developer React freelance DM me 2025",
-            "X.com post looking for engineer available contract work now",
-            "Twitter hiring Python developer remote DM open immediately",
-            "tweet thread need developer urgently project deadline DM",
-            "Twitter X hiring full-stack developer MERN Node available",
-            "X post seeking mobile developer iOS Android contract work",
-            "Twitter hiring blockchain developer Solidity Web3 DM open",
-            "tweet looking for DevOps engineer AWS Kubernetes freelance",
-            "Twitter post need AI engineer ML GPT LangChain contract",
-            "X.com thread hiring frontend developer React Vue immediate",
+            "hiring developer email me at gmail.com 2025",
+            "looking for freelancer send resume to email address",
+            "need developer contact me at @gmail.com job",
+            "project help wanted email your portfolio developer",
+            "startup looking for CTO email founders@ job 2025",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 2: LINKEDIN JOB POSTS (high-quality leads)
+        # CATEGORY 2: TWITTER/X POSTS WITH @HANDLES (for DM outreach)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "LinkedIn post hiring software developer remote contract 2025",
-            "LinkedIn job opening React developer immediate start apply",
-            "LinkedIn hiring Python engineer data science contract role",
-            "LinkedIn post looking for DevOps engineer cloud AWS remote",
-            "LinkedIn job full-stack developer Node React urgent hiring",
-            "LinkedIn recruiter hiring mobile developer iOS Android",
-            "LinkedIn post seeking AI ML engineer machine learning role",
-            "LinkedIn hiring blockchain developer Web3 crypto contract",
-            "LinkedIn job frontend developer TypeScript Vue immediate",
-            "LinkedIn backend engineer Go Rust microservices contract",
+            "Twitter hiring developer DM me @username 2025",
+            "tweet looking for freelancer reply or DM @handle",
+            "X.com post need developer DM open @twitter",
+            "Twitter thread hiring React developer DM @",
+            "tweet urgent need coder DM me @dev",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
@@ -482,15 +472,18 @@ class HybridDiscoveryEngine:
             elif 'indie hacker' in query_lower or 'product hunt' in query_lower or 'hacker news' in query_lower:
                 target_platform = 'hackernews'
 
-            # Build simple prompt for reliable JSON response
-            system_prompt = """Return ONLY a JSON array of job opportunities. No explanations."""
+            # Build prompt focused on finding posts WITH contact info
+            system_prompt = """You find job postings that include the poster's EMAIL or TWITTER handle.
+Return ONLY a JSON array. Include the contact info you find."""
 
-            user_prompt = f"""Find 5 recent job postings matching: {query}
+            user_prompt = f"""Find 5 recent job/project requests matching: {query}
 
-Return as JSON array with format:
-[{{"title": "...", "url": "...", "platform": "twitter/linkedin/upwork/reddit", "contact": "email or @handle"}}]
+IMPORTANT: Only include posts where someone is HIRING and shared their contact info (email address like name@company.com or Twitter @handle).
 
-JSON only:"""
+Return JSON array:
+[{{"title": "...", "url": "...", "platform": "twitter/linkedin/reddit", "contact": "email@example.com or @twitterhandle"}}]
+
+Only posts with visible contact info. JSON only:"""
 
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
