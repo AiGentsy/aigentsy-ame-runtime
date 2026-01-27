@@ -181,17 +181,21 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
 
                     if response.status_code == 200:
                         data = response.json()
+                        content = data['choices'][0]['message']['content']
+
+                        # Parse JSON
+                        opportunities = self._parse_perplexity_response(content)
+
                         self.last_perplexity_response = {
                             'query_num': i,
                             'status': 200,
                             'model': data.get('model'),
                             'usage': data.get('usage'),
+                            'raw_content_preview': content[:1000] if content else None,
+                            'raw_content_length': len(content) if content else 0,
+                            'parsed_count': len(opportunities),
                             'timestamp': datetime.now(timezone.utc).isoformat()
                         }
-                        content = data['choices'][0]['message']['content']
-
-                        # Parse JSON
-                        opportunities = self._parse_perplexity_response(content)
 
                         # Normalize each opportunity
                         for opp in opportunities:
