@@ -330,7 +330,29 @@ class CustomerLoopWiring:
 
         contact = opportunity.get('contact', {})
         metadata = opportunity.get('metadata', {})
-        platform = opportunity.get('source', '').lower()
+
+        # Determine platform: prefer contact.platform (from enrichment) over source field
+        # This is important for hybrid discovery where source is "perplexity_*" but
+        # contact.platform correctly identifies the original platform (reddit, twitter, etc.)
+        platform = (
+            contact.get('platform', '').lower() or
+            opportunity.get('platform', '').lower() or
+            opportunity.get('source', '').lower()
+        )
+
+        # Also detect platform from URL if contact.platform is missing
+        url = opportunity.get('url', '') or opportunity.get('canonical_url', '')
+        if not platform or 'perplexity' in platform:
+            if 'reddit.com' in url or 'redd.it' in url:
+                platform = 'reddit'
+            elif 'twitter.com' in url or 'x.com' in url:
+                platform = 'twitter'
+            elif 'github.com' in url:
+                platform = 'github'
+            elif 'linkedin.com' in url:
+                platform = 'linkedin'
+            elif 'news.ycombinator.com' in url:
+                platform = 'hackernews'
 
         # Extract contact details
         email = contact.get('email') or metadata.get('poster_email') or metadata.get('email')
@@ -338,6 +360,8 @@ class CustomerLoopWiring:
         twitter_handle = contact.get('twitter_handle') or metadata.get('poster_handle')
         linkedin_id = contact.get('linkedin_id') or metadata.get('poster_id')
         reddit_username = contact.get('reddit_username') or metadata.get('poster_username')
+        github_username = contact.get('github_username') or metadata.get('poster_username')
+        hackernews_username = contact.get('hackernews_username') or metadata.get('poster_username')
 
         # Build messages
         title = opportunity.get('title', 'your project')
@@ -401,6 +425,23 @@ class CustomerLoopWiring:
                             return result
                     except Exception as e:
                         result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
+
+        # GitHub opportunities → GitHub comment on issue
+        if ('github' in platform or github_username) and 'platform_response' in self.engines:
+            engine = self.engines['platform_response']
+            if engine.get_supported_platforms().get('github'):
+                try:
+                    engagement = await engine.engage_with_opportunity(opportunity, send_dm_after=False)
+                    if engagement and engagement.status.value in ['commented', 'sent']:
+                        result.presented = True
+                        result.method = 'github_comment'
+                        result.channel = 'github'
+                        result.recipient = github_username or 'issue author'
+                        result.tracking_id = engagement.engagement_id
+                        logger.info(f"✅ GitHub comment posted for {github_username}")
+                        return result
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'github_comment', 'error': str(e)})
 
         # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 2: Email (Resend → SendGrid → Postmark)
@@ -554,15 +595,41 @@ class CustomerLoopWiring:
         # ═══════════════════════════════════════════════════════════════════
 
         if not result.presented:
+            # Collect what we have and what's missing
+            available = []
             gaps = []
-            if not email:
+
+            if email:
+                available.append(f'email:{email[:20]}')
+            else:
                 gaps.append('email')
-            if not phone:
+
+            if phone:
+                available.append(f'phone:{phone}')
+            else:
                 gaps.append('phone')
-            if not twitter_handle and 'twitter' in platform:
+
+            if twitter_handle:
+                available.append(f'twitter:@{twitter_handle}')
+            elif 'twitter' in platform:
                 gaps.append('twitter_handle')
 
-            result.error = f"No contact method available. Missing: {', '.join(gaps) or 'all contact info'}"
+            if reddit_username:
+                available.append(f'reddit:u/{reddit_username}')
+
+            if github_username:
+                available.append(f'github:{github_username}')
+
+            if hackernews_username:
+                available.append(f'hn:{hackernews_username}')
+
+            # Build error message
+            if available:
+                result.error = f"Contact found ({', '.join(available)}) but no working outreach channel. Platform: {platform}"
+                result.details['available_contacts'] = available
+            else:
+                result.error = f"No contact info found. Missing: {', '.join(gaps) or 'all contact info'}. Platform: {platform}"
+
             logger.warning(f"⚠️ Could not present contract: {result.error}")
 
             # Notify via Slack if configured (internal alert)
