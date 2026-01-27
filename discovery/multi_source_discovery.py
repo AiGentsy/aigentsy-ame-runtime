@@ -711,9 +711,12 @@ JSON only:"""
                         params={'limit': 10}
                     )
 
+                    logger.info(f"  [reddit] r/{subreddit} response: {response.status_code}")
+
                     if response.status_code == 200:
                         data = response.json()
                         posts = data.get('data', {}).get('children', [])
+                        logger.info(f"  [reddit] r/{subreddit} returned {len(posts)} posts")
 
                         for post in posts:
                             post_data = post.get('data', {})
@@ -821,10 +824,18 @@ JSON only:"""
                                 }
                             })
 
+                    elif response.status_code == 429:
+                        logger.warning(f"  [reddit] Rate limited on r/{subreddit}")
+                        break
+                    elif response.status_code == 403:
+                        logger.warning(f"  [reddit] Forbidden on r/{subreddit} - may be blocked")
+                    else:
+                        logger.warning(f"  [reddit] r/{subreddit} error {response.status_code}: {response.text[:100]}")
+
                     await asyncio.sleep(1)  # Reddit rate limit
 
                 except Exception as e:
-                    logger.debug(f"Reddit fetch error for r/{subreddit}: {e}")
+                    logger.warning(f"  [reddit] Exception for r/{subreddit}: {type(e).__name__}: {e}")
 
         logger.info(f"  [reddit] Found {len(opportunities)} opportunities")
         return opportunities
