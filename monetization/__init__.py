@@ -45,6 +45,7 @@ from .subscriptions import Subscriptions, get_tier, check_quota
 from .licensing import Licensing, quote_oem
 from .data_products import DataProducts, telemetry_pack, benchmark_badge
 from .proof_badges import ProofBadges, mint_badge
+from .proof_ledger import get_proof_ledger, create_proof
 
 __all__ = [
     "FeeSchedule", "get_fee", "override_fee", "get_schedule",
@@ -59,6 +60,7 @@ __all__ = [
     "Licensing", "quote_oem",
     "DataProducts", "telemetry_pack", "benchmark_badge",
     "ProofBadges", "mint_badge",
+    "get_proof_ledger", "create_proof",
     "MonetizationFabric"
 ]
 

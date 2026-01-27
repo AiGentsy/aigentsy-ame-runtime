@@ -1121,6 +1121,24 @@ except Exception as e:
     print(f"Access Panel load error: {e}")
 
 # ============================================================================
+# INTEGRATION ROUTES - Full-Stack Discovery→Contract→Fulfill→Proof
+# ============================================================================
+try:
+    from routes.integration_routes import get_integration_router
+    integration_router = get_integration_router()
+    if integration_router:
+        app.include_router(integration_router)
+        print("=" * 80)
+        print("INTEGRATION ROUTES LOADED - Full-Stack Pipeline")
+        print("=" * 80)
+        print("  Endpoints: /integration/stats, /integration/health, /integration/discover-and-execute")
+        print("  Components: SystemLoader, Orchestrator, SOW Generator, Escrow, QA, Workforce")
+        print("  Pipeline: Discovery → Contract → Fulfill → Proof → Learn")
+        print("=" * 80)
+except Exception as e:
+    print(f"Integration routes load error: {e}")
+
+# ============================================================================
 # API STATUS - Premium API Credentials & Monitoring
 # ============================================================================
 try:
