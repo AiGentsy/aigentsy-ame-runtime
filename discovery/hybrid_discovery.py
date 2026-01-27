@@ -97,10 +97,16 @@ class HybridDiscoveryEngine:
         self.stats['phase1_discovered'] = len(raw_opportunities)
         logger.info(f"Phase 1: {len(raw_opportunities)} opportunities discovered")
 
+        # Phase 1.5: Add direct platform discoveries (these have author info built-in)
+        logger.info(f"=== HYBRID DISCOVERY: Phase 1.5 (Direct Platform APIs) ===")
+        platform_opps = await self._phase1_5_direct_platforms()
+        raw_opportunities.extend(platform_opps)
+        logger.info(f"Phase 1.5: Added {len(platform_opps)} opportunities from direct platform APIs")
+
         # Limit for enrichment (to avoid rate limits)
         opportunities_to_enrich = raw_opportunities[:max_opportunities]
 
-        # Phase 2: Enrich with direct platform APIs
+        # Phase 2: Enrich remaining opportunities with direct platform APIs
         logger.info(f"=== HYBRID DISCOVERY: Phase 2 (Enrichment) ===")
         enriched = await self._phase2_enrich(opportunities_to_enrich)
 
@@ -172,6 +178,220 @@ class HybridDiscoveryEngine:
 
                 except Exception as e:
                     logger.error(f"Perplexity query failed: {e}")
+
+        return opportunities
+
+    async def _phase1_5_direct_platforms(self) -> List[Dict]:
+        """
+        Phase 1.5: Direct platform discovery with author info built-in.
+
+        Unlike Perplexity, direct platform APIs return the actual poster info:
+        - Reddit: author field with username
+        - Twitter: user.screen_name with handle
+        - GitHub: user.login with username
+
+        This ensures we have contact info for outreach.
+        """
+        opportunities = []
+
+        # Reddit: Fetch from r/forhire, r/hiring, etc.
+        if self.reddit_configured:
+            reddit_opps = await self._discover_reddit_direct()
+            opportunities.extend(reddit_opps)
+            logger.info(f"Reddit direct: {len(reddit_opps)} opportunities with author info")
+
+        # Twitter: Search for hiring tweets
+        if self.twitter_bearer:
+            twitter_opps = await self._discover_twitter_direct()
+            opportunities.extend(twitter_opps)
+            logger.info(f"Twitter direct: {len(twitter_opps)} opportunities with author info")
+
+        # GitHub: Search for bounty/help-wanted issues
+        if self.github_token or True:  # GitHub search works without auth (with rate limits)
+            github_opps = await self._discover_github_direct()
+            opportunities.extend(github_opps)
+            logger.info(f"GitHub direct: {len(github_opps)} opportunities with author info")
+
+        return opportunities
+
+    async def _discover_reddit_direct(self) -> List[Dict]:
+        """Discover from Reddit directly (with author info)"""
+        opportunities = []
+        subreddits = ['forhire', 'hiring', 'remotejobs', 'slavelabour']
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            for subreddit in subreddits[:2]:  # Limit to avoid rate limits
+                try:
+                    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=10"
+                    response = await client.get(
+                        url,
+                        headers={'User-Agent': 'AiGentsy/1.0'}
+                    )
+
+                    if response.is_success:
+                        data = response.json()
+                        posts = data.get('data', {}).get('children', [])
+
+                        for post in posts:
+                            post_data = post.get('data', {})
+                            author = post_data.get('author')
+
+                            if author and author != '[deleted]':
+                                opp = {
+                                    'id': f"reddit_{post_data.get('id', '')}",
+                                    'title': post_data.get('title', ''),
+                                    'body': post_data.get('selftext', ''),
+                                    'url': f"https://reddit.com{post_data.get('permalink', '')}",
+                                    'platform': 'reddit',
+                                    'source': 'reddit_api',
+                                    'contact': {
+                                        'platform': 'reddit',
+                                        'platform_user_id': author,
+                                        'reddit_username': author,
+                                        'preferred_outreach': 'reddit_dm',
+                                        'extraction_source': 'reddit_api_direct'
+                                    },
+                                    'metadata': {
+                                        'subreddit': subreddit,
+                                        'poster_username': author,
+                                        'score': post_data.get('score', 0),
+                                    }
+                                }
+                                opportunities.append(opp)
+
+                    await asyncio.sleep(1)  # Reddit rate limit
+
+                except Exception as e:
+                    logger.debug(f"Reddit direct discovery failed for r/{subreddit}: {e}")
+
+        return opportunities
+
+    async def _discover_twitter_direct(self) -> List[Dict]:
+        """Discover from Twitter directly (with author info)"""
+        if not self.twitter_bearer:
+            return []
+
+        opportunities = []
+
+        queries = [
+            'hiring developer -is:retweet lang:en',
+            'looking for freelancer -is:retweet lang:en',
+        ]
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            for query in queries[:1]:  # Limit to avoid rate limits
+                try:
+                    response = await client.get(
+                        'https://api.twitter.com/2/tweets/search/recent',
+                        params={
+                            'query': query,
+                            'max_results': 10,
+                            'tweet.fields': 'created_at,author_id',
+                            'expansions': 'author_id',
+                            'user.fields': 'username'
+                        },
+                        headers={'Authorization': f'Bearer {self.twitter_bearer}'}
+                    )
+
+                    if response.is_success:
+                        data = response.json()
+                        tweets = data.get('data', [])
+                        users = {u['id']: u for u in data.get('includes', {}).get('users', [])}
+
+                        for tweet in tweets:
+                            user = users.get(tweet.get('author_id'), {})
+                            username = user.get('username')
+
+                            if username:
+                                opp = {
+                                    'id': f"twitter_{tweet.get('id', '')}",
+                                    'title': tweet.get('text', '')[:100],
+                                    'body': tweet.get('text', ''),
+                                    'url': f"https://twitter.com/{username}/status/{tweet.get('id')}",
+                                    'platform': 'twitter',
+                                    'source': 'twitter_api',
+                                    'contact': {
+                                        'platform': 'twitter',
+                                        'platform_user_id': username,
+                                        'twitter_handle': username,
+                                        'preferred_outreach': 'twitter_dm',
+                                        'extraction_source': 'twitter_api_direct'
+                                    },
+                                    'metadata': {
+                                        'poster_handle': username,
+                                        'tweet_id': tweet.get('id'),
+                                    }
+                                }
+                                opportunities.append(opp)
+
+                except Exception as e:
+                    logger.debug(f"Twitter direct discovery failed: {e}")
+
+        return opportunities
+
+    async def _discover_github_direct(self) -> List[Dict]:
+        """Discover from GitHub directly (with author info)"""
+        opportunities = []
+
+        headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'AiGentsy-Discovery'
+        }
+        if self.github_token:
+            headers['Authorization'] = f'token {self.github_token}'
+
+        queries = [
+            'bounty OR paid in:title is:open',
+            'help wanted in:labels is:open',
+        ]
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            for query in queries[:1]:  # Limit
+                try:
+                    response = await client.get(
+                        'https://api.github.com/search/issues',
+                        params={
+                            'q': query,
+                            'sort': 'created',
+                            'order': 'desc',
+                            'per_page': 10
+                        },
+                        headers=headers
+                    )
+
+                    if response.is_success:
+                        data = response.json()
+                        issues = data.get('items', [])
+
+                        for issue in issues:
+                            user = issue.get('user', {})
+                            username = user.get('login')
+
+                            if username:
+                                opp = {
+                                    'id': f"github_{issue.get('id', '')}",
+                                    'title': issue.get('title', ''),
+                                    'body': issue.get('body', ''),
+                                    'url': issue.get('html_url', ''),
+                                    'platform': 'github',
+                                    'source': 'github_api',
+                                    'contact': {
+                                        'platform': 'github',
+                                        'platform_user_id': username,
+                                        'github_username': username,
+                                        'preferred_outreach': 'github_comment',
+                                        'extraction_source': 'github_api_direct'
+                                    },
+                                    'metadata': {
+                                        'poster_username': username,
+                                        'issue_number': issue.get('number'),
+                                        'labels': [l.get('name') for l in issue.get('labels', [])],
+                                    }
+                                }
+                                opportunities.append(opp)
+
+                except Exception as e:
+                    logger.debug(f"GitHub direct discovery failed: {e}")
 
         return opportunities
 
