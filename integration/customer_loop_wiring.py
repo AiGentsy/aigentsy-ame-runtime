@@ -491,155 +491,174 @@ Let me know if you have questions!"""
                     result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
                     logger.warning(f"⚠️ Reddit DM exception: {e}")
 
-        # NOTE: GitHub autonomous comments removed (ToS violation)
-        # GitHub opportunities are still discovered but outreach uses email/DM fallback
+        # ═══════════════════════════════════════════════════════════════════
+        # GITHUB: MANUAL REVIEW QUEUE (NO AUTOMATION - ToS COMPLIANCE)
+        # ═══════════════════════════════════════════════════════════════════
+        if 'github' in platform and not email:  # Only queue if no email fallback
+            logger.info(f"📋 GitHub opportunity requires manual review (ToS compliance)")
+            result.presented = False
+            result.method = 'manual_review_queue'
+            result.channel = 'github'
+            result.details['manual_review'] = {
+                'opportunity_id': opportunity.get('id'),
+                'platform': 'github',
+                'url': url,
+                'title': title,
+                'author': github_username,
+                'contract_value': total_value,
+                'client_room_url': client_room_url,
+                'reason': 'GitHub automated comments prohibited by ToS',
+                'action_needed': 'Human must manually review and comment',
+                'added_at': datetime.now(timezone.utc).isoformat()
+            }
+            # Continue to try email/other channels as fallback
+            # If email exists, it will be tried below
 
         # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 2: Email (Resend → SendGrid → Postmark)
+        # PRIORITY 2: Email via RESEND (DIRECT API)
         # ═══════════════════════════════════════════════════════════════════
 
-        if email:
+        if email and os.getenv('RESEND_API_KEY'):
             message = self._build_email_message(title, total_value, client_room_url)
+            html_message = self._build_html_email(title, total_value, client_room_url)
 
-            # Try Resend first (modern, reliable)
-            if 'resend' in self.connectors and self.available_systems.get('email_resend', {}).get('configured'):
-                try:
-                    email_result = await self.connectors['resend'].execute(
-                        action='send_email',
-                        params={
-                            'to': email,
-                            'subject': f"Proposal: {title[:50]}",
-                            'body': message,
-                            'html': self._build_html_email(title, total_value, client_room_url),
+            try:
+                logger.info(f"📧 Sending email via Resend to {email}...")
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        "https://api.resend.com/emails",
+                        headers={
+                            "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "from": os.getenv('RESEND_FROM_EMAIL', 'AiGentsy <proposals@aigentsy.com>'),
+                            "to": [email],
+                            "subject": f"Proposal: {title[:50]}",
+                            "html": html_message,
+                            "text": message
                         }
                     )
-                    if email_result.ok:
+
+                    if resp.status_code in [200, 201]:
+                        resp_data = resp.json()
                         result.presented = True
                         result.method = 'email'
                         result.channel = 'resend'
                         result.recipient = email
-                        result.tracking_id = email_result.data.get('message_id')
-                        result.details['email'] = email_result.data
+                        result.tracking_id = resp_data.get('id')
+                        result.details['email'] = resp_data
                         logger.info(f"✅ Email sent via Resend to {email}")
                         return result
-                except Exception as e:
-                    result.fallback_attempts.append({'method': 'email_resend', 'error': str(e)})
-                    logger.warning(f"⚠️ Resend email failed: {e}")
-
-            # Fallback to generic email connector (SendGrid/Postmark)
-            if 'email' in self.connectors and self.available_systems.get('email_generic', {}).get('configured'):
-                try:
-                    email_result = await self.connectors['email'].execute(
-                        action='send_email',
-                        params={
-                            'to': email,
-                            'subject': f"Proposal: {title[:50]}",
-                            'body': message,
-                        }
-                    )
-                    if email_result.ok:
-                        result.presented = True
-                        result.method = 'email'
-                        result.channel = self.available_systems['email_generic'].get('provider', 'email')
-                        result.recipient = email
-                        result.tracking_id = email_result.data.get('message_id')
-                        logger.info(f"✅ Email sent via {result.channel} to {email}")
-                        return result
-                except Exception as e:
-                    result.fallback_attempts.append({'method': 'email_generic', 'error': str(e)})
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'email_resend',
+                            'error': f'Status {resp.status_code}',
+                            'details': resp.text
+                        })
+                        logger.warning(f"⚠️ Resend email failed: {resp.status_code}")
+            except Exception as e:
+                result.fallback_attempts.append({'method': 'email_resend', 'error': str(e)})
+                logger.warning(f"⚠️ Resend email exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 3: SMS (Twilio)
+        # PRIORITY 3: SMS via TWILIO (DIRECT API)
         # ═══════════════════════════════════════════════════════════════════
 
-        if phone and 'sms' in self.connectors and self.available_systems.get('sms_twilio', {}).get('configured'):
+        twilio_configured = all([
+            os.getenv('TWILIO_ACCOUNT_SID'),
+            os.getenv('TWILIO_AUTH_TOKEN'),
+            os.getenv('TWILIO_PHONE_NUMBER') or os.getenv('TWILIO_FROM_NUMBER')
+        ])
+
+        if phone and twilio_configured:
             sms_message = self._build_sms_message(title, client_room_url)
             try:
-                sms_result = await self.connectors['sms'].execute(
-                    action='send_sms',
-                    params={
-                        'to': phone,
-                        'body': sms_message,
-                    }
-                )
-                if sms_result.ok:
-                    result.presented = True
-                    result.method = 'sms'
-                    result.channel = 'twilio'
-                    result.recipient = phone
-                    result.tracking_id = sms_result.data.get('message_sid')
-                    result.details['sms'] = sms_result.data
-                    logger.info(f"✅ SMS sent via Twilio to {phone}")
-                    return result
+                logger.info(f"📱 Sending SMS via Twilio to {phone}...")
+                account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+                auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+                from_number = os.getenv('TWILIO_PHONE_NUMBER') or os.getenv('TWILIO_FROM_NUMBER')
+
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sms_response = await client.post(
+                        f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+                        data={
+                            "To": phone,
+                            "From": from_number,
+                            "Body": sms_message[:160]
+                        },
+                        auth=(account_sid, auth_token)
+                    )
+
+                    if sms_response.is_success:
+                        sms_data = sms_response.json()
+                        result.presented = True
+                        result.method = 'sms'
+                        result.channel = 'twilio'
+                        result.recipient = phone
+                        result.tracking_id = sms_data.get('sid')
+                        result.details['sms'] = sms_data
+                        logger.info(f"✅ SMS sent via Twilio to {phone} (SID: {sms_data.get('sid')})")
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'sms_twilio',
+                            'error': f'Status {sms_response.status_code}',
+                            'details': sms_response.text
+                        })
+                        logger.warning(f"⚠️ Twilio SMS failed: {sms_response.status_code}")
             except Exception as e:
                 result.fallback_attempts.append({'method': 'sms_twilio', 'error': str(e)})
-                logger.warning(f"⚠️ Twilio SMS failed: {e}")
+                logger.warning(f"⚠️ Twilio SMS exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 4: WhatsApp (Twilio) - if phone available
+        # PRIORITY 4: WhatsApp via TWILIO (DIRECT API)
         # ═══════════════════════════════════════════════════════════════════
 
-        if phone and self.available_systems.get('api_keys', {}).get('twilio_whatsapp'):
+        if phone and os.getenv('TWILIO_ACCOUNT_SID') and os.getenv('TWILIO_AUTH_TOKEN'):
             whatsapp_message = f"Hi! Re: {title[:40]}\n\nWe can help with this. View our proposal:\n{client_room_url}"
             try:
-                # Use SMS connector with WhatsApp prefix
-                if 'sms' in self.connectors:
-                    # Twilio WhatsApp requires whatsapp: prefix
-                    whatsapp_to = phone if phone.startswith('whatsapp:') else f"whatsapp:{phone}"
-                    whatsapp_from = os.getenv('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')  # Sandbox default
+                logger.info(f"💬 Sending WhatsApp via Twilio to {phone}...")
+                account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+                auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+                whatsapp_to = phone if phone.startswith('whatsapp:') else f"whatsapp:{phone}"
+                whatsapp_from = os.getenv('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
 
-                    import httpx
-                    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-                    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+                async with httpx.AsyncClient(timeout=30) as client:
+                    wa_response = await client.post(
+                        f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+                        data={
+                            "To": whatsapp_to,
+                            "From": whatsapp_from,
+                            "Body": whatsapp_message[:1600]
+                        },
+                        auth=(account_sid, auth_token)
+                    )
 
-                    async with httpx.AsyncClient(timeout=30) as client:
-                        wa_response = await client.post(
-                            f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
-                            data={
-                                "To": whatsapp_to,
-                                "From": whatsapp_from,
-                                "Body": whatsapp_message[:1600]
-                            },
-                            auth=(account_sid, auth_token)
-                        )
-
-                        if wa_response.is_success:
-                            wa_data = wa_response.json()
-                            result.presented = True
-                            result.method = 'whatsapp'
-                            result.channel = 'twilio_whatsapp'
-                            result.recipient = phone
-                            result.tracking_id = wa_data.get('sid')
-                            result.details['whatsapp'] = wa_data
-                            logger.info(f"✅ WhatsApp sent via Twilio to {phone}")
-                            return result
+                    if wa_response.is_success:
+                        wa_data = wa_response.json()
+                        result.presented = True
+                        result.method = 'whatsapp'
+                        result.channel = 'twilio_whatsapp'
+                        result.recipient = phone
+                        result.tracking_id = wa_data.get('sid')
+                        result.details['whatsapp'] = wa_data
+                        logger.info(f"✅ WhatsApp sent via Twilio to {phone}")
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'whatsapp_twilio',
+                            'error': f'Status {wa_response.status_code}',
+                            'details': wa_response.text
+                        })
+                        logger.warning(f"⚠️ Twilio WhatsApp failed: {wa_response.status_code}")
             except Exception as e:
                 result.fallback_attempts.append({'method': 'whatsapp_twilio', 'error': str(e)})
-                logger.warning(f"⚠️ Twilio WhatsApp failed: {e}")
+                logger.warning(f"⚠️ Twilio WhatsApp exception: {e}")
 
-        # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 5: Platform comment (GitHub, Reddit) - public visibility
-        # ═══════════════════════════════════════════════════════════════════
-
-        if 'platform_response' in self.engines:
-            engine = self.engines['platform_response']
-            supported = engine.get_supported_platforms()
-            if supported.get(platform, False):
-                try:
-                    engagement = await engine.engage_with_opportunity(
-                        opportunity,
-                        send_dm_after=False
-                    )
-                    if engagement and engagement.status.value in ['commented', 'waiting']:
-                        result.presented = True
-                        result.method = 'platform_comment'
-                        result.channel = platform
-                        result.tracking_id = engagement.engagement_id
-                        result.details['engagement'] = engagement.to_dict()
-                        logger.info(f"✅ Comment posted on {platform}")
-                        return result
-                except Exception as e:
-                    result.fallback_attempts.append({'method': 'platform_comment', 'error': str(e)})
+        # NOTE: Platform commenting (Priority 5) removed for ToS compliance
+        # GitHub/Reddit automated comments are prohibited
+        # All platform opportunities fall through to the "no contact" handler below
 
         # ═══════════════════════════════════════════════════════════════════
         # NO CONTACT METHOD AVAILABLE
