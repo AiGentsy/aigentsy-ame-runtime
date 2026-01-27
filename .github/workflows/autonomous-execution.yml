@@ -161,19 +161,26 @@ jobs:
           echo "can_accept=$CAN_ACCEPT" >> $GITHUB_OUTPUT
           echo "channel_count=$CHANNEL_COUNT" >> $GITHUB_OUTPUT
 
-          # Show configured channels
+          # Show channel categories
           echo ""
-          echo "✅ Configured Channels:"
-          echo "$LOOP_STATUS" | jq -r '.customer_loop.configured_channels[]' 2>/dev/null | while read channel; do
-            echo "   • $channel"
-          done
+          echo "📧 Outreach Channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.outreach_channels[]' 2>/dev/null | while read ch; do echo "   • $ch"; done
 
-          # Show loaded connectors
+          echo ""
+          echo "💬 Comment Channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.comment_channels[]' 2>/dev/null | while read ch; do echo "   • $ch"; done
+
+          echo ""
+          echo "💳 Payment Channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.payment_channels[]' 2>/dev/null | while read ch; do echo "   • $ch"; done
+
+          echo ""
+          echo "🤖 AI Channels:"
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.ai_channels[]' 2>/dev/null | while read ch; do echo "   • $ch"; done
+
           echo ""
           echo "🔌 Loaded Connectors:"
-          echo "$LOOP_STATUS" | jq -r '.customer_loop.connectors_loaded[]' 2>/dev/null | while read conn; do
-            echo "   • $conn"
-          done
+          echo "$LOOP_STATUS" | jq -r '.customer_loop.connectors_loaded[]' 2>/dev/null | while read conn; do echo "   • $conn"; done
 
           if [ "$CAN_PRESENT" = "false" ]; then
             echo ""

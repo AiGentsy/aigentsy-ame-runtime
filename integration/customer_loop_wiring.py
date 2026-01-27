@@ -211,58 +211,74 @@ class CustomerLoopWiring:
             logger.warning(f"⚠️ AcceptancePortal not available: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # API KEY DETECTION (complete list)
+        # API KEY DETECTION (complete list from Render environment)
         # ═══════════════════════════════════════════════════════════════════
 
         self.available_systems['api_keys'] = {
-            # Email
+            # === EMAIL ===
             'resend': bool(os.getenv('RESEND_API_KEY')),
             'postmark': bool(os.getenv('POSTMARK_API_KEY')),
             'sendgrid': bool(os.getenv('SENDGRID_API_KEY')),
 
-            # SMS/Voice
+            # === SMS/VOICE/WHATSAPP (Twilio) ===
             'twilio_sms': all([
                 os.getenv('TWILIO_ACCOUNT_SID'),
                 os.getenv('TWILIO_AUTH_TOKEN'),
-                os.getenv('TWILIO_FROM_NUMBER')
+                os.getenv('TWILIO_FROM_NUMBER') or os.getenv('TWILIO_PHONE_NUMBER')
             ]),
             'twilio_whatsapp': all([
                 os.getenv('TWILIO_ACCOUNT_SID'),
                 os.getenv('TWILIO_AUTH_TOKEN')
+            ]),  # WhatsApp doesn't need FROM_NUMBER (uses sandbox or approved number)
+            'twilio_voice': all([
+                os.getenv('TWILIO_ACCOUNT_SID'),
+                os.getenv('TWILIO_AUTH_TOKEN'),
+                os.getenv('TWILIO_FROM_NUMBER') or os.getenv('TWILIO_PHONE_NUMBER')
             ]),
 
-            # Payment
+            # === PAYMENT ===
             'stripe': bool(os.getenv('STRIPE_SECRET_KEY')),
             'stripe_webhook': bool(os.getenv('STRIPE_WEBHOOK_SECRET')),
 
-            # Social
+            # === SOCIAL PLATFORMS ===
             'twitter': bool(os.getenv('TWITTER_BEARER_TOKEN') or os.getenv('TWITTER_API_KEY')),
             'twitter_dm': bool(os.getenv('TWITTER_ACCESS_TOKEN')),
             'reddit': bool(os.getenv('REDDIT_CLIENT_ID') and os.getenv('REDDIT_CLIENT_SECRET')),
             'github': bool(os.getenv('GITHUB_TOKEN')),
             'linkedin': bool(os.getenv('LINKEDIN_ACCESS_TOKEN')),
             'instagram': bool(os.getenv('INSTAGRAM_ACCESS_TOKEN')),
+            'instagram_business': bool(os.getenv('INSTAGRAM_ACCESS_TOKEN') and os.getenv('INSTAGRAM_BUSINESS_ID')),
 
-            # Team messaging
+            # === TEAM MESSAGING ===
             'slack': bool(os.getenv('SLACK_BOT_TOKEN') or os.getenv('SLACK_WEBHOOK_URL')),
             'discord': bool(os.getenv('DISCORD_WEBHOOK_URL') or os.getenv('DISCORD_BOT_TOKEN')),
+            'telegram': bool(os.getenv('TELEGRAM_BOT_TOKEN')),
 
-            # AI/LLM
+            # === AI/LLM ===
             'openrouter': bool(os.getenv('OPENROUTER_API_KEY')),
             'gemini': bool(os.getenv('GEMINI_API_KEY')),
             'perplexity': bool(os.getenv('PERPLEXITY_API_KEY')),
             'anthropic': bool(os.getenv('ANTHROPIC_API_KEY')),
+            'openai': bool(os.getenv('OPENAI_API_KEY')),
 
-            # Storage/Data
+            # === STORAGE/DATA ===
             'jsonbin': bool(os.getenv('JSONBIN_SECRET')),
             'airtable': bool(os.getenv('AIRTABLE_API_KEY')),
+            'supabase': bool(os.getenv('SUPABASE_URL') and os.getenv('SUPABASE_KEY')),
 
-            # Ecommerce
+            # === ECOMMERCE ===
             'shopify': bool(os.getenv('SHOPIFY_ACCESS_TOKEN') or os.getenv('SHOPIFY_ADMIN_TOKEN')),
 
-            # Media
+            # === MEDIA/CREATIVE ===
             'stability': bool(os.getenv('STABILITY_API_KEY')),
             'runway': bool(os.getenv('RUNWAY_API_KEY')),
+            'heygen': bool(os.getenv('HEYGEN_API_KEY')),
+            'synthesia': bool(os.getenv('SYNTHESIA_API_KEY')),
+            'elevenlabs': bool(os.getenv('ELEVENLABS_API_KEY')),
+
+            # === SEARCH/DISCOVERY ===
+            'serpapi': bool(os.getenv('SERPAPI_KEY')),
+            'browserless': bool(os.getenv('BROWSERLESS_API_KEY')),
         }
 
         # Count configured APIs
@@ -468,7 +484,49 @@ class CustomerLoopWiring:
                 logger.warning(f"⚠️ Twilio SMS failed: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # PRIORITY 4: Platform comment (GitHub, Reddit) - public visibility
+        # PRIORITY 4: WhatsApp (Twilio) - if phone available
+        # ═══════════════════════════════════════════════════════════════════
+
+        if phone and self.available_systems.get('api_keys', {}).get('twilio_whatsapp'):
+            whatsapp_message = f"Hi! Re: {title[:40]}\n\nWe can help with this. View our proposal:\n{client_room_url}"
+            try:
+                # Use SMS connector with WhatsApp prefix
+                if 'sms' in self.connectors:
+                    # Twilio WhatsApp requires whatsapp: prefix
+                    whatsapp_to = phone if phone.startswith('whatsapp:') else f"whatsapp:{phone}"
+                    whatsapp_from = os.getenv('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')  # Sandbox default
+
+                    import httpx
+                    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+                    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        wa_response = await client.post(
+                            f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+                            data={
+                                "To": whatsapp_to,
+                                "From": whatsapp_from,
+                                "Body": whatsapp_message[:1600]
+                            },
+                            auth=(account_sid, auth_token)
+                        )
+
+                        if wa_response.is_success:
+                            wa_data = wa_response.json()
+                            result.presented = True
+                            result.method = 'whatsapp'
+                            result.channel = 'twilio_whatsapp'
+                            result.recipient = phone
+                            result.tracking_id = wa_data.get('sid')
+                            result.details['whatsapp'] = wa_data
+                            logger.info(f"✅ WhatsApp sent via Twilio to {phone}")
+                            return result
+            except Exception as e:
+                result.fallback_attempts.append({'method': 'whatsapp_twilio', 'error': str(e)})
+                logger.warning(f"⚠️ Twilio WhatsApp failed: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY 5: Platform comment (GitHub, Reddit) - public visibility
         # ═══════════════════════════════════════════════════════════════════
 
         if 'platform_response' in self.engines:
@@ -598,56 +656,87 @@ Let me know if you have any questions!
         missing_channels = []
         api_keys = self.available_systems.get('api_keys', {})
 
-        # Email channels
+        # === EMAIL ===
         if api_keys.get('resend'):
             configured_channels.append('email:resend')
         else:
             missing_channels.append('email:resend')
-
         if api_keys.get('sendgrid'):
             configured_channels.append('email:sendgrid')
         if api_keys.get('postmark'):
             configured_channels.append('email:postmark')
 
-        # SMS/Voice
+        # === SMS/WHATSAPP/VOICE ===
         if api_keys.get('twilio_sms'):
             configured_channels.append('sms:twilio')
         else:
             missing_channels.append('sms:twilio')
-
         if api_keys.get('twilio_whatsapp'):
             configured_channels.append('whatsapp:twilio')
+        if api_keys.get('twilio_voice'):
+            configured_channels.append('voice:twilio')
 
-        # Social
+        # === SOCIAL DMs ===
         if api_keys.get('twitter_dm'):
             configured_channels.append('dm:twitter')
         else:
             missing_channels.append('dm:twitter')
-
         if api_keys.get('linkedin'):
             configured_channels.append('message:linkedin')
-
         if api_keys.get('reddit'):
             configured_channels.append('dm:reddit')
-
-        if api_keys.get('github'):
-            configured_channels.append('comment:github')
-
         if api_keys.get('instagram'):
             configured_channels.append('dm:instagram')
+        if api_keys.get('instagram_business'):
+            configured_channels.append('api:instagram_business')
 
-        # Team
+        # === PLATFORM COMMENTS ===
+        if api_keys.get('github'):
+            configured_channels.append('comment:github')
+        if api_keys.get('twitter'):
+            configured_channels.append('comment:twitter')
+
+        # === TEAM NOTIFICATIONS ===
         if api_keys.get('slack'):
             configured_channels.append('notify:slack')
-
         if api_keys.get('discord'):
             configured_channels.append('notify:discord')
+        if api_keys.get('telegram'):
+            configured_channels.append('notify:telegram')
 
-        # Payment
+        # === PAYMENT ===
         if api_keys.get('stripe'):
             configured_channels.append('payment:stripe')
         else:
             missing_channels.append('payment:stripe')
+        if api_keys.get('stripe_webhook'):
+            configured_channels.append('webhook:stripe')
+
+        # === AI/LLM ===
+        if api_keys.get('openrouter'):
+            configured_channels.append('ai:openrouter')
+        if api_keys.get('gemini'):
+            configured_channels.append('ai:gemini')
+        if api_keys.get('perplexity'):
+            configured_channels.append('ai:perplexity')
+        if api_keys.get('anthropic'):
+            configured_channels.append('ai:anthropic')
+
+        # === MEDIA ===
+        if api_keys.get('stability'):
+            configured_channels.append('media:stability')
+        if api_keys.get('runway'):
+            configured_channels.append('media:runway')
+
+        # === STORAGE ===
+        if api_keys.get('jsonbin'):
+            configured_channels.append('storage:jsonbin')
+
+        # Categorize channels
+        outreach_channels = [c for c in configured_channels if c.startswith(('email:', 'sms:', 'whatsapp:', 'dm:', 'message:'))]
+        comment_channels = [c for c in configured_channels if c.startswith('comment:')]
+        payment_channels = [c for c in configured_channels if c.startswith('payment:')]
+        ai_channels = [c for c in configured_channels if c.startswith('ai:')]
 
         return {
             'systems_loaded': self.available_systems,
@@ -656,7 +745,11 @@ Let me know if you have any questions!
             'configured_channels': configured_channels,
             'missing_channels': missing_channels,
             'channel_count': len(configured_channels),
-            'can_present_contracts': len([c for c in configured_channels if c.startswith(('email:', 'sms:', 'dm:', 'message:'))]) > 0,
+            'outreach_channels': outreach_channels,
+            'comment_channels': comment_channels,
+            'payment_channels': payment_channels,
+            'ai_channels': ai_channels,
+            'can_present_contracts': len(outreach_channels) > 0,
             'can_accept_payments': api_keys.get('stripe', False),
             'api_key_summary': {
                 'configured': sum(1 for v in api_keys.values() if v),
