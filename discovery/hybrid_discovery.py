@@ -135,30 +135,82 @@ class HybridDiscoveryEngine:
         logger.info(f"✅ Phase 3: {len(platform_opps)} opportunities from direct platforms")
 
         # ===================================================================
-        # COMBINE & PRIORITIZE: Contact info first
+        # COMBINE & PRIORITIZE: PLATFORM DIVERSITY + Contact info
         # ===================================================================
-        # Platform opps (with contact) + Perplexity enriched (may have contact)
-        all_opportunities = []
+        # KEY FIX: Interleave results from different platforms to ensure diversity
+        # Without this, Reddit dominates because direct API returns ~20 results with contact
 
-        # First: add platform opportunities (guaranteed contact)
-        for opp in platform_opps:
-            all_opportunities.append(opp)
+        # Group ALL opportunities by platform
+        by_platform = {}
+        all_seen_urls = set()
 
-        # Second: add Perplexity opportunities (may have contact after enrichment)
+        # Add Perplexity results FIRST (higher priority for diverse platforms)
         for opp in enriched:
-            # Avoid duplicates by URL
-            existing_urls = {o.get('url') for o in all_opportunities if o.get('url')}
-            if opp.get('url') not in existing_urls:
-                all_opportunities.append(opp)
+            url = opp.get('url', '')
+            if url and url not in all_seen_urls:
+                all_seen_urls.add(url)
+                platform = opp.get('platform', 'web')
+                if platform not in by_platform:
+                    by_platform[platform] = []
+                by_platform[platform].append(opp)
 
-        # Sort: opportunities WITH contact come first
-        all_opportunities.sort(key=lambda o: (
-            0 if self._has_contact(o) else 1,  # With contact first
-            0 if o.get('contact', {}).get('email') else 1,  # Email preferred
-        ))
+        # Add direct platform results SECOND (fills in with guaranteed contact)
+        for opp in platform_opps:
+            url = opp.get('url', '')
+            if url and url not in all_seen_urls:
+                all_seen_urls.add(url)
+                platform = opp.get('platform', 'reddit')
+                if platform not in by_platform:
+                    by_platform[platform] = []
+                by_platform[platform].append(opp)
 
-        # Take top max_opportunities
-        final_opportunities = all_opportunities[:max_opportunities]
+        # Log platform distribution before interleaving
+        logger.info(f"📊 Platform distribution:")
+        for platform, opps in sorted(by_platform.items(), key=lambda x: -len(x[1])):
+            with_contact = sum(1 for o in opps if self._has_contact(o))
+            logger.info(f"   {platform}: {len(opps)} ({with_contact} with contact)")
+
+        # INTERLEAVE: Take from each platform in round-robin to ensure diversity
+        final_opportunities = []
+        platforms = list(by_platform.keys())
+
+        # Priority order: Twitter, LinkedIn, Upwork first (higher conversion), then others
+        priority_platforms = ['twitter', 'linkedin', 'upwork', 'freelancer', 'fiverr', 'hackernews', 'github']
+        ordered_platforms = []
+        for p in priority_platforms:
+            if p in platforms:
+                ordered_platforms.append(p)
+        for p in platforms:
+            if p not in ordered_platforms:
+                ordered_platforms.append(p)
+
+        # Round-robin interleaving
+        round_num = 0
+        while len(final_opportunities) < max_opportunities:
+            added_this_round = False
+            for platform in ordered_platforms:
+                if len(final_opportunities) >= max_opportunities:
+                    break
+                opps = by_platform.get(platform, [])
+                if round_num < len(opps):
+                    opp = opps[round_num]
+                    # Prefer opportunities with contact
+                    if self._has_contact(opp) or round_num < 2:  # Always take first 2 from each platform
+                        final_opportunities.append(opp)
+                        added_this_round = True
+
+            if not added_this_round:
+                # No more opportunities with contact, add remaining
+                for platform in ordered_platforms:
+                    opps = by_platform.get(platform, [])
+                    for opp in opps[round_num:]:
+                        if len(final_opportunities) >= max_opportunities:
+                            break
+                        if opp not in final_opportunities:
+                            final_opportunities.append(opp)
+                break
+
+            round_num += 1
 
         # Final stats
         with_contact = sum(1 for o in final_opportunities if self._has_contact(o))
@@ -627,14 +679,15 @@ Return ONLY the JSON array, nothing else."""
         return opportunities
 
     async def _discover_reddit_direct(self) -> List[Dict]:
-        """Discover from Reddit directly (with author info)"""
+        """Discover from Reddit directly (with author info) - LIMITED to leave room for other platforms"""
         opportunities = []
-        subreddits = ['forhire', 'hiring', 'remotejobs', 'slavelabour']
+        subreddits = ['forhire', 'hiring']  # Only top 2 subreddits
 
         async with httpx.AsyncClient(timeout=15) as client:
-            for subreddit in subreddits[:2]:  # Limit to avoid rate limits
+            for subreddit in subreddits:
                 try:
-                    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=10"
+                    # LIMIT to 5 posts per subreddit to leave room for Perplexity diversity
+                    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=5"
                     response = await client.get(
                         url,
                         headers={'User-Agent': 'AiGentsy/1.0'}
