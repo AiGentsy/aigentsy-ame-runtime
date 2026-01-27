@@ -448,6 +448,70 @@ if FASTAPI_AVAILABLE:
 
         return result
 
+    @router.get("/debug/reddit")
+    async def debug_reddit():
+        """
+        Debug endpoint to test Reddit API directly.
+
+        Tests public JSON API access from Render servers.
+        """
+        import httpx
+
+        result = {
+            'ok': False,
+            'subreddits_tested': [],
+            'total_posts': 0
+        }
+
+        subreddits = ['forhire', 'hiring']
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            for sub in subreddits:
+                sub_result = {
+                    'subreddit': sub,
+                    'status_code': None,
+                    'posts_found': 0,
+                    'sample_posts': [],
+                    'error': None
+                }
+
+                try:
+                    response = await client.get(
+                        f"https://www.reddit.com/r/{sub}/new.json",
+                        headers={'User-Agent': 'AiGentsy/1.0 Discovery Bot'},
+                        params={'limit': 5}
+                    )
+
+                    sub_result['status_code'] = response.status_code
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        posts = data.get('data', {}).get('children', [])
+                        sub_result['posts_found'] = len(posts)
+                        result['total_posts'] += len(posts)
+
+                        for p in posts[:3]:
+                            d = p.get('data', {})
+                            sub_result['sample_posts'].append({
+                                'author': d.get('author'),
+                                'title': d.get('title', '')[:60]
+                            })
+                    elif response.status_code == 429:
+                        sub_result['error'] = 'Rate limited'
+                    elif response.status_code == 403:
+                        sub_result['error'] = 'Forbidden - IP may be blocked'
+                    else:
+                        sub_result['error'] = f'HTTP {response.status_code}'
+                        sub_result['response_preview'] = response.text[:200]
+
+                except Exception as e:
+                    sub_result['error'] = f"{type(e).__name__}: {str(e)}"
+
+                result['subreddits_tested'].append(sub_result)
+
+        result['ok'] = result['total_posts'] > 0
+        return result
+
     @router.get("/capacity")
     async def get_capacity():
         """
