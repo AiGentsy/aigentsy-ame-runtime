@@ -702,12 +702,22 @@ JSON only:"""
 
         logger.info(f"  [reddit] Fetching from {len(subreddits)} subreddits...")
 
+        # Use more realistic headers to avoid rate limiting
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+
         async with httpx.AsyncClient(timeout=15) as client:
-            for subreddit in subreddits[:3]:  # Top 3 subreddits
+            for subreddit in subreddits[:2]:  # Reduce to 2 to avoid rate limits
                 try:
+                    # Add delay BEFORE request to help with rate limiting
+                    await asyncio.sleep(2)
+
                     response = await client.get(
                         f"https://www.reddit.com/r/{subreddit}/new.json",
-                        headers={'User-Agent': 'AiGentsy/1.0 Discovery Bot'},
+                        headers=headers,
                         params={'limit': 10}
                     )
 
@@ -832,7 +842,7 @@ JSON only:"""
                     else:
                         logger.warning(f"  [reddit] r/{subreddit} error {response.status_code}: {response.text[:100]}")
 
-                    await asyncio.sleep(1)  # Reddit rate limit
+                    await asyncio.sleep(3)  # Longer delay to avoid Reddit rate limiting
 
                 except Exception as e:
                     logger.warning(f"  [reddit] Exception for r/{subreddit}: {type(e).__name__}: {e}")
