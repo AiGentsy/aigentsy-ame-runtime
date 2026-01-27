@@ -122,32 +122,54 @@ class HybridDiscoveryEngine:
         logger.info(f"✅ Phase 2: {enriched_with_contact}/{len(enriched)} enriched with contact info")
 
         # ===================================================================
-        # PHASE 3: SUPPLEMENT WITH DIRECT PLATFORM DISCOVERIES
+        # PHASE 3: ALWAYS ADD DIRECT PLATFORM DISCOVERIES
         # ===================================================================
-        # Only add direct platform opps if we need more opportunities
-        remaining_slots = max_opportunities - len(enriched)
+        # These have contact info built-in, so ALWAYS include them
+        logger.info(f"\n📍 PHASE 3: Adding Direct Platform APIs (guaranteed contact info)")
+        platform_opps = await self._phase1_5_direct_platforms()
+        logger.info(f"✅ Phase 3: {len(platform_opps)} opportunities from direct platforms")
 
-        if remaining_slots > 0:
-            logger.info(f"\n📍 PHASE 3: Supplementing with Direct Platform APIs ({remaining_slots} slots)")
-            platform_opps = await self._phase1_5_direct_platforms()
+        # ===================================================================
+        # COMBINE & PRIORITIZE: Contact info first
+        # ===================================================================
+        # Platform opps (with contact) + Perplexity enriched (may have contact)
+        all_opportunities = []
 
-            # Add platform opps (these have contact built-in)
-            for opp in platform_opps[:remaining_slots]:
-                enriched.append(opp)
+        # First: add platform opportunities (guaranteed contact)
+        for opp in platform_opps:
+            all_opportunities.append(opp)
 
-            logger.info(f"✅ Phase 3: Added {min(len(platform_opps), remaining_slots)} platform opportunities")
-        else:
-            logger.info(f"\n📍 PHASE 3: Skipped (already have {len(enriched)} opportunities)")
+        # Second: add Perplexity opportunities (may have contact after enrichment)
+        for opp in enriched:
+            # Avoid duplicates by URL
+            existing_urls = {o.get('url') for o in all_opportunities if o.get('url')}
+            if opp.get('url') not in existing_urls:
+                all_opportunities.append(opp)
+
+        # Sort: opportunities WITH contact come first
+        all_opportunities.sort(key=lambda o: (
+            0 if self._has_contact(o) else 1,  # With contact first
+            0 if o.get('contact', {}).get('email') else 1,  # Email preferred
+        ))
+
+        # Take top max_opportunities
+        final_opportunities = all_opportunities[:max_opportunities]
 
         # Final stats
+        with_contact = sum(1 for o in final_opportunities if self._has_contact(o))
+        self.stats['phase2_enriched'] = len(final_opportunities)
+        self.stats['phase2_with_contact'] = with_contact
+
         logger.info("\n" + "=" * 80)
         logger.info("📊 HYBRID DISCOVERY COMPLETE")
         logger.info("=" * 80)
-        logger.info(f"   Total opportunities: {len(enriched)}")
-        logger.info(f"   With contact info:   {with_contact} ({with_contact/len(enriched)*100:.1f}%)" if enriched else "   With contact: 0")
+        logger.info(f"   Total opportunities: {len(final_opportunities)}")
+        logger.info(f"   With contact info:   {with_contact} ({with_contact/len(final_opportunities)*100:.1f}%)" if final_opportunities else "   With contact: 0")
+        logger.info(f"   Platform-sourced:    {len([o for o in final_opportunities if o.get('source', '').endswith('_api')])}")
+        logger.info(f"   Perplexity-sourced:  {len([o for o in final_opportunities if 'perplexity' in o.get('id', '')])}")
         logger.info(f"   Ready for outreach:  {with_contact}")
 
-        return enriched
+        return final_opportunities
 
     async def _phase1_perplexity(self) -> List[Dict]:
         """Phase 1: Use Perplexity for broad discovery"""
