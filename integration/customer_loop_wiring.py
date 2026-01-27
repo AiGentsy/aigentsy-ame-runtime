@@ -491,51 +491,8 @@ Let me know if you have questions!"""
                     result.fallback_attempts.append({'method': 'reddit_dm', 'error': str(e)})
                     logger.warning(f"⚠️ Reddit DM exception: {e}")
 
-        # GitHub opportunities → GitHub comment on issue (DIRECT API)
-        if ('github' in platform or github_username) and self.available_systems.get('api_keys', {}).get('github'):
-            url = opportunity.get('url', '') or opportunity.get('canonical_url', '')
-            # Parse GitHub issue URL: https://github.com/owner/repo/issues/123
-            if 'github.com' in url and '/issues/' in url:
-                try:
-                    parts = url.split('github.com/')[1].split('/')
-                    if len(parts) >= 4 and parts[2] == 'issues':
-                        repo_owner = parts[0]
-                        repo_name = parts[1]
-                        issue_number = int(parts[3].split('?')[0].split('#')[0])
-
-                        github_comment = f"""Hi @{github_username or 'there'}! 👋
-
-I saw this issue and wanted to reach out. We can help with this.
-
-**AiGentsy** delivers within hours, not days - and you only pay when you approve the work.
-
-📋 **View our full proposal:** {client_room_url}
-
-Let me know if you have any questions!"""
-
-                        logger.info(f"📤 Attempting GitHub comment on {repo_owner}/{repo_name}#{issue_number}...")
-                        comment_result = await self._send_github_issue_comment_direct(
-                            repo_owner, repo_name, issue_number, github_comment
-                        )
-                        if comment_result.get('success'):
-                            result.presented = True
-                            result.method = 'github_comment'
-                            result.channel = 'github'
-                            result.recipient = github_username or f"{repo_owner}/{repo_name}#{issue_number}"
-                            result.tracking_id = str(comment_result.get('comment_id'))
-                            result.details['github_comment'] = comment_result
-                            logger.info(f"✅ GitHub comment posted on {repo_owner}/{repo_name}#{issue_number}")
-                            return result
-                        else:
-                            result.fallback_attempts.append({
-                                'method': 'github_comment',
-                                'error': comment_result.get('error'),
-                                'details': comment_result.get('details')
-                            })
-                            logger.warning(f"⚠️ GitHub comment failed: {comment_result.get('error')}")
-                except Exception as e:
-                    result.fallback_attempts.append({'method': 'github_comment', 'error': str(e)})
-                    logger.warning(f"⚠️ GitHub comment exception: {e}")
+        # NOTE: GitHub autonomous comments removed (ToS violation)
+        # GitHub opportunities are still discovered but outreach uses email/DM fallback
 
         # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 2: Email (Resend → SendGrid → Postmark)
@@ -1137,47 +1094,7 @@ Let me know if you have any questions!
                     'details': msg_response.text
                 }
 
-    async def _send_github_issue_comment_direct(
-        self,
-        repo_owner: str,
-        repo_name: str,
-        issue_number: int,
-        comment: str
-    ) -> Dict[str, Any]:
-        """
-        Post GitHub issue comment using GitHub API directly.
-
-        Requires: GITHUB_TOKEN with repo scope
-        """
-        token = os.getenv('GITHUB_TOKEN')
-
-        if not token:
-            return {'success': False, 'error': 'GITHUB_TOKEN not configured'}
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{issue_number}/comments",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28"
-                },
-                json={"body": comment}
-            )
-
-            if response.is_success:
-                data = response.json()
-                return {
-                    'success': True,
-                    'comment_id': data.get('id'),
-                    'html_url': data.get('html_url')
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': f'Comment failed: {response.status_code}',
-                    'details': response.text
-                }
+    # NOTE: _send_github_issue_comment_direct removed (GitHub ToS violation for autonomous comments)
 
     def get_status(self) -> Dict[str, Any]:
         """Get complete status of customer loop wiring"""

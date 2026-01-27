@@ -190,9 +190,10 @@ class HybridDiscoveryEngine:
 
     async def _direct_perplexity_search(self) -> List[Dict]:
         """
-        Direct Perplexity API search - DIVERSIFIED ACROSS ALL PLATFORMS.
+        Direct Perplexity API search - 100+ DIVERSIFIED QUERIES.
 
-        Queries target opportunities with EMAIL, TWITTER, LINKEDIN, INSTAGRAM contact info.
+        Covers: 15+ industries, 20+ platforms, 30+ job types, all contact methods.
+        Targets opportunities with EMAIL, TWITTER, LINKEDIN, INSTAGRAM, PHONE contact info.
         """
         if not self.perplexity_key:
             logger.warning("No Perplexity API key, skipping Phase 1")
@@ -200,39 +201,321 @@ class HybridDiscoveryEngine:
 
         opportunities = []
 
-        # DIVERSIFIED QUERIES - target opportunities with contact info across ALL platforms
+        # ═══════════════════════════════════════════════════════════════════════════
+        # 100+ DIVERSIFIED QUERIES - Organized by Category
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries = self._get_diversified_queries()
+
+        # Run queries in batches to avoid rate limits
+        batch_size = 10
+        for i in range(0, len(queries), batch_size):
+            batch = queries[i:i + batch_size]
+            batch_results = await asyncio.gather(*[
+                self._run_single_perplexity_query(q) for q in batch
+            ], return_exceptions=True)
+
+            for result in batch_results:
+                if isinstance(result, list):
+                    opportunities.extend(result)
+
+            # Small delay between batches
+            if i + batch_size < len(queries):
+                await asyncio.sleep(0.5)
+
+        logger.info(f"Perplexity total: {len(opportunities)} opportunities from {len(queries)} queries")
+        return opportunities
+
+    def _get_diversified_queries(self) -> List[str]:
+        """Generate 100+ diversified queries across industries, platforms, and job types."""
+        queries = []
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 1: EMAIL-BASED OPPORTUNITIES (Highest Conversion)
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find freelance job postings that include email contact. Return JSON: [{"title":"...","url":"...","email":"...","platform":"..."}]',
+            'Find "email me at" or "contact:" in job postings for developers. Return JSON with email field.',
+            'Find startup job posts on AngelList/Wellfound with founder email. Return JSON: [{"title":"...","url":"...","email":"...","company":"..."}]',
+            'Find consulting gigs posted with direct email contact. Return JSON array with email field.',
+            'Find remote job postings that say "apply via email" or include recruiter email. Return JSON.',
+            'Find "send resume to" job postings for tech roles. Return JSON: [{"title":"...","url":"...","email":"..."}]',
+            'Find small business owners posting jobs with their email on Craigslist, Indeed, ZipRecruiter. Return JSON.',
+            'Find "reach out to me at" posts from people hiring developers. Return JSON with email.',
+            'Find job posts in tech Facebook groups that include email contact. Return JSON array.',
+            'Find newsletter job boards (like Pallet, Polywork) with direct contact emails. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 2: TWITTER/X OPPORTUNITIES
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find tweets with "hiring" or "looking for" developers. Return JSON: [{"title":"...","url":"...","twitter_handle":"@...","platform":"twitter"}]',
+            'Find Twitter posts from founders hiring their first engineer. Return JSON with twitter_handle.',
+            'Find #hiring #remotework #developer tweets from the past week. Return JSON array.',
+            'Find "DM me" job opportunity tweets for freelancers. Return JSON: [{"title":"...","twitter_handle":"@..."}]',
+            'Find Twitter threads about startup job openings with contact info. Return JSON.',
+            'Find tweets from indie hackers looking for co-founders or contractors. Return JSON with handle.',
+            'Find "we\'re hiring" tweets from tech companies with < 50 employees. Return JSON.',
+            'Find Twitter job posts for React, Python, Node.js developers. Return JSON with twitter_handle.',
+            'Find #buildinpublic founders tweeting about hiring help. Return JSON array.',
+            'Find Twitter posts offering paid bounties or bug fixes. Return JSON with contact.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 3: LINKEDIN OPPORTUNITIES
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find LinkedIn posts from recruiters hiring developers. Return JSON: [{"title":"...","url":"...","linkedin_url":"...","platform":"linkedin"}]',
+            'Find LinkedIn job posts from startup founders. Return JSON with linkedin_url.',
+            'Find "open to work" connection requests or hiring managers posting jobs. Return JSON.',
+            'Find LinkedIn articles about companies expanding their tech teams. Return JSON with contact.',
+            'Find CTOs or VPs of Engineering posting about open roles on LinkedIn. Return JSON.',
+            'Find LinkedIn posts about freelance or contract opportunities in tech. Return JSON.',
+            'Find remote job announcements on LinkedIn from fully-remote companies. Return JSON.',
+            'Find LinkedIn posts with "comment for info" about job openings. Return JSON with url.',
+            'Find consulting opportunities posted by LinkedIn members. Return JSON array.',
+            'Find LinkedIn job posts for AI/ML, data science, or DevOps roles. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 4: REDDIT OPPORTUNITIES
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find r/forhire posts from people hiring developers with email in post. Return JSON: [{"title":"...","url":"...","email":"...","reddit_user":"...","platform":"reddit"}]',
+            'Find r/hiring posts for remote software engineers. Return JSON with reddit_user.',
+            'Find r/slavelabour paid tasks for programming or automation. Return JSON array.',
+            'Find r/freelance job opportunities with budget mentioned. Return JSON with contact.',
+            'Find r/remotejobs posts from startups hiring. Return JSON: [{"title":"...","url":"...","reddit_user":"..."}]',
+            'Find r/webdev or r/learnprogramming posts where someone needs help building something. Return JSON.',
+            'Find r/startups posts from founders looking for technical co-founders. Return JSON.',
+            'Find r/entrepreneur posts about needing developer help. Return JSON with contact info.',
+            'Find r/smallbusiness posts from owners needing websites or apps built. Return JSON.',
+            'Find Reddit posts in any subreddit offering paid work for coding. Return JSON array.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 5: FREELANCE PLATFORMS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find new Upwork job posts for web development posted today. Return JSON: [{"title":"...","url":"...","budget":"...","platform":"upwork"}]',
+            'Find Freelancer.com projects for Python or JavaScript developers. Return JSON.',
+            'Find Fiverr buyer requests for app development. Return JSON array.',
+            'Find Toptal or Turing job matches for senior developers. Return JSON with url.',
+            'Find PeoplePerHour projects for automation or scripting. Return JSON.',
+            'Find Guru.com projects for full-stack development. Return JSON with budget.',
+            'Find 99designs or Dribbble job posts for developer+designer roles. Return JSON.',
+            'Find Contra or Braintrust freelance opportunities for engineers. Return JSON.',
+            'Find Arc.dev or Gun.io job listings for remote developers. Return JSON array.',
+            'Find Flexjobs or We Work Remotely listings for software roles. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 6: STARTUP & TECH JOBS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find Y Combinator companies currently hiring engineers. Return JSON: [{"title":"...","url":"...","company":"...","email":"..."}]',
+            'Find AngelList/Wellfound startup jobs with equity offered. Return JSON.',
+            'Find Hacker News "Who is Hiring" thread jobs for this month. Return JSON array.',
+            'Find Product Hunt launched startups that are hiring. Return JSON with contact.',
+            'Find TechCrunch featured startups with open positions. Return JSON.',
+            'Find Indie Hackers posts from founders looking for developers. Return JSON with email.',
+            'Find startup accelerator companies (Techstars, 500) hiring. Return JSON.',
+            'Find seed-stage startups posting engineering jobs. Return JSON with url.',
+            'Find Series A companies expanding their engineering teams. Return JSON array.',
+            'Find bootstrapped SaaS companies hiring developers. Return JSON with contact.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 7: SPECIFIC TECH SKILLS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find jobs specifically for React.js or Next.js developers. Return JSON: [{"title":"...","url":"...","contact":"...","skills":"react"}]',
+            'Find Python developer jobs for automation or data work. Return JSON.',
+            'Find Node.js or Express backend developer opportunities. Return JSON array.',
+            'Find iOS or Android mobile app development jobs. Return JSON with contact.',
+            'Find DevOps, Kubernetes, or cloud infrastructure jobs. Return JSON.',
+            'Find AI/ML engineer or data scientist job postings. Return JSON with email.',
+            'Find blockchain or Web3 developer opportunities. Return JSON array.',
+            'Find WordPress, Shopify, or e-commerce developer jobs. Return JSON.',
+            'Find API development or integration specialist jobs. Return JSON with contact.',
+            'Find no-code/low-code automation specialist jobs (Zapier, Make). Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 8: INDUSTRY-SPECIFIC
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find fintech companies hiring developers. Return JSON: [{"title":"...","url":"...","industry":"fintech","contact":"..."}]',
+            'Find healthtech or medtech startups looking for engineers. Return JSON.',
+            'Find edtech companies hiring for their platforms. Return JSON array.',
+            'Find e-commerce businesses needing Shopify developers. Return JSON with email.',
+            'Find real estate tech companies hiring developers. Return JSON.',
+            'Find legal tech (legaltech) companies with open positions. Return JSON.',
+            'Find marketing agencies hiring developers for client work. Return JSON.',
+            'Find gaming studios or indie game developers hiring. Return JSON with contact.',
+            'Find SaaS companies hiring full-stack developers. Return JSON array.',
+            'Find media or content companies needing tech help. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 9: CONSULTING & AGENCIES
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find consulting firms hiring contract developers. Return JSON: [{"title":"...","url":"...","contact":"...","type":"consulting"}]',
+            'Find digital agencies looking for freelance developers. Return JSON.',
+            'Find dev shops or software agencies with open contractor positions. Return JSON.',
+            'Find IT consulting companies hiring for client projects. Return JSON with email.',
+            'Find design agencies needing frontend developer help. Return JSON array.',
+            'Find boutique consulting firms hiring specialists. Return JSON.',
+            'Find staff augmentation companies looking for developers. Return JSON with contact.',
+            'Find managed services providers hiring technical staff. Return JSON.',
+            'Find innovation labs or R&D consultancies hiring. Return JSON array.',
+            'Find fractional CTO or technical advisor opportunities. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 10: PROJECT-BASED & GIGS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find one-time coding projects or quick fixes needed. Return JSON: [{"title":"...","url":"...","budget":"...","contact":"..."}]',
+            'Find MVP development projects for startups. Return JSON with email.',
+            'Find website redesign projects from small businesses. Return JSON.',
+            'Find mobile app projects from entrepreneurs. Return JSON array.',
+            'Find automation or scripting one-off tasks. Return JSON with contact.',
+            'Find data migration or integration projects. Return JSON.',
+            'Find bug fixing or debugging paid tasks. Return JSON with budget.',
+            'Find code review or audit projects. Return JSON array.',
+            'Find landing page or marketing site projects. Return JSON with email.',
+            'Find API integration or webhook setup projects. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 11: GEOGRAPHIC/REMOTE
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find fully remote developer jobs from US companies. Return JSON: [{"title":"...","url":"...","location":"remote","contact":"..."}]',
+            'Find European remote developer opportunities. Return JSON.',
+            'Find async-first companies hiring developers. Return JSON array.',
+            'Find timezone-flexible remote tech jobs. Return JSON with contact.',
+            'Find remote-first startups hiring globally. Return JSON.',
+            'Find digital nomad friendly developer jobs. Return JSON with email.',
+            'Find work-from-anywhere tech positions. Return JSON array.',
+            'Find companies hiring remote developers in LATAM. Return JSON.',
+            'Find APAC timezone remote developer jobs. Return JSON with url.',
+            'Find distributed team companies hiring engineers. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 12: EXPERIENCE LEVELS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find junior developer or entry-level coding jobs. Return JSON: [{"title":"...","url":"...","level":"junior","contact":"..."}]',
+            'Find mid-level software engineer positions. Return JSON.',
+            'Find senior developer or tech lead jobs. Return JSON array.',
+            'Find principal or staff engineer opportunities. Return JSON with contact.',
+            'Find internship or apprenticeship programs for developers. Return JSON.',
+            'Find bootcamp grad friendly job postings. Return JSON with email.',
+            'Find career changer welcome developer jobs. Return JSON.',
+            'Find mentorship-included junior positions. Return JSON array.',
+            'Find self-taught developer friendly opportunities. Return JSON.',
+            'Find no experience required coding tasks. Return JSON with contact.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 13: DISCORD/TELEGRAM/COMMUNITY
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find Discord servers hiring moderators or developers. Return JSON: [{"title":"...","url":"...","platform":"discord","contact":"..."}]',
+            'Find Telegram groups posting developer jobs. Return JSON.',
+            'Find Slack communities with job channels. Return JSON array.',
+            'Find developer community job boards. Return JSON with contact.',
+            'Find tech Discord servers with freelance channels. Return JSON.',
+            'Find crypto/Web3 Discord servers hiring developers. Return JSON with invite.',
+            'Find gaming community Discord servers needing bot developers. Return JSON.',
+            'Find open source project Discord servers looking for contributors. Return JSON.',
+            'Find indie hacker Discord or Telegram groups with jobs. Return JSON array.',
+            'Find community-based job posting platforms. Return JSON with url.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 14: NICHE PLATFORMS
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find Hacker News job posts with contact info. Return JSON: [{"title":"...","url":"...","hn_user":"...","platform":"hackernews"}]',
+            'Find Stack Overflow Jobs or Careers listings. Return JSON.',
+            'Find dev.to or Hashnode job board postings. Return JSON array.',
+            'Find GitHub Jobs or related platform listings. Return JSON.',
+            'Find CodePen or Dribbble developer job posts. Return JSON with contact.',
+            'Find Behance or creative platform tech jobs. Return JSON.',
+            'Find ProductHunt ship job listings. Return JSON with email.',
+            'Find Polywork or professional network opportunities. Return JSON.',
+            'Find Lunchclub or networking platform jobs. Return JSON array.',
+            'Find niche job boards for specific technologies. Return JSON.',
+        ])
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # CATEGORY 15: NON-TECH NEEDING TECH HELP
+        # ═══════════════════════════════════════════════════════════════════════════
+        queries.extend([
+            'Find small business owners needing website help. Return JSON: [{"title":"...","url":"...","business_type":"...","email":"..."}]',
+            'Find restaurants or local businesses needing online ordering systems. Return JSON.',
+            'Find fitness trainers or coaches needing apps built. Return JSON array.',
+            'Find content creators needing website or tool development. Return JSON with contact.',
+            'Find real estate agents needing property websites. Return JSON.',
+            'Find lawyers or attorneys needing client portals. Return JSON with email.',
+            'Find doctors or healthcare providers needing booking systems. Return JSON.',
+            'Find teachers or educators needing learning platforms. Return JSON.',
+            'Find artists or musicians needing portfolio sites. Return JSON array.',
+            'Find non-profits needing volunteer management systems. Return JSON with contact.',
+        ])
+
+        return queries
+
+    async def _run_single_perplexity_query(self, query: str) -> List[Dict]:
+        """Execute a single Perplexity query and parse results."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.perplexity_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-sonar-small-128k-online",
+                        "messages": [
+                            {"role": "system", "content": "You are a job opportunity finder. Return ONLY valid JSON arrays. No explanations."},
+                            {"role": "user", "content": query}
+                        ],
+                        "max_tokens": 4000,
+                        "temperature": 0.2,
+                        "return_related_questions": False
+                    }
+                )
+
+                if response.is_success:
+                    data = response.json()
+                    content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                    return self._parse_json_from_text(content)
+                else:
+                    logger.warning(f"Perplexity API error: {response.status_code}")
+                    return []
+        except Exception as e:
+            logger.error(f"Perplexity query failed: {e}")
+            return []
+
+    async def _direct_perplexity_search_legacy(self) -> List[Dict]:
+        """Legacy method - kept for reference."""
+        return await self._direct_perplexity_search()
+
+    async def _original_perplexity_search(self) -> List[Dict]:
+        """Original simple search - deprecated in favor of diversified queries."""
+        if not self.perplexity_key:
+            return []
+
+        opportunities = []
         queries = [
-            # === EMAIL-BASED (highest conversion) ===
-            """Find job postings that include email contact for developers. Search across job boards,
-            forums, and social media. Return JSON: [{"title": "...", "url": "...", "email": "...", "platform": "..."}]""",
-
-            # === TWITTER OPPORTUNITIES ===
-            """Find tweets from people hiring developers or looking for freelancers. Include the
-            Twitter handle of the poster. Return JSON: [{"title": "...", "url": "...", "twitter_handle": "@...", "platform": "twitter"}]""",
-
-            # === LINKEDIN OPPORTUNITIES ===
-            """Find LinkedIn posts about hiring developers, seeking consultants, or looking for
-            freelancers. Include LinkedIn profile URLs. Return JSON: [{"title": "...", "url": "...", "linkedin_url": "...", "platform": "linkedin"}]""",
-
-            # === UPWORK/FREELANCE PLATFORMS ===
-            """Find active job postings on Upwork, Freelancer, Fiverr for web development,
-            mobile apps, Python, data science. Return JSON: [{"title": "...", "url": "...", "platform": "upwork/freelancer/fiverr", "budget": "..."}]""",
-
-            # === GITHUB BOUNTIES ===
-            """Find GitHub issues with bounties, paid work, or help wanted labels that offer payment.
-            Include the repository URL and poster. Return JSON: [{"title": "...", "url": "...", "github_user": "...", "bounty": "...", "platform": "github"}]""",
-
-            # === REDDIT (with email extraction) ===
-            """Find Reddit posts in r/forhire, r/hiring, r/slavelabour where people are hiring AND
-            include their email address in the post. Return JSON: [{"title": "...", "url": "...", "email": "...", "reddit_user": "...", "platform": "reddit"}]""",
-
-            # === STARTUP/CONSULTING ===
-            """Find startup hiring posts, CTO positions, or consulting opportunities that include
-            contact email or LinkedIn. Return JSON: [{"title": "...", "url": "...", "contact": "...", "platform": "..."}]""",
-
-            # === DISCORD/TELEGRAM ===
-            """Find Discord servers or Telegram groups hiring developers or moderators. Include
-            invite links or contact info. Return JSON: [{"title": "...", "url": "...", "platform": "discord/telegram"}]""",
+            'Find job postings for developers with email contact. Return JSON array.',
         ]
 
         async with httpx.AsyncClient(timeout=30) as client:
