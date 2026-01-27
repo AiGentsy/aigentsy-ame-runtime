@@ -254,22 +254,39 @@ class HybridDiscoveryEngine:
         queries = self._get_diversified_queries()
 
         # Run queries in batches to avoid rate limits
-        batch_size = 10
-        for i in range(0, len(queries), batch_size):
-            batch = queries[i:i + batch_size]
+        batch_size = 5  # Reduced batch size to avoid rate limits
+        total_queries = len(queries)
+        successful_queries = 0
+        failed_queries = 0
+        total_results = 0
+
+        logger.info(f"🔍 Running {total_queries} Perplexity queries in batches of {batch_size}")
+
+        # Only run first 20 queries to avoid rate limits (Perplexity has strict limits)
+        queries_to_run = queries[:20]
+
+        for i in range(0, len(queries_to_run), batch_size):
+            batch = queries_to_run[i:i + batch_size]
             batch_results = await asyncio.gather(*[
                 self._run_single_perplexity_query(q) for q in batch
             ], return_exceptions=True)
 
-            for result in batch_results:
-                if isinstance(result, list):
+            for j, result in enumerate(batch_results):
+                if isinstance(result, Exception):
+                    failed_queries += 1
+                    logger.debug(f"Query {i+j+1} failed: {result}")
+                elif isinstance(result, list):
+                    successful_queries += 1
+                    total_results += len(result)
                     opportunities.extend(result)
+                else:
+                    failed_queries += 1
 
-            # Small delay between batches
-            if i + batch_size < len(queries):
-                await asyncio.sleep(0.5)
+            # Longer delay between batches to respect rate limits
+            if i + batch_size < len(queries_to_run):
+                await asyncio.sleep(2)  # Increased from 0.5 to 2 seconds
 
-        logger.info(f"Perplexity total: {len(opportunities)} opportunities from {len(queries)} queries")
+        logger.info(f"📊 Perplexity summary: {total_results} opportunities from {successful_queries}/{len(queries_to_run)} queries ({failed_queries} failed)")
         return opportunities
 
     def _get_diversified_queries(self) -> List[str]:
@@ -520,14 +537,27 @@ Return ONLY the JSON array, nothing else."""
                     data = response.json()
                     content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
 
+                    if not content:
+                        logger.debug(f"Perplexity returned empty content for query")
+                        return []
+
                     # Parse JSON
                     results = self._parse_json_from_text(content)
+
+                    if not results:
+                        # Log first 200 chars to see what Perplexity returned
+                        logger.debug(f"JSON parse failed. Content preview: {content[:200]}")
+                        return []
 
                     # Post-process: detect platform from URL if not set
                     processed = []
                     for r in results:
                         if isinstance(r, dict):
                             url = r.get('url', '')
+
+                            # Skip invalid URLs
+                            if not url or 'example.com' in url or url.startswith('http://example'):
+                                continue
 
                             # Detect platform from URL
                             detected_platform = self._detect_platform_from_url(url)
@@ -552,10 +582,13 @@ Return ONLY the JSON array, nothing else."""
 
                     return processed
                 else:
-                    logger.warning(f"Perplexity API error: {response.status_code} - {response.text[:200]}")
+                    logger.warning(f"Perplexity API error {response.status_code}: {response.text[:300]}")
                     return []
+        except httpx.TimeoutException:
+            logger.debug(f"Perplexity query timed out")
+            return []
         except Exception as e:
-            logger.error(f"Perplexity query failed: {e}")
+            logger.error(f"Perplexity query failed: {type(e).__name__}: {e}")
             return []
 
     def _detect_platform_from_url(self, url: str) -> Optional[str]:
