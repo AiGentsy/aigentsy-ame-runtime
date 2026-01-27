@@ -222,263 +222,160 @@ class HybridDiscoveryEngine:
 
     def _get_diversified_queries(self) -> List[str]:
         """
-        Generate 100+ diversified queries using site: prefixes for targeted platform search.
+        Generate diversified queries for multi-platform discovery.
 
-        Format: "site:platform.com keywords" for precise platform targeting
+        NOTE: Perplexity AI does NOT support site: prefix queries.
+        Use natural language with platform names as keywords instead.
         """
         queries = []
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 1: EMAIL-BASED OPPORTUNITIES (20 queries - highest conversion)
+        # CATEGORY 1: TWITTER/X OPPORTUNITIES (highest priority for DM outreach)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "hiring developer contact email React Vue Angular immediate start",
-            "freelance work email Python Django FastAPI remote contract opportunity",
-            "job opportunity email mobile iOS Android Swift Kotlin urgent",
-            "contract position email data science ML TensorFlow PyTorch",
-            "consulting email DevOps AWS Docker Kubernetes infrastructure",
-            "project needs developer email API integration microservices",
-            "startup hiring CTO technical email cofounder equity opportunity",
-            "email contact full-stack developer MERN MEAN stack needed",
-            "blockchain developer email Solidity Web3 smart contracts DeFi",
-            "automation developer email RPA Python Selenium scraping bot",
-            "database expert email PostgreSQL MySQL MongoDB optimization",
-            "security consultant email penetration testing audit compliance",
-            "WordPress developer email plugin customization WooCommerce store",
-            "Shopify expert email theme customization liquid development",
-            "email contact QA automation testing Cypress Jest Playwright",
-            "cloud architect email GCP Azure multi-cloud migration project",
-            "frontend developer email Tailwind Next.js TypeScript SPA",
-            "backend engineer email Node Express Go Rust high performance",
-            "AI engineer email GPT LangChain vector databases RAG chatbot",
-            "game developer email Unity Unreal C++ multiplayer network",
+            "Twitter tweet hiring developer React freelance DM me 2025",
+            "X.com post looking for engineer available contract work now",
+            "Twitter hiring Python developer remote DM open immediately",
+            "tweet thread need developer urgently project deadline DM",
+            "Twitter X hiring full-stack developer MERN Node available",
+            "X post seeking mobile developer iOS Android contract work",
+            "Twitter hiring blockchain developer Solidity Web3 DM open",
+            "tweet looking for DevOps engineer AWS Kubernetes freelance",
+            "Twitter post need AI engineer ML GPT LangChain contract",
+            "X.com thread hiring frontend developer React Vue immediate",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 2: TWITTER/X OPPORTUNITIES (15 queries with site: prefix)
+        # CATEGORY 2: LINKEDIN JOB POSTS (high-quality leads)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:twitter.com hiring developer React open work DM immediately",
-            "site:twitter.com looking engineer freelance available contract",
-            "site:twitter.com seeking consultant project paid remote DM",
-            "site:twitter.com need developer help urgent project deadline",
-            "site:x.com hiring remote developer immediate start contract",
-            "site:twitter.com technical cofounder equity startup DM open",
-            "site:twitter.com contract work Python automation available now",
-            "site:x.com freelance mobile developer iOS Android needed",
-            "site:twitter.com web3 developer needed Solidity DM open",
-            "site:twitter.com DevOps engineer AWS Kubernetes available",
-            "site:x.com data scientist ML project freelance contract",
-            "site:twitter.com full-stack developer MERN available DM",
-            "site:twitter.com API integration developer needed urgent",
-            "site:x.com frontend React developer remote contract work",
-            "site:twitter.com blockchain developer Web3 DM open hiring",
+            "LinkedIn post hiring software developer remote contract 2025",
+            "LinkedIn job opening React developer immediate start apply",
+            "LinkedIn hiring Python engineer data science contract role",
+            "LinkedIn post looking for DevOps engineer cloud AWS remote",
+            "LinkedIn job full-stack developer Node React urgent hiring",
+            "LinkedIn recruiter hiring mobile developer iOS Android",
+            "LinkedIn post seeking AI ML engineer machine learning role",
+            "LinkedIn hiring blockchain developer Web3 crypto contract",
+            "LinkedIn job frontend developer TypeScript Vue immediate",
+            "LinkedIn backend engineer Go Rust microservices contract",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 3: LINKEDIN OPPORTUNITIES (15 queries)
+        # CATEGORY 3: UPWORK/FREELANCE PLATFORM JOBS
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:linkedin.com hiring developer remote immediate start",
-            "site:linkedin.com seeking consultant freelance contract urgent",
-            "site:linkedin.com job opening software engineer contact now",
-            "site:linkedin.com looking developer project work paid",
-            "site:linkedin.com technical architect needed cloud AWS GCP",
-            "site:linkedin.com full-stack developer React Node urgent",
-            "site:linkedin.com data engineer Python Spark immediate",
-            "site:linkedin.com mobile developer iOS Android contract",
-            "site:linkedin.com DevOps engineer Kubernetes Docker remote",
-            "site:linkedin.com security engineer penetration testing",
-            "site:linkedin.com blockchain developer Solidity Web3 DeFi",
-            "site:linkedin.com AI engineer machine learning GPT LLM",
-            "site:linkedin.com frontend developer TypeScript React Vue",
-            "site:linkedin.com backend engineer Go Rust microservices",
-            "site:linkedin.com QA automation engineer Selenium Cypress",
+            "Upwork job React developer high budget urgent project",
+            "Upwork hiring Python automation expert data scraping",
+            "Upwork post mobile app developer iOS Android Swift needed",
+            "Upwork job blockchain Solidity smart contract development",
+            "Upwork DevOps AWS Kubernetes expert infrastructure setup",
+            "Freelancer.com job full-stack MERN developer high paying",
+            "Fiverr custom development React Node enterprise project",
+            "Toptal developer contract remote high budget urgent",
+            "freelance platform job web developer immediate start",
+            "Upwork ML engineer data science model development urgent",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 4: UPWORK/FREELANCE PLATFORMS (12 queries)
+        # CATEGORY 4: EMAIL-BASED OPPORTUNITIES (direct contact)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:upwork.com React Vue web development high budget urgent",
-            "site:upwork.com Python automation scraping expert needed",
-            "site:upwork.com mobile app iOS Android Swift urgent project",
-            "site:upwork.com blockchain Solidity Web3 smart contracts",
-            "site:upwork.com DevOps AWS Kubernetes infrastructure setup",
-            "site:freelancer.com full-stack MERN developer high paying",
-            "site:freelancer.com data science ML model expert urgent",
-            "site:freelancer.com API integration microservices expert",
-            "site:fiverr.com custom enterprise development React expert",
-            "site:fiverr.com automation bot Python Selenium advanced",
-            "site:toptal.com developer needed urgent high budget contract",
-            "site:gun.io software engineer contract remote high rate",
+            "hiring developer send resume email React Angular 2025",
+            "freelance opportunity contact email Python Django FastAPI",
+            "job posting apply via email mobile developer iOS Android",
+            "contract work email your portfolio full-stack developer",
+            "startup hiring email founders@company developer needed",
+            "project work submit proposal email web development",
+            "consulting opportunity email inquiry cloud architecture",
+            "developer wanted email application data engineering",
+            "remote work apply email frontend React TypeScript job",
+            "contract position email resume backend Node Go Rust",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 5: GITHUB (Discovery only - NO auto-comments!) (5 queries)
+        # CATEGORY 5: GITHUB BOUNTIES (manual review - no auto-comments)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:github.com issue bounty payment reward bug fix",
-            "site:github.com seeking contributors paid compensation open",
-            "site:github.com help wanted bounty open source paid",
-            "site:github.com feature request bounty payment offer",
-            "site:github.com sponsorship opportunity open source maintainer",
+            "GitHub issue bounty reward bug fix payment offered",
+            "GitHub repository help wanted paid contributor seeking",
+            "GitHub project bounty open source compensation available",
+            "GitHub issue sponsor reward feature request development",
+            "open source GitHub bounty payment contributor wanted",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 6: INDIE HACKERS / STARTUP COMMUNITIES (8 queries)
+        # CATEGORY 6: INDIE HACKERS / STARTUP COMMUNITIES
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:indiehackers.com looking developer cofounder equity",
-            "site:indiehackers.com technical cofounder needed startup",
-            "site:producthunt.com seeking developer partner equity share",
-            "site:ycombinator.com hiring developer startup YC funded",
-            "site:news.ycombinator.com hiring developer remote contract",
-            "site:wellfound.com startup developer equity cofounder",
-            "site:betalist.com technical cofounder developer needed",
-            "site:crunchbase.com startup hiring developer remote funded",
+            "Indie Hackers looking for technical cofounder developer equity",
+            "Product Hunt maker seeking developer partner startup",
+            "YC Hacker News hiring post startup developer remote",
+            "AngelList Wellfound startup hiring developer equity offer",
+            "startup community technical cofounder developer needed 2025",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 7: REDDIT (5 queries - limited to avoid noise)
+        # CATEGORY 7: REDDIT (limited - already have direct API)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:reddit.com/r/forhire hiring developer budget email",
-            "site:reddit.com/r/slavelabour developer needed urgent paid",
-            "site:reddit.com/r/freelance_forhire technical project paid",
-            "site:reddit.com/r/workonline developer contract remote",
-            "site:reddit.com/r/startups technical cofounder needed equity",
+            "Reddit r/forhire hiring developer budget email contact",
+            "Reddit post freelance developer project paid work",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 8: DISCORD/TELEGRAM COMMUNITIES (5 queries)
+        # CATEGORY 8: REMOTE JOB BOARDS
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "discord server hiring developer moderator paid position",
-            "telegram group developer needed paid contract work",
-            "discord community job posting developer remote paid",
-            "telegram channel hiring developer blockchain Web3 crypto",
-            "discord hiring React developer full-time contract remote",
+            "We Work Remotely job developer contract immediate start",
+            "RemoteOK job listing developer hiring urgent apply now",
+            "remote job board developer position contract freelance",
+            "Stack Overflow Jobs developer remote contract opportunity",
+            "remote work listing software engineer apply email",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 9: NICHE JOB BOARDS (10 queries)
+        # CATEGORY 9: TECH COMMUNITIES (natural language, no site: prefix)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:weworkremotely.com developer remote contract urgent",
-            "site:remoteok.io developer urgent hiring immediate start",
-            "site:authenticjobs.com developer contract freelance work",
-            "site:stackoverflow.com/jobs developer remote contract",
-            "site:dribbble.com hiring designer developer collaboration",
-            "site:behance.net project developer designer needed urgent",
-            "site:angel.co developer startup equity remote contract",
-            "site:hired.com developer urgent remote high salary",
-            "site:dice.com developer contract remote immediate",
-            "site:indeed.com developer contract remote email contact",
+            "Dev.to post hiring developer freelance contract paid 2025",
+            "Hashnode blog developer needed technical writing opportunity",
+            "Medium article hiring developer technical content paid",
+            "tech community blog post developer opportunity remote",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 10: TECH COMMUNITIES (8 queries)
+        # CATEGORY 10: SPECIFIC TECH SKILLS (with platform mentions)
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "site:dev.to hiring developer freelance contract paid",
-            "site:hashnode.com developer needed technical writing",
-            "site:medium.com hiring developer technical content paid",
-            "site:substack.com developer needed newsletter automation",
-            "site:notion.so hiring developer automation integration",
-            "site:airtable.com developer needed custom automation",
-            "site:zapier.com developer integration custom workflow",
-            "site:make.com developer scenario automation expert needed",
+            "React Next.js developer hiring remote contract email apply",
+            "Python developer automation data pipeline ETL job posting",
+            "Node.js Express backend developer contract opportunity",
+            "iOS Android mobile app developer hiring email contact",
+            "DevOps Kubernetes cloud engineer job AWS GCP remote",
+            "AI ML engineer data scientist hiring email contact 2025",
+            "blockchain Web3 Solidity developer job crypto defi",
+            "WordPress Shopify developer e-commerce job email",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 11: SPECIFIC TECH SKILLS (10 queries)
+        # CATEGORY 11: INDUSTRY-SPECIFIC
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "React.js Next.js developer hiring remote contract email contact",
-            "Python developer automation data pipeline ETL hiring email",
-            "Node.js Express backend developer opportunities contract",
-            "iOS Android mobile app development jobs hiring email",
-            "DevOps Kubernetes cloud infrastructure jobs AWS GCP",
-            "AI ML engineer data scientist job hiring email contact",
-            "blockchain Web3 Solidity developer opportunities crypto",
-            "WordPress Shopify e-commerce developer jobs email",
-            "API development integration specialist jobs microservices",
-            "no-code low-code automation specialist Zapier Make n8n",
+            "fintech company hiring developer payment crypto trading",
+            "healthtech startup engineer HIPAA healthcare developer",
+            "edtech company hiring developer LMS learning platform",
+            "SaaS company hiring full-stack developer B2B product",
         ])
 
         # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 12: INDUSTRY-SPECIFIC (10 queries)
+        # CATEGORY 12: PROJECT-BASED & GIGS
         # ═══════════════════════════════════════════════════════════════════════════
         queries.extend([
-            "fintech companies hiring developers payment crypto trading",
-            "healthtech medtech startups engineer HIPAA healthcare",
-            "edtech companies hiring platform LMS learning developer",
-            "e-commerce businesses Shopify developer store automation",
-            "real estate tech proptech companies developer MLS",
-            "legaltech companies developer contract management",
-            "marketing agencies hiring developer automation analytics",
-            "gaming studios indie game developer Unity Unreal C++",
-            "SaaS companies hiring full-stack developer B2B",
-            "media content companies developer CMS video streaming",
-        ])
-
-        # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 13: CONSULTING & AGENCIES (8 queries)
-        # ═══════════════════════════════════════════════════════════════════════════
-        queries.extend([
-            "consulting firms hiring contract developers enterprise",
-            "digital agencies freelance developers web mobile",
-            "dev shops software agencies contractor positions",
-            "IT consulting companies client projects developer",
-            "design agencies frontend developer UX implementation",
-            "staff augmentation companies developer placement",
-            "managed services providers technical staff hiring",
-            "fractional CTO technical advisor opportunities startup",
-        ])
-
-        # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 14: PROJECT-BASED & GIGS (8 queries)
-        # ═══════════════════════════════════════════════════════════════════════════
-        queries.extend([
-            "one-time coding project quick fix needed budget",
-            "MVP development project startup founder email",
-            "website redesign project small business owner",
-            "mobile app project entrepreneur budget deadline",
-            "automation scripting task paid Python budget",
-            "bug fixing debugging paid task urgent developer",
-            "landing page marketing site project budget email",
-            "API integration webhook setup project deadline",
-        ])
-
-        # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 15: GEOGRAPHIC/REMOTE (8 queries)
-        # ═══════════════════════════════════════════════════════════════════════════
-        queries.extend([
-            "fully remote developer jobs US company worldwide",
-            "European remote developer opportunities timezone",
-            "async-first companies hiring developers remote",
-            "remote-first startups hiring globally developer",
-            "digital nomad friendly developer jobs anywhere",
-            "work from anywhere tech positions developer",
-            "LATAM developer remote jobs US company contract",
-            "distributed team company hiring engineer remote",
-        ])
-
-        # ═══════════════════════════════════════════════════════════════════════════
-        # CATEGORY 16: NON-TECH NEEDING TECH HELP (10 queries)
-        # ═══════════════════════════════════════════════════════════════════════════
-        queries.extend([
-            "small business owner needing website help email contact",
-            "restaurant local business online ordering system developer",
-            "fitness trainer coach needing app built budget",
-            "content creator needing website tool development",
-            "real estate agent property website MLS integration",
-            "lawyer attorney client portal legal tech developer",
-            "doctor healthcare provider booking system HIPAA",
-            "teacher educator learning platform LMS development",
-            "artist musician portfolio site custom development",
-            "non-profit volunteer management system developer",
+            "one-time coding project needed budget email contact",
+            "MVP development startup founder hiring developer email",
+            "website redesign project small business budget apply",
+            "mobile app project entrepreneur developer needed email",
         ])
 
         return queries
@@ -488,51 +385,64 @@ class HybridDiscoveryEngine:
         Execute a single Perplexity query with improved prompting.
 
         Key improvements:
-        - Explicit JSON structure in prompt
-        - Platform detection from URLs
+        - Natural language platform targeting (no site: prefix)
+        - Platform detection from query keywords and URLs
         - Better error logging
         """
         try:
-            # Determine if query targets a specific platform
+            # Determine if query targets a specific platform from keywords
+            query_lower = query.lower()
             target_platform = None
-            if 'site:twitter.com' in query or 'site:x.com' in query:
+            if 'twitter' in query_lower or 'x.com' in query_lower or 'tweet' in query_lower:
                 target_platform = 'twitter'
-            elif 'site:linkedin.com' in query:
+            elif 'linkedin' in query_lower:
                 target_platform = 'linkedin'
-            elif 'site:upwork.com' in query:
+            elif 'upwork' in query_lower or 'freelancer' in query_lower or 'fiverr' in query_lower or 'toptal' in query_lower:
                 target_platform = 'upwork'
-            elif 'site:reddit.com' in query:
+            elif 'reddit' in query_lower or 'r/forhire' in query_lower:
                 target_platform = 'reddit'
-            elif 'site:github.com' in query:
+            elif 'github' in query_lower:
                 target_platform = 'github'
+            elif 'indie hacker' in query_lower or 'product hunt' in query_lower or 'hacker news' in query_lower:
+                target_platform = 'hackernews'
 
-            # Build enhanced prompt with explicit JSON structure
-            system_prompt = """You are a job opportunity finder searching the internet for real opportunities.
+            # Build enhanced prompt with explicit JSON structure and platform targeting
+            platform_hint = ""
+            if target_platform:
+                platform_hint = f"\nFocus on finding opportunities from {target_platform.upper()} specifically."
 
-IMPORTANT: Return ONLY a valid JSON array. No explanations, no markdown, just JSON.
+            system_prompt = f"""You are a job opportunity finder searching the internet for REAL, RECENT job postings and freelance opportunities.
 
-Each opportunity must have this exact structure:
+CRITICAL: Return ONLY a valid JSON array. No explanations, no markdown code blocks, just raw JSON.
+
+Each opportunity MUST have this exact structure:
 [
-  {
+  {{
     "title": "Job title or opportunity description",
-    "url": "Full URL to the opportunity",
+    "url": "Full URL to the actual post (e.g., twitter.com/user/status/123, linkedin.com/jobs/view/123)",
     "platform": "twitter/linkedin/upwork/reddit/github/web",
-    "description": "Brief description",
-    "contact": "Email, @handle, or username if visible"
-  }
+    "description": "Brief description of what they're looking for",
+    "contact": "Email address, @twitterhandle, or username if visible in the post"
+  }}
 ]
 
-Focus on RECENT opportunities (last 7 days). Include the actual URL where the opportunity was posted."""
+IMPORTANT RULES:
+- Only include REAL opportunities you find in your search
+- URLs must be actual links to the posts (not example.com)
+- Include the poster's contact info if visible (email, @handle, username)
+- Focus on opportunities from the LAST 7 DAYS
+- Platform field must accurately reflect where the opportunity was posted{platform_hint}"""
 
-            user_prompt = f"""Find 10 real job/project opportunities matching: {query}
+            user_prompt = f"""Search the internet and find 5-10 real job/project opportunities matching: {query}
 
 Requirements:
-- Must be actual job postings or project requests
-- Include the real URL for each opportunity
-- Extract any contact info (email, @handle, username)
-- Focus on opportunities from the last week
+- Must be actual, real job postings or project requests (not made up)
+- Include the real, working URL for each opportunity
+- Extract any contact info visible in the post
+- Only include opportunities posted in the last week
+- Include opportunities from the specified platform if mentioned
 
-Return as JSON array only."""
+Return ONLY the JSON array, nothing else."""
 
             async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(
