@@ -214,6 +214,13 @@ class MultiSourceDiscovery:
         # Take top N
         final = interleaved[:max_opportunities]
 
+        # AI-powered contact enrichment for opportunities missing contact
+        if 'openrouter' in self.sources:
+            logger.info("\n" + "-" * 40)
+            logger.info("AI CONTACT ENRICHMENT (OpenRouter)")
+            logger.info("-" * 40)
+            final = await self._ai_contact_enrichment(final)
+
         # Count with contact
         with_contact = sum(1 for o in final if self._has_contact(o))
         self.stats['with_contact'] += with_contact
@@ -240,31 +247,38 @@ class MultiSourceDiscovery:
         api_key = self.sources['perplexity']['api_key']
         opportunities = []
 
-        # Diversified queries targeting different platforms and contact types
+        # OPTIMIZED queries - focus on posts with EXPLICIT email addresses
+        # These patterns indicate someone publicly sharing their contact
         queries = [
-            # Email-focused queries (highest conversion)
-            "developer needed email contact hire 2025",
-            "hiring software engineer email resume apply",
-            "freelance developer contact email urgent project",
-            "React developer needed email portfolio apply",
-            "Python engineer hire contact email immediately",
+            # HIGH PRIORITY: Posts with explicit email patterns
+            '"email me at" developer hire 2025',
+            '"send resume to" software engineer job',
+            '"contact me at" gmail.com developer freelance',
+            '"reach out" email developer project needed',
+            '"apply via email" developer remote job',
 
-            # Twitter-focused queries (for DM outreach)
-            "Twitter hiring developer DM open 2025",
-            "tweet need developer DM me urgent",
-            "X.com hiring engineer DM available",
+            # Email domain patterns (people often share gmail/outlook)
+            'hiring developer "@gmail.com" contact',
+            'need developer "@outlook.com" project',
+            'freelance engineer "send to" email',
 
-            # LinkedIn-focused queries
-            "LinkedIn hiring developer remote 2025",
-            "LinkedIn post software engineer needed",
+            # Twitter/X with DM requests
+            '"DM me" hiring developer Twitter 2025',
+            '"DMs open" need developer urgent',
+            'X.com "@" hiring engineer contact',
 
-            # Platform-specific
-            "Upwork high budget developer urgent",
-            "freelance platform developer contract",
+            # LinkedIn with profile URLs
+            '"linkedin.com/in/" hiring developer',
+            'connect LinkedIn developer needed',
 
-            # Startup/tech focused
-            "startup CTO cofounder developer equity",
-            "YC startup hiring engineer remote",
+            # Job boards with direct apply
+            'Upwork developer "$5000" urgent contract',
+            'Freelancer high budget developer project',
+
+            # Startup founder posts (often include email)
+            'startup founder "looking for" developer email',
+            'cofounder "contact" developer equity',
+            'YC startup hiring engineer "reach out"',
         ]
 
         logger.info(f"  [perplexity] Running {len(queries)} queries...")
@@ -695,22 +709,71 @@ JSON only:"""
                             body = post_data.get('selftext', '')
                             permalink = post_data.get('permalink', '')
 
-                            # Extract email from post body if present
+                            # Extract ALL contact methods from post body
                             contact = {
                                 'reddit_username': author,
                                 'platform': 'reddit',
                                 'preferred_outreach': 'reddit_dm'
                             }
 
-                            # Try to extract email from body
+                            # Combine title and body for extraction
+                            full_text = f"{title} {body}"
+
+                            # 1. Email (highest priority)
                             email_match = re.search(
                                 r'[\w.+-]+@[\w-]+\.[\w.-]+',
-                                body,
+                                full_text,
                                 re.IGNORECASE
                             )
                             if email_match:
-                                contact['email'] = email_match.group(0)
-                                contact['preferred_outreach'] = 'email'
+                                email = email_match.group(0).lower()
+                                # Filter out common non-contact emails
+                                if not any(x in email for x in ['example.', 'test.', 'noreply', 'no-reply']):
+                                    contact['email'] = email
+                                    contact['preferred_outreach'] = 'email'
+
+                            # 2. Twitter/X handle
+                            twitter_match = re.search(
+                                r'(?:twitter\.com/|x\.com/|@)([a-zA-Z0-9_]{1,15})\b',
+                                full_text,
+                                re.IGNORECASE
+                            )
+                            if twitter_match:
+                                handle = twitter_match.group(1)
+                                if handle.lower() not in ['twitter', 'x', 'com', 'status', 'i']:
+                                    contact['twitter_handle'] = handle
+                                    if not contact.get('email'):
+                                        contact['preferred_outreach'] = 'twitter_dm'
+
+                            # 3. LinkedIn URL
+                            linkedin_match = re.search(
+                                r'linkedin\.com/in/([a-zA-Z0-9-]+)',
+                                full_text,
+                                re.IGNORECASE
+                            )
+                            if linkedin_match:
+                                contact['linkedin_id'] = linkedin_match.group(1)
+                                if not contact.get('email') and not contact.get('twitter_handle'):
+                                    contact['preferred_outreach'] = 'linkedin_message'
+
+                            # 4. Phone number
+                            phone_match = re.search(
+                                r'\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+                                full_text
+                            )
+                            if phone_match:
+                                contact['phone'] = phone_match.group(0)
+                                if not contact.get('email'):
+                                    contact['preferred_outreach'] = 'sms'
+
+                            # 5. Discord
+                            discord_match = re.search(
+                                r'(?:discord[:\s]+)?([a-zA-Z0-9_]+#\d{4})',
+                                full_text,
+                                re.IGNORECASE
+                            )
+                            if discord_match:
+                                contact['discord'] = discord_match.group(1)
 
                             opportunities.append({
                                 'id': f"reddit_{post_id}",
@@ -736,6 +799,119 @@ JSON only:"""
                     logger.debug(f"Reddit fetch error for r/{subreddit}: {e}")
 
         logger.info(f"  [reddit] Found {len(opportunities)} opportunities")
+        return opportunities
+
+    async def _ai_contact_enrichment(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Use AI (OpenRouter) to extract contact info from opportunity text/body.
+
+        For opportunities missing contact info, analyzes the body text
+        to extract email, phone, Twitter handle, etc.
+        """
+        api_key = self.sources.get('openrouter', {}).get('api_key')
+        if not api_key:
+            return opportunities
+
+        # Find opportunities missing contact
+        needs_enrichment = [
+            (i, opp) for i, opp in enumerate(opportunities)
+            if not self._has_contact(opp) and opp.get('body')
+        ]
+
+        if not needs_enrichment:
+            logger.info("  All opportunities already have contact info")
+            return opportunities
+
+        logger.info(f"  Enriching {len(needs_enrichment)} opportunities missing contact...")
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            for idx, opp in needs_enrichment[:10]:  # Limit to 10 to avoid cost
+                body = opp.get('body', '')[:2000]  # Truncate to save tokens
+                title = opp.get('title', '')
+
+                if not body.strip():
+                    continue
+
+                try:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://aigentsy.com",
+                            "X-Title": "AiGentsy Contact Extraction"
+                        },
+                        json={
+                            "model": "anthropic/claude-3-haiku",
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": f"""Extract contact information from this job posting.
+
+Title: {title}
+Body: {body}
+
+Return ONLY a JSON object with any contact info found:
+{{"email": "...", "phone": "...", "twitter": "@...", "linkedin": "..."}}
+
+If nothing found, return: {{"found": false}}
+
+JSON only:"""
+                                }
+                            ],
+                            "temperature": 0,
+                            "max_tokens": 200
+                        }
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+
+                        # Parse JSON
+                        json_match = re.search(r'\{[^{}]*\}', content)
+                        if json_match:
+                            try:
+                                contact_data = json.loads(json_match.group(0))
+
+                                if contact_data.get('found') is False:
+                                    continue
+
+                                # Build contact object
+                                contact = {}
+                                if contact_data.get('email'):
+                                    contact['email'] = contact_data['email'].lower()
+                                    contact['preferred_outreach'] = 'email'
+                                if contact_data.get('phone'):
+                                    contact['phone'] = contact_data['phone']
+                                    if not contact.get('preferred_outreach'):
+                                        contact['preferred_outreach'] = 'sms'
+                                if contact_data.get('twitter'):
+                                    handle = contact_data['twitter'].lstrip('@')
+                                    contact['twitter_handle'] = handle
+                                    if not contact.get('preferred_outreach'):
+                                        contact['preferred_outreach'] = 'twitter_dm'
+                                if contact_data.get('linkedin'):
+                                    contact['linkedin_id'] = contact_data['linkedin']
+                                    if not contact.get('preferred_outreach'):
+                                        contact['preferred_outreach'] = 'linkedin_message'
+
+                                if contact:
+                                    contact['extraction_source'] = 'ai_openrouter'
+                                    opportunities[idx]['contact'] = contact
+                                    logger.info(f"    Enriched: {opp.get('id')} -> {contact.get('preferred_outreach')}")
+
+                            except json.JSONDecodeError:
+                                pass
+
+                    await asyncio.sleep(0.5)  # Rate limit
+
+                except Exception as e:
+                    logger.debug(f"AI enrichment error: {e}")
+
+        enriched_count = sum(1 for i, _ in needs_enrichment if self._has_contact(opportunities[i]))
+        logger.info(f"  AI enriched {enriched_count}/{len(needs_enrichment)} opportunities")
+
         return opportunities
 
     def _detect_platform(self, url: str) -> str:
