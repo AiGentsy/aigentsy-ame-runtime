@@ -39,36 +39,60 @@ class PerplexityFirstDiscovery:
     - Layer 3 (5%): Fallback scraping packs
     """
 
-    # Comprehensive search queries covering all verticals
+    # OPTIMIZED queries - broader time window, simpler format, higher yield
     DISCOVERY_QUERIES = [
-        # Tech jobs
-        """Find job postings for software developers, engineers, and programmers
-        posted in the last 24 hours on Reddit, HackerNews, Twitter, LinkedIn,
-        IndieHackers, and tech job boards. Include salary/budget if mentioned.""",
+        # Tech jobs - broader time window
+        """Find software developer and engineer job postings from Reddit,
+        HackerNews, Twitter, and LinkedIn posted this week. Include remote
+        and contract positions. For each job found, return JSON with:
+        {"title": "...", "url": "...", "platform": "...", "summary": "..."}
 
-        # Freelance/Gigs
-        """Find freelance opportunities, gig postings, and contract work
-        for developers, designers, and creatives posted today on Upwork,
-        Fiverr, Reddit, Twitter, and freelance forums. Include rates if mentioned.""",
+        Return a JSON array. Find at least 50 jobs.""",
 
-        # Projects/Collaborations
-        """Find project collaboration requests, startup co-founder searches,
-        and partnership opportunities posted today on ProductHunt, IndieHackers,
-        HackerNews, Reddit startups/entrepreneur, and startup forums.""",
+        # Freelance - active gigs
+        """Search for active freelance gigs and contract work for developers,
+        designers, and writers on Upwork, Fiverr, Reddit r/forhire, and Twitter.
+        Focus on paid opportunities posted this month.
 
-        # Remote work
-        """Find remote job opportunities and work-from-home positions
-        posted in the last 24 hours on WeWorkRemotely, RemoteOK, Remote.co,
-        and other remote job boards.""",
+        Return JSON array: [{"title": "...", "url": "...", "platform": "...", "budget": "..."}]
 
-        # Creative/Design
-        """Find design work, creative projects, and art commissions
-        posted today on Dribbble, Behance, 99designs, and design communities.""",
+        Find at least 30 gigs.""",
 
-        # Consulting/High-value
-        """Find consulting opportunities, advisory roles, and high-value
-        contract positions posted today on LinkedIn, AngelList, and
-        professional networks. Focus on 6-figure+ opportunities."""
+        # Projects & collaborations
+        """Find project collaboration requests and startup opportunities on
+        ProductHunt, IndieHackers, HackerNews, and startup forums posted
+        recently. Include co-founder searches and partnership opportunities.
+
+        JSON format: [{"title": "...", "url": "...", "platform": "..."}]
+
+        Find at least 20 opportunities.""",
+
+        # Remote work - broad search
+        """Search WeWorkRemotely, Remote.co, RemoteOK, and other remote job
+        boards for developer, designer, and tech roles. Include positions
+        posted this month with salary information when available.
+
+        Return JSON: [{"title": "...", "url": "...", "platform": "...", "salary": "..."}]
+
+        Find at least 40 remote jobs.""",
+
+        # High-value consulting
+        """Find consulting, advisory, and high-value contract opportunities
+        on LinkedIn, AngelList, and professional networks. Include fractional
+        roles and expert positions posted recently.
+
+        JSON: [{"title": "...", "url": "...", "platform": "...", "rate": "..."}]
+
+        Find at least 15 opportunities.""",
+
+        # General tech opportunities
+        """Search across all platforms for: bug bounties, open source bounties,
+        technical writing gigs, code review jobs, and development opportunities.
+        Include GitHub, Gitcoin, and developer communities.
+
+        Return JSON: [{"title": "...", "url": "...", "platform": "..."}]
+
+        Find at least 25 opportunities."""
     ]
 
     def __init__(self):
@@ -135,99 +159,99 @@ class PerplexityFirstDiscovery:
         Use Perplexity to search ENTIRE INTERNET
 
         This is the PRIMARY discovery method.
+        OPTIMIZED: Higher token limit, broader time window, high search context
         """
         import httpx
+        import asyncio
 
         all_opportunities = []
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=90) as client:
             for i, query in enumerate(self.DISCOVERY_QUERIES, 1):
-                try:
-                    logger.info(f"Perplexity query {i}/{len(self.DISCOVERY_QUERIES)}...")
-                    self.stats['perplexity_queries'] += 1
+                retry_count = 0
+                max_retries = 2
 
-                    response = await client.post(
-                        'https://api.perplexity.ai/chat/completions',
-                        json={
-                            'model': 'sonar',
-                            'messages': [{
-                                'role': 'user',
-                                'content': f"""{query}
+                while retry_count <= max_retries:
+                    try:
+                        logger.info(f"Perplexity query {i}/{len(self.DISCOVERY_QUERIES)} (attempt {retry_count + 1})...")
+                        if retry_count == 0:
+                            self.stats['perplexity_queries'] += 1
 
-Return a JSON array of opportunities in this EXACT format:
-[
-  {{
-    "title": "exact job/gig title",
-    "url": "direct URL to posting",
-    "platform": "source platform (Reddit, Twitter, HN, etc)",
-    "description": "brief description with key details",
-    "budget": "salary/rate if mentioned, or null",
-    "contact": "email/username/contact method if visible",
-    "posted_date": "when posted (today, yesterday, etc)",
-    "urgency": "high/medium/low based on keywords like ASAP, urgent",
-    "skills_required": "list of skills mentioned"
-  }}
-]
+                        response = await client.post(
+                            'https://api.perplexity.ai/chat/completions',
+                            json={
+                                'model': 'sonar',
+                                'messages': [{
+                                    'role': 'user',
+                                    'content': query
+                                }],
+                                'max_tokens': 8192,  # INCREASED from 4096
+                                'temperature': 0.1,
+                                'search_recency_filter': 'month',  # CHANGED from 'day'
+                            },
+                            headers={'Authorization': f'Bearer {self.perplexity_key}'}
+                        )
 
-Search the ENTIRE internet. Include ALL opportunities you find.
-Return ONLY the JSON array, no markdown fences, no explanation."""
-                            }],
-                            'max_tokens': 4096,
-                            'temperature': 0.1,
-                            'search_recency_filter': 'day'
-                        },
-                        headers={'Authorization': f'Bearer {self.perplexity_key}'}
-                    )
+                        if response.status_code == 200:
+                            data = response.json()
+                            content = data['choices'][0]['message']['content']
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        content = data['choices'][0]['message']['content']
+                            # Parse JSON
+                            opportunities = self._parse_perplexity_response(content)
 
-                        # Parse JSON
-                        opportunities = self._parse_perplexity_response(content)
+                            # RETRY if empty response
+                            if len(opportunities) == 0 and retry_count < max_retries:
+                                logger.warning(f"Query {i} returned 0 results, retrying...")
+                                retry_count += 1
+                                await asyncio.sleep(2)
+                                continue
 
-                        self.last_perplexity_response = {
-                            'query_num': i,
-                            'status': 200,
-                            'model': data.get('model'),
-                            'usage': data.get('usage'),
-                            'raw_content_preview': content[:1000] if content else None,
-                            'raw_content_length': len(content) if content else 0,
-                            'parsed_count': len(opportunities),
-                            'timestamp': datetime.now(timezone.utc).isoformat()
-                        }
+                            self.last_perplexity_response = {
+                                'query_num': i,
+                                'status': 200,
+                                'model': data.get('model'),
+                                'usage': data.get('usage'),
+                                'raw_content_preview': content[:1000] if content else None,
+                                'raw_content_length': len(content) if content else 0,
+                                'parsed_count': len(opportunities),
+                                'retry_count': retry_count,
+                                'timestamp': datetime.now(timezone.utc).isoformat()
+                            }
 
-                        # Normalize each opportunity
-                        for opp in opportunities:
-                            normalized = self._normalize_perplexity(opp)
-                            if normalized:
-                                all_opportunities.append(normalized)
+                            # Normalize each opportunity
+                            for opp in opportunities:
+                                normalized = self._normalize_perplexity(opp)
+                                if normalized:
+                                    all_opportunities.append(normalized)
 
-                        logger.info(f"Query {i}: Found {len(opportunities)} opportunities")
+                            logger.info(f"✅ Query {i}: Found {len(opportunities)} opportunities")
+                            break  # Success, exit retry loop
 
-                    else:
+                        else:
+                            error_detail = {
+                                'type': 'api_error',
+                                'query_num': i,
+                                'status_code': response.status_code,
+                                'response_text': response.text[:500],
+                                'timestamp': datetime.now(timezone.utc).isoformat()
+                            }
+                            self.recent_errors.append(error_detail)
+                            logger.warning(f"Perplexity API error: {response.status_code} - {response.text[:200]}")
+                            self.stats['errors'] += 1
+                            break  # Don't retry API errors
+
+                    except Exception as e:
                         error_detail = {
-                            'type': 'api_error',
+                            'type': 'exception',
                             'query_num': i,
-                            'status_code': response.status_code,
-                            'response_text': response.text[:500],
+                            'error': str(e),
+                            'error_type': type(e).__name__,
                             'timestamp': datetime.now(timezone.utc).isoformat()
                         }
                         self.recent_errors.append(error_detail)
-                        logger.warning(f"Perplexity API error: {response.status_code} - {response.text[:200]}")
+                        logger.error(f"Perplexity query {i} failed: {e}")
                         self.stats['errors'] += 1
-
-                except Exception as e:
-                    error_detail = {
-                        'type': 'exception',
-                        'query_num': i,
-                        'error': str(e),
-                        'error_type': type(e).__name__,
-                        'timestamp': datetime.now(timezone.utc).isoformat()
-                    }
-                    self.recent_errors.append(error_detail)
-                    logger.error(f"Perplexity query {i} failed: {e}")
-                    self.stats['errors'] += 1
+                        break  # Don't retry exceptions
 
         # Deduplicate within Perplexity results
         unique = self._deduplicate(all_opportunities)
@@ -237,7 +261,7 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
         return unique
 
     def _parse_perplexity_response(self, content: str) -> List[Dict]:
-        """Parse Perplexity's JSON response"""
+        """Parse Perplexity's JSON response - ROBUST version with fallbacks"""
         try:
             # Clean markdown fences
             content = content.strip()
@@ -248,31 +272,64 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
             if content.endswith('```'):
                 content = content[:-3]
 
-            opportunities = json.loads(content.strip())
+            content = content.strip()
+
+            # Try to find JSON array in the text
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            if json_match:
+                content = json_match.group()
+
+            opportunities = json.loads(content)
 
             if isinstance(opportunities, list):
+                logger.info(f"✅ Parsed {len(opportunities)} opportunities from Perplexity")
                 return opportunities
             else:
-                logger.warning("Perplexity returned non-list")
-                return []
+                logger.warning("⚠️ Perplexity returned non-list, wrapping in array")
+                return [opportunities] if opportunities else []
 
         except json.JSONDecodeError as e:
-            logger.warning(f"Perplexity JSON parse failed: {e}")
+            logger.warning(f"⚠️ JSON parse failed: {e}")
+            logger.debug(f"Content preview: {content[:500]}")
+
+            # Last resort: try to extract URLs manually
+            urls = re.findall(r'https?://[^\s<>"\')\]]+', content)
+            if urls:
+                # Deduplicate URLs
+                unique_urls = list(dict.fromkeys(urls))
+                logger.info(f"✅ Extracted {len(unique_urls)} URLs as fallback")
+                return [{'url': url, 'title': 'Extracted from Perplexity', 'platform': 'perplexity'}
+                        for url in unique_urls[:50]]  # Limit to 50
+
             return []
 
     def _normalize_perplexity(self, raw: Dict) -> Optional[Dict]:
-        """Convert Perplexity result to standard opportunity format"""
+        """Convert Perplexity result to standard opportunity format
 
-        title = raw.get('title', '')
-        url = raw.get('url', '')
-
-        if not title or not url:
+        ROBUST: Handles both simple and complex JSON schemas
+        """
+        # Handle various field names for URL
+        url = raw.get('url') or raw.get('link') or raw.get('href', '')
+        if not url:
             return None
 
-        description = raw.get('description', '')
-        platform = raw.get('platform', 'unknown')
-        budget = raw.get('budget')
-        contact = raw.get('contact')
+        # Handle various field names for title
+        title = raw.get('title') or raw.get('name') or raw.get('job_title', '')
+        if not title:
+            title = f"Opportunity from {raw.get('platform', 'Perplexity')}"
+
+        # Get description from various fields
+        description = (raw.get('description') or raw.get('summary') or
+                      raw.get('body') or raw.get('content', ''))
+
+        # Get platform
+        platform = raw.get('platform') or raw.get('source', 'unknown')
+
+        # Get budget/salary/rate from various fields
+        budget = (raw.get('budget') or raw.get('salary') or
+                 raw.get('rate') or raw.get('compensation'))
+
+        contact = raw.get('contact') or raw.get('email')
         urgency = raw.get('urgency', 'medium')
 
         # Generate stable ID
@@ -291,7 +348,7 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
         value = 1000  # Default
         if budget:
             # Try to extract numeric value
-            numbers = re.findall(r'\d+', str(budget).replace(',', ''))
+            numbers = re.findall(r'\d+', str(budget).replace(',', '').replace('$', ''))
             if numbers:
                 value = max(int(numbers[0]), 100)
 
@@ -301,7 +358,7 @@ Return ONLY the JSON array, no markdown fences, no explanation."""
             'url': url,
             'canonical_url': url,
             'title': title[:200],
-            'body': description,
+            'body': description[:1000] if description else '',
             'discovered_at': datetime.now(timezone.utc).isoformat(),
             'value': value,
             'payment_proximity': payment_proximity,
