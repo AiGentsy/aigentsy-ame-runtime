@@ -174,8 +174,9 @@ class HybridDiscoveryEngine:
         final_opportunities = []
         platforms = list(by_platform.keys())
 
-        # Priority order: Twitter, LinkedIn, Upwork first (higher conversion), then others
-        priority_platforms = ['twitter', 'linkedin', 'upwork', 'freelancer', 'fiverr', 'hackernews', 'github']
+        # Priority order: Platforms with GUARANTEED contact first (Reddit, GitHub from direct API)
+        # Then other platforms from Perplexity
+        priority_platforms = ['reddit', 'github', 'twitter', 'linkedin', 'upwork', 'freelancer', 'fiverr', 'hackernews']
         ordered_platforms = []
         for p in priority_platforms:
             if p in platforms:
@@ -183,6 +184,8 @@ class HybridDiscoveryEngine:
         for p in platforms:
             if p not in ordered_platforms:
                 ordered_platforms.append(p)
+
+        logger.info(f"📋 Platform order: {ordered_platforms}")
 
         # Round-robin interleaving
         round_num = 0
