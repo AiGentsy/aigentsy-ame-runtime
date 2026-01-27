@@ -114,6 +114,15 @@ if FASTAPI_AVAILABLE:
             logger.debug(f"Discovery manager not available: {e}")
             return None
 
+    def _get_hybrid_discovery():
+        """Get hybrid discovery engine for contact-enriched opportunities"""
+        try:
+            from discovery.hybrid_discovery import get_hybrid_discovery
+            return get_hybrid_discovery()
+        except Exception as e:
+            logger.debug(f"Hybrid discovery not available: {e}")
+            return None
+
     # Store for active contracts
     _contracts_cache: Dict[str, Dict] = {}
     _execution_results: Dict[str, Dict] = {}
@@ -299,34 +308,54 @@ if FASTAPI_AVAILABLE:
         }
 
         try:
-            # Step 1: Discover opportunities
-            logger.info(f"[{execution_id}] Step 1: Discovering opportunities...")
+            # Step 1: Discover opportunities (HYBRID: Perplexity + Direct API Enrichment)
+            logger.info(f"[{execution_id}] Step 1: Discovering opportunities with HYBRID engine...")
             opportunities = []
 
+            # Try hybrid discovery first (includes contact enrichment)
             try:
-                from discovery.perplexity_first import discover_with_perplexity_first
-                discovery_result = await discover_with_perplexity_first()
-                opportunities = discovery_result.get('opportunities', [])[:request.max_opportunities]
+                from discovery.hybrid_discovery import discover_with_contact
+                opportunities = await discover_with_contact(max_opportunities=request.max_opportunities)
+
+                # Count how many have contact info
+                with_contact = sum(1 for o in opportunities if o.get('contact'))
                 results['steps']['discovery'] = {
                     'status': 'success',
                     'count': len(opportunities),
-                    'source': 'perplexity_first',
+                    'source': 'hybrid_discovery',
+                    'with_contact': with_contact,
+                    'contact_rate': f"{with_contact/len(opportunities)*100:.1f}%" if opportunities else "0%",
                 }
+                logger.info(f"[{execution_id}] Hybrid discovery: {with_contact}/{len(opportunities)} with contact")
             except Exception as e:
-                logger.warning(f"[{execution_id}] Perplexity discovery failed: {e}")
-                # Fallback to discovery manager
-                dm = _get_discovery_manager()
-                if dm:
-                    try:
-                        discovery_result = await dm.discover_all()
-                        opportunities = discovery_result.get('opportunities', [])[:request.max_opportunities]
-                        results['steps']['discovery'] = {
-                            'status': 'success',
-                            'count': len(opportunities),
-                            'source': 'discovery_manager',
-                        }
-                    except Exception as e2:
-                        results['steps']['discovery'] = {'status': 'failed', 'error': str(e2)}
+                logger.warning(f"[{execution_id}] Hybrid discovery failed: {e}, falling back...")
+
+                # Fallback to perplexity-first
+                try:
+                    from discovery.perplexity_first import discover_with_perplexity_first
+                    discovery_result = await discover_with_perplexity_first()
+                    opportunities = discovery_result.get('opportunities', [])[:request.max_opportunities]
+                    results['steps']['discovery'] = {
+                        'status': 'success',
+                        'count': len(opportunities),
+                        'source': 'perplexity_first_fallback',
+                    }
+                except Exception as e2:
+                    logger.warning(f"[{execution_id}] Perplexity fallback failed: {e2}")
+
+                    # Final fallback to discovery manager
+                    dm = _get_discovery_manager()
+                    if dm:
+                        try:
+                            discovery_result = await dm.discover_all()
+                            opportunities = discovery_result.get('opportunities', [])[:request.max_opportunities]
+                            results['steps']['discovery'] = {
+                                'status': 'success',
+                                'count': len(opportunities),
+                                'source': 'discovery_manager_fallback',
+                            }
+                        except Exception as e3:
+                            results['steps']['discovery'] = {'status': 'failed', 'error': str(e3)}
 
             results['opportunities_processed'] = len(opportunities)
 

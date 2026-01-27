@@ -314,16 +314,20 @@ To close the customer loop and start collecting real revenue:
 
 ---
 
-## Part 7: Discovery Source Gap (CRITICAL FINDING)
+## Part 7: Discovery Source Gap (✅ FIXED)
 
-### The Real Issue
+### The Issue (Now Resolved)
 
-After multi-channel integration, presentations still fail with:
+After multi-channel integration, presentations were failing with:
 ```
 "error": "No working outreach method. Missing: contact_info, email"
 ```
 
-**Why?** Perplexity discovery returns AI-generated summaries, NOT the original posts.
+**Why?** Perplexity discovery returned AI-generated summaries, NOT the original posts.
+
+**Solution Implemented:** Hybrid Discovery Engine (`discovery/hybrid_discovery.py`)
+- Phase 1: Perplexity for broad internet-wide discovery
+- Phase 2: Direct platform API enrichment for author/contact extraction
 
 ```
 Perplexity Result (what we get):

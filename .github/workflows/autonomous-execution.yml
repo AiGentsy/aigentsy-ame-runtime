@@ -283,6 +283,9 @@ jobs:
 
           # Extract core metrics
           DISCOVERED=$(echo "$BODY" | jq -r '.results.steps.discovery.count // .results.opportunities_processed // 0')
+          DISCOVERY_SOURCE=$(echo "$BODY" | jq -r '.results.steps.discovery.source // "unknown"')
+          WITH_CONTACT=$(echo "$BODY" | jq -r '.results.steps.discovery.with_contact // 0')
+          CONTACT_RATE=$(echo "$BODY" | jq -r '.results.steps.discovery.contact_rate // "0%"')
           CONTRACTS=$(echo "$BODY" | jq -r '.results.steps.contracts.count // .results.contracts_created // 0')
           DISPATCHED=$(echo "$BODY" | jq -r '.results.steps.dispatch.tasks // .results.tasks_dispatched // 0')
           REVENUE=$(echo "$BODY" | jq -r '.results.contracts[0].escrow.total_amount_usd // 0')
@@ -312,8 +315,12 @@ jobs:
           echo "✅ APEX CYCLE COMPLETE"
           echo "═══════════════════════════════════════════════════════════"
           echo ""
-          echo "📊 Core Metrics:"
+          echo "🔍 Discovery (Hybrid):"
+          echo "   Source: $DISCOVERY_SOURCE"
           echo "   Discovered: $DISCOVERED opportunities"
+          echo "   With contact: $WITH_CONTACT ($CONTACT_RATE)"
+          echo ""
+          echo "📊 Core Metrics:"
           echo "   Contracts: $CONTRACTS created"
           echo "   Dispatched: $DISPATCHED tasks"
           echo "   Revenue: \$$REVENUE"
