@@ -1156,6 +1156,60 @@ except Exception as e:
     print(f"Client Room load error: {e}")
 
 # ============================================================================
+# APEX UPGRADES V2 - Remaining Features
+# ============================================================================
+
+# Dual-Track Execution (PoC + Outreach parallel lanes)
+try:
+    from execution.dual_track import get_dual_track_executor
+    dual_track = get_dual_track_executor()
+    print("=" * 80)
+    print("DUAL-TRACK EXECUTION LOADED - Parallel PoC + Outreach Lanes")
+    print("=" * 80)
+except Exception as e:
+    print(f"Dual-track load error: {e}")
+
+# Hot-Start Kits (per-pack starter templates)
+try:
+    from fulfillment.hot_start_kits import get_hot_start_manager
+    hot_start = get_hot_start_manager()
+    print("=" * 80)
+    print(f"HOT-START KITS LOADED - {len(hot_start.list_all_kits())} starter templates")
+    print("=" * 80)
+except Exception as e:
+    print(f"Hot-start kits load error: {e}")
+
+# Execution Similarity (learn from past executions)
+try:
+    from learning.execution_similarity import get_execution_similarity
+    exec_similarity = get_execution_similarity()
+    print("=" * 80)
+    print("EXECUTION SIMILARITY LOADED - Learning from Past Executions")
+    print("=" * 80)
+except Exception as e:
+    print(f"Execution similarity load error: {e}")
+
+# Definition of Done Signatures
+try:
+    from qa.definition_of_done import get_dod_manager
+    dod_manager = get_dod_manager()
+    print("=" * 80)
+    print("DEFINITION OF DONE LOADED - Verifiable Completion Signatures")
+    print("=" * 80)
+except Exception as e:
+    print(f"DoD manager load error: {e}")
+
+# Multi-lingual Outreach
+try:
+    from outreach.multilingual import get_multilingual_outreach
+    multilingual = get_multilingual_outreach()
+    print("=" * 80)
+    print(f"MULTILINGUAL OUTREACH LOADED - {len(multilingual.get_supported_locales())} locales")
+    print("=" * 80)
+except Exception as e:
+    print(f"Multilingual outreach load error: {e}")
+
+# ============================================================================
 # API STATUS - Premium API Credentials & Monitoring
 # ============================================================================
 try:
