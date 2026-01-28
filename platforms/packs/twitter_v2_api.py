@@ -149,6 +149,108 @@ def twitter_v2_normalizer(raw: dict) -> Dict:
     }
 
 
+# =============================================================================
+# CONTENT POSTING (Proactive brand building)
+# =============================================================================
+
+async def post_tweet(content: str, reply_to: str = None) -> Dict:
+    """
+    Post a tweet from the AiGentsy account using tweepy.
+
+    Args:
+        content: Tweet text (max 280 chars)
+        reply_to: Optional tweet ID to reply to
+
+    Returns:
+        Result dict with success status and tweet ID
+    """
+    import tweepy
+
+    # OAuth 1.0a credentials
+    consumer_key = os.getenv('TWITTER_API_KEY')
+    consumer_secret = os.getenv('TWITTER_API_SECRET')
+    access_token = os.getenv('TWITTER_ACCESS_TOKEN')
+    access_secret = os.getenv('TWITTER_ACCESS_SECRET')
+
+    if not all([consumer_key, consumer_secret, access_token, access_secret]):
+        return {'success': False, 'error': 'Twitter OAuth credentials not configured'}
+
+    # Truncate to Twitter limit
+    if len(content) > 280:
+        content = content[:277] + "..."
+
+    try:
+        # Create tweepy client
+        client = tweepy.Client(
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            access_token=access_token,
+            access_token_secret=access_secret
+        )
+
+        # Post tweet
+        if reply_to:
+            response = client.create_tweet(
+                text=content,
+                in_reply_to_tweet_id=reply_to
+            )
+        else:
+            response = client.create_tweet(text=content)
+
+        if response.data:
+            tweet_id = response.data['id']
+            logger.info(f"Tweet posted: {tweet_id}")
+            return {
+                'success': True,
+                'tweet_id': tweet_id,
+                'platform': 'twitter',
+                'url': f"https://twitter.com/AiGentsy/status/{tweet_id}"
+            }
+        else:
+            return {'success': False, 'error': 'No response data from Twitter'}
+
+    except tweepy.TweepyException as e:
+        logger.error(f"Tweepy error: {e}")
+        return {'success': False, 'error': str(e)}
+    except Exception as e:
+        logger.error(f"Tweet error: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+async def post_thread(tweets: List[str]) -> Dict:
+    """
+    Post a Twitter thread (multiple connected tweets).
+
+    Args:
+        tweets: List of tweet texts (will be posted in order)
+
+    Returns:
+        Result dict with all tweet IDs
+    """
+    if not tweets:
+        return {'success': False, 'error': 'No tweets provided'}
+
+    results = []
+    reply_to = None
+
+    for i, content in enumerate(tweets):
+        result = await post_tweet(content, reply_to=reply_to)
+
+        if not result.get('success'):
+            logger.warning(f"Thread stopped at tweet {i}: {result.get('error')}")
+            break
+
+        results.append(result)
+        reply_to = result.get('tweet_id')
+
+    return {
+        'success': len(results) > 0,
+        'tweets': results,
+        'thread_length': len(results),
+        'thread_url': results[0].get('url') if results else None
+    }
+
+
 # Pack registration
 TWITTER_V2_PACK = {
     'name': 'twitter_v2_api',
@@ -156,5 +258,7 @@ TWITTER_V2_PACK = {
     'api_func': twitter_v2_search,
     'normalizer': twitter_v2_normalizer,
     'requires_auth': True,
-    'has_api': True
+    'has_api': True,
+    'post_tweet': post_tweet,
+    'post_thread': post_thread
 }

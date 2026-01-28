@@ -131,6 +131,16 @@ class MultiSourceDiscovery:
             }
             logger.info("  [6] Instagram API - Hashtag discovery")
 
+        # LINKEDIN - B2B professional discovery (highest quality leads)
+        linkedin_token = os.getenv('LINKEDIN_ACCESS_TOKEN')
+        if linkedin_token:
+            sources['linkedin'] = {
+                'access_token': linkedin_token,
+                'priority': 7,
+                'description': 'LinkedIn B2B job posts and hiring posts'
+            }
+            logger.info("  [7] LinkedIn API - B2B professional discovery")
+
         return sources
 
     async def discover(self, max_opportunities: int = 100) -> List[Dict[str, Any]]:
@@ -178,6 +188,10 @@ class MultiSourceDiscovery:
         if 'instagram' in self.sources:
             tasks.append(self._discover_instagram())
             task_names.append('instagram')
+
+        if 'linkedin' in self.sources:
+            tasks.append(self._discover_linkedin())
+            task_names.append('linkedin')
 
         # Execute ALL sources in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -912,6 +926,88 @@ JSON only:"""
 
         except Exception as e:
             logger.warning(f"  [instagram] Discovery error: {e}")
+            return []
+
+    async def _discover_linkedin(self) -> List[Dict[str, Any]]:
+        """
+        LINKEDIN - B2B professional discovery via LinkedIn pack.
+
+        Searches job posts and hiring posts for high-quality B2B opportunities.
+        Returns opportunities with profile URLs for DM/comment-based outreach.
+
+        Why LinkedIn is valuable:
+        - Higher intent buyers (businesses, not hobbyists)
+        - Higher budgets ($500-5k vs $100-1k)
+        - Decision makers (CTOs, founders, hiring managers)
+        - Professional context = serious projects
+        """
+        try:
+            from platforms.packs.linkedin_api import (
+                linkedin_jobs_api as linkedin_job_discovery,
+                linkedin_post_discovery
+            )
+
+            logger.info("  [linkedin] Running B2B discovery (jobs + posts)...")
+
+            # Run both job and post discovery in parallel
+            job_task = linkedin_job_discovery(
+                keywords=['React developer', 'Python developer', 'Backend engineer', 'Full stack developer'],
+                posted_within_days=7,
+                limit=30
+            )
+            post_task = linkedin_post_discovery(
+                search_queries=["who's hiring developer", "looking for developer", "need engineer"],
+                limit=20
+            )
+
+            jobs, posts = await asyncio.gather(job_task, post_task, return_exceptions=True)
+
+            # Handle exceptions
+            if isinstance(jobs, Exception):
+                logger.warning(f"  [linkedin] Job discovery error: {jobs}")
+                jobs = []
+            if isinstance(posts, Exception):
+                logger.warning(f"  [linkedin] Post discovery error: {posts}")
+                posts = []
+
+            # Combine and normalize
+            all_opportunities = list(jobs) + list(posts)
+            normalized = []
+
+            for opp in all_opportunities:
+                opp_type = opp.get('type', 'job_post')
+                normalized.append({
+                    'id': opp.get('id'),
+                    'title': opp.get('title', 'LinkedIn Opportunity'),
+                    'url': opp.get('url'),
+                    'platform': 'linkedin',
+                    'body': opp.get('description', ''),
+                    'summary': opp.get('description', '')[:300] if opp.get('description') else '',
+                    'source': opp.get('source', f'linkedin_{opp_type}'),
+                    'contact': opp.get('contact', {
+                        'platform': 'linkedin',
+                        'author_url': opp.get('author_url'),
+                        'job_id': opp.get('job_id'),
+                        'post_id': opp.get('post_id'),
+                        'preferred_outreach': 'linkedin_comment' if opp_type == 'hiring_post' else 'linkedin_dm'
+                    }),
+                    'metadata': {
+                        'opportunity_type': opp_type,
+                        'company': opp.get('company'),
+                        'author': opp.get('author'),
+                        'location': opp.get('location'),
+                        'detected_skills': opp.get('detected_skills', []),
+                        'posted_at': opp.get('posted_at')
+                    },
+                    # Higher value for LinkedIn B2B opportunities
+                    'value': 1000
+                })
+
+            logger.info(f"  [linkedin] Found {len(normalized)} opportunities ({len(jobs)} jobs, {len(posts)} posts)")
+            return normalized
+
+        except Exception as e:
+            logger.warning(f"  [linkedin] Discovery error: {e}")
             return []
 
     async def _ai_contact_enrichment(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

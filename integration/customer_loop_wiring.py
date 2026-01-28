@@ -423,7 +423,8 @@ Want us to spin up a preview link?
 
 {client_room_url}
 
-—AiGentsy"""
+Refer a friend → {client_room_url}?ref=share
+Build with us → aigentsy.com/start"""
 
         # ═══════════════════════════════════════════════════════════════════
         # SPAM PREVENTION: Check if we've already contacted this person
@@ -732,6 +733,86 @@ Want us to spin up a preview link?
                     logger.warning(f"⚠️ Instagram comment exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
+        # LINKEDIN: Public comment or DM (B2B professional outreach)
+        # ═══════════════════════════════════════════════════════════════════
+        linkedin_post_id = opportunity.get('post_id') or contact.get('post_id')
+        linkedin_author_url = contact.get('author_url')
+        if 'linkedin' in platform and (linkedin_post_id or linkedin_author_url):
+            # Check spam prevention
+            can_send_linkedin = True
+            linkedin_target = linkedin_post_id or linkedin_author_url
+            if tracker:
+                can_contact, reason = tracker.can_contact(
+                    linkedin_target, 'linkedin', opportunity_id, clean_title
+                )
+                if not can_contact:
+                    logger.info(f"⏭️ Skipping LinkedIn outreach: {reason}")
+                    result.fallback_attempts.append({'method': 'linkedin', 'error': f'spam_prevention:{reason}'})
+                    can_send_linkedin = False
+                else:
+                    logger.info(f"✅ Spam check passed for LinkedIn target {linkedin_target}")
+
+            if can_send_linkedin:
+                try:
+                    from platforms.packs.linkedin_api import (
+                        post_linkedin_comment,
+                        send_linkedin_message
+                    )
+
+                    pricing_data = {'market_rate': market_rate, 'our_price': our_price}
+
+                    # Prefer comments on posts (100% delivery, like Twitter/Instagram)
+                    if linkedin_post_id:
+                        logger.info(f"📤 Attempting LinkedIn comment on post {linkedin_post_id}...")
+                        li_result = await post_linkedin_comment(
+                            post_urn=linkedin_post_id,
+                            opportunity=opportunity,
+                            pricing=pricing_data
+                        )
+                        outreach_method = 'linkedin_comment'
+                    else:
+                        # Fallback to DM if we have author URL
+                        logger.info(f"📤 Attempting LinkedIn DM to {linkedin_author_url}...")
+                        li_result = await send_linkedin_message(
+                            recipient_urn=linkedin_author_url,
+                            opportunity=opportunity,
+                            client_room_url=client_room_url,
+                            pricing=pricing_data
+                        )
+                        outreach_method = 'linkedin_dm'
+
+                    if li_result.get('success'):
+                        result.presented = True
+                        result.method = outreach_method
+                        result.channel = 'linkedin'
+                        result.recipient = linkedin_target
+                        result.tracking_id = li_result.get('comment_id') or li_result.get('message_id')
+                        result.details['linkedin'] = li_result
+                        logger.info(f"✅ LinkedIn {outreach_method} sent to {linkedin_target}")
+
+                        # Record outreach
+                        if tracker:
+                            tracker.record_outreach(
+                                recipient=linkedin_target,
+                                recipient_type='linkedin',
+                                opportunity_id=opportunity_id,
+                                opportunity_title=clean_title,
+                                contract_id=contract.get('id', contract.get('contract_id', '')),
+                                message_id=result.tracking_id
+                            )
+
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': outreach_method,
+                            'error': li_result.get('error')
+                        })
+                        logger.warning(f"⚠️ LinkedIn {outreach_method} failed: {li_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'linkedin', 'error': str(e)})
+                    logger.warning(f"⚠️ LinkedIn outreach exception: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 2: Email via RESEND (DIRECT API)
         # ═══════════════════════════════════════════════════════════════════
 
@@ -1010,6 +1091,10 @@ If that helps, reply "GO" and we'll drop a private preview link.
 
 {client_room_url}
 
+---
+Know someone who needs this? Share: {client_room_url}?ref=share
+Start your own AI agency → aigentsy.com/start
+
 —AiGentsy
 
 P.S. If timing's tight, we can start the preview while we finalize details."""
@@ -1116,6 +1201,10 @@ P.S. If timing's tight, we can start the preview while we finalize details."""
         <div class="footer">
             <p class="signature">—AiGentsy</p>
             <p class="tagline">World-class work in minutes</p>
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #333;">
+                <p style="color: #888; font-size: 13px; margin: 8px 0;">Know someone who needs this? <a href="{client_room_url}?ref=share" class="website">Share your link</a></p>
+                <p style="color: #888; font-size: 13px; margin: 8px 0;">Start your own AI agency → <a href="https://aigentsy.com/start" class="website">aigentsy.com/start</a></p>
+            </div>
             <p style="margin-top: 16px;"><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>

@@ -343,6 +343,10 @@ If that helps, reply "GO" and we'll drop a private preview link.
 
 {client_room_url}
 
+---
+Know someone who needs this? Share: {kwargs.get('referral_url', client_room_url)}
+Start your own AI agency → aigentsy.com/start
+
 —AiGentsy
 
 P.S. If timing's tight, we can start the preview while we finalize details.
@@ -375,10 +379,11 @@ Want us to spin up a preview link?
 
 {client_room_url}
 
-—AiGentsy"""
+Refer a friend → {kwargs.get('referral_url', client_room_url)}
+Build with us → aigentsy.com/start"""
 
         return subject, body
-    
+
     def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate LinkedIn message - Reference their post, professional conversion"""
         # Clean the title
@@ -401,6 +406,10 @@ Your price: ${our_price:,} (market ~${market_rate:,})
 Happy to send a private link—reply "GO."
 
 {client_room_url}
+
+---
+Know someone who needs this? Share: {kwargs.get('referral_url', client_room_url)}
+Start your own AI agency → aigentsy.com/start
 
 —AiGentsy"""
 
@@ -429,6 +438,10 @@ If it's not a fit, no charge. How does that sound?
 
 {client_room_url}
 
+---
+Know someone who needs this? Share: {kwargs.get('referral_url', client_room_url)}
+Start your own AI agency → aigentsy.com/start
+
 —AiGentsy"""
 
         return subject, body
@@ -453,6 +466,10 @@ First artifact in ~30 min, then you decide.
 **Your price:** ${our_price:,} (market ~${market_rate:,})
 
 Elite output without the elite price. {client_room_url}
+
+---
+Know someone who needs this? Share: {kwargs.get('referral_url', client_room_url)}
+Start your own AI agency → aigentsy.com/start
 
 —AiGentsy"""
 

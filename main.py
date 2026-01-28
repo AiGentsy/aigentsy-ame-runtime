@@ -1180,6 +1180,592 @@ except Exception as e:
     print(f"Handshake Routes load error: {e}")
 
 # ============================================================================
+# CONTENT ENGINE - Proactive Brand Building (Twitter/Instagram)
+# ============================================================================
+try:
+    from integration.content_engine import (
+        generate_content,
+        generate_thread,
+        post_brand_content,
+        post_brand_thread,
+        get_content_queue,
+        process_content_queue
+    )
+
+    @app.get("/content/generate")
+    async def api_generate_content(
+        content_type: str = None,
+        preview_only: bool = True
+    ):
+        """Generate branded content (preview or post)."""
+        generated = generate_content(content_type)
+
+        if preview_only:
+            return {
+                "ok": True,
+                "preview": True,
+                "content": generated
+            }
+
+        # Actually post it
+        result = await post_brand_content(content_type)
+        return {
+            "ok": result.get("success", False),
+            "posted": True,
+            "result": result
+        }
+
+    @app.get("/content/thread")
+    async def api_generate_thread(
+        topic: str = "portfolio",
+        preview_only: bool = True
+    ):
+        """Generate a Twitter thread (preview or post)."""
+        tweets = generate_thread(topic)
+
+        if preview_only:
+            return {
+                "ok": True,
+                "preview": True,
+                "topic": topic,
+                "tweets": tweets,
+                "thread_length": len(tweets)
+            }
+
+        # Actually post it
+        result = await post_brand_thread(topic)
+        return {
+            "ok": result.get("success", False),
+            "posted": True,
+            "result": result
+        }
+
+    @app.get("/content/queue")
+    async def api_content_queue():
+        """Get the content posting queue."""
+        return {
+            "ok": True,
+            "queue": get_content_queue()
+        }
+
+    @app.post("/content/process")
+    async def api_process_content_queue():
+        """Process all due content in the queue."""
+        result = await process_content_queue()
+        return {
+            "ok": True,
+            "result": result
+        }
+
+    print("=" * 80)
+    print("CONTENT ENGINE LOADED - Proactive Brand Building")
+    print("=" * 80)
+    print("  Endpoints: /content/generate, /content/thread, /content/queue")
+    print("  Features: Portfolio tweets, Case studies, Tech tips, Engagement posts")
+    print("  Voice: billionaire-calm (proof-forward, no hype)")
+    print("=" * 80)
+except Exception as e:
+    print(f"Content Engine load error: {e}")
+
+# ============================================================================
+# IMAGE GENERATION - Stability AI + Runway
+# ============================================================================
+try:
+    from integration.image_generation import (
+        generate_image_stability,
+        generate_image_runway,
+        generate_portfolio_image,
+        generate_case_study_image,
+        get_available_providers
+    )
+
+    @app.get("/image/providers")
+    async def api_image_providers():
+        """Check which image generation providers are configured."""
+        return {
+            "ok": True,
+            "providers": get_available_providers()
+        }
+
+    @app.post("/image/generate")
+    async def api_generate_image(
+        prompt: str,
+        provider: str = "stability",
+        width: int = 1024,
+        height: int = 1024
+    ):
+        """Generate an image from a text prompt."""
+        if provider == "stability":
+            result = await generate_image_stability(prompt, width=width, height=height)
+        elif provider == "runway":
+            result = await generate_image_runway(prompt, width=width, height=height)
+        else:
+            return {"ok": False, "error": f"Unknown provider: {provider}"}
+
+        # Don't return full base64 in API response (too large)
+        if result.get('image_base64'):
+            result['image_base64'] = f"[{len(result['image_base64'])} chars - use /image/download]"
+
+        return {
+            "ok": result.get("success", False),
+            "result": result
+        }
+
+    @app.get("/image/portfolio")
+    async def api_portfolio_image(
+        project_type: str = "React dashboard",
+        style: str = "dashboard"
+    ):
+        """Generate a portfolio showcase image."""
+        result = await generate_portfolio_image(project_type, style)
+
+        if result.get('image_base64'):
+            result['image_preview'] = f"data:image/png;base64,{result['image_base64'][:100]}..."
+            result['image_base64'] = f"[{len(result['image_base64'])} chars]"
+
+        return {
+            "ok": result.get("success", False),
+            "result": result
+        }
+
+    print("=" * 80)
+    print("IMAGE GENERATION LOADED - Stability AI + Runway")
+    print("=" * 80)
+    providers = get_available_providers()
+    print(f"  Stability AI: {'configured' if providers['stability'] else 'not configured'}")
+    print(f"  Runway: {'configured' if providers['runway'] else 'not configured'}")
+    print("  Endpoints: /image/providers, /image/generate, /image/portfolio")
+    print("=" * 80)
+except Exception as e:
+    print(f"Image Generation load error: {e}")
+
+# ============================================================================
+# LINKEDIN - B2B Professional Outreach + Content
+# ============================================================================
+try:
+    from platforms.packs.linkedin_api import (
+        linkedin_jobs_api as linkedin_job_discovery,
+        linkedin_post_discovery,
+        post_linkedin_content,
+        post_linkedin_comment,
+        send_linkedin_message,
+        generate_linkedin_portfolio_post,
+        generate_linkedin_engagement_post,
+        LINKEDIN_PACK
+    )
+
+    @app.get("/linkedin/discover")
+    async def api_linkedin_discover(
+        source: str = "both",
+        limit: int = 30
+    ):
+        """Discover opportunities on LinkedIn (jobs and/or posts)."""
+        results = []
+
+        if source in ["jobs", "both"]:
+            jobs = await linkedin_job_discovery(limit=limit // 2 if source == "both" else limit)
+            results.extend(jobs)
+
+        if source in ["posts", "both"]:
+            posts = await linkedin_post_discovery(limit=limit // 2 if source == "both" else limit)
+            results.extend(posts)
+
+        return {
+            "ok": True,
+            "source": source,
+            "count": len(results),
+            "opportunities": results[:limit]
+        }
+
+    @app.post("/linkedin/post")
+    async def api_linkedin_post(
+        content_type: str = "portfolio",
+        text: str = None
+    ):
+        """Post content to LinkedIn."""
+        if text:
+            result = await post_linkedin_content(text)
+        else:
+            # Generate content based on type
+            if content_type == "portfolio":
+                text = generate_linkedin_portfolio_post({
+                    'project_type': 'React dashboard',
+                    'time': '47 minutes',
+                    'price': 1200,
+                    'market_rate': 2400
+                })
+            elif content_type == "engagement":
+                text = generate_linkedin_engagement_post("dev")
+            else:
+                text = generate_linkedin_portfolio_post({})
+
+            result = await post_linkedin_content(text)
+
+        return {
+            "ok": result.get("success", False),
+            "result": result
+        }
+
+    @app.get("/linkedin/content/preview")
+    async def api_linkedin_content_preview(content_type: str = "portfolio"):
+        """Preview generated LinkedIn content."""
+        if content_type == "portfolio":
+            text = generate_linkedin_portfolio_post({
+                'project_type': 'Python automation',
+                'time': '35 minutes',
+                'price': 900,
+                'market_rate': 1800
+            })
+        elif content_type == "engagement":
+            text = generate_linkedin_engagement_post("startup")
+        else:
+            text = generate_linkedin_portfolio_post({})
+
+        return {
+            "ok": True,
+            "content_type": content_type,
+            "preview": text,
+            "char_count": len(text)
+        }
+
+    print("=" * 80)
+    print("LINKEDIN LOADED - B2B Professional Outreach + Content")
+    print("=" * 80)
+    linkedin_configured = bool(os.getenv('LINKEDIN_ACCESS_TOKEN'))
+    print(f"  LinkedIn API: {'configured' if linkedin_configured else 'not configured - set LINKEDIN_ACCESS_TOKEN'}")
+    print("  Endpoints: /linkedin/discover, /linkedin/post, /linkedin/content/preview")
+    print("  Features: Job discovery, Hiring post discovery, DMs, Comments, Content posting")
+    print("  Voice: billionaire-calm (professional B2B)")
+    print("=" * 80)
+except Exception as e:
+    print(f"LinkedIn load error: {e}")
+
+# ============================================================================
+# UNIVERSAL CONTENT ORCHESTRATOR - Multi-Platform Content Engine
+# ============================================================================
+try:
+    from content import (
+        get_content_orchestrator,
+        generate_and_post_contract_content,
+        get_engagement_bot,
+        run_daily_engagement,
+        PLATFORM_CONFIGS,
+        ENGAGEMENT_CONFIG
+    )
+
+    @app.get("/content/platforms")
+    async def api_content_platforms():
+        """List all supported platforms and their configurations."""
+        return {
+            "ok": True,
+            "platforms": {
+                name: {
+                    "name": config.get("name"),
+                    "max_posts_per_day": config.get("max_posts_per_day"),
+                    "optimal_times_utc": config.get("optimal_times_utc"),
+                    "revenue_streams": config.get("revenue_streams", [])
+                }
+                for name, config in PLATFORM_CONFIGS.items()
+            }
+        }
+
+    @app.post("/content/generate-from-contract")
+    async def api_generate_contract_content(
+        contract_id: str = None,
+        project: str = "React dashboard",
+        price: int = 1200,
+        market_rate: int = 2400,
+        completion_time: str = "45 minutes"
+    ):
+        """Generate content package from a contract (or test data)."""
+        orchestrator = get_content_orchestrator()
+
+        # Build contract data
+        contract = {
+            "id": contract_id or f"test_{datetime.now().timestamp()}",
+            "title": project,
+            "pricing": {"our_price": price, "market_rate": market_rate},
+            "completion_time": completion_time,
+            "fulfillment_type": "development"
+        }
+
+        # Generate content
+        package = await orchestrator.generate_content_from_contract(contract)
+
+        return {
+            "ok": True,
+            "content_id": package.id,
+            "referral_codes": package.referral_codes,
+            "platforms": list(package.platform_versions.keys()),
+            "twitter_thread": package.twitter_thread,
+            "linkedin_post": package.linkedin_post[:500] + "..." if len(package.linkedin_post or '') > 500 else package.linkedin_post,
+            "short_caption": package.short_caption
+        }
+
+    @app.post("/content/post-all")
+    async def api_post_to_all_platforms(
+        content_id: str = None,
+        platforms: str = None  # comma-separated
+    ):
+        """Post content to all (or specified) platforms."""
+        orchestrator = get_content_orchestrator()
+
+        # Find content package
+        if content_id:
+            package = next((p for p in orchestrator.content_queue if p.id == content_id), None)
+            if not package:
+                return {"ok": False, "error": f"Content {content_id} not found"}
+        else:
+            # Use most recent
+            if not orchestrator.content_queue:
+                return {"ok": False, "error": "No content in queue - generate first"}
+            package = orchestrator.content_queue[-1]
+
+        # Parse platforms
+        target_platforms = platforms.split(",") if platforms else None
+
+        # Post
+        results = await orchestrator.post_to_all_platforms(package, target_platforms)
+
+        return {
+            "ok": True,
+            "content_id": package.id,
+            "results": {p: r.__dict__ for p, r in results.items()},
+            "stats": orchestrator.get_stats()
+        }
+
+    @app.get("/content/orchestrator/stats")
+    async def api_content_stats():
+        """Get content orchestrator statistics."""
+        orchestrator = get_content_orchestrator()
+        return {
+            "ok": True,
+            "stats": orchestrator.get_stats()
+        }
+
+    @app.post("/engagement/run-cycle")
+    async def api_run_engagement_cycle(
+        platforms: str = None,  # comma-separated
+        targets_per_platform: int = 5
+    ):
+        """Run one engagement cycle across platforms."""
+        bot = get_engagement_bot()
+
+        target_platforms = platforms.split(",") if platforms else None
+        results = await bot.run_engagement_cycle(target_platforms, targets_per_platform)
+
+        return {
+            "ok": True,
+            "results": results,
+            "remaining_capacity": bot.get_daily_remaining()
+        }
+
+    @app.get("/engagement/stats")
+    async def api_engagement_stats():
+        """Get engagement bot statistics."""
+        bot = get_engagement_bot()
+        return {
+            "ok": True,
+            "stats": bot.get_stats(),
+            "daily_remaining": bot.get_daily_remaining()
+        }
+
+    @app.get("/engagement/discover")
+    async def api_discover_targets(
+        platform: str = "twitter",
+        limit: int = 10
+    ):
+        """Discover engagement targets on a platform."""
+        bot = get_engagement_bot()
+        targets = await bot.discover_targets(platform, limit)
+
+        return {
+            "ok": True,
+            "platform": platform,
+            "targets": [
+                {
+                    "post_id": t.post_id,
+                    "post_url": t.post_url,
+                    "author": t.author,
+                    "text": t.text[:200] + "..." if len(t.text) > 200 else t.text,
+                    "detected_need": t.detected_need,
+                    "engagement_score": t.engagement_score
+                }
+                for t in targets
+            ]
+        }
+
+    # =========================================================================
+    # PUBLIC ENGAGEMENT SYSTEM (PRIMARY - Public comments > DMs)
+    # =========================================================================
+    from outreach import (
+        get_public_engagement_orchestrator,
+        run_public_engagement_cycle,
+        get_auto_reply_system,
+        run_auto_reply_cycle,
+        get_success_story_engine,
+        post_contract_success_story,
+        run_content_campaign,
+    )
+
+    @app.post("/public-engagement/run-cycle")
+    async def api_run_public_engagement(
+        platforms: str = None,  # comma-separated: twitter,instagram,linkedin,github,reddit
+    ):
+        """
+        Run public engagement cycle - comment/reply on hiring posts.
+
+        This is the PRIMARY outreach method (public comments work 100%, DMs fail 80%).
+        """
+        orchestrator = get_public_engagement_orchestrator()
+
+        platform_list = platforms.split(",") if platforms else None
+        results = await run_public_engagement_cycle(platform_list)
+
+        return {
+            "ok": True,
+            "strategy": "public_comments",
+            "results": results
+        }
+
+    @app.get("/public-engagement/stats")
+    async def api_public_engagement_stats():
+        """Get public engagement statistics."""
+        orchestrator = get_public_engagement_orchestrator()
+        return {
+            "ok": True,
+            "stats": orchestrator.get_stats()
+        }
+
+    @app.post("/auto-reply/run-cycle")
+    async def api_run_auto_reply(
+        twitter_enabled: bool = True,
+        instagram_post_ids: str = None,  # comma-separated
+    ):
+        """
+        Monitor comments on our content and auto-reply with referral codes.
+
+        Flow: Someone comments "interested" → they get personalized referral link
+        """
+        post_ids = {}
+        if instagram_post_ids:
+            post_ids['instagram'] = instagram_post_ids.split(",")
+
+        results = await run_auto_reply_cycle(post_ids)
+
+        return {
+            "ok": True,
+            "results": results
+        }
+
+    @app.get("/auto-reply/stats")
+    async def api_auto_reply_stats():
+        """Get auto-reply system statistics."""
+        system = get_auto_reply_system()
+        return {
+            "ok": True,
+            "stats": system.get_stats()
+        }
+
+    @app.post("/success-story/post")
+    async def api_post_success_story(
+        contract_id: str,
+        platforms: str = None,  # comma-separated: twitter,instagram,linkedin
+    ):
+        """
+        Post success story for a completed contract.
+
+        Generates and posts to all platforms with referral codes.
+        """
+        # Fetch contract data
+        try:
+            from contracts.milestone_escrow import EscrowContract
+            contract_mgr = EscrowContract()
+            contract = await contract_mgr.get_contract(contract_id)
+            if not contract:
+                return {"ok": False, "error": "Contract not found"}
+        except Exception as e:
+            # Use minimal contract data if not found
+            contract = {"contract_id": contract_id}
+
+        platform_list = platforms.split(",") if platforms else None
+        results = await post_contract_success_story(contract, platform_list)
+
+        return {
+            "ok": True,
+            "results": results
+        }
+
+    @app.post("/success-story/campaign")
+    async def api_run_content_campaign(
+        content_type: str = "educational",  # educational, direct_cta
+        platforms: str = None,
+    ):
+        """
+        Run a content campaign for brand building.
+
+        Types:
+        - educational: "Why AI beats freelancers"
+        - direct_cta: "Need a dev? We deliver in 1 hour"
+        """
+        platform_list = platforms.split(",") if platforms else None
+        results = await run_content_campaign(content_type, platform_list)
+
+        return {
+            "ok": True,
+            "content_type": content_type,
+            "results": results
+        }
+
+    @app.get("/success-story/stats")
+    async def api_success_story_stats():
+        """Get success story engine statistics."""
+        engine = get_success_story_engine()
+        return {
+            "ok": True,
+            "stats": engine.get_stats()
+        }
+
+    print("=" * 80)
+    print("PUBLIC ENGAGEMENT SYSTEM LOADED - Primary Outreach Strategy")
+    print("=" * 80)
+    print("  Strategy: Public Comments > DMs (DMs restricted, public works 100%)")
+    print("  Platforms: Twitter, Instagram, LinkedIn, GitHub, Reddit, TikTok")
+    print("  Components:")
+    print("    - PublicEngagementOrchestrator: Comment on hiring posts")
+    print("    - AutoReplySystem: Reply to engagement with referral codes")
+    print("    - SuccessStoryEngine: Post completed contracts for brand building")
+    print("  Endpoints:")
+    print("    - /public-engagement/run-cycle - Run public comment cycle")
+    print("    - /public-engagement/stats - Engagement statistics")
+    print("    - /auto-reply/run-cycle - Monitor and reply to comments")
+    print("    - /auto-reply/stats - Auto-reply statistics")
+    print("    - /success-story/post - Post contract success story")
+    print("    - /success-story/campaign - Run content campaign")
+    print("  Voice: billionaire-calm (proof-forward, no hype)")
+    print("=" * 80)
+
+    print("=" * 80)
+    print("UNIVERSAL CONTENT ORCHESTRATOR LOADED - Multi-Platform Engine")
+    print("=" * 80)
+    print("  Platforms: TikTok, Instagram, Twitter, LinkedIn, YouTube, Facebook")
+    print("  Features:")
+    print("    - One content → All platforms with referral codes")
+    print("    - MetaHive/AI Family Brain learning integration")
+    print("    - Multi-platform engagement automation")
+    print("    - Revenue attribution by platform")
+    print("  Endpoints:")
+    print("    - /content/platforms - Platform configurations")
+    print("    - /content/generate-from-contract - Generate content")
+    print("    - /content/post-all - Post to all platforms")
+    print("    - /engagement/run-cycle - Automated engagement")
+    print("    - /engagement/discover - Find targets")
+    print("  Voice: billionaire-calm (proof-forward, no hype)")
+    print("=" * 80)
+except Exception as e:
+    print(f"Universal Content Orchestrator load error: {e}")
+
+# ============================================================================
 # APEX UPGRADES V2 - Remaining Features
 # ============================================================================
 

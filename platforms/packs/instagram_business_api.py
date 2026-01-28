@@ -478,6 +478,172 @@ async def reply_to_instagram_comment(comment_id: str, message: str) -> Dict:
         return {'success': False, 'error': str(e)}
 
 
+# =============================================================================
+# CONTENT POSTING (Proactive brand building)
+# =============================================================================
+
+async def post_instagram_content(
+    image_url: str,
+    caption: str,
+    location_id: str = None
+) -> Dict:
+    """
+    Post content to Instagram Business account.
+
+    NOTE: Instagram Graph API requires a publicly accessible image URL.
+    The image must be hosted on a public server (not local).
+
+    Args:
+        image_url: Public URL to the image to post
+        caption: Post caption (max 2,200 chars)
+        location_id: Optional location tag ID
+
+    Returns:
+        Result dict with success status and post ID
+    """
+    import httpx
+
+    access_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+    business_id = os.getenv('INSTAGRAM_BUSINESS_ID')
+
+    if not access_token or not business_id:
+        return {'success': False, 'error': 'Instagram credentials not configured'}
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Step 1: Create media container
+            container_url = f"{GRAPH_API_BASE}/{business_id}/media"
+            container_data = {
+                'image_url': image_url,
+                'caption': caption[:2200],
+                'access_token': access_token
+            }
+            if location_id:
+                container_data['location_id'] = location_id
+
+            container_response = await client.post(container_url, data=container_data)
+
+            if not container_response.is_success:
+                error = container_response.json().get('error', {}).get('message', 'Unknown error')
+                return {'success': False, 'error': f"Container creation failed: {error}"}
+
+            container_id = container_response.json().get('id')
+            if not container_id:
+                return {'success': False, 'error': 'No container ID returned'}
+
+            # Step 2: Publish the container
+            publish_url = f"{GRAPH_API_BASE}/{business_id}/media_publish"
+            publish_data = {
+                'creation_id': container_id,
+                'access_token': access_token
+            }
+
+            publish_response = await client.post(publish_url, data=publish_data)
+
+            if publish_response.is_success:
+                post_id = publish_response.json().get('id')
+                logger.info(f"Instagram post published: {post_id}")
+                return {
+                    'success': True,
+                    'post_id': post_id,
+                    'platform': 'instagram',
+                    'url': f"https://instagram.com/p/{post_id}"
+                }
+            else:
+                error = publish_response.json().get('error', {}).get('message', 'Unknown error')
+                return {'success': False, 'error': f"Publish failed: {error}"}
+
+    except Exception as e:
+        logger.error(f"Instagram post error: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+async def post_instagram_carousel(
+    image_urls: List[str],
+    caption: str
+) -> Dict:
+    """
+    Post a carousel (multiple images) to Instagram.
+
+    Args:
+        image_urls: List of public image URLs (2-10 images)
+        caption: Post caption
+
+    Returns:
+        Result dict with success status
+    """
+    import httpx
+
+    access_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+    business_id = os.getenv('INSTAGRAM_BUSINESS_ID')
+
+    if not access_token or not business_id:
+        return {'success': False, 'error': 'Instagram credentials not configured'}
+
+    if len(image_urls) < 2 or len(image_urls) > 10:
+        return {'success': False, 'error': 'Carousel requires 2-10 images'}
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            # Step 1: Create containers for each image
+            container_ids = []
+            for url in image_urls:
+                container_url = f"{GRAPH_API_BASE}/{business_id}/media"
+                container_data = {
+                    'image_url': url,
+                    'is_carousel_item': 'true',
+                    'access_token': access_token
+                }
+                response = await client.post(container_url, data=container_data)
+                if response.is_success:
+                    container_ids.append(response.json().get('id'))
+                else:
+                    logger.warning(f"Failed to create carousel item: {url}")
+
+            if len(container_ids) < 2:
+                return {'success': False, 'error': 'Not enough carousel items created'}
+
+            # Step 2: Create carousel container
+            carousel_url = f"{GRAPH_API_BASE}/{business_id}/media"
+            carousel_data = {
+                'media_type': 'CAROUSEL',
+                'children': ','.join(container_ids),
+                'caption': caption[:2200],
+                'access_token': access_token
+            }
+            carousel_response = await client.post(carousel_url, data=carousel_data)
+
+            if not carousel_response.is_success:
+                return {'success': False, 'error': 'Carousel container creation failed'}
+
+            carousel_id = carousel_response.json().get('id')
+
+            # Step 3: Publish carousel
+            publish_url = f"{GRAPH_API_BASE}/{business_id}/media_publish"
+            publish_data = {
+                'creation_id': carousel_id,
+                'access_token': access_token
+            }
+            publish_response = await client.post(publish_url, data=publish_data)
+
+            if publish_response.is_success:
+                post_id = publish_response.json().get('id')
+                logger.info(f"Instagram carousel published: {post_id}")
+                return {
+                    'success': True,
+                    'post_id': post_id,
+                    'platform': 'instagram',
+                    'carousel': True,
+                    'image_count': len(container_ids)
+                }
+            else:
+                return {'success': False, 'error': 'Carousel publish failed'}
+
+    except Exception as e:
+        logger.error(f"Instagram carousel error: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 # Pack registration
 INSTAGRAM_PACK = {
     'name': 'instagram_business_api',
@@ -488,5 +654,7 @@ INSTAGRAM_PACK = {
     'has_api': True,
     'hashtag_discovery': instagram_hashtag_discovery,
     'post_comment': post_instagram_comment,
-    'reply_to_comment': reply_to_instagram_comment
+    'reply_to_comment': reply_to_instagram_comment,
+    'post_content': post_instagram_content,
+    'post_carousel': post_instagram_carousel
 }
