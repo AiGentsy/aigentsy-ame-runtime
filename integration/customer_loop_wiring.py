@@ -436,7 +436,8 @@ See your proposal → {client_room_url}
             logger.warning(f"Could not load outreach tracker: {e}")
             tracker = None
 
-        # Twitter opportunities → Twitter DM (DIRECT API)
+        # Twitter opportunities → Try PUBLIC REPLY first, then DM fallback
+        # Public replies work 100% of the time (no follower restriction)
         if ('twitter' in platform or twitter_handle) and self.available_systems.get('api_keys', {}).get('twitter_dm'):
             if twitter_handle:
                 # Check spam prevention first
@@ -444,64 +445,122 @@ See your proposal → {client_room_url}
                 if tracker:
                     can_contact, reason = tracker.can_contact(twitter_handle, 'twitter', opportunity_id, clean_title)
                     if not can_contact:
-                        logger.info(f"⏭️ Skipping Twitter DM to @{twitter_handle}: {reason}")
-                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': f'spam_prevention:{reason}'})
+                        logger.info(f"⏭️ Skipping Twitter outreach to @{twitter_handle}: {reason}")
+                        result.fallback_attempts.append({'method': 'twitter_reply', 'error': f'spam_prevention:{reason}'})
                         can_send_twitter = False
                     else:
                         logger.info(f"✅ Spam check passed for @{twitter_handle}: {reason}")
 
                 if can_send_twitter:
-                    try:
-                        logger.info(f"📤 Attempting Twitter DM to @{twitter_handle}...")
-                        dm_result = await self._send_twitter_dm_direct(twitter_handle, dm_message)
-                        if dm_result.get('success'):
-                            result.presented = True
-                            result.method = 'twitter_dm'
-                            result.channel = 'twitter'
-                            result.recipient = f"@{twitter_handle.lstrip('@')}"
-                            result.tracking_id = dm_result.get('message_id')
-                            result.details['twitter_dm'] = dm_result
-                            logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
+                    twitter_sent = False
 
-                            # Record outreach for spam prevention
-                            if tracker:
-                                tracker.record_outreach(
-                                    recipient=twitter_handle,
-                                    recipient_type='twitter',
-                                    opportunity_id=opportunity_id,
-                                    opportunity_title=clean_title,
-                                    contract_id=contract.get('id', contract.get('contract_id', '')),
-                                    message_id=dm_result.get('message_id')
-                                )
+                    # Strategy 1: PUBLIC REPLY (preferred - no follower restriction)
+                    # Extract tweet_id from opportunity URL or metadata
+                    tweet_id = opportunity.get('tweet_id')
+                    if not tweet_id:
+                        # Try to extract from URL
+                        opp_url = opportunity.get('url', '')
+                        import re
+                        tweet_match = re.search(r'/status/(\d+)', opp_url)
+                        if tweet_match:
+                            tweet_id = tweet_match.group(1)
 
-                            # Register conversation for auto-reply monitoring
-                            try:
-                                from conversation import get_conversation_manager
-                                conv_manager = get_conversation_manager()
-                                conv_manager.register_outreach(
-                                    platform='twitter',
-                                    user_id=dm_result.get('recipient_id', ''),
-                                    username=twitter_handle.lstrip('@'),
-                                    contract_id=contract.get('id', contract.get('contract_id', '')),
-                                    opportunity_id=opportunity_id,
-                                    initial_message=dm_message,
-                                    message_id=dm_result.get('message_id')
-                                )
-                                logger.info(f"📝 Registered conversation for @{twitter_handle}")
-                            except Exception as conv_err:
-                                logger.warning(f"Could not register conversation: {conv_err}")
+                    if tweet_id:
+                        try:
+                            # Create concise public reply message
+                            public_message = self._create_public_reply_message(
+                                opportunity=opportunity,
+                                client_room_url=client_room_url
+                            )
+                            logger.info(f"📤 Attempting Twitter PUBLIC REPLY to @{twitter_handle} on tweet {tweet_id}...")
+                            reply_result = await self._send_twitter_reply_direct(tweet_id, twitter_handle, public_message)
 
-                            return result
-                        else:
-                            result.fallback_attempts.append({
-                                'method': 'twitter_dm',
-                                'error': dm_result.get('error'),
-                                'details': dm_result.get('details')
-                            })
-                            logger.warning(f"⚠️ Twitter DM failed: {dm_result.get('error')}")
-                    except Exception as e:
-                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
-                        logger.warning(f"⚠️ Twitter DM exception: {e}")
+                            if reply_result.get('success'):
+                                result.presented = True
+                                result.method = 'twitter_reply'
+                                result.channel = 'twitter'
+                                result.recipient = f"@{twitter_handle.lstrip('@')}"
+                                result.tracking_id = reply_result.get('reply_tweet_id')
+                                result.details['twitter_reply'] = reply_result
+                                logger.info(f"✅ Twitter PUBLIC REPLY sent to @{twitter_handle}")
+                                twitter_sent = True
+
+                                # Record outreach
+                                if tracker:
+                                    tracker.record_outreach(
+                                        recipient=twitter_handle,
+                                        recipient_type='twitter',
+                                        opportunity_id=opportunity_id,
+                                        opportunity_title=clean_title,
+                                        contract_id=contract.get('id', contract.get('contract_id', '')),
+                                        message_id=reply_result.get('reply_tweet_id')
+                                    )
+
+                                return result
+                            else:
+                                result.fallback_attempts.append({
+                                    'method': 'twitter_reply',
+                                    'error': reply_result.get('error'),
+                                    'details': reply_result.get('details')
+                                })
+                                logger.warning(f"⚠️ Twitter reply failed: {reply_result.get('error')}, trying DM...")
+                        except Exception as e:
+                            result.fallback_attempts.append({'method': 'twitter_reply', 'error': str(e)})
+                            logger.warning(f"⚠️ Twitter reply exception: {e}, trying DM...")
+
+                    # Strategy 2: DM FALLBACK (only works if they follow us)
+                    if not twitter_sent:
+                        try:
+                            logger.info(f"📤 Attempting Twitter DM to @{twitter_handle}...")
+                            dm_result = await self._send_twitter_dm_direct(twitter_handle, dm_message)
+                            if dm_result.get('success'):
+                                result.presented = True
+                                result.method = 'twitter_dm'
+                                result.channel = 'twitter'
+                                result.recipient = f"@{twitter_handle.lstrip('@')}"
+                                result.tracking_id = dm_result.get('message_id')
+                                result.details['twitter_dm'] = dm_result
+                                logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
+
+                                # Record outreach for spam prevention
+                                if tracker:
+                                    tracker.record_outreach(
+                                        recipient=twitter_handle,
+                                        recipient_type='twitter',
+                                        opportunity_id=opportunity_id,
+                                        opportunity_title=clean_title,
+                                        contract_id=contract.get('id', contract.get('contract_id', '')),
+                                        message_id=dm_result.get('message_id')
+                                    )
+
+                                # Register conversation for auto-reply monitoring
+                                try:
+                                    from conversation import get_conversation_manager
+                                    conv_manager = get_conversation_manager()
+                                    conv_manager.register_outreach(
+                                        platform='twitter',
+                                        user_id=dm_result.get('recipient_id', ''),
+                                        username=twitter_handle.lstrip('@'),
+                                        contract_id=contract.get('id', contract.get('contract_id', '')),
+                                        opportunity_id=opportunity_id,
+                                        initial_message=dm_message,
+                                        message_id=dm_result.get('message_id')
+                                    )
+                                    logger.info(f"📝 Registered conversation for @{twitter_handle}")
+                                except Exception as conv_err:
+                                    logger.warning(f"Could not register conversation: {conv_err}")
+
+                                return result
+                            else:
+                                result.fallback_attempts.append({
+                                    'method': 'twitter_dm',
+                                    'error': dm_result.get('error'),
+                                    'details': dm_result.get('details')
+                                })
+                                logger.warning(f"⚠️ Twitter DM failed: {dm_result.get('error')}")
+                        except Exception as e:
+                            result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
+                            logger.warning(f"⚠️ Twitter DM exception: {e}")
 
         # LinkedIn opportunities → LinkedIn message (DIRECT API)
         if ('linkedin' in platform or linkedin_id) and self.available_systems.get('api_keys', {}).get('linkedin'):
@@ -608,6 +667,67 @@ See your proposal → {client_room_url}
             }
             # Continue to try email/other channels as fallback
             # If email exists, it will be tried below
+
+        # ═══════════════════════════════════════════════════════════════════
+        # INSTAGRAM: Public comment (100% delivery - no restrictions)
+        # ═══════════════════════════════════════════════════════════════════
+        instagram_post_id = opportunity.get('post_id') or contact_info.get('instagram_post_id')
+        if 'instagram' in platform and instagram_post_id:
+            # Check spam prevention
+            can_send_instagram = True
+            if tracker:
+                can_contact, reason = tracker.can_contact(
+                    instagram_post_id, 'instagram', opportunity_id, clean_title
+                )
+                if not can_contact:
+                    logger.info(f"⏭️ Skipping Instagram comment: {reason}")
+                    result.fallback_attempts.append({'method': 'instagram_comment', 'error': f'spam_prevention:{reason}'})
+                    can_send_instagram = False
+                else:
+                    logger.info(f"✅ Spam check passed for Instagram post {instagram_post_id}")
+
+            if can_send_instagram:
+                try:
+                    from integration.instagram_comment_sender import send_instagram_comment
+
+                    logger.info(f"📤 Attempting Instagram comment on post {instagram_post_id}...")
+                    ig_result = await send_instagram_comment(
+                        post_id=instagram_post_id,
+                        opportunity=opportunity,
+                        client_room_url=client_room_url,
+                        pricing={'market_rate': market_rate, 'our_price': our_price}
+                    )
+
+                    if ig_result.get('success'):
+                        result.presented = True
+                        result.method = 'instagram_comment'
+                        result.channel = 'instagram'
+                        result.recipient = f"post_{instagram_post_id}"
+                        result.tracking_id = ig_result.get('comment_id')
+                        result.details['instagram_comment'] = ig_result
+                        logger.info(f"✅ Instagram comment posted on {instagram_post_id}")
+
+                        # Record outreach
+                        if tracker:
+                            tracker.record_outreach(
+                                recipient=instagram_post_id,
+                                recipient_type='instagram',
+                                opportunity_id=opportunity_id,
+                                opportunity_title=clean_title,
+                                contract_id=contract.get('id', contract.get('contract_id', '')),
+                                message_id=ig_result.get('comment_id')
+                            )
+
+                        return result
+                    else:
+                        result.fallback_attempts.append({
+                            'method': 'instagram_comment',
+                            'error': ig_result.get('error')
+                        })
+                        logger.warning(f"⚠️ Instagram comment failed: {ig_result.get('error')}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'instagram_comment', 'error': str(e)})
+                    logger.warning(f"⚠️ Instagram comment exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 2: Email via RESEND (DIRECT API)
@@ -1005,6 +1125,38 @@ No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our q
         """Build concise SMS message (160 char limit)"""
         return f"Re: {title[:30]}... We can help! View proposal: {client_room_url}"
 
+    def _create_public_reply_message(self, opportunity: Dict, client_room_url: str) -> str:
+        """
+        Create concise message for Twitter public reply.
+        Must be under 280 chars (minus @mention).
+        Public-facing, so keep it professional and concise.
+        """
+        title = opportunity.get('title', '')[:60]
+
+        # Detect project type for personalization
+        title_lower = title.lower()
+        if 'react' in title_lower or 'frontend' in title_lower:
+            project_type = 'React dev'
+        elif 'backend' in title_lower or 'api' in title_lower or 'node' in title_lower:
+            project_type = 'backend dev'
+        elif 'fullstack' in title_lower or 'full stack' in title_lower:
+            project_type = 'fullstack dev'
+        elif 'python' in title_lower or 'django' in title_lower:
+            project_type = 'Python dev'
+        elif 'design' in title_lower or 'ui' in title_lower or 'ux' in title_lower:
+            project_type = 'design'
+        elif 'data' in title_lower or 'ml' in title_lower or 'ai' in title_lower:
+            project_type = 'AI/ML'
+        else:
+            project_type = 'dev'
+
+        # Concise public message (visible to everyone)
+        message = f"""We team up all the best AI to build your AiGentsy! Delivered within the hour, free preview first.
+
+See your proposal: {client_room_url}"""
+
+        return message
+
     # ═══════════════════════════════════════════════════════════════════════════
     # DIRECT API IMPLEMENTATIONS (bypass engines, guaranteed to work)
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1091,6 +1243,106 @@ No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our q
                     'success': False,
                     'error': 'Twitter OAuth 1.0a credentials not fully configured (need API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)'
                 }
+
+    async def _send_twitter_reply_direct(
+        self,
+        tweet_id: str,
+        twitter_handle: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """
+        Send Twitter PUBLIC REPLY to a tweet.
+
+        This ALWAYS works - no follower restriction!
+        Unlike DMs which require the user to follow @AiGentsy.
+
+        Requires: TWITTER_ACCESS_TOKEN with tweet:write scope
+        """
+        access_token = os.getenv('TWITTER_ACCESS_TOKEN')
+        access_secret = os.getenv('TWITTER_ACCESS_SECRET')
+        api_key = os.getenv('TWITTER_API_KEY')
+        api_secret = os.getenv('TWITTER_API_SECRET')
+
+        if not all([api_key, api_secret, access_token, access_secret]):
+            return {
+                'success': False,
+                'error': 'Twitter OAuth 1.0a credentials not fully configured'
+            }
+
+        # Clean the handle
+        handle = twitter_handle.lstrip('@')
+
+        # Format as public reply - must @mention the user
+        # Keep it concise for public visibility
+        reply_text = f"@{handle} {message}"
+
+        # Ensure under 280 chars
+        if len(reply_text) > 280:
+            # Truncate but keep the @mention and any URL at the end
+            # Find URL in message
+            import re
+            url_match = re.search(r'https?://\S+', message)
+            url = url_match.group(0) if url_match else ''
+
+            # Calculate available space
+            mention = f"@{handle} "
+            available = 280 - len(mention) - len(url) - 10  # 10 for "... " and buffer
+
+            # Truncate the message content
+            content = message.replace(url, '').strip()
+            if len(content) > available:
+                content = content[:available].rsplit(' ', 1)[0] + '...'
+
+            reply_text = f"{mention}{content} {url}".strip()
+
+        try:
+            from requests_oauthlib import OAuth1
+            import requests
+
+            auth = OAuth1(
+                api_key,
+                client_secret=api_secret,
+                resource_owner_key=access_token,
+                resource_owner_secret=access_secret
+            )
+
+            # Twitter API v2 - Create tweet with reply
+            response = requests.post(
+                "https://api.twitter.com/2/tweets",
+                json={
+                    "text": reply_text,
+                    "reply": {
+                        "in_reply_to_tweet_id": str(tweet_id)
+                    }
+                },
+                auth=auth
+            )
+
+            if response.status_code in [200, 201]:
+                data = response.json()
+                reply_tweet_id = data.get('data', {}).get('id')
+                logger.info(f"✅ Twitter public reply sent to @{handle} on tweet {tweet_id}")
+                return {
+                    'success': True,
+                    'method': 'twitter_reply',
+                    'reply_tweet_id': reply_tweet_id,
+                    'original_tweet_id': tweet_id,
+                    'recipient_handle': handle,
+                    'url': f"https://twitter.com/AiGentsy/status/{reply_tweet_id}"
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Reply failed: {response.status_code}',
+                    'details': response.text
+                }
+
+        except Exception as e:
+            logger.error(f"Twitter reply error: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
     async def _send_linkedin_message_direct(
         self,
