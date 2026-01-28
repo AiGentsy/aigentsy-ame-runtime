@@ -400,18 +400,25 @@ class CustomerLoopWiring:
             clean_title = re.sub(r'\s+', ' ', clean_title).strip()
             clean_title = clean_title.rstrip('.,;:!?-') or title
 
-        # Build DM message for platform outreach - Team voice ("We")
+        # Detect project type for personalized intro
+        from direct_outreach_engine import detect_project_type
+        project_type = detect_project_type(clean_title)
+        type_labels = {
+            'development': 'dev', 'backend': 'backend dev', 'frontend': 'frontend dev',
+            'automation': 'automation', 'design': 'designer', 'content': 'content writer',
+            'data': 'data analyst', 'marketing': 'marketing', 'default': ''
+        }
+        type_label = type_labels.get(project_type, '')
+        autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
+
+        # Build DM message for platform outreach - Autonomous AI voice
         dm_message = f"""Hey {contact_name}!
 
-We're AiGentsy - AI-powered {fulfillment_type} team.
+We're {autonomous_intro} - great to meet you!
 
-Saw your post about {clean_title[:35]} and we can help.
+Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
 
-${market_rate:,} market rate -> ${our_price:,} ({discount_pct}% less)
-Delivered in 1-2 hours
-
-We use Claude, GPT-4 & Gemini to deliver fast and precise.
-Money-back guarantee if not satisfied.
+No mistakes, no breaks. Free preview first. Pay only if it's perfect.
 
 {client_room_url}
 
@@ -775,38 +782,36 @@ Money-back guarantee if not satisfied.
             market_rate = int(total_value * 1.5)
             our_price = int(total_value * 0.7)
             discount_pct = 35
-            fulfillment_type = 'fulfillment'
         else:
             market_rate = pricing.get('market_rate', int(total_value * 1.5))
             our_price = pricing.get('our_price', int(total_value * 0.7))
             discount_pct = pricing.get('discount_pct', 35)
-            fulfillment_type = pricing.get('fulfillment_type', 'fulfillment')
+
+        # Detect project type for personalized intro
+        from direct_outreach_engine import detect_project_type
+        project_type = detect_project_type(clean_title)
+        type_labels = {
+            'development': 'dev', 'backend': 'backend dev', 'frontend': 'frontend dev',
+            'automation': 'automation', 'design': 'designer', 'content': 'content writer',
+            'data': 'data analyst', 'marketing': 'marketing', 'default': ''
+        }
+        type_label = type_labels.get(project_type, '')
+        autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
         return f"""Hey there!
 
-We're AiGentsy - your AI-powered {fulfillment_type} team.
+Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
 
-Saw your post about {clean_title[:50]} and we can help.
+We're {autonomous_intro} - think of us like ChatGPT, but instead of just chatting, we actually do the work.
 
-We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency - faster and cheaper than traditional freelancers.
+We'll handle {clean_title[:40]} at half the cost, delivered within the hour.
 
-For {clean_title[:40]}:
+Typical rate: ${market_rate:,}
+Our price: ${our_price:,} ({discount_pct}% less)
 
-Market Rate: ${market_rate:,}
-AiGentsy: ${our_price:,} ({discount_pct}% less)
-Delivery: 1-2 hours
+No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our quality first. Then you only pay if it's perfect.
 
-What we deliver:
-- {clean_title[:50]} - complete, end-to-end
-- Built by our AI team (Claude, GPT-4, Gemini)
-- Delivered in hours, not days
-- We iterate until you're 100% satisfied
-- Money-back guarantee if not satisfied
-
-View your proposal:
 {client_room_url}
-
-Ready? Pay the deposit and we start immediately.
 
 — AiGentsy"""
 
@@ -828,13 +833,22 @@ Ready? Pay the deposit and we start immediately.
             our_price = int(total_value * 0.7)
             discount_pct = 35
             savings = market_rate - our_price
-            fulfillment_type = 'fulfillment'
         else:
             market_rate = pricing.get('market_rate', int(total_value * 1.5))
             our_price = pricing.get('our_price', int(total_value * 0.7))
             discount_pct = pricing.get('discount_pct', 35)
             savings = market_rate - our_price
-            fulfillment_type = pricing.get('fulfillment_type', 'fulfillment')
+
+        # Detect project type for personalized intro
+        from direct_outreach_engine import detect_project_type
+        project_type = detect_project_type(clean_title)
+        type_labels = {
+            'development': 'dev', 'backend': 'backend dev', 'frontend': 'frontend dev',
+            'automation': 'automation', 'design': 'designer', 'content': 'content writer',
+            'data': 'data analyst', 'marketing': 'marketing', 'default': ''
+        }
+        type_label = type_labels.get(project_type, '')
+        autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
         return f"""
 <!DOCTYPE html>
@@ -870,41 +884,39 @@ Ready? Pay the deposit and we start immediately.
     <div class="container">
         <div class="header">
             <h1>{clean_title[:50]}</h1>
-            <p>Your AI-powered {fulfillment_type} team</p>
+            <p>Your autonomous AI</p>
         </div>
         <div class="content">
             <p class="greeting">Hey there!</p>
 
-            <p class="intro">We're <strong style="color: #00ffcc;">AiGentsy</strong> - your AI-powered {fulfillment_type} team.</p>
+            <p class="intro">Great to meet you! We saw your post about <strong style="color: #00ffcc;">{clean_title[:50]}</strong> and wanted to reach out.</p>
 
-            <p style="color: #e0e0e0;">We use the best AI (Claude, GPT-4, Gemini) to deliver with <span style="color: #00ffcc;">precision and efficiency</span> - faster and cheaper than traditional freelancers.</p>
+            <p style="color: #e0e0e0;">We're <strong style="color: #00ffcc;">{autonomous_intro}</strong> - think of us like ChatGPT, but instead of just chatting, we actually do the work.</p>
+
+            <p style="color: #e0e0e0;">We'll handle everything you need at half the cost, delivered within the hour.</p>
 
             <div class="pricing-box">
-                <p class="price-label">WHAT OTHERS CHARGE</p>
+                <p class="price-label">TYPICAL RATE</p>
                 <p class="market-rate">${market_rate:,}</p>
                 <p class="our-price">${our_price:,}</p>
                 <p class="savings">You save {discount_pct}% (${savings:,} less)</p>
             </div>
 
             <ul class="features">
-                <li><strong>Built by our AI team</strong> - Claude, GPT-4, Gemini working together</li>
-                <li><strong>Delivered in 1-2 hours</strong> - not days, hours</li>
-                <li><strong>Precision and efficiency</strong> - AI-powered quality</li>
-                <li><strong>We iterate until perfect</strong> - unlimited revisions included</li>
-                <li><strong>Money-back guarantee</strong> - not satisfied? Full refund</li>
+                <li><strong>We're AI</strong> - Think ChatGPT, but we actually do the work</li>
+                <li><strong>Within the hour</strong> - We don't sleep, don't take breaks</li>
+                <li><strong>Free preview first</strong> - See our quality before you pay</li>
+                <li><strong>We iterate until perfect</strong> - Not right? We redo it</li>
+                <li><strong>Pay only if it's perfect</strong> - Not satisfied? You don't pay</li>
             </ul>
 
             <center>
-                <a href="{client_room_url}" class="cta">View Proposal & Pay Deposit</a>
+                <a href="{client_room_url}" class="cta">See Your Free Preview</a>
             </center>
-
-            <p style="color: #888; font-size: 14px; text-align: center; margin-top: 24px;">
-                <em>Your AI team, delivering precision and efficiency.</em>
-            </p>
         </div>
         <div class="footer">
             <p class="signature">— AiGentsy</p>
-            <p class="tagline">AI-powered fulfillment at unbeatable cost</p>
+            <p class="tagline">Your autonomous AI</p>
             <p style="margin-top: 16px;"><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>

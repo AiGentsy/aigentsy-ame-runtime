@@ -144,8 +144,16 @@ def detect_project_type(title: str, pain_point: str = "") -> str:
     if any(kw in text for kw in ['automat', 'bot', 'script', 'workflow', 'zapier', 'n8n', 'make.com', 'scrape', 'crawl']):
         return 'automation'
 
-    # Data - check before design (dashboard, visualization are data-specific)
-    if any(kw in text for kw in ['data', 'analyt', 'dashboard', 'report', 'visualization', 'excel', 'sql', 'tableau', 'power bi']):
+    # Frontend-specific - check BEFORE data (react dashboard = frontend, not data)
+    if any(kw in text for kw in ['frontend', 'react', 'vue', 'angular', 'ui', 'ux', 'interface', 'webpage', 'landing page', 'next.js', 'nextjs']):
+        return 'frontend'
+
+    # Backend-specific
+    if any(kw in text for kw in ['api', 'backend', 'database', 'server', 'microservice', 'rest', 'graphql', 'node', 'django', 'flask', 'fastapi']):
+        return 'backend'
+
+    # Data - specific data/analytics work (not just "dashboard" since frontend can have dashboards)
+    if any(kw in text for kw in ['data analy', 'analytics', 'data science', 'visualization', 'excel', 'sql', 'tableau', 'power bi', 'etl', 'data pipeline']):
         return 'data'
 
     # Design
@@ -160,16 +168,8 @@ def detect_project_type(title: str, pain_point: str = "") -> str:
     if any(kw in text for kw in ['market', 'campaign', 'ads', 'growth', 'email', 'newsletter', 'funnel']):
         return 'marketing'
 
-    # Frontend-specific
-    if any(kw in text for kw in ['frontend', 'react', 'vue', 'angular', 'ui', 'ux', 'interface', 'webpage', 'landing page']):
-        return 'frontend'
-
-    # Backend-specific
-    if any(kw in text for kw in ['api', 'backend', 'database', 'server', 'microservice', 'rest', 'graphql', 'node', 'django', 'flask', 'fastapi']):
-        return 'backend'
-
     # General development (catch-all for dev work)
-    if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'mobile', 'ios', 'android', 'python', 'javascript', 'integration']):
+    if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'mobile', 'ios', 'android', 'python', 'javascript', 'integration', 'dashboard']):
         return 'development'
 
     return 'default'
@@ -194,17 +194,17 @@ class ProposalGenerator:
             OutreachChannel.GITHUB_DISCUSSION: self._github_template,
         }
 
-        # Value propositions by category - Team voice ("We")
+        # Value propositions by category - Autonomous AI voice
         self.value_props = {
-            'development': "We're AiGentsy - your AI-powered development team",
-            'backend': "We're AiGentsy - your AI-powered backend team",
-            'frontend': "We're AiGentsy - your AI-powered frontend team",
-            'automation': "We're AiGentsy - your AI-powered automation team",
-            'design': "We're AiGentsy - your AI-powered design team",
-            'content': "We're AiGentsy - your AI-powered content team",
-            'data': "We're AiGentsy - your AI-powered analytics team",
-            'marketing': "We're AiGentsy - your AI-powered marketing team",
-            'default': "We're AiGentsy - your AI-powered team"
+            'development': "your autonomous dev AiGentsy",
+            'backend': "your autonomous backend dev AiGentsy",
+            'frontend': "your autonomous frontend dev AiGentsy",
+            'automation': "your autonomous automation AiGentsy",
+            'design': "your autonomous designer AiGentsy",
+            'content': "your autonomous content writer AiGentsy",
+            'data': "your autonomous data analyst AiGentsy",
+            'marketing': "your autonomous marketing AiGentsy",
+            'default': "your autonomous AiGentsy"
         }
     
     async def generate_proposal(
@@ -326,35 +326,24 @@ class ProposalGenerator:
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
-        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
-        delivery_time = kwargs.get('delivery_time', '1-2 hours')
+        fulfillment_type = kwargs.get('fulfillment_type', 'dev')
+        delivery_time = kwargs.get('delivery_time', 'within the hour')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         body = f"""Hey {name}!
 
-We're AiGentsy - your AI-powered {fulfillment_type} team.
+Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
 
-Saw your post about {clean_title[:50]} and we can help.
+We're {value_prop} - think of us like ChatGPT, but instead of just chatting, we actually do the work.
 
-We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency - faster and cheaper than traditional freelancers.
+We'll handle {clean_title[:40]} at half the cost, delivered {delivery_time}.
 
-For {clean_title[:40]}:
+Typical rate: ${market_rate:,}
+Our price: ${our_price:,} ({discount_pct}% less)
 
-Market Rate: ${market_rate:,}
-AiGentsy: ${our_price:,} ({discount_pct}% less)
-Delivery: {delivery_time}
+No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our quality first. Then you only pay if it's perfect.
 
-What we deliver:
-- {pain_point[:60]} - complete, end-to-end
-- Built by our AI team (Claude, GPT-4, Gemini)
-- Delivered in hours, not days
-- We iterate until you're 100% satisfied
-- Money-back guarantee if not satisfied
-
-View your proposal:
 {client_room_url}
-
-Ready? Pay the deposit and we start immediately.
 
 — AiGentsy
 """
@@ -362,7 +351,7 @@ Ready? Pay the deposit and we start immediately.
         return subject, body
     
     def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
-        """Generate Twitter DM - Reference their post, professional conversion"""
+        """Generate Twitter DM - Reference their post, conversational conversion"""
         subject = ""  # No subject for DMs
 
         # Clean the title
@@ -372,21 +361,16 @@ Ready? Pay the deposit and we start immediately.
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
-        fulfillment_type = kwargs.get('fulfillment_type', 'dev')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         # Build DM - Twitter has 10k char limit for DMs now
         body = f"""Hey {name}!
 
-We're AiGentsy - AI-powered {fulfillment_type} team.
+We're {value_prop} - great to meet you!
 
-Saw your post about {clean_title[:30]} and we can help.
+Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
 
-${market_rate:,} market rate -> ${our_price:,} ({discount_pct}% less)
-Delivered in 1-2 hours
-
-We use Claude, GPT-4 & Gemini to deliver fast and precise.
-Money-back guarantee if not satisfied.
+No mistakes, no breaks. Free preview first. Pay only if it's perfect.
 
 {client_room_url}
 
@@ -404,24 +388,22 @@ Money-back guarantee if not satisfied.
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
-        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         body = f"""Hey {name}!
 
-We're AiGentsy - your AI-powered {fulfillment_type} team.
+Great to meet you! We're {value_prop}.
 
-Saw your post about {clean_title[:40]} and we can help.
+Saw your post about {clean_title[:40]} - we can help.
 
-We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency:
+Think of us like ChatGPT, but instead of just chatting, we actually do the work:
 
-- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
-- {pain_point[:50]} - complete, end-to-end
-- Delivered in 1-2 hours, not days
-- We iterate until you're 100% satisfied
-- Money-back guarantee
+- ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
+- Delivered within the hour
+- Free preview first - see our quality before you pay
+- Not perfect? We iterate until it is. Still not right? You don't pay.
 
-View your proposal: {client_room_url}
+{client_room_url}
 
 — AiGentsy"""
 
@@ -437,23 +419,19 @@ View your proposal: {client_room_url}
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
-        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         body = f"""Hey u/{name}!
 
-We're AiGentsy - AI-powered {fulfillment_type} team.
+We're {value_prop} - great to meet you!
 
-Saw your post about {clean_title[:40]} and we can help.
+Saw your post about {clean_title[:40]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
 
-We use Claude, GPT-4 & Gemini to deliver fast and precise:
+Think ChatGPT but we actually do the work. No mistakes, no breaks.
 
-- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
-- Delivered in 1-2 hours
-- We iterate until you're satisfied
-- Money-back guarantee
+Free preview first. Pay only if it's perfect.
 
-Check out your proposal: {client_room_url}
+{client_room_url}
 
 — AiGentsy"""
 
@@ -469,24 +447,22 @@ Check out your proposal: {client_room_url}
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
-        fulfillment_type = kwargs.get('fulfillment_type', 'development')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         body = f"""Hey @{name}!
 
-We're **AiGentsy** - AI-powered {fulfillment_type} team.
+We're **{value_prop}** - great to meet you!
 
-Saw this issue and we can help with {pain_point[:45]}.
+Saw this issue - we can help with {pain_point[:45]}.
 
-We use Claude, GPT-4 & Gemini to deliver with precision:
+Think ChatGPT but we actually write the code:
 
-- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
-- {pain_point[:50]} - complete, end-to-end
-- Delivered in 1-2 hours
-- We iterate until it's exactly right
-- Money-back guarantee
+- ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
+- Delivered within the hour
+- Free preview first
+- Not perfect? We iterate. Still not right? You don't pay.
 
-Check out your proposal: {client_room_url}
+{client_room_url}
 
 — AiGentsy"""
 

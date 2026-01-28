@@ -865,41 +865,41 @@
     <div class="modal-overlay" id="handshakeModal">
         <div class="modal">
             <div class="modal-header">
-                <h2>Welcome to AiGentsy</h2>
-                <p>A quick note before we show you what we can do</p>
+                <h2>Hey! Let's shake on it</h2>
+                <p>We're your autonomous {{ pricing.fulfillment_type or 'dev' }} AI. Zero risk - see our work before you pay.</p>
             </div>
             <div class="modal-content">
                 <ul class="terms-list">
                     <li class="term-item">
-                        <div class="term-title">1. WE'RE AN AI TEAM</div>
-                        <div class="term-desc">We use the best AI (Claude, GPT-4, Gemini) to deliver your project with precision and speed. Everything we create goes through quality review.</div>
+                        <div class="term-title">1. WE'RE AI</div>
+                        <div class="term-desc">Think ChatGPT, but we actually do the work instead of just talking about it. Claude, GPT-4, and Gemini working together.</div>
                     </li>
                     <li class="term-item">
-                        <div class="term-title">2. FREE PREVIEW FIRST</div>
-                        <div class="term-desc">We'll show you ~20% of the work upfront, free. This lets you see our quality before committing. The preview is watermarked until payment.</div>
+                        <div class="term-title">2. WITHIN THE HOUR</div>
+                        <div class="term-desc">We don't sleep, don't take breaks, just deliver. Your project completed fast.</div>
                     </li>
                     <li class="term-item">
-                        <div class="term-title">3. YOU OWN IT AFTER PAYMENT</div>
-                        <div class="term-desc">Once you pay, all IP transfers to you. Until then, it remains ours.</div>
+                        <div class="term-title">3. FREE PREVIEW FIRST</div>
+                        <div class="term-desc">We'll show you 20% of the work so you can see our quality before you pay anything.</div>
                     </li>
                     <li class="term-item">
-                        <div class="term-title">4. 48-HOUR PREVIEW WINDOW</div>
-                        <div class="term-desc">Your preview stays available for 48 hours. Lock it in when you're ready.</div>
+                        <div class="term-title">4. WE ITERATE UNTIL PERFECT</div>
+                        <div class="term-desc">Not right? We'll redo it. Still not right? You don't pay. Simple as that.</div>
                     </li>
                     <li class="term-item">
-                        <div class="term-title">5. SECURE ESCROW</div>
-                        <div class="term-desc">50% deposit to start, held securely via Stripe. We only receive it after you approve the final work.</div>
+                        <div class="term-title">5. HALF THE TYPICAL COST</div>
+                        <div class="term-desc">${{ "{:,.0f}".format(pricing.market_rate or 0) }} typical vs ${{ "{:,.0f}".format(pricing.our_price or 0) }} with us. We're AI - lower overhead.</div>
                     </li>
                     <li class="term-item">
-                        <div class="term-title">6. MONEY-BACK GUARANTEE</div>
-                        <div class="term-desc">Not satisfied within 7 days? Full refund. We stand behind our work.</div>
+                        <div class="term-title">6. SECURE PAYMENT</div>
+                        <div class="term-desc">50% deposit held via Stripe escrow. We only receive it after you approve.</div>
                     </li>
                 </ul>
 
                 <div class="checkbox-row">
                     <input type="checkbox" id="acceptTerms" onchange="toggleAcceptButton()">
                     <label class="checkbox-label" for="acceptTerms">
-                        I understand AiGentsy uses AI to deliver my project, and I'm ready to see my free preview.
+                        Sounds good! Show me what you can do.
                     </label>
                 </div>
 
@@ -917,7 +917,7 @@
             <img src="/static/images/logo.png" alt="AiGentsy" class="logo-img">
             <div class="logo">AiGentsy</div>
             <h1 class="greeting">Hey there!</h1>
-            <p class="subtitle">Your AI-powered {{ pricing.fulfillment_type or 'fulfillment' }} team</p>
+            <p class="subtitle">Your autonomous {{ pricing.fulfillment_type or 'dev' }} AI</p>
         </header>
 
         <!-- Preview Section (shown after handshake accepted) -->
@@ -984,7 +984,7 @@
         <!-- Hero with Pricing -->
         <section class="hero">
             <h1>{{ contract.title or 'Your Project' }}</h1>
-            <p>We use the best AI to deliver your project with precision and efficiency - faster and cheaper than traditional freelancers.</p>
+            <p>Think ChatGPT, but we actually do the work. Half the cost, delivered within the hour.</p>
 
             <div class="pricing-box">
                 <div class="pricing-compare">
@@ -1007,23 +1007,23 @@
         <div class="value-props">
             <div class="value-prop">
                 <div class="value-prop-icon">⚡</div>
-                <div class="value-prop-title">1-2 Hours</div>
-                <div class="value-prop-desc">Not days, hours</div>
+                <div class="value-prop-title">Within the Hour</div>
+                <div class="value-prop-desc">We don't sleep</div>
             </div>
             <div class="value-prop">
                 <div class="value-prop-icon">🔄</div>
-                <div class="value-prop-title">Iterate Until Perfect</div>
-                <div class="value-prop-desc">Refine until satisfied</div>
+                <div class="value-prop-title">We Iterate</div>
+                <div class="value-prop-desc">Until it's perfect</div>
             </div>
             <div class="value-prop">
                 <div class="value-prop-icon">🤖</div>
-                <div class="value-prop-title">Our AI Team</div>
-                <div class="value-prop-desc">Claude, GPT-4, Gemini</div>
+                <div class="value-prop-title">We're AI</div>
+                <div class="value-prop-desc">No mistakes, no breaks</div>
             </div>
             <div class="value-prop">
                 <div class="value-prop-icon">💰</div>
-                <div class="value-prop-title">Money-Back Guarantee</div>
-                <div class="value-prop-desc">Not satisfied? Refund</div>
+                <div class="value-prop-title">Pay If Perfect</div>
+                <div class="value-prop-desc">Not satisfied? Don't pay</div>
             </div>
         </div>
 
@@ -1107,22 +1107,22 @@
                 <li class="deliverable">
                     <span class="deliverable-check">✓</span>
                     <div class="deliverable-content">
-                        <h4>Built by Our AI Team</h4>
-                        <p>Claude, GPT-4, and Gemini working together</p>
+                        <h4>We're AI</h4>
+                        <p>No mistakes, no breaks - just deliver</p>
                     </div>
                 </li>
                 <li class="deliverable">
                     <span class="deliverable-check">✓</span>
                     <div class="deliverable-content">
-                        <h4>Unlimited Iterations</h4>
-                        <p>We iterate until you're 100% satisfied</p>
+                        <h4>We Iterate Until Perfect</h4>
+                        <p>Not right? We redo it. Still not right? You don't pay.</p>
                     </div>
                 </li>
                 <li class="deliverable">
                     <span class="deliverable-check">✓</span>
                     <div class="deliverable-content">
                         <h4>Full IP Transfer</h4>
-                        <p>Everything we create is yours</p>
+                        <p>Everything we create becomes yours</p>
                     </div>
                 </li>
             </ul>
@@ -1183,7 +1183,7 @@
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-signature">— AiGentsy</div>
-            <div class="footer-tagline">Your AI-powered team</div>
+            <div class="footer-tagline">Your autonomous AI</div>
             <a href="https://aigentsy.com" class="footer-link">https://aigentsy.com</a>
         </footer>
     </div>
