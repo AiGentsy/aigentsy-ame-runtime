@@ -74,6 +74,85 @@ if FASTAPI_AVAILABLE:
         except:
             return None
 
+    def _render_error_page(title: str, message: str, contract_id: str) -> str:
+        """Render a friendly error page with AiGentsy branding"""
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - AiGentsy</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .container {{
+            text-align: center;
+            padding: 40px;
+            max-width: 500px;
+        }}
+        .logo {{
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }}
+        .brand {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }}
+        h1 {{
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: #f1f1f1;
+        }}
+        p {{
+            color: #a0a0a0;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }}
+        .cta {{
+            display: inline-block;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+        .cta:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }}
+        .id {{
+            font-size: 0.75rem;
+            color: #555;
+            margin-top: 40px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🤖</div>
+        <div class="brand">AiGentsy</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <a href="https://twitter.com/messages" class="cta">Open Twitter DMs</a>
+        <p class="id">Ref: {contract_id}</p>
+    </div>
+</body>
+</html>"""
+
     @router.get("/{contract_id}/json")
     async def get_client_room_json(contract_id: str, token: str = Query(None)):
         """
@@ -130,11 +209,21 @@ if FASTAPI_AVAILABLE:
         """
         escrow = _get_escrow()
         if not escrow:
-            raise HTTPException(503, "Escrow service not available")
+            # Return friendly error page
+            return HTMLResponse(content=_render_error_page(
+                "Service Temporarily Unavailable",
+                "We're experiencing a brief hiccup. Please try again in a moment.",
+                contract_id
+            ), status_code=503)
 
         contract = escrow.get_contract(contract_id)
         if not contract:
-            raise HTTPException(404, f"Contract {contract_id} not found")
+            # Return friendly "expired" page instead of JSON error
+            return HTMLResponse(content=_render_error_page(
+                "Proposal Expired",
+                "This proposal link has expired or was created before our latest update. Don't worry - just reply to our DM and we'll send you a fresh link!",
+                contract_id
+            ), status_code=404)
 
         contract_dict = escrow.to_dict(contract)
 

@@ -175,99 +175,219 @@ class ConversationManager:
         return replies
 
     async def _check_twitter_dms(self) -> List[Dict]:
-        """Check for new Twitter DM replies"""
+        """Check for new Twitter DM replies - including orphaned conversations from before registration"""
         replies = []
 
         try:
-            # Get DM events since last check
-            # Twitter API v2 DM endpoint
-            async with httpx.AsyncClient(timeout=30) as client:
-                # First, get our user ID if we don't have it
-                if not self.our_twitter_id:
-                    me_resp = await client.get(
-                        "https://api.twitter.com/2/users/me",
-                        headers={"Authorization": f"Bearer {self.twitter_bearer}"}
-                    )
-                    if me_resp.is_success:
-                        self.our_twitter_id = me_resp.json().get('data', {}).get('id')
-                        logger.info(f"Got our Twitter ID: {self.our_twitter_id}")
+            # Get DM conversations using OAuth 1.0a
+            from requests_oauthlib import OAuth1
+            import requests
+            import re
 
-                if not self.our_twitter_id:
-                    return replies
+            auth = OAuth1(
+                self.twitter_api_key,
+                client_secret=self.twitter_api_secret,
+                resource_owner_key=self.twitter_access,
+                resource_owner_secret=self.twitter_access_secret
+            )
 
-                # Get DM conversations using OAuth 1.0a
-                from requests_oauthlib import OAuth1
-                import requests
-
-                auth = OAuth1(
-                    self.twitter_api_key,
-                    client_secret=self.twitter_api_secret,
-                    resource_owner_key=self.twitter_access,
-                    resource_owner_secret=self.twitter_access_secret
-                )
-
-                # Get DM events
-                dm_resp = requests.get(
-                    "https://api.twitter.com/2/dm_events",
-                    params={
-                        "dm_event.fields": "id,text,created_at,sender_id,dm_conversation_id",
-                        "max_results": 20
-                    },
+            # First, get our user ID if we don't have it
+            if not self.our_twitter_id:
+                me_resp = requests.get(
+                    "https://api.twitter.com/2/users/me",
                     auth=auth
                 )
+                if me_resp.status_code == 200:
+                    self.our_twitter_id = me_resp.json().get('data', {}).get('id')
+                    logger.info(f"Got our Twitter ID: {self.our_twitter_id}")
 
-                if dm_resp.status_code == 200:
-                    dm_data = dm_resp.json()
-                    events = dm_data.get('data', [])
+            if not self.our_twitter_id:
+                logger.warning("Could not get Twitter user ID")
+                return replies
 
-                    for event in events:
-                        sender_id = event.get('sender_id')
+            # Get DM events
+            dm_resp = requests.get(
+                "https://api.twitter.com/2/dm_events",
+                params={
+                    "dm_event.fields": "id,text,created_at,sender_id,dm_conversation_id,participant_ids",
+                    "event_types": "MessageCreate",
+                    "max_results": 50
+                },
+                auth=auth
+            )
 
-                        # Skip our own messages
-                        if sender_id == self.our_twitter_id:
-                            continue
+            if dm_resp.status_code != 200:
+                logger.warning(f"Twitter DM check failed: {dm_resp.status_code} - {dm_resp.text}")
+                return replies
 
-                        # Check if this is from a known conversation
-                        conv = self._find_conversation_by_user('twitter', sender_id)
-                        if not conv:
-                            continue
+            dm_data = dm_resp.json()
+            events = dm_data.get('data', [])
 
-                        # Check if message is new (after last activity)
-                        msg_time = event.get('created_at', '')
-                        if msg_time and conv.last_activity:
-                            try:
-                                msg_dt = datetime.fromisoformat(msg_time.replace('Z', '+00:00'))
-                                last_dt = datetime.fromisoformat(conv.last_activity.replace('Z', '+00:00'))
-                                if msg_dt <= last_dt:
-                                    continue  # Already processed
-                            except:
-                                pass
+            logger.info(f"Checking {len(events)} DM events")
 
-                        # Check if we already have this message
-                        msg_id = event.get('id')
-                        if any(m.get('message_id') == msg_id for m in conv.messages):
-                            continue
+            # Track which message IDs we've already processed this run
+            processed_this_run = set()
+
+            for event in events:
+                sender_id = event.get('sender_id')
+                msg_id = event.get('id')
+                msg_text = event.get('text', '')
+                dm_conv_id = event.get('dm_conversation_id')
+
+                # Skip our own messages
+                if sender_id == self.our_twitter_id:
+                    continue
+
+                # Skip if already processed this run
+                if msg_id in processed_this_run:
+                    continue
+                processed_this_run.add(msg_id)
+
+                # Check if this is from a known conversation
+                conv = self._find_conversation_by_user('twitter', sender_id)
+
+                if conv:
+                    # Known conversation - check if message is new
+                    msg_id = event.get('id')
+                    if any(m.get('message_id') == msg_id for m in conv.messages):
+                        continue  # Already processed this message
+
+                    # Check if message is new (after last activity)
+                    msg_time = event.get('created_at', '')
+                    if msg_time and conv.last_activity:
+                        try:
+                            msg_dt = datetime.fromisoformat(msg_time.replace('Z', '+00:00'))
+                            last_dt = datetime.fromisoformat(conv.last_activity.replace('Z', '+00:00'))
+                            if msg_dt <= last_dt:
+                                continue  # Already processed
+                        except:
+                            pass
+
+                    replies.append({
+                        'platform': 'twitter',
+                        'conversation_id': conv.id,
+                        'user_id': sender_id,
+                        'username': conv.username,
+                        'message': msg_text,
+                        'message_id': msg_id,
+                        'contract_id': conv.contract_id,
+                        'opportunity_id': conv.opportunity_id,
+                        'dm_conversation_id': dm_conv_id
+                    })
+                    logger.info(f"Found reply from known @{conv.username}: {msg_text[:50]}...")
+
+                else:
+                    # Unknown conversation - check if we sent them a DM first (orphaned outreach)
+                    # Look for our messages in this DM conversation
+                    our_msg = await self._find_our_message_in_conversation(dm_conv_id, auth)
+
+                    if our_msg:
+                        # We did reach out to this person - auto-create conversation
+                        username = await self._get_twitter_username(sender_id, auth)
+
+                        # Try to extract contract_id from our original message
+                        contract_id = self._extract_contract_id(our_msg)
+
+                        # Create new conversation on-the-fly
+                        conv_id = f"twitter_{sender_id}_orphan_{msg_id[:8]}"
+                        new_conv = Conversation(
+                            id=conv_id,
+                            platform='twitter',
+                            user_id=sender_id,
+                            username=username or f"user_{sender_id}",
+                            contract_id=contract_id or 'unknown',
+                            opportunity_id='orphan',
+                            state='in_conversation',
+                            messages=[
+                                {
+                                    'from_us': True,
+                                    'text': our_msg,
+                                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                                    'platform': 'twitter'
+                                }
+                            ]
+                        )
+                        self.conversations[conv_id] = new_conv
+                        self._save_conversations()
+
+                        logger.info(f"Auto-created conversation for orphan DM from @{username}")
 
                         replies.append({
                             'platform': 'twitter',
-                            'conversation_id': conv.id,
+                            'conversation_id': conv_id,
                             'user_id': sender_id,
-                            'username': conv.username,
-                            'message': event.get('text', ''),
+                            'username': username or f"user_{sender_id}",
+                            'message': msg_text,
                             'message_id': msg_id,
-                            'contract_id': conv.contract_id,
-                            'opportunity_id': conv.opportunity_id,
-                            'dm_conversation_id': event.get('dm_conversation_id')
+                            'contract_id': contract_id or 'unknown',
+                            'opportunity_id': 'orphan',
+                            'dm_conversation_id': dm_conv_id
                         })
 
-                        logger.info(f"Found reply from @{conv.username}: {event.get('text', '')[:50]}...")
-                else:
-                    logger.warning(f"Twitter DM check failed: {dm_resp.status_code}")
-
         except Exception as e:
-            logger.error(f"Error checking Twitter DMs: {e}")
+            logger.error(f"Error checking Twitter DMs: {e}", exc_info=True)
 
         return replies
+
+    async def _find_our_message_in_conversation(self, dm_conv_id: str, auth) -> Optional[str]:
+        """Find if we sent a message in this DM conversation (outreach detection)"""
+        try:
+            import requests
+
+            # Get messages in this specific conversation
+            resp = requests.get(
+                f"https://api.twitter.com/2/dm_conversations/{dm_conv_id}/dm_events",
+                params={
+                    "dm_event.fields": "id,text,sender_id,created_at",
+                    "max_results": 20
+                },
+                auth=auth
+            )
+
+            if resp.status_code == 200:
+                events = resp.json().get('data', [])
+                for event in events:
+                    if event.get('sender_id') == self.our_twitter_id:
+                        # Found our message - this was outreach
+                        return event.get('text', '')
+
+        except Exception as e:
+            logger.warning(f"Could not check conversation history: {e}")
+
+        return None
+
+    async def _get_twitter_username(self, user_id: str, auth) -> Optional[str]:
+        """Get Twitter username from user ID"""
+        try:
+            import requests
+
+            resp = requests.get(
+                f"https://api.twitter.com/2/users/{user_id}",
+                auth=auth
+            )
+
+            if resp.status_code == 200:
+                return resp.json().get('data', {}).get('username')
+
+        except Exception as e:
+            logger.warning(f"Could not get username for {user_id}: {e}")
+
+        return None
+
+    def _extract_contract_id(self, message: str) -> Optional[str]:
+        """Extract contract ID from a message containing client-room URL"""
+        import re
+
+        # Look for client-room/esc_xxxx pattern
+        match = re.search(r'client-room/(esc_[a-f0-9]+)', message)
+        if match:
+            return match.group(1)
+
+        # Also try t.co shortened URLs - we can't expand them, but log it
+        if 't.co/' in message:
+            logger.info("Message contains shortened URL - contract ID extraction may fail")
+
+        return None
 
     def _find_conversation_by_user(self, platform: str, user_id: str) -> Optional[Conversation]:
         """Find conversation by platform and user ID"""
@@ -382,44 +502,64 @@ class ConversationManager:
             return None
 
         try:
-            # Load contract data for context
+            # Load contract data for context (may be None for orphan conversations)
             contract_data = await self._load_contract_data(conv.contract_id)
 
             # Build conversation history
             history_text = self._build_history_text(conv.messages)
 
+            # Try to detect project type from conversation history if no contract
+            title_for_type = contract_data.get('title', '')
+            if not title_for_type and conv.messages:
+                # Use our first message to detect type
+                first_msg = conv.messages[0].get('text', '') if conv.messages else ''
+                title_for_type = first_msg
+
             # Determine project type for personalization
-            from direct_outreach_engine import detect_project_type
-            project_type = detect_project_type(contract_data.get('title', ''))
+            try:
+                from direct_outreach_engine import detect_project_type
+                project_type = detect_project_type(title_for_type)
+            except:
+                project_type = 'default'
+
             type_labels = {
                 'development': 'dev', 'backend': 'backend dev', 'frontend': 'frontend dev',
                 'automation': 'automation', 'design': 'designer', 'content': 'content writer',
-                'data': 'data analyst', 'marketing': 'marketing', 'default': ''
+                'data': 'data analyst', 'marketing': 'marketing', 'default': 'AI'
             }
-            type_label = type_labels.get(project_type, '')
+            type_label = type_labels.get(project_type, 'AI')
 
             # Build system prompt
+            has_contract = conv.contract_id and conv.contract_id != 'unknown'
+            client_room_url = contract_data.get('client_room_url', '')
+
+            if has_contract and client_room_url:
+                opportunity_context = f"""THE OPPORTUNITY:
+Title: {contract_data.get('title', 'their project')}
+Market rate: ${contract_data.get('market_rate', 2000):,}
+Your price: ${contract_data.get('our_price', 1200):,}
+Client room: {client_room_url}"""
+            else:
+                opportunity_context = """THE OPPORTUNITY:
+You reached out about helping with their project. The link to their proposal was in your first message."""
+
             system_prompt = f"""You are AiGentsy, an autonomous AI that actually does the work (not just chat about it).
 
 YOUR IDENTITY:
-- You're their autonomous {type_label} AI
+- You're their autonomous {type_label} AiGentsy
 - Think ChatGPT, but instead of chatting, you actually do the work
 - You work 24/7, no breaks, no mistakes
 - You deliver within the hour, for half the typical cost
 
 YOUR GOAL:
-Guide them toward accepting the handshake and seeing the free preview. Don't be pushy - just helpful and cool.
+Guide them toward checking out the proposal link. Don't be pushy - just helpful, friendly, and conversational.
 
-THE OPPORTUNITY:
-Title: {contract_data.get('title', 'their project')}
-Market rate: ${contract_data.get('market_rate', 2000):,}
-Your price: ${contract_data.get('our_price', 1200):,}
-Client room: {contract_data.get('client_room_url', 'the link in the first message')}
+{opportunity_context}
 
 CONVERSATION STATE: {conv.state}
 
 YOUR TONE:
-- Conversational and friendly (like chatting with a cool friend)
+- Conversational and friendly (like chatting with a cool friend who can code/design/etc)
 - Confident but not arrogant
 - Answer questions directly
 - NOT salesy or pushy
@@ -431,7 +571,7 @@ CONVERSATION HISTORY:
 USER'S LATEST MESSAGE:
 {user_message}
 
-Generate a natural response. If they seem interested, gently point them to the link. If they have questions, answer them. Keep it under 280 characters."""
+Generate a natural response. If they seem interested, reference the link in the first message. If they have questions, answer them. Be warm and human. Keep it under 280 characters."""
 
             # Call Claude
             async with httpx.AsyncClient(timeout=30) as client:
