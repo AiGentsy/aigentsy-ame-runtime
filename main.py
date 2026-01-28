@@ -4478,6 +4478,96 @@ async def test_golden_path_history(limit: int = 10):
         "pass_rate": len([r for r in GOLDEN_PATH_RUNS if r["ok"]]) / len(GOLDEN_PATH_RUNS) if GOLDEN_PATH_RUNS else 0
     }
 
+
+@app.post("/test/send-demo")
+async def test_send_demo(
+    email: str = Query(None, description="Email to send demo to"),
+    twitter: str = Query(None, description="Twitter handle to DM"),
+    title: str = Query("Demo: AiGentsy Test Project", description="Project title")
+):
+    """
+    Send a demo DM and/or email to test the full flow.
+    Creates a real contract and sends through the normal outreach system.
+    """
+    results = {
+        "ok": False,
+        "email_result": None,
+        "twitter_result": None,
+        "contract_id": None,
+        "client_room_url": None
+    }
+
+    try:
+        # Create a test opportunity
+        test_opportunity = {
+            "id": f"test_demo_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            "title": title,
+            "description": "This is a test demo to show AiGentsy's autonomous fulfillment capabilities.",
+            "value": 1500,
+            "platform": "demo",
+            "url": "https://aigentsy.com",
+            "metadata": {
+                "poster_email": email,
+                "poster_handle": twitter.lstrip('@') if twitter else None,
+                "is_demo": True
+            }
+        }
+
+        # Create contract via escrow
+        from contracts.milestone_escrow import get_milestone_escrow
+        escrow = get_milestone_escrow()
+
+        # Build simple SOW
+        sow = {
+            "title": title,
+            "total_value_usd": 1500,
+            "milestones": [
+                {"name": "Demo Deliverable", "amount": 1500, "description": "Test milestone"}
+            ]
+        }
+
+        contract = await escrow.create_milestones(test_opportunity, sow)
+        contract_dict = escrow.to_dict(contract)
+        contract_id = contract_dict.get('id') or contract_dict.get('contract_id')
+
+        results["contract_id"] = contract_id
+        results["client_room_url"] = f"https://aigentsy-ame-runtime.onrender.com/client-room/{contract_id}"
+
+        # Now send through customer loop wiring
+        from integration.customer_loop_wiring import CustomerLoopWiring
+        wiring = CustomerLoopWiring()
+
+        # Build contact info
+        contact = {
+            "name": "Demo User",
+            "email": email,
+            "twitter_handle": twitter.lstrip('@') if twitter else None
+        }
+
+        # Present to customer
+        presentation = await wiring.present_to_customer(
+            opportunity=test_opportunity,
+            contract=contract_dict,
+            sow=sow,
+            contact=contact
+        )
+
+        results["ok"] = presentation.presented
+        results["method"] = presentation.method
+        results["channel"] = presentation.channel
+        results["recipient"] = presentation.recipient
+        results["tracking_id"] = presentation.tracking_id
+        results["fallback_attempts"] = presentation.fallback_attempts
+
+        return results
+
+    except Exception as e:
+        import traceback
+        results["error"] = str(e)
+        results["traceback"] = traceback.format_exc()
+        return results
+
+
 @app.post("/platform/pacing-guard")
 async def platform_pacing_guard(body: dict = Body(...)):
     """
