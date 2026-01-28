@@ -4545,7 +4545,7 @@ async def test_send_demo(
         }
 
         # Present to customer
-        presentation = await wiring.present_to_customer(
+        presentation = await wiring.present_contract_to_customer(
             opportunity=test_opportunity,
             contract=contract_dict,
             sow=sow,
