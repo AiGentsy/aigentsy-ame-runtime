@@ -4537,19 +4537,20 @@ async def test_send_demo(
         from integration.customer_loop_wiring import CustomerLoopWiring
         wiring = CustomerLoopWiring()
 
-        # Build contact info
-        contact = {
+        # Add contact info to opportunity (method expects it inside opportunity)
+        test_opportunity['contact'] = {
             "name": "Demo User",
             "email": email,
             "twitter_handle": twitter.lstrip('@') if twitter else None
         }
 
         # Present to customer
+        client_room_url = results["client_room_url"]
         presentation = await wiring.present_contract_to_customer(
             opportunity=test_opportunity,
             contract=contract_dict,
-            sow=sow,
-            contact=contact
+            client_room_url=client_room_url,
+            sow=sow
         )
 
         results["ok"] = presentation.presented
