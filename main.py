@@ -4569,6 +4569,186 @@ async def test_send_demo(
         return results
 
 
+# ============================================================================
+# FALLBACK CLIENT ROOM ROUTES (bypasses router registration issues)
+# ============================================================================
+from fastapi.responses import HTMLResponse
+
+@app.get("/client-room/debug/contracts")
+async def fallback_debug_contracts():
+    """List all contracts - fallback route"""
+    try:
+        from contracts.milestone_escrow import get_milestone_escrow
+        escrow = get_milestone_escrow()
+        contracts = []
+        for contract_id, contract in escrow.contracts.items():
+            contract_dict = escrow.to_dict(contract)
+            contracts.append({
+                'id': contract_id,
+                'title': contract_dict.get('title', 'Unknown')[:50],
+                'status': contract_dict.get('status'),
+                'handshake_status': contract_dict.get('handshake_status'),
+                'total_amount': contract_dict.get('total_amount_usd'),
+                'created_at': contract_dict.get('created_at'),
+                'client_room_url': f"/client-room/{contract_id}"
+            })
+        contracts.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return {'total_contracts': len(contracts), 'contracts': contracts}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/client-room/{contract_id}", response_class=HTMLResponse)
+async def fallback_client_room(contract_id: str):
+    """
+    Fallback client room HTML page with handshake modal.
+    """
+    try:
+        from contracts.milestone_escrow import get_milestone_escrow
+        escrow = get_milestone_escrow()
+        contract = escrow.get_contract(contract_id)
+
+        if not contract:
+            # Friendly error page
+            return HTMLResponse(content=f"""<!DOCTYPE html>
+<html><head><title>Proposal Expired - AiGentsy</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #0a0a0a, #1a1a2e); color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }}
+.container {{ text-align: center; padding: 40px; }}
+.logo {{ font-size: 3rem; margin-bottom: 20px; }}
+h1 {{ color: #f1f1f1; margin-bottom: 15px; }}
+p {{ color: #a0a0a0; margin-bottom: 30px; }}
+.cta {{ display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; }}
+</style></head>
+<body><div class="container">
+<div class="logo">🤖</div>
+<h1>Proposal Expired</h1>
+<p>This link has expired. Reply to our DM for a fresh link!</p>
+<a href="https://twitter.com/messages" class="cta">Open Twitter DMs</a>
+<p style="color:#555;margin-top:40px;font-size:0.75rem;">Ref: {contract_id}</p>
+</div></body></html>""", status_code=404)
+
+        contract_dict = escrow.to_dict(contract)
+
+        # Calculate pricing
+        try:
+            from pricing_calculator import calculate_full_pricing
+            opp = {'title': contract_dict.get('title', 'Project'), 'value': contract_dict.get('total_amount_usd', 0)}
+            pricing = calculate_full_pricing(opp)
+            market_rate = int(pricing.market_rate)
+            our_price = int(pricing.our_price)
+            fulfillment_type = pricing.fulfillment_type or 'dev'
+        except:
+            market_rate = int(contract_dict.get('total_amount_usd', 1500) * 1.5)
+            our_price = int(contract_dict.get('total_amount_usd', 1500))
+            fulfillment_type = 'dev'
+
+        handshake_status = contract_dict.get('handshake_status', 'pending')
+        title = contract_dict.get('title', 'Your Project')
+
+        # Build HTML with handshake modal
+        show_modal = 'block' if handshake_status == 'pending' else 'none'
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - AiGentsy</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%); color: #fff; min-height: 100vh; }}
+        .modal-overlay {{ position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: {show_modal}; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }}
+        .modal {{ background: #1a1a2e; border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; border: 1px solid #333; }}
+        .modal h2 {{ color: #fff; margin-bottom: 10px; }}
+        .modal p {{ color: #a0a0a0; margin-bottom: 20px; }}
+        .terms-list {{ list-style: none; margin-bottom: 20px; }}
+        .term-item {{ padding: 12px 0; border-bottom: 1px solid #333; }}
+        .term-title {{ color: #8b5cf6; font-weight: 600; font-size: 0.85rem; }}
+        .term-desc {{ color: #a0a0a0; font-size: 0.9rem; margin-top: 4px; }}
+        .checkbox-row {{ display: flex; align-items: center; gap: 10px; margin: 20px 0; }}
+        .checkbox-row input {{ width: 20px; height: 20px; }}
+        .checkbox-row label {{ color: #ccc; cursor: pointer; }}
+        .modal-cta {{ width: 100%; padding: 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }}
+        .modal-cta:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .container {{ max-width: 800px; margin: 0 auto; padding: 40px 20px; }}
+        .header {{ text-align: center; margin-bottom: 40px; }}
+        .logo {{ font-size: 2rem; margin-bottom: 10px; }}
+        .brand {{ font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        h1 {{ margin: 20px 0 10px; }}
+        .subtitle {{ color: #a0a0a0; }}
+        .pricing {{ background: #1a1a2e; border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #333; }}
+        .pricing h3 {{ margin-bottom: 15px; }}
+        .price-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #333; }}
+        .price-row:last-child {{ border: none; }}
+        .old-price {{ color: #666; text-decoration: line-through; }}
+        .new-price {{ color: #10b981; font-weight: 600; }}
+        .savings {{ color: #8b5cf6; }}
+        .cta-section {{ text-align: center; margin-top: 30px; }}
+        .main-cta {{ display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 1.1rem; }}
+    </style>
+</head>
+<body>
+    <div class="modal-overlay" id="handshakeModal">
+        <div class="modal">
+            <h2>Hey! Let's shake on it 🤝</h2>
+            <p>We're your autonomous {fulfillment_type} AI. Zero risk - see our work before you pay.</p>
+            <ul class="terms-list">
+                <li class="term-item"><div class="term-title">1. WE'RE AI</div><div class="term-desc">Think ChatGPT, but we actually do the work. Claude, GPT-4, and Gemini working together.</div></li>
+                <li class="term-item"><div class="term-title">2. WITHIN THE HOUR</div><div class="term-desc">We don't sleep, don't take breaks, just deliver. Your project completed fast.</div></li>
+                <li class="term-item"><div class="term-title">3. FREE PREVIEW FIRST</div><div class="term-desc">We'll show you 20% of the work so you can see our quality before you pay.</div></li>
+                <li class="term-item"><div class="term-title">4. WE ITERATE UNTIL PERFECT</div><div class="term-desc">Not right? We'll redo it. Still not right? You don't pay. Simple as that.</div></li>
+                <li class="term-item"><div class="term-title">5. HALF THE TYPICAL COST</div><div class="term-desc">${market_rate:,} typical vs ${our_price:,} with us. We're AI - lower overhead.</div></li>
+                <li class="term-item"><div class="term-title">6. SECURE PAYMENT</div><div class="term-desc">50% deposit held via Stripe escrow. We only receive it after you approve.</div></li>
+            </ul>
+            <div class="checkbox-row">
+                <input type="checkbox" id="acceptTerms" onchange="document.getElementById('acceptBtn').disabled = !this.checked">
+                <label for="acceptTerms">Sounds good! Show me what you can do.</label>
+            </div>
+            <button class="modal-cta" id="acceptBtn" disabled onclick="acceptHandshake()">Show Me the Preview</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header class="header">
+            <div class="logo">🤖</div>
+            <div class="brand">AiGentsy</div>
+            <h1>Hey there!</h1>
+            <p class="subtitle">Your autonomous {fulfillment_type} AI</p>
+        </header>
+
+        <div class="pricing">
+            <h3>Your Proposal: {title[:50]}</h3>
+            <div class="price-row"><span>Typical market rate</span><span class="old-price">${market_rate:,}</span></div>
+            <div class="price-row"><span>Your AiGentsy price</span><span class="new-price">${our_price:,}</span></div>
+            <div class="price-row"><span>You save</span><span class="savings">${market_rate - our_price:,}</span></div>
+        </div>
+
+        <div class="cta-section">
+            <a href="/handshake/{contract_id}/accept" class="main-cta">Accept & See Preview</a>
+        </div>
+    </div>
+
+    <script>
+    async function acceptHandshake() {{
+        try {{
+            const resp = await fetch('/handshake/{contract_id}/accept', {{ method: 'POST' }});
+            if (resp.ok) {{
+                document.getElementById('handshakeModal').style.display = 'none';
+                alert('Handshake accepted! Generating your preview...');
+                location.reload();
+            }}
+        }} catch(e) {{ console.error(e); }}
+    }}
+    </script>
+</body>
+</html>"""
+        return HTMLResponse(content=html)
+
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>Error</h1><pre>{e}</pre>", status_code=500)
+
+
 @app.post("/platform/pacing-guard")
 async def platform_pacing_guard(body: dict = Body(...)):
     """
