@@ -46,6 +46,15 @@ from .success_story_engine import (
     run_content_campaign,
 )
 
+# Browser Automation (ZERO COST - uses existing accounts)
+from .browser_automation import (
+    BrowserAutomation,
+    BrowserTarget,
+    BrowserResult,
+    get_browser_automation,
+    run_browser_engagement,
+)
+
 __all__ = [
     # Multilingual
     'get_multilingual_outreach',
@@ -74,4 +83,10 @@ __all__ = [
     'get_success_story_engine',
     'post_contract_success_story',
     'run_content_campaign',
+    # Browser Automation (ZERO COST)
+    'BrowserAutomation',
+    'BrowserTarget',
+    'BrowserResult',
+    'get_browser_automation',
+    'run_browser_engagement',
 ]

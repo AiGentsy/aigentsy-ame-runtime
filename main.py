@@ -1726,6 +1726,66 @@ try:
             "stats": engine.get_stats()
         }
 
+    # =========================================================================
+    # BROWSER AUTOMATION (ZERO COST - uses existing @AiGentsy accounts)
+    # =========================================================================
+    from outreach import get_browser_automation, run_browser_engagement
+
+    @app.post("/browser/run-cycle")
+    async def api_browser_engagement(
+        platforms: str = None,  # comma-separated: twitter,instagram,linkedin,reddit
+        max_per_platform: int = 5
+    ):
+        """
+        Run browser-based engagement cycle.
+
+        ZERO API COST - uses existing @AiGentsy accounts via Playwright.
+
+        - Twitter: Reply to hiring tweets
+        - Instagram: Comment on #hiring posts
+        - LinkedIn: Comment on job posts
+        - Reddit: Comment on r/forhire posts
+        """
+        platform_list = platforms.split(",") if platforms else ['twitter', 'instagram', 'linkedin']
+
+        try:
+            results = await run_browser_engagement(platform_list, max_per_platform)
+            return {
+                "ok": True,
+                "strategy": "browser_automation",
+                "cost": "$0",
+                "results": results
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": str(e),
+                "hint": "Ensure Playwright is installed: pip install playwright && playwright install chromium"
+            }
+
+    @app.get("/browser/stats")
+    async def api_browser_stats():
+        """Get browser automation statistics."""
+        automation = get_browser_automation()
+        return {
+            "ok": True,
+            "strategy": "browser_automation",
+            "cost": "$0",
+            "stats": automation.get_stats()
+        }
+
+    print("=" * 80)
+    print("BROWSER AUTOMATION LOADED - Zero Cost Engagement")
+    print("=" * 80)
+    print("  Strategy: Browser automation with existing @AiGentsy accounts")
+    print("  Cost: $0 (no API fees)")
+    print("  Platforms: Twitter, Instagram, LinkedIn, Reddit")
+    print("  Endpoints:")
+    print("    - /browser/run-cycle - Run browser engagement cycle")
+    print("    - /browser/stats - Get automation statistics")
+    print("  Voice: billionaire-calm (proof-forward, no hype)")
+    print("=" * 80)
+
     print("=" * 80)
     print("PUBLIC ENGAGEMENT SYSTEM LOADED - Primary Outreach Strategy")
     print("=" * 80)
