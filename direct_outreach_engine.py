@@ -140,37 +140,37 @@ def detect_project_type(title: str, pain_point: str = "") -> str:
     """
     text = (title + ' ' + pain_point).lower()
 
-    # Backend-specific
-    if any(kw in text for kw in ['api', 'backend', 'database', 'server', 'microservice', 'rest', 'graphql', 'node', 'django', 'flask', 'fastapi']):
-        return 'backend'
-
-    # Frontend-specific
-    if any(kw in text for kw in ['frontend', 'react', 'vue', 'angular', 'ui', 'ux', 'interface', 'webpage', 'landing page']):
-        return 'frontend'
-
-    # General development
-    if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'mobile', 'ios', 'android', 'python', 'javascript']):
-        return 'development'
-
-    # Automation
-    if any(kw in text for kw in ['automat', 'bot', 'script', 'workflow', 'zapier', 'integration', 'scrape', 'crawl']):
+    # Automation - check first (zapier, workflow, etc. are specific)
+    if any(kw in text for kw in ['automat', 'bot', 'script', 'workflow', 'zapier', 'n8n', 'make.com', 'scrape', 'crawl']):
         return 'automation'
 
+    # Data - check before design (dashboard, visualization are data-specific)
+    if any(kw in text for kw in ['data', 'analyt', 'dashboard', 'report', 'visualization', 'excel', 'sql', 'tableau', 'power bi']):
+        return 'data'
+
     # Design
-    if any(kw in text for kw in ['design', 'graphic', 'logo', 'brand', 'figma', 'photoshop', 'illustrat', 'visual']):
+    if any(kw in text for kw in ['design', 'graphic', 'logo', 'brand', 'figma', 'photoshop', 'illustrat', 'visual', 'mockup']):
         return 'design'
 
     # Content
     if any(kw in text for kw in ['content', 'write', 'blog', 'copy', 'article', 'seo', 'social media', 'post']):
         return 'content'
 
-    # Data
-    if any(kw in text for kw in ['data', 'analyt', 'dashboard', 'report', 'visualization', 'excel', 'sql', 'tableau']):
-        return 'data'
-
     # Marketing
     if any(kw in text for kw in ['market', 'campaign', 'ads', 'growth', 'email', 'newsletter', 'funnel']):
         return 'marketing'
+
+    # Frontend-specific
+    if any(kw in text for kw in ['frontend', 'react', 'vue', 'angular', 'ui', 'ux', 'interface', 'webpage', 'landing page']):
+        return 'frontend'
+
+    # Backend-specific
+    if any(kw in text for kw in ['api', 'backend', 'database', 'server', 'microservice', 'rest', 'graphql', 'node', 'django', 'flask', 'fastapi']):
+        return 'backend'
+
+    # General development (catch-all for dev work)
+    if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'mobile', 'ios', 'android', 'python', 'javascript', 'integration']):
+        return 'development'
 
     return 'default'
 
