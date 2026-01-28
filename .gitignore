@@ -25,6 +25,9 @@ ENV/
 *.db
 *.swp
 
+# Persistent data (contracts, conversations)
+data/
+
 # Test output files
 full_cycle_*.json
 
