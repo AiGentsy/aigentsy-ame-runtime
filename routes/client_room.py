@@ -153,6 +153,78 @@ if FASTAPI_AVAILABLE:
 </body>
 </html>"""
 
+    @router.get("/debug/contracts")
+    async def debug_list_contracts():
+        """
+        DEBUG: List all contracts currently in the system.
+        Shows contract IDs, status, and handshake state.
+        """
+        escrow = _get_escrow()
+        if not escrow:
+            return {"error": "Escrow service not available", "contracts": []}
+
+        contracts = []
+        for contract_id, contract in escrow.contracts.items():
+            contract_dict = escrow.to_dict(contract)
+            contracts.append({
+                'id': contract_id,
+                'title': contract_dict.get('title', 'Unknown')[:50],
+                'status': contract_dict.get('status'),
+                'handshake_status': contract_dict.get('handshake_status'),
+                'preview_status': contract_dict.get('preview_status'),
+                'total_amount': contract_dict.get('total_amount_usd'),
+                'created_at': contract_dict.get('created_at'),
+                'client_room_url': f"/client-room/{contract_id}"
+            })
+
+        # Sort by created_at descending
+        contracts.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+
+        return {
+            'total_contracts': len(contracts),
+            'contracts': contracts
+        }
+
+    @router.get("/debug/outreach")
+    async def debug_outreach_history():
+        """
+        DEBUG: Show outreach tracking history (spam prevention).
+        """
+        try:
+            from outreach import get_outreach_tracker
+            tracker = get_outreach_tracker()
+            return {
+                'stats': tracker.get_stats(),
+                'history': tracker.history
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    @router.get("/debug/conversations")
+    async def debug_conversations():
+        """
+        DEBUG: Show active conversations being monitored.
+        """
+        try:
+            from conversation import get_conversation_manager
+            manager = get_conversation_manager()
+            return {
+                'stats': manager.get_stats(),
+                'conversations': {
+                    cid: {
+                        'username': c.username,
+                        'platform': c.platform,
+                        'state': c.state,
+                        'message_count': len(c.messages),
+                        'last_activity': c.last_activity,
+                        'contract_id': c.contract_id
+                    }
+                    for cid, c in manager.conversations.items()
+                }
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     @router.get("/{contract_id}/json")
     async def get_client_room_json(contract_id: str, token: str = Query(None)):
         """
