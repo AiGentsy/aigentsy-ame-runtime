@@ -252,7 +252,7 @@ class ProposalGenerator:
                     'our_price_num': our_price,
                     'discount_pct_num': discount_pct,
                     'fulfillment_type': 'fulfillment',
-                    'delivery_time': '1-2 hours'
+                    'delivery_time': 'in minutes'
                 }
 
         # Default client room URL
@@ -327,16 +327,16 @@ class ProposalGenerator:
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
         fulfillment_type = kwargs.get('fulfillment_type', 'dev')
-        delivery_time = kwargs.get('delivery_time', 'within the hour')
+        delivery_time = kwargs.get('delivery_time', 'in minutes')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         body = f"""Hey {name}!
 
 Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
 
-We're AiGentsy - we deliver quality work in hours, not weeks.
+We're AiGentsy - we deliver quality work in minutes at 50% off industry rates.
 
-We'll handle {clean_title[:40]} at half the cost, delivered {delivery_time}.
+We'll handle {clean_title[:40]} at 50% off industry rates, delivered {delivery_time}.
 
 Typical rate: ${market_rate:,}
 Our price: ${our_price:,} ({discount_pct}% less)
@@ -368,7 +368,7 @@ See your proposal → {client_room_url}
 
 We're {value_prop} - great to meet you!
 
-Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
+Saw your post about {clean_title[:35]}. We'll do it at 50% off (${our_price:,} vs typical ${market_rate:,}), delivered in minutes.
 
 No mistakes, no breaks. Free preview first. Pay only if it's perfect.
 
@@ -399,7 +399,7 @@ Saw your post about {clean_title[:40]} - we can help.
 Here's what we offer:
 
 - ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
-- Delivered within the hour
+- Delivered in minutes
 - Free preview first - see our quality before you pay
 - Not perfect? We iterate until it is. Still not right? You don't pay.
 
@@ -458,7 +458,7 @@ Saw this issue - we can help with {pain_point[:45]}.
 Here's what we offer:
 
 - ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
-- Delivered within the hour
+- Delivered in minutes
 - Free preview first
 - Not perfect? We iterate. Still not right? You don't pay.
 

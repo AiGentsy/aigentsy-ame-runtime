@@ -416,14 +416,14 @@ class CustomerLoopWiring:
 
 Saw your post about {clean_title[:40]} - we can help.
 
-We're AiGentsy. We deliver quality work in hours (not weeks) at ~50% less than typical rates.
+We're AiGentsy. We deliver quality work in minutes at 50% off industry rates.
 
 Your project: ${our_price:,} (vs ${market_rate:,} market rate)
 
 How it works:
 • Free preview first
 • Pay only if you're happy
-• Delivered within hours
+• Delivered in minutes
 
 See your proposal: {client_room_url}
 
@@ -1005,7 +1005,7 @@ See your proposal: {client_room_url}
 
 We noticed your post about {clean_title[:50]} and wanted to reach out.
 
-We're AiGentsy - we deliver quality work in hours, not weeks.
+We're AiGentsy - we deliver quality work in minutes at 50% off industry rates.
 
 **Your project estimate:**
 - Market rate: ${market_rate:,}
@@ -1101,7 +1101,7 @@ The AiGentsy Team"""
 
             <p style="color: #e0e0e0;">We're <strong style="color: #00ffcc;">AiGentsy</strong> - your on-demand development team that delivers quality work fast.</p>
 
-            <p style="color: #e0e0e0;">We'll handle everything you need at half the cost, delivered within the hour.</p>
+            <p style="color: #e0e0e0;">We'll handle everything you need at 50% off industry rates, delivered in minutes.</p>
 
             <div class="pricing-box">
                 <p class="price-label">TYPICAL RATE</p>
@@ -1112,7 +1112,7 @@ The AiGentsy Team"""
 
             <ul class="features">
                 <li><strong>Fast turnaround</strong> - Most projects delivered same day</li>
-                <li><strong>Within the hour</strong> - We don't sleep, don't take breaks</li>
+                <li><strong>Minutes, not days</strong> - Automated delivery</li>
                 <li><strong>Free preview first</strong> - See our quality before you pay</li>
                 <li><strong>We iterate until perfect</strong> - Not right? We redo it</li>
                 <li><strong>Pay only if it's perfect</strong> - Not satisfied? You don't pay</li>
@@ -1163,7 +1163,7 @@ The AiGentsy Team"""
 
         # Concise public message (visible to everyone)
         # Focus on value prop: speed, quality, risk-free
-        message = f"""We can help with this {skill} work! AiGentsy delivers in hours, not weeks.
+        message = f"""We can help with this {skill} work! AiGentsy delivers in minutes at 50% off industry rates.
 
 Free preview first - pay only if you love it.
 
