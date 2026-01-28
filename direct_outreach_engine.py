@@ -334,14 +334,14 @@ class ProposalGenerator:
 
 Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
 
-We're {value_prop} - think of us like ChatGPT, but instead of just chatting, we actually do the work.
+We're AiGentsy - we deliver quality work in hours, not weeks.
 
 We'll handle {clean_title[:40]} at half the cost, delivered {delivery_time}.
 
 Typical rate: ${market_rate:,}
 Our price: ${our_price:,} ({discount_pct}% less)
 
-No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our quality first. Then you only pay if it's perfect.
+Free preview to see our quality first. Then you only pay if it's perfect.
 
 See your proposal → {client_room_url}
 
@@ -396,7 +396,7 @@ Great to meet you! We're {value_prop}.
 
 Saw your post about {clean_title[:40]} - we can help.
 
-Think of us like ChatGPT, but instead of just chatting, we actually do the work:
+Here's what we offer:
 
 - ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
 - Delivered within the hour
@@ -427,7 +427,7 @@ We're {value_prop} - great to meet you!
 
 Saw your post about {clean_title[:40]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
 
-Think ChatGPT but we actually do the work. No mistakes, no breaks.
+We deliver fast with a satisfaction guarantee.
 
 Free preview first. Pay only if it's perfect.
 
@@ -455,7 +455,7 @@ We're **{value_prop}** - great to meet you!
 
 Saw this issue - we can help with {pain_point[:45]}.
 
-Think ChatGPT but we actually write the code:
+Here's what we offer:
 
 - ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
 - Delivered within the hour

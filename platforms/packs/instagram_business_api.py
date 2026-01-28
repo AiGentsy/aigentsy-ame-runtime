@@ -428,19 +428,19 @@ def _create_comment_message(
     else:
         project_type = 'dev'
 
-    # Build message - professional, value-focused
+    # Build message - professional, AiGentsy branded
     if pricing and pricing.get('our_price'):
-        message = f"""We can help with this {project_type} work! AI-powered team delivers in hours.
+        message = f"""We can help with this {project_type} work! AiGentsy delivers in hours, not weeks.
 
 Starting at ${pricing['our_price']:,.0f} - free preview first, pay only if you love it.
 
-DM us to get started!"""
+DM us @AiGentsy to get started!"""
     else:
-        message = f"""We can help with this {project_type} work! AI-powered team delivers in hours.
+        message = f"""We can help with this {project_type} work! AiGentsy delivers in hours, not weeks.
 
 Free preview first - pay only if you're happy with the results.
 
-DM us to get started!"""
+DM us @AiGentsy to get started!"""
 
     return message
 
