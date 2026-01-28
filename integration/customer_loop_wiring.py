@@ -416,7 +416,7 @@ class CustomerLoopWiring:
 
 Saw your post about {clean_title[:40]} - we can help.
 
-We're AiGentsy. We deliver quality work in minutes at 50% off industry rates.
+We're AiGentsy. We deliver quality work in minutes at 50% less than industry rates.
 
 Your project: ${our_price:,} (vs ${market_rate:,} market rate)
 
@@ -1005,7 +1005,7 @@ See your proposal: {client_room_url}
 
 We noticed your post about {clean_title[:50]} and wanted to reach out.
 
-We're AiGentsy - we deliver quality work in minutes at 50% off industry rates.
+We're AiGentsy - we deliver quality work in minutes at 50% less than industry rates.
 
 **Your project estimate:**
 - Market rate: ${market_rate:,}
@@ -1101,7 +1101,7 @@ The AiGentsy Team"""
 
             <p style="color: #e0e0e0;">We're <strong style="color: #00ffcc;">AiGentsy</strong> - your on-demand development team that delivers quality work fast.</p>
 
-            <p style="color: #e0e0e0;">We'll handle everything you need at 50% off industry rates, delivered in minutes.</p>
+            <p style="color: #e0e0e0;">We'll handle everything you need at 50% less than industry rates, delivered in minutes.</p>
 
             <div class="pricing-box">
                 <p class="price-label">TYPICAL RATE</p>
@@ -1163,7 +1163,7 @@ The AiGentsy Team"""
 
         # Concise public message (visible to everyone)
         # Focus on value prop: speed, quality, risk-free
-        message = f"""We can help with this {skill} work! AiGentsy delivers in minutes at 50% off industry rates.
+        message = f"""We can help with this {skill} work! AiGentsy delivers in minutes at 50% less than industry rates.
 
 Free preview first - pay only if you love it.
 

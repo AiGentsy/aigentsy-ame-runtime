@@ -334,9 +334,9 @@ class ProposalGenerator:
 
 Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
 
-We're AiGentsy - we deliver quality work in minutes at 50% off industry rates.
+We're AiGentsy - we deliver quality work in minutes at 50% less than industry rates.
 
-We'll handle {clean_title[:40]} at 50% off industry rates, delivered {delivery_time}.
+We'll handle {clean_title[:40]} at 50% less than industry rates, delivered {delivery_time}.
 
 Typical rate: ${market_rate:,}
 Our price: ${our_price:,} ({discount_pct}% less)
