@@ -372,15 +372,41 @@ class CustomerLoopWiring:
         # PRIORITY 1: Platform-native outreach (DIRECT API CALLS)
         # ═══════════════════════════════════════════════════════════════════
 
-        # Build DM message for platform outreach
-        dm_message = f"""Hi! I saw your post about {title[:50]}.
+        # Calculate pricing for messaging
+        try:
+            from pricing_calculator import calculate_full_pricing, format_pricing_for_message
+            pricing_result = calculate_full_pricing(opportunity)
+            pricing = format_pricing_for_message(pricing_result)
+            market_rate = int(pricing_result.market_rate)
+            our_price = int(pricing_result.our_price)
+            discount_pct = pricing_result.discount_pct
+            fulfillment_type = pricing_result.fulfillment_type
+        except ImportError:
+            market_rate = int(total_value * 1.5)
+            our_price = int(total_value * 0.7)
+            discount_pct = 35
+            fulfillment_type = 'fulfillment'
 
-We can help with this. AiGentsy delivers within hours - you only pay when you approve.
+        # Get contact name
+        contact_name = contact.get('name', 'there')
 
-View our full proposal here:
+        # Build DM message for platform outreach - New AiGentsy branding
+        dm_message = f"""Hey {contact_name}! 👋
+
+We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+
+{title[:35]}: 1-2 hours
+Market ${market_rate:,} → ${our_price:,} ({discount_pct}% less)
+
+✅ Built with the best AI
+✅ Precision & efficiency
+✅ Not satisfied? Money back
+
 {client_room_url}
 
-Let me know if you have questions!"""
+https://aigentsy.com
+
+— Your AiGentsy"""
 
         # Twitter opportunities → Twitter DM (DIRECT API)
         if ('twitter' in platform or twitter_handle) and self.available_systems.get('api_keys', {}).get('twitter_dm'):
@@ -519,8 +545,15 @@ Let me know if you have questions!"""
         # ═══════════════════════════════════════════════════════════════════
 
         if email and os.getenv('RESEND_API_KEY'):
-            message = self._build_email_message(title, total_value, client_room_url)
-            html_message = self._build_html_email(title, total_value, client_room_url)
+            # Build pricing dict for email templates
+            email_pricing = {
+                'market_rate': market_rate,
+                'our_price': our_price,
+                'discount_pct': discount_pct,
+                'fulfillment_type': fulfillment_type
+            }
+            message = self._build_email_message(title, total_value, client_room_url, pricing=email_pricing)
+            html_message = self._build_html_email(title, total_value, client_room_url, pricing=email_pricing)
 
             try:
                 logger.info(f"📧 Sending email via Resend to {email}...")
@@ -716,66 +749,134 @@ Let me know if you have questions!"""
 
         return result
 
-    def _build_email_message(self, title: str, total_value: float, client_room_url: str) -> str:
-        """Build professional email message"""
-        return f"""Hi,
+    def _build_email_message(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
+        """Build professional email message with AiGentsy branding"""
+        # Calculate pricing if not provided
+        if pricing is None:
+            market_rate = int(total_value * 1.5)
+            our_price = int(total_value * 0.7)
+            discount_pct = 35
+            fulfillment_type = 'fulfillment'
+        else:
+            market_rate = pricing.get('market_rate', int(total_value * 1.5))
+            our_price = pricing.get('our_price', int(total_value * 0.7))
+            discount_pct = pricing.get('discount_pct', 35)
+            fulfillment_type = pricing.get('fulfillment_type', 'fulfillment')
 
-I came across your post about {title} and wanted to reach out.
+        return f"""Hey there! 👋
 
-We can handle this for you. AiGentsy is a fully autonomous fulfillment company - essentially your complete team for exactly this type of work.
+We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
 
-What we'll deliver:
-• {title[:60]} - done, end-to-end
-• Delivered within hours, not days
-• Iterate until it's exactly right
-• You only pay when you approve
+I saw your post about {title[:50]} and wanted to reach out.
 
-View our full proposal and pricing here:
+Your AiGentsy is built with all the best AI to get the job you need done with precision and efficiency, at a cost cheaper than anyone else.
+
+For {title[:40]}:
+
+Market Rate: ${market_rate:,}
+Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+Delivery: 1-2 hours
+
+What you get:
+• {title[:50]} - done, end-to-end
+• Built with the best AI (Claude, GPT-4, Gemini)
+• Delivered in hours, not days
+• Iterate until you're 100% satisfied
+• Not satisfied? You get your money back
+
+View your full proposal:
 {client_room_url}
 
-Let me know if you have any questions!
+https://aigentsy.com
 
-— AiGentsy Team"""
+— Your AiGentsy"""
 
-    def _build_html_email(self, title: str, total_value: float, client_room_url: str) -> str:
-        """Build HTML email with better formatting"""
+    def _build_html_email(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
+        """Build HTML email with AiGentsy brand colors"""
+        # Calculate pricing if not provided
+        if pricing is None:
+            market_rate = int(total_value * 1.5)
+            our_price = int(total_value * 0.7)
+            discount_pct = 35
+            savings = market_rate - our_price
+            fulfillment_type = 'fulfillment'
+        else:
+            market_rate = pricing.get('market_rate', int(total_value * 1.5))
+            our_price = pricing.get('our_price', int(total_value * 0.7))
+            discount_pct = pricing.get('discount_pct', 35)
+            savings = market_rate - our_price
+            fulfillment_type = pricing.get('fulfillment_type', 'fulfillment')
+
         return f"""
 <!DOCTYPE html>
 <html>
 <head>
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-        .cta {{ display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }}
-        .features {{ list-style: none; padding: 0; }}
-        .features li {{ padding: 10px 0; padding-left: 30px; position: relative; }}
-        .features li:before {{ content: "✓"; position: absolute; left: 0; color: #667eea; font-weight: bold; }}
+        body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.6; background: #0e101a; color: #ffffff; margin: 0; padding: 40px 20px; }}
+        .container {{ max-width: 600px; margin: 0 auto; background: #111; border: 1px solid #222; border-radius: 12px; overflow: hidden; box-shadow: 0 0 30px rgba(0,240,255,0.1); }}
+        .header {{ background: linear-gradient(135deg, #00bfff 0%, #009cd8 100%); color: #000; padding: 32px; }}
+        .header h1 {{ margin: 0 0 8px 0; font-size: 24px; font-weight: 700; }}
+        .header p {{ margin: 0; opacity: 0.9; }}
+        .content {{ padding: 32px; }}
+        .greeting {{ color: #00ffcc; font-size: 18px; margin-bottom: 16px; }}
+        .intro {{ color: #e0e0e0; margin-bottom: 24px; }}
+        .pricing-box {{ background: linear-gradient(135deg, #131722 0%, #1a2030 100%); border: 1px solid #00bfff; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center; }}
+        .price-label {{ color: #888; font-size: 14px; margin-bottom: 8px; }}
+        .market-rate {{ color: #888; font-size: 20px; text-decoration: line-through; }}
+        .our-price {{ color: #00ffcc; font-size: 36px; font-weight: 700; margin: 8px 0; }}
+        .savings {{ color: #0b5; font-size: 16px; font-weight: 600; }}
+        .features {{ list-style: none; padding: 0; margin: 24px 0; }}
+        .features li {{ padding: 12px 0; padding-left: 32px; position: relative; color: #e0e0e0; border-bottom: 1px solid #222; }}
+        .features li:last-child {{ border-bottom: none; }}
+        .features li:before {{ content: "✓"; position: absolute; left: 0; color: #00ffcc; font-weight: bold; font-size: 18px; }}
+        .cta {{ display: inline-block; background: linear-gradient(135deg, #00bfff 0%, #009cd8 100%); color: #000; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 24px 0; box-shadow: 0 4px 12px rgba(0,191,255,0.3); }}
+        .cta:hover {{ background: linear-gradient(135deg, #00d4ff 0%, #00b8e6 100%); }}
+        .footer {{ padding: 24px 32px; border-top: 1px solid #222; text-align: center; }}
+        .signature {{ color: #00bfff; font-weight: 600; font-size: 16px; }}
+        .tagline {{ color: #888; font-size: 14px; margin-top: 8px; }}
+        .website {{ color: #00ffcc; text-decoration: none; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1 style="margin:0;">Proposal for Your Project</h1>
-            <p style="margin:10px 0 0 0; opacity: 0.9;">{title[:60]}</p>
+            <h1>{title[:50]}</h1>
+            <p>Your AI-powered {fulfillment_type} partner</p>
         </div>
         <div class="content">
-            <p>Hi,</p>
-            <p>I came across your post and wanted to reach out. We can handle this for you.</p>
+            <p class="greeting">Hey there! 👋</p>
 
-            <h3>What we'll deliver:</h3>
+            <p class="intro">We're <strong style="color: #00ffcc;">Your AiGentsy</strong> - your AI-powered {fulfillment_type} partner.</p>
+
+            <p style="color: #e0e0e0;">Your AiGentsy is built with all the best AI to get the job you need done with <span style="color: #00ffcc;">precision and efficiency</span>, at a cost cheaper than anyone else.</p>
+
+            <div class="pricing-box">
+                <p class="price-label">WHAT OTHERS CHARGE</p>
+                <p class="market-rate">${market_rate:,}</p>
+                <p class="our-price">${our_price:,}</p>
+                <p class="savings">You save {discount_pct}% (${savings:,} less)</p>
+            </div>
+
             <ul class="features">
-                <li>{title[:50]} - done, end-to-end</li>
-                <li>Delivered within hours, not days</li>
-                <li>Iterate until it's exactly right</li>
-                <li>You only pay when you approve</li>
+                <li><strong>Built with the best AI</strong> - Claude, GPT-4, Gemini working together</li>
+                <li><strong>Delivered in 1-2 hours</strong> - not days, hours</li>
+                <li><strong>Precision and efficiency</strong> - AI doesn't make human errors</li>
+                <li><strong>Iterate until perfect</strong> - unlimited revisions included</li>
+                <li><strong>Money-back guarantee</strong> - not satisfied? You get your money back</li>
             </ul>
 
-            <a href="{client_room_url}" class="cta">View Full Proposal →</a>
+            <center>
+                <a href="{client_room_url}" class="cta">View Proposal & Pay Deposit →</a>
+            </center>
 
-            <p style="margin-top:30px;">Let me know if you have any questions!</p>
-            <p>— AiGentsy Team</p>
+            <p style="color: #888; font-size: 14px; text-align: center; margin-top: 24px;">
+                <em>Your AI partner, built with the best AI to deliver precision and efficiency.</em>
+            </p>
+        </div>
+        <div class="footer">
+            <p class="signature">— Your AiGentsy</p>
+            <p class="tagline">AI-powered fulfillment at unbeatable cost</p>
+            <p><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>
 </body>

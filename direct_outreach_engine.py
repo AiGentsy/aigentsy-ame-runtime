@@ -112,38 +112,71 @@ class ProposalGenerator:
             OutreachChannel.GITHUB_DISCUSSION: self._github_template,
         }
         
-        # Value propositions by category - AiGentsy: Your fully staffed autonomous company
+        # Value propositions by category - Your AiGentsy: AI-powered partner
         self.value_props = {
-            'development': "AiGentsy becomes your fully staffed dev team — from spec to shipped, handled",
-            'automation': "AiGentsy is your automation department — we build it, deploy it, maintain it",
-            'design': "AiGentsy is your creative studio — best-in-class design, delivered instantly",
-            'content': "AiGentsy is your content team — highest quality, end-to-end production",
-            'data': "AiGentsy is your analytics department — raw data to actionable insights, handled",
-            'marketing': "AiGentsy is your marketing team — strategy to execution, fully autonomous",
-            'default': "AiGentsy is your fully staffed team for this — end-to-end, handled"
+            'development': "Your AiGentsy - your AI-powered development partner. Built with the best AI for precision & efficiency",
+            'backend': "Your AiGentsy - your AI-powered backend partner. Built with the best AI for precision & efficiency",
+            'frontend': "Your AiGentsy - your AI-powered frontend partner. Built with the best AI for precision & efficiency",
+            'automation': "Your AiGentsy - your AI-powered automation partner. Lightning-fast, precise results",
+            'design': "Your AiGentsy - your AI-powered design partner. Best-in-class creative, delivered instantly",
+            'content': "Your AiGentsy - your AI-powered content partner. Highest quality, end-to-end production",
+            'data': "Your AiGentsy - your AI-powered analytics partner. Raw data to actionable insights",
+            'marketing': "Your AiGentsy - your AI-powered marketing partner. Strategy to execution",
+            'default': "Your AiGentsy - your AI-powered partner for exactly this"
         }
     
     async def generate_proposal(
         self,
         opportunity: Dict[str, Any],
         contact: Dict[str, Any],
-        channel: OutreachChannel
+        channel: OutreachChannel,
+        pricing: Dict[str, Any] = None,
+        client_room_url: str = None
     ) -> OutreachProposal:
         """Generate a personalized proposal for an opportunity"""
-        
+
         # Extract key info
         opp_id = opportunity.get('opportunity_id', 'unknown')
         title = opportunity.get('title', '')
         pain_point = opportunity.get('pain_point', '')
         estimated_value = opportunity.get('estimated_value', 1000)
-        
+
         # Determine value proposition
         category = self._categorize_opportunity(title, pain_point)
         value_prop = self.value_props.get(category, self.value_props['default'])
-        
+
         # Get recipient based on channel
         recipient = self._get_recipient(contact, channel)
-        
+
+        # Calculate pricing if not provided
+        if pricing is None:
+            try:
+                from pricing_calculator import calculate_full_pricing, format_pricing_for_message
+                pricing_result = calculate_full_pricing(opportunity)
+                pricing = format_pricing_for_message(pricing_result)
+                pricing['market_rate_num'] = pricing_result.market_rate
+                pricing['our_price_num'] = pricing_result.our_price
+                pricing['discount_pct_num'] = pricing_result.discount_pct
+            except ImportError:
+                # Fallback pricing
+                market_rate = int(estimated_value * 1.5)
+                our_price = int(estimated_value * 0.7)
+                discount_pct = int((1 - our_price / market_rate) * 100) if market_rate > 0 else 35
+                pricing = {
+                    'market_rate': f"${market_rate:,}",
+                    'our_price': f"${our_price:,}",
+                    'discount_pct': f"{discount_pct}%",
+                    'market_rate_num': market_rate,
+                    'our_price_num': our_price,
+                    'discount_pct_num': discount_pct,
+                    'fulfillment_type': 'fulfillment',
+                    'delivery_time': '1-2 hours'
+                }
+
+        # Default client room URL
+        if client_room_url is None:
+            client_room_url = f"https://aigentsy.com/room/{opp_id}"
+
         # Generate using template
         template_fn = self.templates.get(channel, self._email_template)
         subject, body = template_fn(
@@ -151,9 +184,15 @@ class ProposalGenerator:
             title=title,
             pain_point=pain_point,
             value_prop=value_prop,
-            estimated_value=estimated_value
+            estimated_value=estimated_value,
+            market_rate=pricing.get('market_rate_num', int(estimated_value * 1.5)),
+            our_price=pricing.get('our_price_num', int(estimated_value * 0.7)),
+            discount_pct=pricing.get('discount_pct_num', 35),
+            fulfillment_type=pricing.get('fulfillment_type', 'fulfillment'),
+            delivery_time=pricing.get('delivery_time', '1-2 hours'),
+            client_room_url=client_room_url
         )
-        
+
         # Create proposal
         proposal = OutreachProposal(
             proposal_id=f"prop_{hashlib.md5(f'{opp_id}_{channel.value}'.encode()).hexdigest()[:12]}",
@@ -166,11 +205,13 @@ class ProposalGenerator:
                 'name': contact.get('name', ''),
                 'company': contact.get('company', ''),
                 'pain_point': pain_point,
+                'pricing': pricing,
+                'client_room_url': client_room_url,
             },
             value_proposition=value_prop,
-            call_to_action="Reply to discuss" if channel != OutreachChannel.TWITTER_DM else "DM me!"
+            call_to_action="View proposal" if channel != OutreachChannel.TWITTER_DM else "Check it out!"
         )
-        
+
         return proposal
     
     def _categorize_opportunity(self, title: str, pain_point: str) -> str:
@@ -205,105 +246,179 @@ class ProposalGenerator:
         return ''
     
     # Template methods
-    
-    def _email_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
+
+    def _email_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate email proposal - Reference their actual need, convert to engagement"""
         subject = f"Re: {title[:50]}"
-        
-        body = f"""Hi {name},
 
-Just came across your post about {title} — sounds like you need {pain_point[:60]}.
+        # Extract pricing params
+        market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
+        our_price = kwargs.get('our_price', int(estimated_value * 0.7))
+        discount_pct = kwargs.get('discount_pct', 35)
+        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
+        delivery_time = kwargs.get('delivery_time', '1-2 hours')
+        client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-We can handle this for you. AiGentsy is the first fully autonomous fulfillment company — think of us as your fully staffed {pain_point[:30]} team, ready to go.
+        body = f"""Hey {name}!
 
-Here's exactly what we'll deliver for you:
+We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
 
-→ {pain_point[:80]} — done, end-to-end
-→ Delivered within minutes of your approval
-→ We iterate with you until it's exactly what you need
-→ You only pay when you're 100% satisfied
+Just saw your post about {title[:50]} — sounds like you need {pain_point[:50]}.
 
-No freelancers. No waiting. Just your dedicated team shipping exactly what you described.
+Your AiGentsy is built with all the best AI to get the job you need done with precision and efficiency, at a cost cheaper than anyone else.
 
-Investment: ${int(estimated_value * 0.7)} — and nothing until you approve the final result.
+For {title[:40]}:
 
-Ready to get this handled? Reply and we'll have your project queued up in about 2 minutes.
+Market Rate: ${market_rate:,}
+Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+Delivery: {delivery_time}
 
-— The AiGentsy Team
+What you get:
+- {pain_point[:60]} — done, end-to-end
+- Built with the best AI (Claude, GPT-4, Gemini)
+- Precision and efficiency - AI doesn't make human errors
+- Iterate until you're 100% satisfied
+- Not satisfied? You get your money back
+
+View your full proposal:
+{client_room_url}
+
+Ready to get started? Pay the deposit and we'll begin immediately.
+
+https://aigentsy.com
+
+— Your AiGentsy
 """
-        
+
         return subject, body
     
-    def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
-        """Generate Twitter DM - Reference their post, quick conversion"""
+    def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
+        """Generate Twitter DM - Reference their post, quick conversion (280 char limit)"""
         subject = ""  # No subject for DMs
-        
-        body = f"""Hey {name} 👋
 
-Saw your post about {title[:30]} — we can handle that for you.
+        # Extract pricing params
+        market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
+        our_price = kwargs.get('our_price', int(estimated_value * 0.7))
+        discount_pct = kwargs.get('discount_pct', 35)
+        fulfillment_type = kwargs.get('fulfillment_type', 'dev')
+        client_room_url = kwargs.get('client_room_url', 'aigentsy.com')
 
-AiGentsy = your fully staffed team for {pain_point[:25]}. Delivered in minutes, pay only when satisfied.
+        # Shorten fulfillment type for DM
+        short_type = fulfillment_type[:3] if len(fulfillment_type) > 3 else fulfillment_type
 
-Want us to take care of it?"""
-        
+        # Build DM within 280 chars
+        body = f"""Hey {name}! 👋
+
+Your AiGentsy - AI-powered {short_type} partner
+
+{title[:25]}: 1-2hrs
+${market_rate:,} → ${our_price:,} ({discount_pct}% less)
+
+✅ Best AI
+✅ Money back guarantee
+
+{client_room_url}
+
+— Your AiGentsy"""
+
         return subject, body
     
-    def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
+    def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate LinkedIn message - Reference their post, professional conversion"""
         subject = f"Re: {title[:40]}"
-        
-        body = f"""Hi {name},
 
-Saw your post about {title} — sounds like you need {pain_point[:50]}.
+        # Extract pricing params
+        market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
+        our_price = kwargs.get('our_price', int(estimated_value * 0.7))
+        discount_pct = kwargs.get('discount_pct', 35)
+        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
+        client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-We can take care of this. AiGentsy is your fully staffed {pain_point[:30]} team — the first fully autonomous fulfillment company.
+        body = f"""Hey {name}!
 
-What that means for you:
+We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
 
-• {pain_point[:60]} — handled, end-to-end
-• Delivered in minutes, not days
-• We iterate until it's exactly right
-• You only pay when you approve
+Saw your post about {title[:40]} — sounds like you need {pain_point[:40]}.
 
-Ready to get this off your plate? Just reply and we'll have it queued up.
+Your AiGentsy is built with all the best AI to deliver with precision and efficiency:
 
-— AiGentsy Team"""
-        
+• Market Rate: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+• {pain_point[:50]} — handled, end-to-end
+• Delivered in 1-2 hours, not days
+• We iterate until you're 100% satisfied
+• Not satisfied? Money back guarantee
+
+View your full proposal: {client_room_url}
+
+https://aigentsy.com
+
+— Your AiGentsy"""
+
         return subject, body
     
-    def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
+    def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate Reddit DM - Reference their post, casual conversion"""
         subject = f"Re: {title[:50]}"
-        
-        body = f"""Hey u/{name},
 
-Saw your post about {title} — sounds like you need {pain_point[:40]}.
+        # Extract pricing params
+        market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
+        our_price = kwargs.get('our_price', int(estimated_value * 0.7))
+        discount_pct = kwargs.get('discount_pct', 35)
+        fulfillment_type = kwargs.get('fulfillment_type', 'fulfillment')
+        client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-We can handle this for you. AiGentsy is basically your fully staffed team for exactly this — delivered in minutes, you only pay when you're satisfied.
+        body = f"""Hey u/{name}!
 
-Want us to take care of it? Just say the word.
+We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
 
-Cheers"""
-        
+Saw your post about {title[:40]} — sounds like you need {pain_point[:35]}.
+
+Your AiGentsy is built with all the best AI to deliver with precision and efficiency:
+
+- Market: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+- Delivered in 1-2 hours
+- Iterate until you're satisfied
+- Not happy? Money back
+
+Check out your proposal: {client_room_url}
+
+https://aigentsy.com
+
+— Your AiGentsy"""
+
         return subject, body
     
-    def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float) -> tuple:
+    def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate GitHub discussion/issue comment - Reference issue, dev conversion"""
         subject = f"Re: {title[:50]}"
-        
-        body = f"""Hi @{name},
 
-Saw this issue — looks like you need {pain_point[:50]}.
+        # Extract pricing params
+        market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
+        our_price = kwargs.get('our_price', int(estimated_value * 0.7))
+        discount_pct = kwargs.get('discount_pct', 35)
+        fulfillment_type = kwargs.get('fulfillment_type', 'development')
+        client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-We can handle this. **AiGentsy** is your fully staffed dev team for exactly this kind of work:
+        body = f"""Hey @{name}!
 
-- {pain_point[:60]} — done, end-to-end
-- Delivered in minutes
+We're **Your AiGentsy** - your AI-powered {fulfillment_type} partner.
+
+Saw this issue — looks like you need {pain_point[:45]}.
+
+Your AiGentsy is built with all the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency:
+
+- Market: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+- {pain_point[:50]} — done, end-to-end
+- Delivered in 1-2 hours
 - Iterate until it's exactly right
-- Pay only when you approve
+- Not satisfied? Money back
 
-Want us to take a crack at it? Just reply and we'll get it queued up."""
-        
+Check out the full proposal: {client_room_url}
+
+https://aigentsy.com
+
+— Your AiGentsy"""
+
         return subject, body
 
 

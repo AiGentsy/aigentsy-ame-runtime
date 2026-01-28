@@ -19,12 +19,20 @@ logger = logging.getLogger(__name__)
 
 # Try FastAPI
 try:
-    from fastapi import APIRouter, HTTPException, Query
+    from fastapi import APIRouter, HTTPException, Query, Request
+    from fastapi.responses import HTMLResponse
+    from fastapi.templating import Jinja2Templates
     from pydantic import BaseModel
+    from pathlib import Path
     FASTAPI_AVAILABLE = True
+
+    # Setup Jinja2 templates
+    templates_dir = Path(__file__).parent.parent / "templates"
+    templates = Jinja2Templates(directory=str(templates_dir))
 except ImportError:
     FASTAPI_AVAILABLE = False
     logger.warning("FastAPI not available - Client Room routes disabled")
+    templates = None
 
 
 if FASTAPI_AVAILABLE:
@@ -108,6 +116,80 @@ if FASTAPI_AVAILABLE:
             'proofs': proofs,
             'nba': nba,
         }
+
+    @router.get("/{contract_id}/view", response_class=HTMLResponse)
+    async def view_client_room(request: Request, contract_id: str, token: str = Query(None)):
+        """
+        Render full client room HTML page with AiGentsy branding.
+
+        Returns a complete HTML page with:
+        - Pricing comparison (market rate vs AiGentsy)
+        - Green Light timeline
+        - Milestone cards with payment links
+        - Deposit CTA
+        """
+        escrow = _get_escrow()
+        if not escrow:
+            raise HTTPException(503, "Escrow service not available")
+
+        contract = escrow.get_contract(contract_id)
+        if not contract:
+            raise HTTPException(404, f"Contract {contract_id} not found")
+
+        contract_dict = escrow.to_dict(contract)
+
+        # Build timeline
+        timeline = _build_timeline(contract_dict)
+
+        # Get artifacts/previews
+        previews = _get_artifact_previews(contract_id)
+
+        # Get proofs
+        proofs = _get_proofs(contract.opportunity_id)
+
+        # Calculate pricing using pricing_calculator
+        try:
+            from pricing_calculator import calculate_full_pricing
+            # Create opportunity-like dict for pricing
+            opp_for_pricing = {
+                'title': contract_dict.get('title', 'Project'),
+                'value': contract_dict.get('total_amount_usd', 0),
+                'platform': 'direct'
+            }
+            pricing_result = calculate_full_pricing(opp_for_pricing)
+            pricing = {
+                'market_rate': pricing_result.market_rate,
+                'our_price': pricing_result.our_price,
+                'discount_pct': pricing_result.discount_pct,
+                'deposit_amount': pricing_result.deposit_amount,
+                'savings': pricing_result.savings,
+                'fulfillment_type': pricing_result.fulfillment_type,
+                'delivery_time': pricing_result.delivery_time
+            }
+        except ImportError:
+            # Fallback pricing
+            total = contract_dict.get('total_amount_usd', 0)
+            market_rate = total * 1.5
+            pricing = {
+                'market_rate': market_rate,
+                'our_price': total,
+                'discount_pct': 35,
+                'deposit_amount': total * 0.5,
+                'savings': market_rate - total,
+                'fulfillment_type': 'fulfillment',
+                'delivery_time': '1-2 hours'
+            }
+
+        # Render HTML template
+        return templates.TemplateResponse("client_room.html", {
+            "request": request,
+            "contract": contract_dict,
+            "timeline": timeline,
+            "previews": previews,
+            "proofs": proofs,
+            "pricing": pricing,
+            "client_room_url": f"/client-room/{contract_id}/view",
+        })
 
     @router.get("/{contract_id}/timeline")
     async def get_timeline(contract_id: str):

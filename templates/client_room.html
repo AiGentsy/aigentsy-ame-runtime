@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ contract.title or 'Your Project' }} - Your AiGentsy</title>
+    <style>
+        /* AiGentsy Brand Colors */
+        :root {
+            --primary: #00bfff;
+            --primary-dark: #009cd8;
+            --accent: #00ffcc;
+            --bg-dark: #0e101a;
+            --bg-card: #111;
+            --bg-card-alt: #0a0a0a;
+            --border: #222;
+            --border-light: #333;
+            --text-primary: #fff;
+            --text-secondary: #ccc;
+            --text-muted: #888;
+            --success: #0b5;
+            --glow: rgba(0,240,255,0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: radial-gradient(circle at center, var(--bg-dark), #000);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            color: var(--accent);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .greeting {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 18px;
+        }
+
+        /* Hero Section with Pricing */
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            box-shadow: 0 0 40px var(--glow);
+        }
+
+        .hero h1 {
+            color: #000;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .hero p {
+            color: #000;
+            opacity: 0.9;
+            margin-bottom: 24px;
+        }
+
+        .pricing-box {
+            background: rgba(0,0,0,0.2);
+            padding: 24px;
+            border-radius: 12px;
+        }
+
+        .pricing-compare {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .market-rate {
+            text-align: left;
+        }
+
+        .market-rate-label {
+            font-size: 12px;
+            color: #000;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        .market-rate-value {
+            font-size: 24px;
+            color: #000;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+
+        .our-price {
+            text-align: right;
+        }
+
+        .our-price-label {
+            font-size: 12px;
+            color: #000;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        .our-price-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--accent);
+            text-shadow: 0 2px 8px rgba(0,255,204,0.3);
+        }
+
+        .savings {
+            width: 100%;
+            text-align: center;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(0,0,0,0.2);
+            font-size: 16px;
+            font-weight: 600;
+            color: #000;
+        }
+
+        /* Value Props Grid */
+        .value-props {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .value-prop {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .value-prop:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--glow);
+        }
+
+        .value-prop-icon {
+            font-size: 32px;
+            margin-bottom: 12px;
+        }
+
+        .value-prop-title {
+            color: var(--primary);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .value-prop-desc {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Deposit CTA */
+        .deposit-cta {
+            background: linear-gradient(135deg, #131722 0%, #1a2030 100%);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 32px;
+            box-shadow: 0 0 30px var(--glow);
+        }
+
+        .deposit-cta h2 {
+            color: var(--primary);
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        .deposit-cta p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #000;
+            padding: 18px 40px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 4px 20px rgba(0,191,255,0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(0,191,255,0.5);
+        }
+
+        .secure-note {
+            margin-top: 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Timeline */
+        .section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            color: var(--primary);
+            font-size: 20px;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .timeline-block {
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .timeline-title {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .timeline-date {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .timeline-items {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+        }
+
+        .timeline-item-status {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .timeline-item-status.pending {
+            background: var(--border);
+            color: var(--text-muted);
+        }
+
+        .timeline-item-status.in_progress {
+            background: var(--primary);
+            color: #000;
+        }
+
+        .timeline-item-status.completed {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .timeline-item-content {
+            flex: 1;
+        }
+
+        .timeline-item-title {
+            font-weight: 500;
+        }
+
+        .timeline-item-desc {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Milestones */
+        .milestones {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .milestone {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .milestone-info {
+            flex: 1;
+        }
+
+        .milestone-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .milestone-status {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .milestone-status.funded {
+            color: var(--accent);
+        }
+
+        .milestone-amount {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* Deliverables */
+        .deliverables {
+            list-style: none;
+        }
+
+        .deliverable {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .deliverable:last-child {
+            border-bottom: none;
+        }
+
+        .deliverable-check {
+            color: var(--accent);
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .deliverable-content h4 {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .deliverable-content p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* How It Works */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .step {
+            display: flex;
+            gap: 20px;
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .step-number.complete {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+        }
+
+        .step-content h4 {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            border-top: 1px solid var(--border);
+            margin-top: 40px;
+        }
+
+        .footer-signature {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .footer-tagline {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .footer-link {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px 16px;
+            }
+
+            .hero {
+                padding: 24px;
+            }
+
+            .pricing-compare {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .market-rate, .our-price {
+                text-align: center;
+            }
+
+            .deposit-cta {
+                padding: 24px;
+            }
+
+            .cta-button {
+                width: 100%;
+                padding: 16px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">Your AiGentsy</div>
+            <h1 class="greeting">Hey there! 👋</h1>
+            <p class="subtitle">Your AI-powered {{ pricing.fulfillment_type or 'fulfillment' }} partner</p>
+        </header>
+
+        <!-- Hero with Pricing -->
+        <section class="hero">
+            <h1>{{ contract.title or 'Your Project' }}</h1>
+            <p>Built with all the best AI to deliver precision and efficiency at a cost cheaper than anyone else.</p>
+
+            <div class="pricing-box">
+                <div class="pricing-compare">
+                    <div class="market-rate">
+                        <div class="market-rate-label">What Others Charge</div>
+                        <div class="market-rate-value">${{ "{:,.0f}".format(pricing.market_rate or 0) }}</div>
+                    </div>
+                    <div class="our-price">
+                        <div class="our-price-label">Your AiGentsy</div>
+                        <div class="our-price-value">${{ "{:,.0f}".format(pricing.our_price or 0) }}</div>
+                    </div>
+                </div>
+                <div class="savings">
+                    You save {{ pricing.discount_pct or 35 }}% &bull; ${{ "{:,.0f}".format(pricing.savings or 0) }} less
+                </div>
+            </div>
+        </section>
+
+        <!-- Value Props -->
+        <div class="value-props">
+            <div class="value-prop">
+                <div class="value-prop-icon">⚡</div>
+                <div class="value-prop-title">1-2 Hours</div>
+                <div class="value-prop-desc">Not days, hours</div>
+            </div>
+            <div class="value-prop">
+                <div class="value-prop-icon">🔄</div>
+                <div class="value-prop-title">Iterate Until Perfect</div>
+                <div class="value-prop-desc">Refine until satisfied</div>
+            </div>
+            <div class="value-prop">
+                <div class="value-prop-icon">🤖</div>
+                <div class="value-prop-title">Built with Best AI</div>
+                <div class="value-prop-desc">Claude, GPT-4, Gemini</div>
+            </div>
+            <div class="value-prop">
+                <div class="value-prop-icon">💰</div>
+                <div class="value-prop-title">Money-Back Guarantee</div>
+                <div class="value-prop-desc">Not satisfied? Refund</div>
+            </div>
+        </div>
+
+        <!-- Deposit CTA -->
+        <section class="deposit-cta">
+            <h2>Ready to Start?</h2>
+            <p>Pay deposit now, we start immediately and deliver in 1-2 hours</p>
+
+            {% if contract.milestones and contract.milestones[0].paylink_url %}
+            <a href="{{ contract.milestones[0].paylink_url }}" class="cta-button">
+                Pay ${{ "{:,.0f}".format(pricing.deposit_amount or 0) }} Deposit & Start →
+            </a>
+            {% else %}
+            <a href="#" class="cta-button">
+                Pay ${{ "{:,.0f}".format(pricing.deposit_amount or 0) }} Deposit & Start →
+            </a>
+            {% endif %}
+
+            <p class="secure-note">🔒 Secure payment via Stripe &bull; Full refund if unsatisfied</p>
+        </section>
+
+        <!-- Green Light Timeline -->
+        <section class="section">
+            <h2>Your Project Timeline</h2>
+            <div class="timeline">
+                {% for block in timeline %}
+                <div class="timeline-block">
+                    <div class="timeline-header">
+                        <span class="timeline-title">{{ block.title }}</span>
+                        <span class="timeline-date">{{ block.timeframe }}</span>
+                    </div>
+                    <div class="timeline-items">
+                        {% for item in block.items %}
+                        <div class="timeline-item">
+                            <div class="timeline-item-status {{ item.status }}">
+                                {% if item.status == 'completed' %}✓{% elif item.status == 'in_progress' %}●{% else %}○{% endif %}
+                            </div>
+                            <div class="timeline-item-content">
+                                <div class="timeline-item-title">{{ item.title }}</div>
+                                <div class="timeline-item-desc">{{ item.description }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Milestones -->
+        {% if contract.milestones %}
+        <section class="section">
+            <h2>Payment Milestones</h2>
+            <div class="milestones">
+                {% for milestone in contract.milestones %}
+                <div class="milestone">
+                    <div class="milestone-info">
+                        <div class="milestone-title">Milestone {{ loop.index }}</div>
+                        <div class="milestone-status {{ milestone.status }}">
+                            {% if milestone.status == 'funded' %}✓ Funded{% elif milestone.status == 'released' %}✓ Completed{% else %}Pending{% endif %}
+                        </div>
+                    </div>
+                    <div class="milestone-amount">${{ "{:,.2f}".format(milestone.amount_usd or 0) }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- What You Get -->
+        <section class="section">
+            <h2>What You'll Get</h2>
+            <ul class="deliverables">
+                <li class="deliverable">
+                    <span class="deliverable-check">✓</span>
+                    <div class="deliverable-content">
+                        <h4>{{ contract.title or 'Your Project' }}</h4>
+                        <p>Complete end-to-end delivery</p>
+                    </div>
+                </li>
+                <li class="deliverable">
+                    <span class="deliverable-check">✓</span>
+                    <div class="deliverable-content">
+                        <h4>Built with the Best AI</h4>
+                        <p>Claude, GPT-4, and Gemini working together</p>
+                    </div>
+                </li>
+                <li class="deliverable">
+                    <span class="deliverable-check">✓</span>
+                    <div class="deliverable-content">
+                        <h4>Unlimited Iterations</h4>
+                        <p>We refine until you're 100% satisfied</p>
+                    </div>
+                </li>
+                <li class="deliverable">
+                    <span class="deliverable-check">✓</span>
+                    <div class="deliverable-content">
+                        <h4>Full IP Transfer</h4>
+                        <p>Everything we create is yours</p>
+                    </div>
+                </li>
+            </ul>
+        </section>
+
+        <!-- How It Works -->
+        <section class="section">
+            <h2>How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h4>Pay Deposit</h4>
+                        <p>Secure payment via Stripe - we start immediately</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h4>We Execute</h4>
+                        <p>Our AI collective works on your project - delivered in 1-2 hours</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h4>Review & Iterate</h4>
+                        <p>Request changes - we iterate until you're satisfied</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number complete">✓</div>
+                    <div class="step-content">
+                        <h4>Complete</h4>
+                        <p>Get final deliverables - full IP transfer included</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-signature">— Your AiGentsy</div>
+            <div class="footer-tagline">AI-powered fulfillment at unbeatable cost</div>
+            <a href="https://aigentsy.com" class="footer-link">https://aigentsy.com</a>
+        </footer>
+    </div>
+</body>
+</html>

@@ -194,6 +194,157 @@ def is_monetizable(opportunity: Dict[str, Any]) -> Tuple[bool, str]:
     return True, "Monetizable"
 
 
+# =============================================================================
+# QUALITY SCORING - Filter spam and low-quality opportunities
+# =============================================================================
+
+def calculate_quality_score(opportunity: Dict[str, Any]) -> Tuple[float, Dict[str, float]]:
+    """
+    Calculate quality score based on multiple signals.
+
+    Signals:
+    - Budget mention (0-0.3)
+    - Skill keywords (0-0.3)
+    - Source platform reputation (0-0.2)
+    - Description quality (0-0.2)
+
+    Returns:
+        Tuple of (total_score 0-1.0, breakdown dict)
+    """
+    breakdown = {}
+
+    title = opportunity.get('title', '').lower()
+    body = opportunity.get('body', '').lower()
+    description = opportunity.get('description', '').lower()
+    full_text = f"{title} {body} {description}"
+    platform = opportunity.get('platform', '').lower()
+    source = opportunity.get('source', '').lower()
+    platform_key = platform or source
+
+    # 1. Budget mention score (0-0.3)
+    budget_score = 0.0
+    if '$' in full_text or 'budget' in full_text or 'paying' in full_text or 'compensation' in full_text:
+        budget_score = 0.2
+        # Bonus for specific amounts
+        if re.search(r'\$\d+', full_text):
+            budget_score = 0.3
+    breakdown['budget'] = budget_score
+
+    # 2. Skill keywords score (0-0.3)
+    skill_keywords = [
+        'python', 'javascript', 'react', 'node', 'api', 'database',
+        'backend', 'frontend', 'fullstack', 'typescript', 'golang', 'rust',
+        'design', 'figma', 'ui', 'ux', 'logo', 'branding',
+        'content', 'blog', 'copywriting', 'seo', 'marketing',
+        'automation', 'scraping', 'bot', 'integration', 'webhook',
+        'mobile', 'ios', 'android', 'flutter', 'react native',
+        'data', 'analytics', 'dashboard', 'visualization'
+    ]
+    matches = sum(1 for kw in skill_keywords if kw in full_text)
+    skill_score = min(0.3, matches * 0.075)  # 4 keywords = max score
+    breakdown['skills'] = skill_score
+
+    # 3. Platform reputation score (0-0.2)
+    platform_scores = {
+        'upwork': 0.2,
+        'linkedin': 0.2,
+        'github': 0.18,
+        'twitter': 0.15,
+        'reddit': 0.12,
+        'hackernews': 0.15,
+        'fiverr': 0.1,
+        'perplexity': 0.12,  # Perplexity-discovered
+    }
+    platform_score = platform_scores.get(platform_key, 0.1)
+    breakdown['platform'] = platform_score
+
+    # 4. Description quality score (0-0.2)
+    desc_score = 0.0
+    total_len = len(full_text)
+    if total_len > 500:
+        desc_score = 0.2
+    elif total_len > 200:
+        desc_score = 0.15
+    elif total_len > 100:
+        desc_score = 0.1
+    elif total_len < 50:
+        desc_score = 0.0  # Too short
+    breakdown['description_quality'] = desc_score
+
+    # Calculate total
+    total_score = sum(breakdown.values())
+
+    return total_score, breakdown
+
+
+def is_spam_or_low_quality(opportunity: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    Check if opportunity is spam or very low quality.
+
+    Spam indicators:
+    - Very short descriptions (<30 chars)
+    - Excessive emoji (>5)
+    - All caps (>70%)
+    - Low follower count (for social platforms)
+    - Spam phrases
+
+    Returns:
+        Tuple of (is_spam: bool, reason: str)
+    """
+    title = opportunity.get('title', '')
+    body = opportunity.get('body', '')
+    description = opportunity.get('description', '')
+    full_text = f"{title} {body} {description}"
+
+    # Very short
+    if len(full_text.strip()) < 30:
+        return True, "Description too short (<30 chars)"
+
+    # Emoji spam (count emoji)
+    emoji_pattern = re.compile("["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags
+        u"\U00002702-\U000027B0"  # dingbats
+        u"\U0001F900-\U0001F9FF"  # supplemental symbols
+        "]+", flags=re.UNICODE)
+    emoji_count = len(emoji_pattern.findall(full_text))
+    if emoji_count > 5:
+        return True, f"Emoji spam ({emoji_count} emojis)"
+
+    # All caps check
+    alpha_chars = [c for c in full_text if c.isalpha()]
+    if alpha_chars and len(alpha_chars) > 20:
+        caps_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
+        if caps_ratio > 0.7:
+            return True, f"Excessive caps ({int(caps_ratio * 100)}%)"
+
+    # Low follower check for social platforms
+    metadata = opportunity.get('metadata', {})
+    source_data = opportunity.get('source_data', {})
+    followers = metadata.get('followers') or metadata.get('follower_count') or source_data.get('followers')
+    if followers is not None:
+        try:
+            if int(followers) < 10:
+                return True, f"Low followers ({followers})"
+        except (ValueError, TypeError):
+            pass
+
+    # Spam phrases
+    spam_phrases = [
+        'click here', 'act now', 'limited time', 'free money',
+        'dm me for', 'follow for follow', 'link in bio',
+        'check my profile', 'crypto giveaway', 'nft drop'
+    ]
+    text_lower = full_text.lower()
+    for phrase in spam_phrases:
+        if phrase in text_lower:
+            return True, f"Spam phrase detected: '{phrase}'"
+
+    return False, "Passed quality check"
+
+
 def is_actionable(opportunity: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Check if we can actually take action on this opportunity
@@ -368,11 +519,13 @@ def filter_opportunities(
     enable_stale_filter: bool = True,
     enable_monetizable_filter: bool = True,
     enable_actionable_filter: bool = True,
-    max_age_days: int = 30
+    enable_quality_filter: bool = True,
+    max_age_days: int = 30,
+    min_quality_score: float = 0.3
 ) -> Dict[str, Any]:
     """
     Apply all sanity filters to discovered opportunities
-    
+
     Args:
         opportunities: List of raw opportunities
         routing_results: Full routing results from discovery engine
@@ -381,15 +534,17 @@ def filter_opportunities(
         enable_stale_filter: Remove stale HN/GitHub posts (default: True)
         enable_monetizable_filter: Remove non-monetizable opportunities (default: True)
         enable_actionable_filter: Remove non-actionable opportunities (default: True)
+        enable_quality_filter: Remove spam/low-quality opportunities (default: True)
         max_age_days: Maximum age for stale filter (default: 30)
-    
+        min_quality_score: Minimum quality score threshold (default: 0.3)
+
     Returns:
         Filtered routing results with stats
     """
-    
+
     # Calculate P95 cap for outlier detection
     p95_cap = calculate_p95_cap(opportunities) if enable_outlier_filter else float('inf')
-    
+
     # Track filter statistics
     stats = {
         "total_opportunities": len(opportunities),
@@ -398,40 +553,52 @@ def filter_opportunities(
         "stale_removed": 0,
         "non_monetizable_removed": 0,
         "non_actionable_removed": 0,
+        "spam_or_low_quality_removed": 0,
         "remaining_opportunities": 0,
         "total_value_before": sum(opp.get("value", 0) for opp in opportunities),
         "total_value_after": 0,
         "p95_cap": p95_cap,
+        "min_quality_score": min_quality_score,
         "filter_reasons": []
     }
-    
+
     def apply_filters(opp: Dict, score: Dict = None) -> Tuple[bool, str]:
         """Apply all filters to a single opportunity. Returns (passed, reason)."""
-        
+
+        # Quality/spam filter (check first - catches obvious spam early)
+        if enable_quality_filter:
+            is_spam, spam_reason = is_spam_or_low_quality(opp)
+            if is_spam:
+                return False, f"spam_or_low_quality: {spam_reason}"
+
+            quality_score, _ = calculate_quality_score(opp)
+            if quality_score < min_quality_score:
+                return False, f"low_quality_score: {quality_score:.2f} < {min_quality_score}"
+
         # Outlier filter
         if enable_outlier_filter and is_outlier(opp, p95_cap):
             return False, "outlier"
-        
+
         # Skip filter (low win probability)
         if enable_skip_filter and score and should_skip(score):
             return False, "low_probability"
-        
+
         # Stale filter
         if enable_stale_filter and is_stale(opp, max_age_days):
             return False, "stale"
-        
+
         # Monetizability filter
         if enable_monetizable_filter:
             monetizable, reason = is_monetizable(opp)
             if not monetizable:
                 return False, f"non_monetizable: {reason}"
-        
+
         # Actionability filter
         if enable_actionable_filter:
             actionable, reason = is_actionable(opp)
             if not actionable:
                 return False, f"non_actionable: {reason}"
-        
+
         return True, "passed"
     
     # Filter each routing category
@@ -459,9 +626,11 @@ def filter_opportunities(
                     stats["non_monetizable_removed"] += 1
                 elif "non_actionable" in reason:
                     stats["non_actionable_removed"] += 1
+                elif "spam_or_low_quality" in reason or "low_quality_score" in reason:
+                    stats["spam_or_low_quality_removed"] += 1
                 stats["filter_reasons"].append({"id": opp.get("id"), "reason": reason})
                 continue
-            
+
             filtered_user_routed.append(opp_wrapper)
     
     # Filter aigentsy-routed opportunities
@@ -484,9 +653,11 @@ def filter_opportunities(
                     stats["non_monetizable_removed"] += 1
                 elif "non_actionable" in reason:
                     stats["non_actionable_removed"] += 1
+                elif "spam_or_low_quality" in reason or "low_quality_score" in reason:
+                    stats["spam_or_low_quality_removed"] += 1
                 stats["filter_reasons"].append({"id": opp.get("id"), "reason": reason})
                 continue
-            
+
             filtered_aigentsy_routed.append(opp_wrapper)
     
     # Filter held opportunities
@@ -505,9 +676,11 @@ def filter_opportunities(
                     stats["non_monetizable_removed"] += 1
                 elif "non_actionable" in reason:
                     stats["non_actionable_removed"] += 1
+                elif "spam_or_low_quality" in reason or "low_quality_score" in reason:
+                    stats["spam_or_low_quality_removed"] += 1
                 stats["filter_reasons"].append({"id": opp.get("id"), "reason": reason})
                 continue
-            
+
             filtered_held.append(opp_wrapper)
     
     # Recalculate totals
