@@ -390,25 +390,32 @@ class CustomerLoopWiring:
         # Get contact name
         contact_name = contact.get('name', 'there')
 
-        # Build DM message for platform outreach - New AiGentsy branding
-        dm_message = f"""Hey {contact_name}! 👋
+        # Clean the title (remove hashtags, noise)
+        import re
+        clean_title = title
+        if clean_title:
+            clean_title = re.sub(r'#\w+', '', clean_title)
+            clean_title = re.sub(r'@\w+', '', clean_title)
+            clean_title = re.sub(r'\[(HIRING|URGENT|REMOTE|WFH|CONTRACT|FREELANCE|PAID)\]', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'\s+', ' ', clean_title).strip()
+            clean_title = clean_title.rstrip('.,;:!?-') or title
 
-We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+        # Build DM message for platform outreach - Team voice ("We")
+        dm_message = f"""Hey {contact_name}!
 
-{title[:35]}: 1-2 hours
-Market ${market_rate:,} → ${our_price:,} ({discount_pct}% less)
+We're AiGentsy - AI-powered {fulfillment_type} team.
 
-✅ Built with the best AI
-✅ Precision & efficiency
-✅ Not satisfied? Money back
+Saw your post about {clean_title[:35]} and we can help.
+
+${market_rate:,} market rate -> ${our_price:,} ({discount_pct}% less)
+Delivered in 1-2 hours
+
+We use Claude, GPT-4 & Gemini to deliver fast and precise.
+Money-back guarantee if not satisfied.
 
 {client_room_url}
 
----
-Share: {client_room_url}
-Own AI agency: aigentsy.com/start
-
-— Your AiGentsy"""
+— AiGentsy"""
 
         # Twitter opportunities → Twitter DM (DIRECT API)
         if ('twitter' in platform or twitter_handle) and self.available_systems.get('api_keys', {}).get('twitter_dm'):
@@ -753,6 +760,16 @@ Own AI agency: aigentsy.com/start
 
     def _build_email_message(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
         """Build professional email message with AiGentsy branding"""
+        # Clean the title
+        import re
+        clean_title = title
+        if clean_title:
+            clean_title = re.sub(r'#\w+', '', clean_title)
+            clean_title = re.sub(r'@\w+', '', clean_title)
+            clean_title = re.sub(r'\[(HIRING|URGENT|REMOTE|WFH|CONTRACT|FREELANCE|PAID)\]', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'\s+', ' ', clean_title).strip()
+            clean_title = clean_title.rstrip('.,;:!?-') or title
+
         # Calculate pricing if not provided
         if pricing is None:
             market_rate = int(total_value * 1.5)
@@ -765,38 +782,46 @@ Own AI agency: aigentsy.com/start
             discount_pct = pricing.get('discount_pct', 35)
             fulfillment_type = pricing.get('fulfillment_type', 'fulfillment')
 
-        return f"""Hey there! 👋
+        return f"""Hey there!
 
-We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+We're AiGentsy - your AI-powered {fulfillment_type} team.
 
-I saw your post about {title[:50]} and wanted to reach out.
+Saw your post about {clean_title[:50]} and we can help.
 
-Your AiGentsy is built with all the best AI to get the job you need done with precision and efficiency, at a cost cheaper than anyone else.
+We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency - faster and cheaper than traditional freelancers.
 
-For {title[:40]}:
+For {clean_title[:40]}:
 
 Market Rate: ${market_rate:,}
-Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+AiGentsy: ${our_price:,} ({discount_pct}% less)
 Delivery: 1-2 hours
 
-What you get:
-• {title[:50]} - done, end-to-end
-• Built with the best AI (Claude, GPT-4, Gemini)
-• Delivered in hours, not days
-• Iterate until you're 100% satisfied
-• Not satisfied? You get your money back
+What we deliver:
+- {clean_title[:50]} - complete, end-to-end
+- Built by our AI team (Claude, GPT-4, Gemini)
+- Delivered in hours, not days
+- We iterate until you're 100% satisfied
+- Money-back guarantee if not satisfied
 
-View your full proposal:
+View your proposal:
 {client_room_url}
 
----
-Know someone who needs this? Share: {client_room_url}
-Start your own AI agency: https://aigentsy.com/start
+Ready? Pay the deposit and we start immediately.
 
-— Your AiGentsy"""
+— AiGentsy"""
 
     def _build_html_email(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
         """Build HTML email with AiGentsy brand colors"""
+        # Clean the title
+        import re
+        clean_title = title
+        if clean_title:
+            clean_title = re.sub(r'#\w+', '', clean_title)
+            clean_title = re.sub(r'@\w+', '', clean_title)
+            clean_title = re.sub(r'\[(HIRING|URGENT|REMOTE|WFH|CONTRACT|FREELANCE|PAID)\]', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'\s+', ' ', clean_title).strip()
+            clean_title = clean_title.rstrip('.,;:!?-') or title
+
         # Calculate pricing if not provided
         if pricing is None:
             market_rate = int(total_value * 1.5)
@@ -844,15 +869,15 @@ Start your own AI agency: https://aigentsy.com/start
 <body>
     <div class="container">
         <div class="header">
-            <h1>{title[:50]}</h1>
-            <p>Your AI-powered {fulfillment_type} partner</p>
+            <h1>{clean_title[:50]}</h1>
+            <p>Your AI-powered {fulfillment_type} team</p>
         </div>
         <div class="content">
-            <p class="greeting">Hey there! 👋</p>
+            <p class="greeting">Hey there!</p>
 
-            <p class="intro">We're <strong style="color: #00ffcc;">Your AiGentsy</strong> - your AI-powered {fulfillment_type} partner.</p>
+            <p class="intro">We're <strong style="color: #00ffcc;">AiGentsy</strong> - your AI-powered {fulfillment_type} team.</p>
 
-            <p style="color: #e0e0e0;">Your AiGentsy is built with all the best AI to get the job you need done with <span style="color: #00ffcc;">precision and efficiency</span>, at a cost cheaper than anyone else.</p>
+            <p style="color: #e0e0e0;">We use the best AI (Claude, GPT-4, Gemini) to deliver with <span style="color: #00ffcc;">precision and efficiency</span> - faster and cheaper than traditional freelancers.</p>
 
             <div class="pricing-box">
                 <p class="price-label">WHAT OTHERS CHARGE</p>
@@ -862,30 +887,24 @@ Start your own AI agency: https://aigentsy.com/start
             </div>
 
             <ul class="features">
-                <li><strong>Built with the best AI</strong> - Claude, GPT-4, Gemini working together</li>
+                <li><strong>Built by our AI team</strong> - Claude, GPT-4, Gemini working together</li>
                 <li><strong>Delivered in 1-2 hours</strong> - not days, hours</li>
-                <li><strong>Precision and efficiency</strong> - AI doesn't make human errors</li>
-                <li><strong>Iterate until perfect</strong> - unlimited revisions included</li>
-                <li><strong>Money-back guarantee</strong> - not satisfied? You get your money back</li>
+                <li><strong>Precision and efficiency</strong> - AI-powered quality</li>
+                <li><strong>We iterate until perfect</strong> - unlimited revisions included</li>
+                <li><strong>Money-back guarantee</strong> - not satisfied? Full refund</li>
             </ul>
 
             <center>
-                <a href="{client_room_url}" class="cta">View Proposal & Pay Deposit →</a>
+                <a href="{client_room_url}" class="cta">View Proposal & Pay Deposit</a>
             </center>
 
             <p style="color: #888; font-size: 14px; text-align: center; margin-top: 24px;">
-                <em>Your AI partner, built with the best AI to deliver precision and efficiency.</em>
+                <em>Your AI team, delivering precision and efficiency.</em>
             </p>
         </div>
         <div class="footer">
-            <p class="signature">— Your AiGentsy</p>
+            <p class="signature">— AiGentsy</p>
             <p class="tagline">AI-powered fulfillment at unbeatable cost</p>
-            <p style="margin-top: 16px; color: #888; font-size: 13px;">
-                Know someone who needs this? <a href="{client_room_url}" style="color: #00ffcc;">Share this link</a>
-            </p>
-            <p style="margin-top: 8px; color: #888; font-size: 13px;">
-                Want to run your own AI agency? <a href="https://aigentsy.com/start" style="color: #00bfff;">Learn more</a>
-            </p>
             <p style="margin-top: 16px;"><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>

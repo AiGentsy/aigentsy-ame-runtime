@@ -93,16 +93,98 @@ class OutreachResult:
 # PROPOSAL GENERATOR
 # =============================================================================
 
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def clean_opportunity_title(title: str) -> str:
+    """
+    Clean opportunity title by removing hashtags, mentions, and noise.
+
+    Examples:
+        "Need Python developer #hiring #remote" -> "Need Python developer"
+        "@mention Looking for React dev" -> "Looking for React dev"
+        "[HIRING] Senior backend engineer" -> "Senior backend engineer"
+    """
+    import re
+
+    if not title:
+        return "your project"
+
+    # Remove hashtags (e.g., #hiring, #remote)
+    title = re.sub(r'#\w+', '', title)
+
+    # Remove mentions (e.g., @username)
+    title = re.sub(r'@\w+', '', title)
+
+    # Remove common noise brackets
+    title = re.sub(r'\[(HIRING|URGENT|REMOTE|WFH|CONTRACT|FREELANCE|PAID)\]', '', title, flags=re.IGNORECASE)
+
+    # Remove leading/trailing brackets with content
+    title = re.sub(r'^\[[^\]]*\]\s*', '', title)
+
+    # Clean up extra whitespace
+    title = re.sub(r'\s+', ' ', title).strip()
+
+    # Remove trailing punctuation noise
+    title = title.rstrip('.,;:!?-')
+
+    return title if title else "your project"
+
+
+def detect_project_type(title: str, pain_point: str = "") -> str:
+    """
+    Detect project type from title/description for personalized intro.
+
+    Returns: development, automation, design, content, data, marketing, backend, frontend, or default
+    """
+    text = (title + ' ' + pain_point).lower()
+
+    # Backend-specific
+    if any(kw in text for kw in ['api', 'backend', 'database', 'server', 'microservice', 'rest', 'graphql', 'node', 'django', 'flask', 'fastapi']):
+        return 'backend'
+
+    # Frontend-specific
+    if any(kw in text for kw in ['frontend', 'react', 'vue', 'angular', 'ui', 'ux', 'interface', 'webpage', 'landing page']):
+        return 'frontend'
+
+    # General development
+    if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'mobile', 'ios', 'android', 'python', 'javascript']):
+        return 'development'
+
+    # Automation
+    if any(kw in text for kw in ['automat', 'bot', 'script', 'workflow', 'zapier', 'integration', 'scrape', 'crawl']):
+        return 'automation'
+
+    # Design
+    if any(kw in text for kw in ['design', 'graphic', 'logo', 'brand', 'figma', 'photoshop', 'illustrat', 'visual']):
+        return 'design'
+
+    # Content
+    if any(kw in text for kw in ['content', 'write', 'blog', 'copy', 'article', 'seo', 'social media', 'post']):
+        return 'content'
+
+    # Data
+    if any(kw in text for kw in ['data', 'analyt', 'dashboard', 'report', 'visualization', 'excel', 'sql', 'tableau']):
+        return 'data'
+
+    # Marketing
+    if any(kw in text for kw in ['market', 'campaign', 'ads', 'growth', 'email', 'newsletter', 'funnel']):
+        return 'marketing'
+
+    return 'default'
+
+
 class ProposalGenerator:
     """
     Generates personalized proposals based on opportunity data.
     Uses AI conductor for high-quality personalization.
     """
-    
+
     def __init__(self):
         self.anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         self.openai_key = os.getenv("OPENAI_API_KEY")
-        
+
         # Channel-specific templates
         self.templates = {
             OutreachChannel.EMAIL: self._email_template,
@@ -111,18 +193,18 @@ class ProposalGenerator:
             OutreachChannel.REDDIT_DM: self._reddit_dm_template,
             OutreachChannel.GITHUB_DISCUSSION: self._github_template,
         }
-        
-        # Value propositions by category - Your AiGentsy: AI-powered partner
+
+        # Value propositions by category - Team voice ("We")
         self.value_props = {
-            'development': "Your AiGentsy - your AI-powered development partner. Built with the best AI for precision & efficiency",
-            'backend': "Your AiGentsy - your AI-powered backend partner. Built with the best AI for precision & efficiency",
-            'frontend': "Your AiGentsy - your AI-powered frontend partner. Built with the best AI for precision & efficiency",
-            'automation': "Your AiGentsy - your AI-powered automation partner. Lightning-fast, precise results",
-            'design': "Your AiGentsy - your AI-powered design partner. Best-in-class creative, delivered instantly",
-            'content': "Your AiGentsy - your AI-powered content partner. Highest quality, end-to-end production",
-            'data': "Your AiGentsy - your AI-powered analytics partner. Raw data to actionable insights",
-            'marketing': "Your AiGentsy - your AI-powered marketing partner. Strategy to execution",
-            'default': "Your AiGentsy - your AI-powered partner for exactly this"
+            'development': "We're AiGentsy - your AI-powered development team",
+            'backend': "We're AiGentsy - your AI-powered backend team",
+            'frontend': "We're AiGentsy - your AI-powered frontend team",
+            'automation': "We're AiGentsy - your AI-powered automation team",
+            'design': "We're AiGentsy - your AI-powered design team",
+            'content': "We're AiGentsy - your AI-powered content team",
+            'data': "We're AiGentsy - your AI-powered analytics team",
+            'marketing': "We're AiGentsy - your AI-powered marketing team",
+            'default': "We're AiGentsy - your AI-powered team"
         }
     
     async def generate_proposal(
@@ -216,20 +298,7 @@ class ProposalGenerator:
     
     def _categorize_opportunity(self, title: str, pain_point: str) -> str:
         """Categorize the opportunity for value prop selection"""
-        text = (title + ' ' + pain_point).lower()
-        
-        if any(kw in text for kw in ['develop', 'code', 'build', 'app', 'software', 'api']):
-            return 'development'
-        elif any(kw in text for kw in ['automat', 'bot', 'script', 'workflow']):
-            return 'automation'
-        elif any(kw in text for kw in ['design', 'ui', 'ux', 'graphic', 'logo']):
-            return 'design'
-        elif any(kw in text for kw in ['content', 'write', 'blog', 'copy', 'article']):
-            return 'content'
-        elif any(kw in text for kw in ['data', 'analyt', 'dashboard', 'report']):
-            return 'data'
-        else:
-            return 'default'
+        return detect_project_type(title, pain_point)
     
     def _get_recipient(self, contact: Dict, channel: OutreachChannel) -> str:
         """Get recipient identifier for channel"""
@@ -249,7 +318,9 @@ class ProposalGenerator:
 
     def _email_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate email proposal - Reference their actual need, convert to engagement"""
-        subject = f"Re: {title[:50]}"
+        # Clean the title
+        clean_title = clean_opportunity_title(title)
+        subject = f"Re: {clean_title[:50]}"
 
         # Extract pricing params
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
@@ -261,77 +332,73 @@ class ProposalGenerator:
 
         body = f"""Hey {name}!
 
-We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+We're AiGentsy - your AI-powered {fulfillment_type} team.
 
-Just saw your post about {title[:50]} — sounds like you need {pain_point[:50]}.
+Saw your post about {clean_title[:50]} and we can help.
 
-Your AiGentsy is built with all the best AI to get the job you need done with precision and efficiency, at a cost cheaper than anyone else.
+We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency - faster and cheaper than traditional freelancers.
 
-For {title[:40]}:
+For {clean_title[:40]}:
 
 Market Rate: ${market_rate:,}
-Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+AiGentsy: ${our_price:,} ({discount_pct}% less)
 Delivery: {delivery_time}
 
-What you get:
-- {pain_point[:60]} — done, end-to-end
-- Built with the best AI (Claude, GPT-4, Gemini)
-- Precision and efficiency - AI doesn't make human errors
-- Iterate until you're 100% satisfied
-- Not satisfied? You get your money back
+What we deliver:
+- {pain_point[:60]} - complete, end-to-end
+- Built by our AI team (Claude, GPT-4, Gemini)
+- Delivered in hours, not days
+- We iterate until you're 100% satisfied
+- Money-back guarantee if not satisfied
 
-View your full proposal:
+View your proposal:
 {client_room_url}
 
-Ready to get started? Pay the deposit and we'll begin immediately.
+Ready? Pay the deposit and we start immediately.
 
----
-Know someone who needs this? Share: {client_room_url}
-Start your own AI agency: https://aigentsy.com/start
-
-— Your AiGentsy
+— AiGentsy
 """
 
         return subject, body
     
     def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
-        """Generate Twitter DM - Reference their post, quick conversion (280 char limit)"""
+        """Generate Twitter DM - Reference their post, professional conversion"""
         subject = ""  # No subject for DMs
+
+        # Clean the title
+        clean_title = clean_opportunity_title(title)
 
         # Extract pricing params
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
         our_price = kwargs.get('our_price', int(estimated_value * 0.7))
         discount_pct = kwargs.get('discount_pct', 35)
         fulfillment_type = kwargs.get('fulfillment_type', 'dev')
-        client_room_url = kwargs.get('client_room_url', 'aigentsy.com')
-
-        # Shorten fulfillment type for DM
-        short_type = fulfillment_type[:3] if len(fulfillment_type) > 3 else fulfillment_type
+        client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
         # Build DM - Twitter has 10k char limit for DMs now
-        body = f"""Hey {name}! 👋
+        body = f"""Hey {name}!
 
-Your AiGentsy - AI-powered {short_type} partner
+We're AiGentsy - AI-powered {fulfillment_type} team.
 
-{title[:25]}: 1-2hrs
-${market_rate:,} → ${our_price:,} ({discount_pct}% less)
+Saw your post about {clean_title[:30]} and we can help.
 
-✅ Best AI
-✅ Money back guarantee
+${market_rate:,} market rate -> ${our_price:,} ({discount_pct}% less)
+Delivered in 1-2 hours
+
+We use Claude, GPT-4 & Gemini to deliver fast and precise.
+Money-back guarantee if not satisfied.
 
 {client_room_url}
 
----
-Share: {client_room_url}
-Own AI agency: aigentsy.com/start
-
-— Your AiGentsy"""
+— AiGentsy"""
 
         return subject, body
     
     def _linkedin_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate LinkedIn message - Reference their post, professional conversion"""
-        subject = f"Re: {title[:40]}"
+        # Clean the title
+        clean_title = clean_opportunity_title(title)
+        subject = f"Re: {clean_title[:40]}"
 
         # Extract pricing params
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
@@ -342,31 +409,29 @@ Own AI agency: aigentsy.com/start
 
         body = f"""Hey {name}!
 
-We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+We're AiGentsy - your AI-powered {fulfillment_type} team.
 
-Saw your post about {title[:40]} — sounds like you need {pain_point[:40]}.
+Saw your post about {clean_title[:40]} and we can help.
 
-Your AiGentsy is built with all the best AI to deliver with precision and efficiency:
+We use the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency:
 
-• Market Rate: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
-• {pain_point[:50]} — handled, end-to-end
-• Delivered in 1-2 hours, not days
-• We iterate until you're 100% satisfied
-• Not satisfied? Money back guarantee
+- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
+- {pain_point[:50]} - complete, end-to-end
+- Delivered in 1-2 hours, not days
+- We iterate until you're 100% satisfied
+- Money-back guarantee
 
-View your full proposal: {client_room_url}
+View your proposal: {client_room_url}
 
----
-Know someone who needs this? Share: {client_room_url}
-Start your own AI agency: https://aigentsy.com/start
-
-— Your AiGentsy"""
+— AiGentsy"""
 
         return subject, body
     
     def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate Reddit DM - Reference their post, casual conversion"""
-        subject = f"Re: {title[:50]}"
+        # Clean the title
+        clean_title = clean_opportunity_title(title)
+        subject = f"Re: {clean_title[:50]}"
 
         # Extract pricing params
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
@@ -377,30 +442,28 @@ Start your own AI agency: https://aigentsy.com/start
 
         body = f"""Hey u/{name}!
 
-We're Your AiGentsy - your AI-powered {fulfillment_type} partner.
+We're AiGentsy - AI-powered {fulfillment_type} team.
 
-Saw your post about {title[:40]} — sounds like you need {pain_point[:35]}.
+Saw your post about {clean_title[:40]} and we can help.
 
-Your AiGentsy is built with all the best AI to deliver with precision and efficiency:
+We use Claude, GPT-4 & Gemini to deliver fast and precise:
 
-- Market: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
+- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
 - Delivered in 1-2 hours
-- Iterate until you're satisfied
-- Not happy? Money back
+- We iterate until you're satisfied
+- Money-back guarantee
 
 Check out your proposal: {client_room_url}
 
----
-Know someone who needs this? Share: {client_room_url}
-Start your own AI agency: https://aigentsy.com/start
-
-— Your AiGentsy"""
+— AiGentsy"""
 
         return subject, body
     
     def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate GitHub discussion/issue comment - Reference issue, dev conversion"""
-        subject = f"Re: {title[:50]}"
+        # Clean the title
+        clean_title = clean_opportunity_title(title)
+        subject = f"Re: {clean_title[:50]}"
 
         # Extract pricing params
         market_rate = kwargs.get('market_rate', int(estimated_value * 1.5))
@@ -411,25 +474,21 @@ Start your own AI agency: https://aigentsy.com/start
 
         body = f"""Hey @{name}!
 
-We're **Your AiGentsy** - your AI-powered {fulfillment_type} partner.
+We're **AiGentsy** - AI-powered {fulfillment_type} team.
 
-Saw this issue — looks like you need {pain_point[:45]}.
+Saw this issue and we can help with {pain_point[:45]}.
 
-Your AiGentsy is built with all the best AI (Claude, GPT-4, Gemini) to deliver with precision and efficiency:
+We use Claude, GPT-4 & Gemini to deliver with precision:
 
-- Market: ${market_rate:,} → Your AiGentsy: ${our_price:,} ({discount_pct}% less)
-- {pain_point[:50]} — done, end-to-end
+- Market: ${market_rate:,} -> AiGentsy: ${our_price:,} ({discount_pct}% less)
+- {pain_point[:50]} - complete, end-to-end
 - Delivered in 1-2 hours
-- Iterate until it's exactly right
-- Not satisfied? Money back
+- We iterate until it's exactly right
+- Money-back guarantee
 
-Check out the full proposal: {client_room_url}
+Check out your proposal: {client_room_url}
 
----
-Know someone who needs this? Share: {client_room_url}
-Start your own AI agency: https://aigentsy.com/start
-
-— Your AiGentsy"""
+— AiGentsy"""
 
         return subject, body
 
