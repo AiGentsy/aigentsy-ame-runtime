@@ -424,49 +424,84 @@ See your proposal → {client_room_url}
 
 — AiGentsy"""
 
+        # ═══════════════════════════════════════════════════════════════════
+        # SPAM PREVENTION: Check if we've already contacted this person
+        # ═══════════════════════════════════════════════════════════════════
+        opportunity_id = opportunity.get('id', '')
+
+        try:
+            from outreach import get_outreach_tracker
+            tracker = get_outreach_tracker()
+        except Exception as e:
+            logger.warning(f"Could not load outreach tracker: {e}")
+            tracker = None
+
         # Twitter opportunities → Twitter DM (DIRECT API)
         if ('twitter' in platform or twitter_handle) and self.available_systems.get('api_keys', {}).get('twitter_dm'):
             if twitter_handle:
-                try:
-                    logger.info(f"📤 Attempting Twitter DM to @{twitter_handle}...")
-                    dm_result = await self._send_twitter_dm_direct(twitter_handle, dm_message)
-                    if dm_result.get('success'):
-                        result.presented = True
-                        result.method = 'twitter_dm'
-                        result.channel = 'twitter'
-                        result.recipient = f"@{twitter_handle.lstrip('@')}"
-                        result.tracking_id = dm_result.get('message_id')
-                        result.details['twitter_dm'] = dm_result
-                        logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
-
-                        # Register conversation for auto-reply monitoring
-                        try:
-                            from conversation import get_conversation_manager
-                            conv_manager = get_conversation_manager()
-                            conv_manager.register_outreach(
-                                platform='twitter',
-                                user_id=dm_result.get('recipient_id', ''),
-                                username=twitter_handle.lstrip('@'),
-                                contract_id=contract.get('id', contract.get('contract_id', '')),
-                                opportunity_id=opportunity.get('id', ''),
-                                initial_message=dm_message,
-                                message_id=dm_result.get('message_id')
-                            )
-                            logger.info(f"📝 Registered conversation for @{twitter_handle}")
-                        except Exception as conv_err:
-                            logger.warning(f"Could not register conversation: {conv_err}")
-
-                        return result
+                # Check spam prevention first
+                can_send_twitter = True
+                if tracker:
+                    can_contact, reason = tracker.can_contact(twitter_handle, 'twitter', opportunity_id, clean_title)
+                    if not can_contact:
+                        logger.info(f"⏭️ Skipping Twitter DM to @{twitter_handle}: {reason}")
+                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': f'spam_prevention:{reason}'})
+                        can_send_twitter = False
                     else:
-                        result.fallback_attempts.append({
-                            'method': 'twitter_dm',
-                            'error': dm_result.get('error'),
-                            'details': dm_result.get('details')
-                        })
-                        logger.warning(f"⚠️ Twitter DM failed: {dm_result.get('error')}")
-                except Exception as e:
-                    result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
-                    logger.warning(f"⚠️ Twitter DM exception: {e}")
+                        logger.info(f"✅ Spam check passed for @{twitter_handle}: {reason}")
+
+                if can_send_twitter:
+                    try:
+                        logger.info(f"📤 Attempting Twitter DM to @{twitter_handle}...")
+                        dm_result = await self._send_twitter_dm_direct(twitter_handle, dm_message)
+                        if dm_result.get('success'):
+                            result.presented = True
+                            result.method = 'twitter_dm'
+                            result.channel = 'twitter'
+                            result.recipient = f"@{twitter_handle.lstrip('@')}"
+                            result.tracking_id = dm_result.get('message_id')
+                            result.details['twitter_dm'] = dm_result
+                            logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
+
+                            # Record outreach for spam prevention
+                            if tracker:
+                                tracker.record_outreach(
+                                    recipient=twitter_handle,
+                                    recipient_type='twitter',
+                                    opportunity_id=opportunity_id,
+                                    opportunity_title=clean_title,
+                                    contract_id=contract.get('id', contract.get('contract_id', '')),
+                                    message_id=dm_result.get('message_id')
+                                )
+
+                            # Register conversation for auto-reply monitoring
+                            try:
+                                from conversation import get_conversation_manager
+                                conv_manager = get_conversation_manager()
+                                conv_manager.register_outreach(
+                                    platform='twitter',
+                                    user_id=dm_result.get('recipient_id', ''),
+                                    username=twitter_handle.lstrip('@'),
+                                    contract_id=contract.get('id', contract.get('contract_id', '')),
+                                    opportunity_id=opportunity_id,
+                                    initial_message=dm_message,
+                                    message_id=dm_result.get('message_id')
+                                )
+                                logger.info(f"📝 Registered conversation for @{twitter_handle}")
+                            except Exception as conv_err:
+                                logger.warning(f"Could not register conversation: {conv_err}")
+
+                            return result
+                        else:
+                            result.fallback_attempts.append({
+                                'method': 'twitter_dm',
+                                'error': dm_result.get('error'),
+                                'details': dm_result.get('details')
+                            })
+                            logger.warning(f"⚠️ Twitter DM failed: {dm_result.get('error')}")
+                    except Exception as e:
+                        result.fallback_attempts.append({'method': 'twitter_dm', 'error': str(e)})
+                        logger.warning(f"⚠️ Twitter DM exception: {e}")
 
         # LinkedIn opportunities → LinkedIn message (DIRECT API)
         if ('linkedin' in platform or linkedin_id) and self.available_systems.get('api_keys', {}).get('linkedin'):
@@ -579,54 +614,78 @@ See your proposal → {client_room_url}
         # ═══════════════════════════════════════════════════════════════════
 
         if email and os.getenv('RESEND_API_KEY'):
-            # Build pricing dict for email templates
-            email_pricing = {
-                'market_rate': market_rate,
-                'our_price': our_price,
-                'discount_pct': discount_pct,
-                'fulfillment_type': fulfillment_type
-            }
-            message = self._build_email_message(title, total_value, client_room_url, pricing=email_pricing)
-            html_message = self._build_html_email(title, total_value, client_room_url, pricing=email_pricing)
+            # Check spam prevention first
+            can_send_email = True
+            if tracker:
+                can_contact, reason = tracker.can_contact(email, 'email', opportunity_id, clean_title)
+                if not can_contact:
+                    logger.info(f"⏭️ Skipping email to {email}: {reason}")
+                    result.fallback_attempts.append({'method': 'email', 'error': f'spam_prevention:{reason}'})
+                    can_send_email = False
+                else:
+                    logger.info(f"✅ Spam check passed for email {email}: {reason}")
 
-            try:
-                logger.info(f"📧 Sending email via Resend to {email}...")
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.post(
-                        "https://api.resend.com/emails",
-                        headers={
-                            "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "from": os.getenv('RESEND_FROM_EMAIL', 'AiGentsy <proposals@aigentsy.com>'),
-                            "to": [email],
-                            "subject": f"Proposal: {title[:50]}",
-                            "html": html_message,
-                            "text": message
-                        }
-                    )
+            if can_send_email:
+                # Build pricing dict for email templates
+                email_pricing = {
+                    'market_rate': market_rate,
+                    'our_price': our_price,
+                    'discount_pct': discount_pct,
+                    'fulfillment_type': fulfillment_type
+                }
+                message = self._build_email_message(title, total_value, client_room_url, pricing=email_pricing)
+                html_message = self._build_html_email(title, total_value, client_room_url, pricing=email_pricing)
 
-                    if resp.status_code in [200, 201]:
-                        resp_data = resp.json()
-                        result.presented = True
-                        result.method = 'email'
-                        result.channel = 'resend'
-                        result.recipient = email
-                        result.tracking_id = resp_data.get('id')
-                        result.details['email'] = resp_data
-                        logger.info(f"✅ Email sent via Resend to {email}")
-                        return result
-                    else:
-                        result.fallback_attempts.append({
-                            'method': 'email_resend',
-                            'error': f'Status {resp.status_code}',
-                            'details': resp.text
-                        })
-                        logger.warning(f"⚠️ Resend email failed: {resp.status_code}")
-            except Exception as e:
-                result.fallback_attempts.append({'method': 'email_resend', 'error': str(e)})
-                logger.warning(f"⚠️ Resend email exception: {e}")
+                try:
+                    logger.info(f"📧 Sending email via Resend to {email}...")
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        resp = await client.post(
+                            "https://api.resend.com/emails",
+                            headers={
+                                "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "from": os.getenv('RESEND_FROM_EMAIL', 'AiGentsy <proposals@aigentsy.com>'),
+                                "to": [email],
+                                "subject": f"Proposal: {title[:50]}",
+                                "html": html_message,
+                                "text": message
+                            }
+                        )
+
+                        if resp.status_code in [200, 201]:
+                            resp_data = resp.json()
+                            result.presented = True
+                            result.method = 'email'
+                            result.channel = 'resend'
+                            result.recipient = email
+                            result.tracking_id = resp_data.get('id')
+                            result.details['email'] = resp_data
+                            logger.info(f"✅ Email sent via Resend to {email}")
+
+                            # Record outreach for spam prevention
+                            if tracker:
+                                tracker.record_outreach(
+                                    recipient=email,
+                                    recipient_type='email',
+                                    opportunity_id=opportunity_id,
+                                    opportunity_title=clean_title,
+                                    contract_id=contract.get('id', contract.get('contract_id', '')),
+                                    message_id=resp_data.get('id')
+                                )
+
+                            return result
+                        else:
+                            result.fallback_attempts.append({
+                                'method': 'email_resend',
+                                'error': f'Status {resp.status_code}',
+                                'details': resp.text
+                            })
+                            logger.warning(f"⚠️ Resend email failed: {resp.status_code}")
+                except Exception as e:
+                    result.fallback_attempts.append({'method': 'email_resend', 'error': str(e)})
+                    logger.warning(f"⚠️ Resend email exception: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
         # PRIORITY 3: SMS via TWILIO (DIRECT API)
