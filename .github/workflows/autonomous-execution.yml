@@ -242,7 +242,7 @@ jobs:
       - name: Execute Discovery → Contract → Fulfill Pipeline
         id: execute
         run: |
-          MAX_OPPS="${{ github.event.inputs.max_opportunities || '10' }}"
+          MAX_OPPS="${{ github.event.inputs.max_opportunities || '100' }}"
           AUTO_EXEC="${{ github.event.inputs.auto_execute || 'true' }}"
           USE_FA30="${{ github.event.inputs.use_fa30 || 'true' }}"
           USE_DUAL_TRACK="${{ github.event.inputs.use_dual_track || 'true' }}"
@@ -254,12 +254,14 @@ jobs:
           echo "   Dual-track enabled: $USE_DUAL_TRACK"
           echo ""
 
+          # Make API request with timeout and capture both response and status
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             ${{ env.RUNTIME_URL }}/integration/discover-and-execute \
             -H "Content-Type: application/json" \
             -d "{
               \"max_opportunities\": $MAX_OPPS,
               \"auto_execute\": $AUTO_EXEC,
+              \"auto_contract\": true,
               \"apex_options\": {
                 \"fa30_enabled\": $USE_FA30,
                 \"dual_track_enabled\": $USE_DUAL_TRACK,
@@ -270,10 +272,41 @@ jobs:
               \"trigger\": \"github_actions_apex_v3\",
               \"run_id\": \"${{ github.run_id }}\",
               \"run_number\": ${{ github.run_number }}
-            }")
+            }" \
+            --max-time 600 2>&1 || echo -e '{"error": "curl failed"}\n000')
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           BODY=$(echo "$RESPONSE" | head -n-1)
+
+          # Debug: Show response preview
+          echo "📝 API Response (first 500 chars):"
+          echo "$BODY" | head -c 500
+          echo ""
+          echo "HTTP Status: $HTTP_CODE"
+          echo ""
+
+          # Validate JSON before parsing
+          if ! echo "$BODY" | jq empty 2>/dev/null; then
+            echo "❌ Invalid JSON response"
+            echo "Full response:"
+            echo "$BODY"
+
+            # Set default outputs for failed request
+            echo "discovered=0" >> $GITHUB_OUTPUT
+            echo "contracts=0" >> $GITHUB_OUTPUT
+            echo "dispatched=0" >> $GITHUB_OUTPUT
+            echo "revenue=0" >> $GITHUB_OUTPUT
+            echo "fa30_triggered=0" >> $GITHUB_OUTPUT
+            echo "dual_track_used=0" >> $GITHUB_OUTPUT
+            echo "presented=0" >> $GITHUB_OUTPUT
+            echo "presentation_method=error" >> $GITHUB_OUTPUT
+            echo "twitter_dms=0" >> $GITHUB_OUTPUT
+            echo "emails=0" >> $GITHUB_OUTPUT
+            echo "sms=0" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "✅ Valid JSON response received"
 
           if [ "$HTTP_CODE" != "200" ]; then
             echo "❌ Pipeline failed with HTTP $HTTP_CODE"
@@ -281,26 +314,42 @@ jobs:
             exit 1
           fi
 
-          # Extract core metrics
-          DISCOVERED=$(echo "$BODY" | jq -r '.results.steps.discovery.count // .results.opportunities_processed // 0')
-          DISCOVERY_SOURCE=$(echo "$BODY" | jq -r '.results.steps.discovery.source // "unknown"')
-          WITH_CONTACT=$(echo "$BODY" | jq -r '.results.steps.discovery.with_contact // 0')
-          CONTACT_RATE=$(echo "$BODY" | jq -r '.results.steps.discovery.contact_rate // "0%"')
-          CONTRACTS=$(echo "$BODY" | jq -r '.results.steps.contracts.count // .results.contracts_created // 0')
-          DISPATCHED=$(echo "$BODY" | jq -r '.results.steps.dispatch.tasks // .results.tasks_dispatched // 0')
-          REVENUE=$(echo "$BODY" | jq -r '.results.contracts[0].escrow.total_amount_usd // 0')
+          # Extract core metrics with null fallbacks
+          DISCOVERED=$(echo "$BODY" | jq -r '.results.steps.discovery.count // .results.opportunities_processed // 0' 2>/dev/null || echo "0")
+          DISCOVERY_SOURCE=$(echo "$BODY" | jq -r '.results.steps.discovery.source // "unknown"' 2>/dev/null || echo "unknown")
+          WITH_CONTACT=$(echo "$BODY" | jq -r '.results.steps.discovery.with_contact // 0' 2>/dev/null || echo "0")
+          CONTACT_RATE=$(echo "$BODY" | jq -r '.results.steps.discovery.contact_rate // "0%"' 2>/dev/null || echo "0%")
+          CONTRACTS=$(echo "$BODY" | jq -r '.results.steps.contracts.count // .results.contracts_created // 0' 2>/dev/null || echo "0")
+          DISPATCHED=$(echo "$BODY" | jq -r '.results.steps.dispatch.tasks // .results.tasks_dispatched // 0' 2>/dev/null || echo "0")
+          REVENUE=$(echo "$BODY" | jq -r '.results.contracts[0].escrow.total_amount_usd // 0' 2>/dev/null || echo "0")
 
-          # Extract apex metrics
-          FA30_TRIGGERED=$(echo "$BODY" | jq -r '.results.apex.fa30_contracts_created // 0')
-          DUAL_TRACK_USED=$(echo "$BODY" | jq -r '.results.apex.dual_track_executions // 0')
-          HOT_STARTS=$(echo "$BODY" | jq -r '.results.apex.hot_start_kits_applied // 0')
-          LANGUAGES=$(echo "$BODY" | jq -r '.results.apex.languages_detected // "en"')
+          # Extract apex metrics with null fallbacks
+          FA30_TRIGGERED=$(echo "$BODY" | jq -r '.results.apex.fa30_contracts_created // 0' 2>/dev/null || echo "0")
+          DUAL_TRACK_USED=$(echo "$BODY" | jq -r '.results.apex.dual_track_executions // 0' 2>/dev/null || echo "0")
+          HOT_STARTS=$(echo "$BODY" | jq -r '.results.apex.hot_start_kits_applied // 0' 2>/dev/null || echo "0")
+          LANGUAGES=$(echo "$BODY" | jq -r '.results.apex.languages_detected // "en"' 2>/dev/null || echo "en")
 
-          # Extract customer loop / presentation metrics
-          PRESENTED=$(echo "$BODY" | jq -r '.results.steps.presentation.presented // 0')
-          PRESENTATION_TOTAL=$(echo "$BODY" | jq -r '.results.steps.presentation.total // 0')
-          PRESENTATION_METHOD=$(echo "$BODY" | jq -r '.results.presentations[0].method // "none"')
+          # Extract presentation metrics with null fallbacks
+          PRESENTED=$(echo "$BODY" | jq -r '.results.steps.presentation.presented // 0' 2>/dev/null || echo "0")
+          PRESENTATION_TOTAL=$(echo "$BODY" | jq -r '.results.steps.presentation.total // 0' 2>/dev/null || echo "0")
 
+          # Extract platform breakdown from discovery (with proper null handling)
+          REDDIT_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.opportunity_id | startswith("reddit_"))] | length' 2>/dev/null || echo "0")
+          TWITTER_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.opportunity_id | startswith("twitter_"))] | length' 2>/dev/null || echo "0")
+          GITHUB_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.opportunity_id | startswith("github_"))] | length' 2>/dev/null || echo "0")
+          PERPLEXITY_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.opportunity_id | startswith("pplx_"))] | length' 2>/dev/null || echo "0")
+
+          # Extract presentation methods breakdown (with proper null handling)
+          EMAIL_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true and .method == "email")] | length' 2>/dev/null || echo "0")
+          TWITTER_DM_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true and .method == "twitter_dm")] | length' 2>/dev/null || echo "0")
+          SMS_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true and .method == "sms")] | length' 2>/dev/null || echo "0")
+          WHATSAPP_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true and .method == "whatsapp")] | length' 2>/dev/null || echo "0")
+          LINKEDIN_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true and .method == "linkedin_message")] | length' 2>/dev/null || echo "0")
+
+          # Sample recipients (for verification)
+          SAMPLE_RECIPIENTS=$(echo "$BODY" | jq -r '[.results.presentations[]? | select(.presented == true) | .recipient] | unique | .[0:5] | join(", ")' 2>/dev/null || echo "none")
+
+          # Set all outputs
           echo "discovered=$DISCOVERED" >> $GITHUB_OUTPUT
           echo "contracts=$CONTRACTS" >> $GITHUB_OUTPUT
           echo "dispatched=$DISPATCHED" >> $GITHUB_OUTPUT
@@ -308,37 +357,26 @@ jobs:
           echo "fa30_triggered=$FA30_TRIGGERED" >> $GITHUB_OUTPUT
           echo "dual_track_used=$DUAL_TRACK_USED" >> $GITHUB_OUTPUT
           echo "presented=$PRESENTED" >> $GITHUB_OUTPUT
-          echo "presentation_method=$PRESENTATION_METHOD" >> $GITHUB_OUTPUT
-
-          # Extract platform breakdown from discovery
-          REDDIT_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("reddit_"))] | length // 0')
-          TWITTER_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("twitter_"))] | length // 0')
-          GITHUB_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("github_"))] | length // 0')
-          PERPLEXITY_OPPS=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.opportunity_id | startswith("perplexity_"))] | length // 0')
-
-          # Extract presentation methods breakdown
-          EMAIL_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method == "email")] | length // 0')
-          DM_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method | test("dm|message") // false)] | length // 0')
-          COMMENT_PRESENTED=$(echo "$BODY" | jq -r '[.results.presentations[] | select(.method | test("comment") // false)] | length // 0')
-
-          # Sample recipients (for verification)
-          SAMPLE_RECIPIENT=$(echo "$BODY" | jq -r '.results.presentations[0].recipient // "none"')
+          echo "presentation_method=email:$EMAIL_PRESENTED,twitter_dm:$TWITTER_DM_PRESENTED,sms:$SMS_PRESENTED" >> $GITHUB_OUTPUT
+          echo "twitter_dms=$TWITTER_DM_PRESENTED" >> $GITHUB_OUTPUT
+          echo "emails=$EMAIL_PRESENTED" >> $GITHUB_OUTPUT
+          echo "sms=$SMS_PRESENTED" >> $GITHUB_OUTPUT
 
           echo ""
           echo "═══════════════════════════════════════════════════════════"
           echo "✅ APEX CYCLE COMPLETE"
           echo "═══════════════════════════════════════════════════════════"
           echo ""
-          echo "🔍 Discovery (Hybrid):"
+          echo "🔍 Discovery (Multi-Source):"
           echo "   Source: $DISCOVERY_SOURCE"
           echo "   Discovered: $DISCOVERED opportunities"
           echo "   With contact: $WITH_CONTACT ($CONTACT_RATE)"
           echo ""
           echo "   📍 By Platform:"
-          echo "      Reddit:     $REDDIT_OPPS (direct API - with author)"
-          echo "      Twitter:    $TWITTER_OPPS (direct API - with handle)"
-          echo "      GitHub:     $GITHUB_OPPS (direct API - with username)"
-          echo "      Perplexity: $PERPLEXITY_OPPS (AI search - enriched)"
+          echo "      📱 Reddit:     $REDDIT_OPPS"
+          echo "      🐦 Twitter:    $TWITTER_OPPS"
+          echo "      ⚙️  GitHub:     $GITHUB_OPPS"
+          echo "      🔍 Perplexity: $PERPLEXITY_OPPS"
           echo ""
           echo "📊 Core Metrics:"
           echo "   Contracts: $CONTRACTS created"
@@ -347,15 +385,20 @@ jobs:
           echo ""
           echo "🔗 Customer Loop Presentations:"
           echo "   Total presented: $PRESENTED / $PRESENTATION_TOTAL"
-          echo "   Success rate: $([ "$PRESENTATION_TOTAL" -gt 0 ] && echo "scale=0; $PRESENTED * 100 / $PRESENTATION_TOTAL" | bc || echo "0")%"
+          if [ "$PRESENTATION_TOTAL" -gt 0 ] 2>/dev/null; then
+            PRES_RATE=$(echo "scale=1; $PRESENTED * 100 / $PRESENTATION_TOTAL" | bc 2>/dev/null || echo "0")
+            echo "   Success rate: ${PRES_RATE}%"
+          fi
           echo ""
-          echo "   📧 By Channel:"
-          echo "      Email (Resend): $EMAIL_PRESENTED"
-          echo "      Social DM:      $DM_PRESENTED"
-          echo "      Comments:       $COMMENT_PRESENTED"
+          echo "   📧 By Outreach Channel:"
+          echo "      📧 Email (Resend):  $EMAIL_PRESENTED"
+          echo "      🐦 Twitter DM:      $TWITTER_DM_PRESENTED"
+          echo "      📱 SMS (Twilio):    $SMS_PRESENTED"
+          echo "      💬 WhatsApp:        $WHATSAPP_PRESENTED"
+          echo "      💼 LinkedIn:        $LINKEDIN_PRESENTED"
           echo ""
-          if [ "$SAMPLE_RECIPIENT" != "none" ] && [ "$SAMPLE_RECIPIENT" != "null" ]; then
-            echo "   📬 Sample recipient: $SAMPLE_RECIPIENT"
+          if [ "$SAMPLE_RECIPIENTS" != "none" ] && [ -n "$SAMPLE_RECIPIENTS" ]; then
+            echo "   📬 Sample recipients: $SAMPLE_RECIPIENTS"
           fi
           echo ""
           echo "🚀 Apex Features Used:"
@@ -364,6 +407,22 @@ jobs:
           echo "   Hot-start kits: $HOT_STARTS"
           echo "   Languages: $LANGUAGES"
           echo ""
+
+      - name: Monitor Twitter DM Performance
+        if: always()
+        run: |
+          TWITTER_DMS="${{ steps.execute.outputs.twitter_dms || '0' }}"
+          TWITTER_OPPS="${{ steps.execute.outputs.twitter_opps || '0' }}"
+
+          echo "🐦 Twitter DM Performance:"
+          echo "   DMs sent: $TWITTER_DMS"
+
+          if [ "$TWITTER_DMS" -gt 0 ] 2>/dev/null; then
+            echo "   ✅ Twitter DM integration WORKING!"
+          else
+            echo "   ⚠️ No Twitter DMs sent this cycle"
+            echo "   Check: Bearer token credits, OAuth permissions, @handles extracted"
+          fi
 
       - name: Monitor FA30 Artifacts (if triggered)
         if: steps.execute.outputs.fa30_triggered != '0'
