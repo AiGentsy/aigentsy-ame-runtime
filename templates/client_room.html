@@ -48,6 +48,13 @@
             margin-bottom: 40px;
         }
 
+        .logo-img {
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.5));
+        }
+
         .logo {
             color: var(--accent);
             font-size: 14px;
@@ -513,6 +520,7 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
+            <img src="/static/images/logo.png" alt="AiGentsy" class="logo-img">
             <div class="logo">Your AiGentsy</div>
             <h1 class="greeting">Hey there! 👋</h1>
             <p class="subtitle">Your AI-powered {{ pricing.fulfillment_type or 'fulfillment' }} partner</p>

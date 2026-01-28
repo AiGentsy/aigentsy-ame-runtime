@@ -352,6 +352,7 @@ from fastapi import FastAPI, Request, Body, Path, HTTPException, Header, Backgro
 PLATFORM_FEE = float(os.getenv("PLATFORM_FEE", "0.028"))  # 2.8% transaction fee
 PLATFORM_FEE_FIXED = float(os.getenv("PLATFORM_FEE_FIXED", "0.28"))  # 28¢ fixed fee
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -1063,6 +1064,12 @@ except Exception as e:
     TIMEOUT_RULES = {}
     
 app = FastAPI()
+
+# Mount static files for logo, images, etc.
+from pathlib import Path
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 register_investor_routes(app)
 include_diagnostic_tracer(app)
