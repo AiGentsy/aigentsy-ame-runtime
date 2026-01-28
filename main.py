@@ -6464,6 +6464,19 @@ async def auto_release_escrows_job():
         
         await asyncio.sleep(6 * 3600)
         
+async def conversation_monitor_job():
+    """Background job to check for and respond to conversation replies"""
+    import asyncio
+    while True:
+        try:
+            from conversation import get_conversation_manager
+            manager = get_conversation_manager()
+            await manager.run_monitor_loop()
+        except Exception as e:
+            print(f"Conversation monitor error: {e}")
+        # Check every 2 minutes
+        await asyncio.sleep(120)
+
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks"""
@@ -6472,7 +6485,11 @@ async def startup_event():
     # Gap 1 Fix: Load market maker state from JSONBIN and start autosave
     await _load_market_maker_state()
     asyncio.create_task(_mm_state_autosave_job())
-    print("Background tasks started: auto-bid, auto-release, mm-state-autosave")
+
+    # Start conversation monitor for auto-replies
+    asyncio.create_task(conversation_monitor_job())
+
+    print("Background tasks started: auto-bid, auto-release, mm-state-autosave, conversation-monitor")
 
     # Log API credentials status on startup
     try:

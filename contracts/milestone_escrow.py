@@ -17,11 +17,17 @@ Updated: Jan 2026
 import logging
 import os
 import hashlib
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Persistence file path
+DATA_DIR = Path(__file__).parent.parent / "data"
+CONTRACTS_FILE = DATA_DIR / "escrow_contracts.json"
 
 # PSP Configuration
 STRIPE_ENABLED = bool(os.getenv('STRIPE_SECRET_KEY'))
@@ -107,6 +113,44 @@ class MilestoneEscrow:
             'total_value_usd': 0.0,
             'total_released_usd': 0.0,
         }
+        # Load persisted contracts on init
+        self._load_contracts()
+
+    def _load_contracts(self):
+        """Load contracts from persistent storage"""
+        try:
+            if CONTRACTS_FILE.exists():
+                with open(CONTRACTS_FILE, 'r') as f:
+                    data = json.load(f)
+                    for contract_id, contract_data in data.get('contracts', {}).items():
+                        # Reconstruct MilestonePaylink objects
+                        milestones = []
+                        for m in contract_data.get('milestones', []):
+                            rails = [PaymentRail(**r) for r in m.pop('rails', [])]
+                            paylink = MilestonePaylink(**m)
+                            paylink.rails = rails
+                            milestones.append(paylink)
+                        contract_data['milestones'] = milestones
+                        self.contracts[contract_id] = EscrowContract(**contract_data)
+                    self.stats = data.get('stats', self.stats)
+                    logger.info(f"✅ Loaded {len(self.contracts)} contracts from storage")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load contracts: {e}")
+
+    def _save_contracts(self):
+        """Save contracts to persistent storage"""
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            data = {
+                'contracts': {cid: self.to_dict(c) for cid, c in self.contracts.items()},
+                'stats': self.stats,
+                'saved_at': datetime.now(timezone.utc).isoformat()
+            }
+            with open(CONTRACTS_FILE, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            logger.debug(f"💾 Saved {len(self.contracts)} contracts to storage")
+        except Exception as e:
+            logger.error(f"❌ Could not save contracts: {e}")
 
     async def create_milestones(self, opportunity: Dict[str, Any], sow: Dict[str, Any]) -> EscrowContract:
         """
@@ -185,6 +229,9 @@ class MilestoneEscrow:
         self.contracts[contract_id] = contract
         self.stats['contracts_created'] += 1
         self.stats['total_value_usd'] += total_amount
+
+        # Persist to disk
+        self._save_contracts()
 
         logger.info(f"Created escrow {contract_id}: ${total_amount} across {len(milestones)} milestones")
 
@@ -311,6 +358,7 @@ class MilestoneEscrow:
                 else:
                     contract.status = "partially_funded"
 
+                self._save_contracts()
                 logger.info(f"Milestone {milestone_id} funded: ${milestone.amount_usd}")
                 return True
 
@@ -338,6 +386,7 @@ class MilestoneEscrow:
                 if contract.released_amount_usd >= contract.total_amount_usd:
                     contract.status = "completed"
 
+                self._save_contracts()
                 logger.info(f"Milestone {milestone_id} released: ${milestone.amount_usd}")
                 return True
 
@@ -390,6 +439,7 @@ class MilestoneEscrow:
         # Start preview generation
         contract.preview_status = "in_progress"
 
+        self._save_contracts()
         logger.info(f"Handshake accepted for {contract_id} from IP {client_ip}")
         return True
 
@@ -422,6 +472,7 @@ class MilestoneEscrow:
         preview_expires = datetime.now(timezone.utc) + timedelta(hours=48)
         contract.preview_expires_at = preview_expires.isoformat()
 
+        self._save_contracts()
         logger.info(f"Preview delivered for {contract_id}: {len(artifacts)} artifacts")
         return True
 
@@ -456,6 +507,7 @@ class MilestoneEscrow:
         contract.preview_status = "approved"
         contract.status = "deposit_pending"
 
+        self._save_contracts()
         logger.info(f"Preview approved for {contract_id}")
         return True
 

@@ -74,10 +74,10 @@ if FASTAPI_AVAILABLE:
         except:
             return None
 
-    @router.get("/{contract_id}")
-    async def get_client_room(contract_id: str, token: str = Query(None)):
+    @router.get("/{contract_id}/json")
+    async def get_client_room_json(contract_id: str, token: str = Query(None)):
         """
-        Get full client room data.
+        Get full client room data as JSON.
 
         Returns:
         - Contract status
@@ -117,7 +117,7 @@ if FASTAPI_AVAILABLE:
             'nba': nba,
         }
 
-    @router.get("/{contract_id}/view", response_class=HTMLResponse)
+    @router.get("/{contract_id}", response_class=HTMLResponse)
     async def view_client_room(request: Request, contract_id: str, token: str = Query(None)):
         """
         Render full client room HTML page with AiGentsy branding.
@@ -188,8 +188,14 @@ if FASTAPI_AVAILABLE:
             "previews": previews,
             "proofs": proofs,
             "pricing": pricing,
-            "client_room_url": f"/client-room/{contract_id}/view",
+            "client_room_url": f"/client-room/{contract_id}",
         })
+
+    # Legacy route - redirect to main view
+    @router.get("/{contract_id}/view", response_class=HTMLResponse)
+    async def view_client_room_legacy(request: Request, contract_id: str, token: str = Query(None)):
+        """Legacy route - redirects to main client room view"""
+        return await view_client_room(request, contract_id, token)
 
     @router.get("/{contract_id}/timeline")
     async def get_timeline(contract_id: str):

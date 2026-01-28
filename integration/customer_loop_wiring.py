@@ -438,6 +438,24 @@ No mistakes, no breaks. Free preview first. Pay only if it's perfect.
                         result.tracking_id = dm_result.get('message_id')
                         result.details['twitter_dm'] = dm_result
                         logger.info(f"✅ Twitter DM sent to @{twitter_handle}")
+
+                        # Register conversation for auto-reply monitoring
+                        try:
+                            from conversation import get_conversation_manager
+                            conv_manager = get_conversation_manager()
+                            conv_manager.register_outreach(
+                                platform='twitter',
+                                user_id=dm_result.get('recipient_id', ''),
+                                username=twitter_handle.lstrip('@'),
+                                contract_id=contract.get('id', contract.get('contract_id', '')),
+                                opportunity_id=opportunity.get('id', ''),
+                                initial_message=dm_message,
+                                message_id=dm_result.get('message_id')
+                            )
+                            logger.info(f"📝 Registered conversation for @{twitter_handle}")
+                        except Exception as conv_err:
+                            logger.warning(f"Could not register conversation: {conv_err}")
+
                         return result
                     else:
                         result.fallback_attempts.append({
