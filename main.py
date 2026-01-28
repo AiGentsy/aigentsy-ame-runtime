@@ -4613,18 +4613,18 @@ async def fallback_client_room(contract_id: str):
             return HTMLResponse(content=f"""<!DOCTYPE html>
 <html><head><title>Proposal Expired - AiGentsy</title>
 <style>
-body {{ font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #0a0a0a, #1a1a2e); color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }}
+body {{ font-family: -apple-system, sans-serif; background: #000; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }}
 .container {{ text-align: center; padding: 40px; }}
-.logo-img {{ height: 60px; margin-bottom: 20px; filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.5)); }}
+.logo-img {{ height: 80px; margin-bottom: 20px; mix-blend-mode: lighten; filter: drop-shadow(0 0 30px rgba(0, 191, 255, 0.6)); }}
 h1 {{ color: #f1f1f1; margin-bottom: 15px; }}
 p {{ color: #a0a0a0; margin-bottom: 30px; }}
-.cta {{ display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #00bfff, #0080ff); color: white; text-decoration: none; border-radius: 8px; }}
+.cta {{ display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #00bfff, #0080ff); color: white; text-decoration: none; border-radius: 8px; box-shadow: 0 0 20px rgba(0, 191, 255, 0.3); }}
 </style></head>
 <body><div class="container">
-<img src="/static/images/logo.png" alt="AiGentsy" class="logo-img" onerror="this.style.display='none'">
+<img src="/static/images/logo.png" alt="AiGentsy" class="logo-img" onerror="this.outerHTML='<div style=\\'color:#00bfff;font-size:2rem;font-weight:700;text-shadow:0 0 30px rgba(0,191,255,0.6);margin-bottom:20px\\'>AiGentsy</div>'">
 <h1>Proposal Expired</h1>
-<p>This link has expired. Reply to our DM for a fresh link!</p>
-<a href="https://twitter.com/messages" class="cta">Open Twitter DMs</a>
+<p>This link has expired. Reply to our message for a fresh link!</p>
+<a href="mailto:proposals@aigentsy.com" class="cta">Contact Us</a>
 <p style="color:#555;margin-top:40px;font-size:0.75rem;">Ref: {contract_id}</p>
 </div></body></html>""", status_code=404)
 
@@ -4657,11 +4657,11 @@ p {{ color: #a0a0a0; margin-bottom: 30px; }}
     <title>{title} - AiGentsy</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%); color: #fff; min-height: 100vh; }}
-        .modal-overlay {{ position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: {show_modal}; align-items: center; justify-content: center; z-index: 1000; padding: 20px; overflow-y: auto; }}
-        .modal {{ background: linear-gradient(135deg, #0a0a0a, #1a1a2e); border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; border: 1px solid #333; margin: auto; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+        .modal-overlay {{ position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.98); display: {show_modal}; align-items: center; justify-content: center; z-index: 1000; padding: 20px; overflow-y: auto; }}
+        .modal {{ background: #000; border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; border: 1px solid #222; margin: auto; }}
         .modal-logo {{ text-align: center; margin-bottom: 20px; }}
-        .modal-logo img {{ height: 50px; filter: drop-shadow(0 0 15px rgba(0, 191, 255, 0.6)); }}
+        .modal-logo img {{ height: 60px; mix-blend-mode: lighten; filter: drop-shadow(0 0 25px rgba(0, 191, 255, 0.7)); }}
         .modal h2 {{ color: #fff; margin-bottom: 10px; text-align: center; }}
         .modal p {{ color: #a0a0a0; margin-bottom: 20px; text-align: center; }}
         .terms-list {{ list-style: none; margin-bottom: 20px; }}
@@ -4676,11 +4676,11 @@ p {{ color: #a0a0a0; margin-bottom: 30px; }}
         .modal-cta:hover:not(:disabled) {{ box-shadow: 0 0 30px rgba(0, 191, 255, 0.5); }}
         .container {{ max-width: 800px; margin: 0 auto; padding: 40px 20px; }}
         .header {{ text-align: center; margin-bottom: 40px; }}
-        .logo-img {{ height: 60px; margin-bottom: 10px; filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.5)); }}
+        .logo-img {{ height: 80px; margin-bottom: 10px; mix-blend-mode: lighten; filter: drop-shadow(0 0 30px rgba(0, 191, 255, 0.7)); }}
         .brand {{ font-size: 1.5rem; font-weight: 700; color: #00bfff; text-shadow: 0 0 20px rgba(0, 191, 255, 0.5); }}
         h1 {{ margin: 20px 0 10px; }}
         .subtitle {{ color: #a0a0a0; }}
-        .pricing {{ background: linear-gradient(135deg, #0a0a0a, #1a1a2e); border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #333; }}
+        .pricing {{ background: #111; border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #222; }}
         .pricing h3 {{ margin-bottom: 15px; }}
         .price-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #333; }}
         .price-row:last-child {{ border: none; }}
