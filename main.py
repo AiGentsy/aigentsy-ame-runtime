@@ -1163,6 +1163,23 @@ except Exception as e:
     print(f"Client Room load error: {e}")
 
 # ============================================================================
+# HANDSHAKE ROUTES - Preview + Escrow Flow
+# ============================================================================
+try:
+    from routes.handshake_routes import get_handshake_router
+    handshake_router = get_handshake_router()
+    if handshake_router:
+        app.include_router(handshake_router)
+        print("=" * 80)
+        print("HANDSHAKE ROUTES LOADED - Preview + Escrow Flow")
+        print("=" * 80)
+        print("  Endpoints: /handshake/{id}/terms, /handshake/{id}/accept, /handshake/{id}/preview")
+        print("  Features: Handshake Agreement, Free Preview, 48h Expiration, Deposit Escrow")
+        print("=" * 80)
+except Exception as e:
+    print(f"Handshake Routes load error: {e}")
+
+# ============================================================================
 # APEX UPGRADES V2 - Remaining Features
 # ============================================================================
 

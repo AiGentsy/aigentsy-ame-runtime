@@ -66,9 +66,25 @@ class EscrowContract:
     total_amount_usd: float = 0.0
     funded_amount_usd: float = 0.0
     released_amount_usd: float = 0.0
-    status: str = "created"  # created, partially_funded, fully_funded, in_progress, completed
+    status: str = "created"  # created, handshake_pending, handshake_accepted, preview_delivered, preview_approved, deposit_pending, funded, in_progress, completed
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     client_room_url: Optional[str] = None
+
+    # Handshake fields
+    handshake_status: str = "pending"  # pending, accepted, expired
+    handshake_accepted_at: Optional[str] = None
+    handshake_expires_at: Optional[str] = None  # 48h from creation
+    handshake_ip: Optional[str] = None
+
+    # Preview fields
+    preview_status: str = "not_started"  # not_started, in_progress, delivered, approved, expired
+    preview_type: Optional[str] = None  # development, design, content, etc.
+    preview_artifacts: List[Dict] = field(default_factory=list)  # [{url, type, watermarked}]
+    preview_delivered_at: Optional[str] = None
+    preview_expires_at: Optional[str] = None  # 48h from delivery
+
+    # Referral field
+    referral_code: Optional[str] = None
 
 
 class MilestoneEscrow:
@@ -148,6 +164,19 @@ class MilestoneEscrow:
             milestones=milestones,
             total_amount_usd=total_amount,
         )
+
+        # Set handshake expiration (48h from creation)
+        from datetime import timedelta
+        handshake_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+        contract.handshake_expires_at = handshake_expires.isoformat()
+        contract.status = "handshake_pending"
+
+        # Determine preview type from opportunity
+        fulfillment_type = opportunity.get('fulfillment_type') or opportunity.get('category', 'development')
+        contract.preview_type = fulfillment_type
+
+        # Generate referral code
+        contract.referral_code = hashlib.md5(f"{contract_id}:ref".encode()).hexdigest()[:8].upper()
 
         # Generate client room URL
         contract.client_room_url = self._generate_client_room_url(contract)
@@ -318,6 +347,142 @@ class MilestoneEscrow:
         """Get escrow contract"""
         return self.contracts.get(contract_id)
 
+    def accept_handshake(self, contract_id: str, client_ip: str) -> bool:
+        """
+        Accept handshake terms.
+
+        Args:
+            contract_id: Contract ID
+            client_ip: Client's IP address for logging
+
+        Returns:
+            True if accepted, False otherwise
+        """
+        contract = self.contracts.get(contract_id)
+        if not contract:
+            return False
+
+        # Check if already accepted
+        if contract.handshake_status == "accepted":
+            return True
+
+        # Check if expired
+        if contract.handshake_expires_at:
+            try:
+                expires = datetime.fromisoformat(contract.handshake_expires_at.replace("Z", "+00:00"))
+                if datetime.now(timezone.utc) > expires:
+                    contract.handshake_status = "expired"
+                    return False
+            except:
+                pass
+
+        # Accept handshake
+        contract.handshake_status = "accepted"
+        contract.handshake_accepted_at = datetime.now(timezone.utc).isoformat()
+        contract.handshake_ip = client_ip
+        contract.status = "handshake_accepted"
+
+        # Set preview expiration (48h from now)
+        from datetime import timedelta
+        preview_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+        contract.preview_expires_at = preview_expires.isoformat()
+
+        # Start preview generation
+        contract.preview_status = "in_progress"
+
+        logger.info(f"Handshake accepted for {contract_id} from IP {client_ip}")
+        return True
+
+    def deliver_preview(self, contract_id: str, artifacts: List[Dict]) -> bool:
+        """
+        Mark preview as delivered with artifacts.
+
+        Args:
+            contract_id: Contract ID
+            artifacts: List of artifact dicts [{url, type, watermarked}]
+
+        Returns:
+            True if delivered, False otherwise
+        """
+        contract = self.contracts.get(contract_id)
+        if not contract:
+            return False
+
+        if contract.handshake_status != "accepted":
+            logger.warning(f"Cannot deliver preview for {contract_id}: handshake not accepted")
+            return False
+
+        contract.preview_status = "delivered"
+        contract.preview_artifacts = artifacts
+        contract.preview_delivered_at = datetime.now(timezone.utc).isoformat()
+        contract.status = "preview_delivered"
+
+        # Set preview expiration (48h from delivery)
+        from datetime import timedelta
+        preview_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+        contract.preview_expires_at = preview_expires.isoformat()
+
+        logger.info(f"Preview delivered for {contract_id}: {len(artifacts)} artifacts")
+        return True
+
+    def approve_preview(self, contract_id: str) -> bool:
+        """
+        Approve preview and transition to deposit pending.
+
+        Args:
+            contract_id: Contract ID
+
+        Returns:
+            True if approved, False otherwise
+        """
+        contract = self.contracts.get(contract_id)
+        if not contract:
+            return False
+
+        if contract.preview_status != "delivered":
+            logger.warning(f"Cannot approve preview for {contract_id}: not delivered")
+            return False
+
+        # Check expiration
+        if contract.preview_expires_at:
+            try:
+                expires = datetime.fromisoformat(contract.preview_expires_at.replace("Z", "+00:00"))
+                if datetime.now(timezone.utc) > expires:
+                    contract.preview_status = "expired"
+                    return False
+            except:
+                pass
+
+        contract.preview_status = "approved"
+        contract.status = "deposit_pending"
+
+        logger.info(f"Preview approved for {contract_id}")
+        return True
+
+    def generate_referral_code(self, contract_id: str) -> Optional[str]:
+        """
+        Generate unique referral code for a contract.
+
+        Args:
+            contract_id: Contract ID
+
+        Returns:
+            Referral code string
+        """
+        contract = self.contracts.get(contract_id)
+        if not contract:
+            return None
+
+        if contract.referral_code:
+            return contract.referral_code
+
+        # Generate short unique code
+        code = hashlib.md5(f"{contract_id}:{datetime.now().isoformat()}".encode()).hexdigest()[:8].upper()
+        contract.referral_code = code
+
+        logger.info(f"Generated referral code {code} for {contract_id}")
+        return code
+
     def get_stats(self) -> Dict[str, Any]:
         """Get escrow stats"""
         return {
@@ -353,6 +518,19 @@ class MilestoneEscrow:
             'status': contract.status,
             'created_at': contract.created_at,
             'client_room_url': contract.client_room_url,
+            # Handshake fields
+            'handshake_status': contract.handshake_status,
+            'handshake_accepted_at': contract.handshake_accepted_at,
+            'handshake_expires_at': contract.handshake_expires_at,
+            'handshake_ip': contract.handshake_ip,
+            # Preview fields
+            'preview_status': contract.preview_status,
+            'preview_type': contract.preview_type,
+            'preview_artifacts': contract.preview_artifacts,
+            'preview_delivered_at': contract.preview_delivered_at,
+            'preview_expires_at': contract.preview_expires_at,
+            # Referral
+            'referral_code': contract.referral_code,
         }
 
 

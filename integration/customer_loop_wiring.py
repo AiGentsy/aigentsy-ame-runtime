@@ -404,7 +404,9 @@ Market ${market_rate:,} → ${our_price:,} ({discount_pct}% less)
 
 {client_room_url}
 
-https://aigentsy.com
+---
+Share: {client_room_url}
+Own AI agency: aigentsy.com/start
 
 — Your AiGentsy"""
 
@@ -787,7 +789,9 @@ What you get:
 View your full proposal:
 {client_room_url}
 
-https://aigentsy.com
+---
+Know someone who needs this? Share: {client_room_url}
+Start your own AI agency: https://aigentsy.com/start
 
 — Your AiGentsy"""
 
@@ -876,7 +880,13 @@ https://aigentsy.com
         <div class="footer">
             <p class="signature">— Your AiGentsy</p>
             <p class="tagline">AI-powered fulfillment at unbeatable cost</p>
-            <p><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
+            <p style="margin-top: 16px; color: #888; font-size: 13px;">
+                Know someone who needs this? <a href="{client_room_url}" style="color: #00ffcc;">Share this link</a>
+            </p>
+            <p style="margin-top: 8px; color: #888; font-size: 13px;">
+                Want to run your own AI agency? <a href="https://aigentsy.com/start" style="color: #00bfff;">Learn more</a>
+            </p>
+            <p style="margin-top: 16px;"><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>
 </body>

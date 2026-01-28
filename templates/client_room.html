@@ -486,6 +486,334 @@
             text-decoration: underline;
         }
 
+        /* Handshake Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal-overlay.hidden {
+            display: none;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px var(--glow);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #000;
+            padding: 24px;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .modal-header h2 {
+            margin: 0 0 8px 0;
+            font-size: 20px;
+        }
+
+        .modal-header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .modal-content {
+            padding: 24px;
+        }
+
+        .terms-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 24px 0;
+        }
+
+        .term-item {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .term-item:last-child {
+            border-bottom: none;
+        }
+
+        .term-title {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .term-desc {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-card-alt);
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--primary);
+            margin-top: 2px;
+        }
+
+        .checkbox-label {
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .modal-cta {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #000;
+            padding: 16px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .modal-cta:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Preview Section */
+        .preview-section {
+            background: linear-gradient(135deg, #131722 0%, #1a2030 100%);
+            border: 2px solid var(--accent);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.15);
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .preview-header h2 {
+            color: var(--accent);
+            font-size: 20px;
+            margin: 0;
+        }
+
+        .preview-badge {
+            background: var(--accent);
+            color: #000;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .preview-expiration {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 255, 204, 0.1);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .expiration-icon {
+            font-size: 20px;
+        }
+
+        .expiration-text {
+            color: var(--accent);
+            font-size: 14px;
+        }
+
+        .expiration-time {
+            font-weight: 700;
+        }
+
+        .preview-artifacts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .artifact-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .artifact-preview {
+            position: relative;
+            background: #1a1a1a;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .artifact-preview img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        .artifact-watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            color: rgba(0, 255, 204, 0.3);
+            font-size: 24px;
+            font-weight: 700;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .artifact-info {
+            padding: 16px;
+        }
+
+        .artifact-name {
+            color: var(--text-primary);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .artifact-type {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .preview-cta {
+            text-align: center;
+        }
+
+        .preview-cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+            color: #000;
+            padding: 18px 40px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 4px 20px rgba(0, 255, 204, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .preview-cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(0, 255, 204, 0.5);
+        }
+
+        /* Dual CTAs Footer */
+        .dual-ctas {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 40px;
+        }
+
+        .cta-row {
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .cta-row:first-child {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cta-text {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .cta-action {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .referral-link {
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            padding: 10px 16px;
+            border-radius: 8px;
+            color: var(--accent);
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .copy-btn {
+            background: var(--primary);
+            color: #000;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .copy-btn:hover {
+            opacity: 0.9;
+        }
+
+        .learn-more-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .learn-more-btn:hover {
+            background: var(--primary);
+            color: #000;
+        }
+
         /* Responsive */
         @media (max-width: 600px) {
             .container {
@@ -513,10 +841,76 @@
                 width: 100%;
                 padding: 16px 24px;
             }
+
+            .cta-row {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .cta-action {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .referral-link {
+                font-size: 12px;
+                padding: 8px 12px;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Handshake Modal -->
+    {% if contract.handshake_status == 'pending' %}
+    <div class="modal-overlay" id="handshakeModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Before We Begin</h2>
+                <p>Please review and accept our terms to view your free preview</p>
+            </div>
+            <div class="modal-content">
+                <ul class="terms-list">
+                    <li class="term-item">
+                        <div class="term-title">1. AI-POWERED SERVICE</div>
+                        <div class="term-desc">This service is powered by AI (Claude, GPT-4, Gemini) with human QA review. By accepting, you acknowledge AI assistance in creating deliverables.</div>
+                    </li>
+                    <li class="term-item">
+                        <div class="term-title">2. PREVIEW IS A SAMPLE</div>
+                        <div class="term-desc">The preview represents ~20% of total work, demonstrating capability. It's watermarked and remains AiGentsy property until payment.</div>
+                    </li>
+                    <li class="term-item">
+                        <div class="term-title">3. INTELLECTUAL PROPERTY</div>
+                        <div class="term-desc">All work remains AiGentsy's IP until full payment. Upon payment, all rights transfer to you.</div>
+                    </li>
+                    <li class="term-item">
+                        <div class="term-title">4. PREVIEW EXPIRATION</div>
+                        <div class="term-desc">Your preview will be available for 48 hours from delivery.</div>
+                    </li>
+                    <li class="term-item">
+                        <div class="term-title">5. DEPOSIT & ESCROW</div>
+                        <div class="term-desc">50% deposit required to proceed, held in escrow via Stripe. Only captured after your approval.</div>
+                    </li>
+                    <li class="term-item">
+                        <div class="term-title">6. MONEY-BACK GUARANTEE</div>
+                        <div class="term-desc">Full refund within 7 days of delivery if not satisfied.</div>
+                    </li>
+                </ul>
+
+                <div class="checkbox-row">
+                    <input type="checkbox" id="acceptTerms" onchange="toggleAcceptButton()">
+                    <label class="checkbox-label" for="acceptTerms">
+                        I have read and agree to the terms above. I understand this service uses AI and that my preview will expire in 48 hours.
+                    </label>
+                </div>
+
+                <button class="modal-cta" id="acceptBtn" disabled onclick="acceptHandshake()">
+                    Accept & View Preview
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -525,6 +919,67 @@
             <h1 class="greeting">Hey there! 👋</h1>
             <p class="subtitle">Your AI-powered {{ pricing.fulfillment_type or 'fulfillment' }} partner</p>
         </header>
+
+        <!-- Preview Section (shown after handshake accepted) -->
+        {% if contract.handshake_status == 'accepted' and contract.preview_status == 'delivered' %}
+        <section class="preview-section">
+            <div class="preview-header">
+                <h2>Your Preview</h2>
+                <span class="preview-badge">PREVIEW</span>
+            </div>
+
+            <div class="preview-expiration">
+                <span class="expiration-icon">⏱️</span>
+                <span class="expiration-text">
+                    Preview expires in <span class="expiration-time" id="previewCountdown">48:00:00</span>
+                </span>
+            </div>
+
+            <div class="preview-artifacts">
+                {% for artifact in contract.preview_artifacts %}
+                <div class="artifact-card">
+                    <div class="artifact-preview">
+                        {% if artifact.type == 'image' %}
+                        <img src="{{ artifact.url }}" alt="{{ artifact.name }}">
+                        {% else %}
+                        <div style="padding: 40px; color: var(--text-muted);">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
+                            {{ artifact.name }}
+                        </div>
+                        {% endif %}
+                        <div class="artifact-watermark">PREVIEW - AIGENTSY</div>
+                    </div>
+                    <div class="artifact-info">
+                        <div class="artifact-name">{{ artifact.name }}</div>
+                        <div class="artifact-type">{{ artifact.type }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if not contract.preview_artifacts %}
+                <div class="artifact-card">
+                    <div class="artifact-preview">
+                        <div style="padding: 40px; color: var(--text-muted);">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🎨</div>
+                            Preview generating...
+                        </div>
+                        <div class="artifact-watermark">PREVIEW</div>
+                    </div>
+                    <div class="artifact-info">
+                        <div class="artifact-name">Sample Preview</div>
+                        <div class="artifact-type">{{ contract.preview_type or 'development' }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="preview-cta">
+                <a href="#deposit" class="preview-cta-button" onclick="approvePreview()">
+                    Like What You See? Lock It In →
+                </a>
+            </div>
+        </section>
+        {% endif %}
 
         <!-- Hero with Pricing -->
         <section class="hero">
@@ -708,6 +1163,23 @@
             </div>
         </section>
 
+        <!-- Dual CTAs -->
+        <div class="dual-ctas">
+            <div class="cta-row">
+                <span class="cta-text">Know someone who needs this?</span>
+                <div class="cta-action">
+                    <span class="referral-link" id="referralLink">aigentsy.com/r/{{ contract.referral_code or 'SHARE' }}</span>
+                    <button class="copy-btn" onclick="copyReferralLink()">Copy</button>
+                </div>
+            </div>
+            <div class="cta-row">
+                <span class="cta-text">Want to run your own AI agency?</span>
+                <div class="cta-action">
+                    <a href="https://aigentsy.com/start?ref={{ contract.referral_code or '' }}&src=client_room" class="learn-more-btn">Learn More</a>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-signature">— Your AiGentsy</div>
@@ -715,5 +1187,105 @@
             <a href="https://aigentsy.com" class="footer-link">https://aigentsy.com</a>
         </footer>
     </div>
+
+    <script>
+        // Toggle accept button based on checkbox
+        function toggleAcceptButton() {
+            const checkbox = document.getElementById('acceptTerms');
+            const btn = document.getElementById('acceptBtn');
+            if (btn) {
+                btn.disabled = !checkbox.checked;
+            }
+        }
+
+        // Accept handshake terms
+        async function acceptHandshake() {
+            const contractId = '{{ contract.id }}';
+            try {
+                const response = await fetch(`/handshake/${contractId}/accept`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accepted: true })
+                });
+                const data = await response.json();
+                if (data.ok) {
+                    // Hide modal and reload page
+                    document.getElementById('handshakeModal').classList.add('hidden');
+                    window.location.reload();
+                } else {
+                    alert('Error accepting terms: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Accept error:', err);
+                alert('Failed to accept terms. Please try again.');
+            }
+        }
+
+        // Approve preview and proceed to deposit
+        async function approvePreview() {
+            const contractId = '{{ contract.id }}';
+            try {
+                const response = await fetch(`/handshake/${contractId}/preview/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approved: true })
+                });
+                const data = await response.json();
+                if (data.ok) {
+                    // Redirect to payment or show deposit section
+                    if (data.client_secret) {
+                        // Stripe payment
+                        alert('Redirecting to payment...');
+                    }
+                    window.location.reload();
+                } else {
+                    alert('Error approving preview: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Approve error:', err);
+                alert('Failed to approve preview. Please try again.');
+            }
+        }
+
+        // Copy referral link
+        function copyReferralLink() {
+            const referralCode = '{{ contract.referral_code or "SHARE" }}';
+            const link = `https://aigentsy.com/r/${referralCode}`;
+            navigator.clipboard.writeText(link).then(() => {
+                const btn = event.target;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            }).catch(err => {
+                console.error('Copy failed:', err);
+            });
+        }
+
+        // Preview countdown timer
+        {% if contract.preview_expires_at %}
+        function updateCountdown() {
+            const expiresAt = new Date('{{ contract.preview_expires_at }}');
+            const now = new Date();
+            const diff = expiresAt - now;
+
+            if (diff <= 0) {
+                document.getElementById('previewCountdown').textContent = 'EXPIRED';
+                return;
+            }
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            document.getElementById('previewCountdown').textContent =
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // Update countdown every second
+        if (document.getElementById('previewCountdown')) {
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+        }
+        {% endif %}
+    </script>
 </body>
 </html>

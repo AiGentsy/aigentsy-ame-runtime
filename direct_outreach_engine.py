@@ -285,7 +285,9 @@ View your full proposal:
 
 Ready to get started? Pay the deposit and we'll begin immediately.
 
-https://aigentsy.com
+---
+Know someone who needs this? Share: {client_room_url}
+Start your own AI agency: https://aigentsy.com/start
 
 — Your AiGentsy
 """
@@ -306,7 +308,7 @@ https://aigentsy.com
         # Shorten fulfillment type for DM
         short_type = fulfillment_type[:3] if len(fulfillment_type) > 3 else fulfillment_type
 
-        # Build DM within 280 chars
+        # Build DM - Twitter has 10k char limit for DMs now
         body = f"""Hey {name}! 👋
 
 Your AiGentsy - AI-powered {short_type} partner
@@ -318,6 +320,10 @@ ${market_rate:,} → ${our_price:,} ({discount_pct}% less)
 ✅ Money back guarantee
 
 {client_room_url}
+
+---
+Share: {client_room_url}
+Own AI agency: aigentsy.com/start
 
 — Your AiGentsy"""
 
@@ -350,7 +356,9 @@ Your AiGentsy is built with all the best AI to deliver with precision and effici
 
 View your full proposal: {client_room_url}
 
-https://aigentsy.com
+---
+Know someone who needs this? Share: {client_room_url}
+Start your own AI agency: https://aigentsy.com/start
 
 — Your AiGentsy"""
 
@@ -382,7 +390,9 @@ Your AiGentsy is built with all the best AI to deliver with precision and effici
 
 Check out your proposal: {client_room_url}
 
-https://aigentsy.com
+---
+Know someone who needs this? Share: {client_room_url}
+Start your own AI agency: https://aigentsy.com/start
 
 — Your AiGentsy"""
 
@@ -415,7 +425,9 @@ Your AiGentsy is built with all the best AI (Claude, GPT-4, Gemini) to deliver w
 
 Check out the full proposal: {client_room_url}
 
-https://aigentsy.com
+---
+Know someone who needs this? Share: {client_room_url}
+Start your own AI agency: https://aigentsy.com/start
 
 — Your AiGentsy"""
 

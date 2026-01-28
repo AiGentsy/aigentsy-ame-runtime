@@ -224,3 +224,55 @@ def calculate_referral_bonus(amount: float, tier: int = 1) -> Dict[str, Any]:
         "rate": round(rate, 4),
         "bonus": bonus
     }
+
+
+def generate_referral_url(code: str, source: str = "client_room") -> str:
+    """
+    Generate referral URL for viral sharing.
+
+    Args:
+        code: Unique referral code (e.g., "ABC123")
+        source: Where the referral came from (client_room, email, dm, etc.)
+
+    Returns:
+        Full referral URL
+    """
+    if not code:
+        return "https://aigentsy.com/start"
+
+    return f"https://aigentsy.com/start?ref={code}&src={source}"
+
+
+def generate_short_referral_url(code: str) -> str:
+    """
+    Generate shortened referral URL for DMs/SMS.
+
+    Args:
+        code: Unique referral code
+
+    Returns:
+        Short referral URL
+    """
+    if not code:
+        return "aigentsy.com/start"
+
+    return f"aigentsy.com/r/{code}"
+
+
+def generate_b2b_signup_url(code: str = None, source: str = "client_room") -> str:
+    """
+    Generate B2B signup URL for "Start your own AI agency" CTA.
+
+    Args:
+        code: Optional referral code for attribution
+        source: Where the signup came from
+
+    Returns:
+        B2B signup URL
+    """
+    base_url = "https://aigentsy.com/start"
+
+    if code:
+        return f"{base_url}?ref={code}&src={source}"
+
+    return f"{base_url}?src={source}"
