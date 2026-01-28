@@ -267,14 +267,19 @@ class AIFamilyBrain:
         self._initialized = True
         
         self.available_models = {
-            AIModel.CLAUDE: bool(ANTHROPIC_API_KEY or OPENROUTER_API_KEY),
-            AIModel.GPT4: bool(OPENAI_API_KEY or OPENROUTER_API_KEY),
-            AIModel.GEMINI: bool(GEMINI_API_KEY),
-            AIModel.PERPLEXITY: bool(PERPLEXITY_API_KEY),
+            AIModel.CLAUDE: bool(ANTHROPIC_API_KEY or OPENROUTER_API_KEY),  # OpenRouter preferred
+            AIModel.GPT4: bool(OPENAI_API_KEY or OPENROUTER_API_KEY),      # OpenRouter preferred
+            AIModel.GEMINI: bool(GEMINI_API_KEY),                          # Direct API key
+            AIModel.PERPLEXITY: bool(PERPLEXITY_API_KEY),                  # Direct API key
         }
         self._client: Optional[httpx.AsyncClient] = None
         self._callbacks: Dict[str, List[Callable]] = defaultdict(list)
-        
+        self._tasks_since_save = 0
+        self._save_interval = 10  # Save every 10 tasks
+
+        # Load previous learning state
+        self._load_learning_state()
+
         available = [m.value for m, v in self.available_models.items() if v]
         print(f"🧠 AI FAMILY BRAIN AWAKENED - Members: {', '.join(available) if available else 'None'}")
     
@@ -282,7 +287,141 @@ class AIFamilyBrain:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=120)
         return self._client
-    
+
+    def _load_learning_state(self):
+        """Load learning state from persistent storage"""
+        global FAMILY_MEMBERS, TASK_HISTORY, CATEGORY_MODEL_STATS, TEACHING_MOMENTS, CROSS_POLLINATIONS
+
+        try:
+            from brain_persistence import load_ai_family_learning
+
+            state = load_ai_family_learning()
+            if state:
+                # Restore family members
+                for model_str, data in state.get("family_members", {}).items():
+                    try:
+                        model = AIModel(model_str)
+                        if model in FAMILY_MEMBERS:
+                            p = FAMILY_MEMBERS[model]
+                            p.total_tasks = data.get("total_tasks", 0)
+                            p.total_successes = data.get("total_successes", 0)
+                            p.total_failures = data.get("total_failures", 0)
+                            p.total_revenue = data.get("total_revenue", 0.0)
+                            p.teachings_given = data.get("teachings_given", 0)
+                            p.teachings_received = data.get("teachings_received", 0)
+                            p.current_velocity = data.get("current_velocity", 0.0)
+                            # Restore specialization scores
+                            for cat_str, score in data.get("specialization_scores", {}).items():
+                                try:
+                                    cat = TaskCategory(cat_str)
+                                    p.specialization_scores[cat] = score
+                                except:
+                                    pass
+                    except:
+                        pass
+
+                # Restore category model stats
+                for cat_str, model_stats in state.get("category_model_stats", {}).items():
+                    try:
+                        cat = TaskCategory(cat_str)
+                        for model_str, stats in model_stats.items():
+                            try:
+                                model = AIModel(model_str)
+                                CATEGORY_MODEL_STATS[cat][model] = stats
+                            except:
+                                pass
+                    except:
+                        pass
+
+                print(f"📂 Loaded AI Family learning: {sum(p.total_tasks for p in FAMILY_MEMBERS.values())} tasks")
+            else:
+                print("📂 No previous AI Family learning found, starting fresh")
+
+        except Exception as e:
+            print(f"⚠️ Could not load AI Family learning: {e}")
+
+    def _save_learning_state(self):
+        """Save learning state to persistent storage"""
+        try:
+            from brain_persistence import save_ai_family_learning
+
+            # Convert family members to dict
+            family_dict = {}
+            for model, p in FAMILY_MEMBERS.items():
+                family_dict[model.value] = {
+                    "total_tasks": p.total_tasks,
+                    "total_successes": p.total_successes,
+                    "total_failures": p.total_failures,
+                    "total_revenue": p.total_revenue,
+                    "teachings_given": p.teachings_given,
+                    "teachings_received": p.teachings_received,
+                    "current_velocity": p.current_velocity,
+                    "specialization_scores": {cat.value: score for cat, score in p.specialization_scores.items()}
+                }
+
+            # Convert category model stats
+            cat_stats_dict = {}
+            for cat, model_stats in CATEGORY_MODEL_STATS.items():
+                cat_str = cat.value if hasattr(cat, 'value') else str(cat)
+                cat_stats_dict[cat_str] = {}
+                for model, stats in model_stats.items():
+                    model_str = model.value if hasattr(model, 'value') else str(model)
+                    cat_stats_dict[cat_str][model_str] = stats
+
+            # Convert task history
+            task_history_dict = [
+                {
+                    "task_id": t.task_id,
+                    "model": t.model.value,
+                    "task_category": t.task_category.value,
+                    "success": t.success,
+                    "duration_ms": t.duration_ms,
+                    "quality_score": t.quality_score,
+                    "timestamp": t.timestamp
+                }
+                for t in TASK_HISTORY[-500:]  # Keep last 500
+            ]
+
+            # Convert teaching moments
+            teachings_dict = [
+                {
+                    "teaching_id": t.teaching_id,
+                    "teacher_model": t.teacher_model.value,
+                    "task_category": t.task_category.value,
+                    "students": [s.value for s in t.students],
+                    "timestamp": t.timestamp
+                }
+                for t in TEACHING_MOMENTS[-100:]
+            ]
+
+            # Convert cross pollinations
+            cross_poll_dict = [
+                {
+                    "event_id": c.event_id,
+                    "source_model": c.source_model.value,
+                    "target_models": [m.value for m in c.target_models],
+                    "knowledge_type": c.knowledge_type,
+                    "timestamp": c.timestamp
+                }
+                for c in CROSS_POLLINATIONS[-100:]
+            ]
+
+            save_ai_family_learning(
+                family_dict, task_history_dict, cat_stats_dict,
+                teachings_dict, cross_poll_dict
+            )
+            print(f"💾 Saved AI Family learning: {sum(p.total_tasks for p in FAMILY_MEMBERS.values())} tasks")
+
+        except Exception as e:
+            print(f"⚠️ Could not save AI Family learning: {e}")
+
+    def _maybe_save(self):
+        """Save learning state periodically"""
+        self._tasks_since_save += 1
+        if self._tasks_since_save >= self._save_interval:
+            self._save_learning_state()
+            self._tasks_since_save = 0
+
     def get_family_routing(self, task_category: TaskCategory, optimize_for: str = "balanced") -> List[AIModel]:
         """Get model priority based on learned performance"""
         default = DEFAULT_ROUTING.get(task_category, [AIModel.CLAUDE, AIModel.GPT4, AIModel.GEMINI, AIModel.PERPLEXITY])
@@ -448,7 +587,10 @@ Create ONE comprehensive response combining the best insights."""
         # Update velocity
         self._update_velocity(execution.model)
         self._update_specialization(execution.model, execution.task_category)
-    
+
+        # Periodically save learning state
+        self._maybe_save()
+
     def _update_velocity(self, model: AIModel):
         """Track improvement rate"""
         personality = FAMILY_MEMBERS[model]
@@ -583,13 +725,18 @@ Create ONE comprehensive response combining the best insights."""
                 return {"ok": True, "response": d.get("choices", [{}])[0].get("message", {}).get("content", ""), "citations": d.get("citations", [])}
             return {"ok": False, "error": f"Perplexity: {r.status_code}"}
         
-        elif model == AIModel.GEMINI and GEMINI_API_KEY:
-            r = await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}",
-                headers={"Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}]})
-            if r.status_code == 200:
-                d = r.json()
-                return {"ok": True, "response": d.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")}
-            return {"ok": False, "error": f"Gemini: {r.status_code}"}
+        elif model == AIModel.GEMINI:
+            # Use direct Gemini API key
+            if GEMINI_API_KEY:
+                r = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+                    headers={"Content-Type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": max_tokens}}
+                )
+                if r.status_code == 200:
+                    d = r.json()
+                    return {"ok": True, "response": d.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")}
+                return {"ok": False, "error": f"Gemini: {r.status_code}"}
         
         elif model == AIModel.CLAUDE:
             if OPENROUTER_API_KEY:

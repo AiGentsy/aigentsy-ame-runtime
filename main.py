@@ -4598,6 +4598,88 @@ async def fallback_debug_contracts():
         return {"error": str(e)}
 
 
+@app.get("/debug/brain")
+async def debug_brain_state():
+    """Get AI Family Brain + MetaHive learning state"""
+    try:
+        result = {
+            "ai_family_brain": None,
+            "metahive": None,
+            "yield_memory": None,
+            "persistence": None
+        }
+
+        # AI Family Brain stats
+        try:
+            from ai_family_brain import get_family_stats
+            result["ai_family_brain"] = get_family_stats()
+        except Exception as e:
+            result["ai_family_brain"] = {"error": str(e)}
+
+        # MetaHive stats
+        try:
+            from metahive_brain import get_hive_stats
+            result["metahive"] = get_hive_stats()
+        except Exception as e:
+            result["metahive"] = {"error": str(e)}
+
+        # Yield Memory stats
+        try:
+            from yield_memory import get_memory_stats
+            result["yield_memory"] = get_memory_stats("aigentsy")
+        except Exception as e:
+            result["yield_memory"] = {"error": str(e)}
+
+        # Persistence stats
+        try:
+            from brain_persistence import get_persistence
+            result["persistence"] = get_persistence().get_storage_stats()
+        except Exception as e:
+            result["persistence"] = {"error": str(e)}
+
+        return result
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/debug/brain/save")
+async def force_save_brain_state():
+    """Force save all brain learning state"""
+    try:
+        results = {}
+
+        # Save AI Family Brain
+        try:
+            from ai_family_brain import get_brain
+            brain = get_brain()
+            brain._save_learning_state()
+            results["ai_family_brain"] = "saved"
+        except Exception as e:
+            results["ai_family_brain"] = f"error: {e}"
+
+        # Save MetaHive
+        try:
+            from metahive_brain import _save_metahive_state
+            _save_metahive_state()
+            results["metahive"] = "saved"
+        except Exception as e:
+            results["metahive"] = f"error: {e}"
+
+        # Save Yield Memory
+        try:
+            from yield_memory import _save_yield_memory_state
+            _save_yield_memory_state()
+            results["yield_memory"] = "saved"
+        except Exception as e:
+            results["yield_memory"] = f"error: {e}"
+
+        return {"ok": True, "results": results}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/client-room/{contract_id}", response_class=HTMLResponse)
 async def fallback_client_room(contract_id: str):
     """
@@ -6772,7 +6854,38 @@ async def startup_event():
         log_api_status_on_startup()
     except Exception as e:
         print(f"Could not log API status: {e}")
-    
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Save all brain learning state before shutdown"""
+    print("🧠 Saving brain learning state before shutdown...")
+
+    try:
+        from ai_family_brain import get_brain
+        brain = get_brain()
+        brain._save_learning_state()
+        print("   ✓ AI Family Brain saved")
+    except Exception as e:
+        print(f"   ✗ AI Family Brain save error: {e}")
+
+    try:
+        from metahive_brain import _save_metahive_state
+        _save_metahive_state()
+        print("   ✓ MetaHive saved")
+    except Exception as e:
+        print(f"   ✗ MetaHive save error: {e}")
+
+    try:
+        from yield_memory import _save_yield_memory_state
+        _save_yield_memory_state()
+        print("   ✓ Yield Memory saved")
+    except Exception as e:
+        print(f"   ✗ Yield Memory save error: {e}")
+
+    print("🧠 Brain learning state saved")
+
+
 logger = logging.getLogger("aigentsy")
 logging.basicConfig(level=logging.DEBUG if os.getenv("VERBOSE_LOGGING") else logging.INFO)
 

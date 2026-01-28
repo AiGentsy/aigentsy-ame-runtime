@@ -271,7 +271,10 @@ def store_pattern(
     # Compress if over limit
     if len(_YIELD_MEMORY[username]) > MAX_PATTERNS_PER_USER:
         compress_memory(username)
-    
+
+    # Periodically save state
+    _maybe_save_yield_memory()
+
     return {"ok": True, "pattern_id": pattern_id, "category": category, "score": score}
 
 
@@ -847,8 +850,90 @@ def _calculate_context_similarity(ctx1: Dict[str, Any], ctx2: Dict[str, Any]) ->
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PERSISTENCE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_tasks_since_save = 0
+_save_interval = 5  # Save every 5 patterns
+
+
+def _load_yield_memory_state():
+    """Load Yield Memory state from persistent storage"""
+    global _YIELD_MEMORY, _USER_AI_PREFERENCES, _PATTERN_INDEX
+
+    try:
+        from brain_persistence import load_yield_memory_learning
+
+        state = load_yield_memory_learning()
+        if state:
+            # Restore yield memory
+            for username, patterns_list in state.get("yield_memory", {}).items():
+                _YIELD_MEMORY[username] = []
+                for p_dict in patterns_list:
+                    try:
+                        pattern = YieldPattern.from_dict(p_dict)
+                        _YIELD_MEMORY[username].append(pattern)
+                        _PATTERN_INDEX[username][pattern.id] = pattern
+                    except:
+                        pass
+
+            # Restore AI preferences
+            for username, prefs_dict in state.get("user_ai_preferences", {}).items():
+                prefs = UserAIPreferences(username=username)
+                prefs.category_preferences = prefs_dict.get("category_preferences", {})
+                prefs.model_performance = prefs_dict.get("model_performance", {})
+                _USER_AI_PREFERENCES[username] = prefs
+
+            total_patterns = sum(len(p) for p in _YIELD_MEMORY.values())
+            print(f"📂 Loaded Yield Memory: {total_patterns} patterns for {len(_YIELD_MEMORY)} users")
+        else:
+            print("📂 No previous Yield Memory state found, starting fresh")
+
+    except Exception as e:
+        print(f"⚠️ Could not load Yield Memory state: {e}")
+
+
+def _save_yield_memory_state():
+    """Save Yield Memory state to persistent storage"""
+    try:
+        from brain_persistence import save_yield_memory_learning
+
+        # Convert patterns to dicts
+        yield_dict = {}
+        for username, patterns in _YIELD_MEMORY.items():
+            yield_dict[username] = [p.to_dict() for p in patterns]
+
+        # Convert AI preferences
+        prefs_dict = {}
+        for username, prefs in _USER_AI_PREFERENCES.items():
+            prefs_dict[username] = {
+                "category_preferences": prefs.category_preferences,
+                "model_performance": prefs.model_performance
+            }
+
+        save_yield_memory_learning(yield_dict, prefs_dict)
+        total_patterns = sum(len(p) for p in _YIELD_MEMORY.values())
+        print(f"💾 Saved Yield Memory: {total_patterns} patterns for {len(_YIELD_MEMORY)} users")
+
+    except Exception as e:
+        print(f"⚠️ Could not save Yield Memory state: {e}")
+
+
+def _maybe_save_yield_memory():
+    """Save Yield Memory state periodically"""
+    global _tasks_since_save
+    _tasks_since_save += 1
+    if _tasks_since_save >= _save_interval:
+        _save_yield_memory_state()
+        _tasks_since_save = 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MODULE INITIALIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Load previous state on module import
+_load_yield_memory_state()
 
 print("""
 ═══════════════════════════════════════════════════════════════════════════════

@@ -334,10 +334,13 @@ async def contribute_to_hive(
         reward *= 1.5
     
     _CONTRIBUTOR_STATS[username]["reward_earned"] += reward
-    
+
     # Credit AIGx
     await _credit_aigx(username, reward, "hive_contribution", pattern_id)
-    
+
+    # Periodically save state
+    _maybe_save_metahive()
+
     return {"ok": True, "pattern_id": pattern_id, "reward": reward, "weight": weight}
 
 
@@ -921,8 +924,91 @@ def import_from_ai_family(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PERSISTENCE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_tasks_since_save = 0
+_save_interval = 5  # Save every 5 contributions
+
+
+def _load_metahive_state():
+    """Load MetaHive state from persistent storage"""
+    global _HIVE_PATTERNS, _PATTERN_INDEX, _TYPE_INDEX, _AI_MODEL_PATTERNS, _TASK_CATEGORY_PATTERNS, _CONTRIBUTOR_STATS
+
+    try:
+        from brain_persistence import load_metahive_learning
+
+        state = load_metahive_learning()
+        if state:
+            # Restore patterns
+            for p_dict in state.get("hive_patterns", []):
+                try:
+                    pattern = HivePattern.from_dict(p_dict)
+                    _HIVE_PATTERNS.append(pattern)
+                    _PATTERN_INDEX[pattern.id] = pattern
+                except Exception as e:
+                    pass
+
+            # Rebuild indexes
+            _rebuild_indexes()
+
+            # Restore contributor stats
+            for username, stats in state.get("contributor_stats", {}).items():
+                _CONTRIBUTOR_STATS[username] = stats
+
+            print(f"📂 Loaded MetaHive: {len(_HIVE_PATTERNS)} patterns")
+        else:
+            print("📂 No previous MetaHive state found, starting fresh")
+
+    except Exception as e:
+        print(f"⚠️ Could not load MetaHive state: {e}")
+
+
+def _save_metahive_state():
+    """Save MetaHive state to persistent storage"""
+    try:
+        from brain_persistence import save_metahive_learning
+
+        # Convert patterns to dicts
+        patterns_dict = [p.to_dict() for p in _HIVE_PATTERNS]
+
+        # Convert indexes (convert PatternType keys to strings)
+        type_index_dict = {
+            (k.value if hasattr(k, 'value') else str(k)): v
+            for k, v in _TYPE_INDEX.items()
+        }
+
+        # Contributor stats are already dicts
+        contrib_stats = dict(_CONTRIBUTOR_STATS)
+
+        save_metahive_learning(
+            patterns_dict,
+            type_index_dict,
+            dict(_AI_MODEL_PATTERNS),
+            dict(_TASK_CATEGORY_PATTERNS),
+            contrib_stats
+        )
+        print(f"💾 Saved MetaHive: {len(_HIVE_PATTERNS)} patterns")
+
+    except Exception as e:
+        print(f"⚠️ Could not save MetaHive state: {e}")
+
+
+def _maybe_save_metahive():
+    """Save MetaHive state periodically"""
+    global _tasks_since_save
+    _tasks_since_save += 1
+    if _tasks_since_save >= _save_interval:
+        _save_metahive_state()
+        _tasks_since_save = 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MODULE INITIALIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Load previous state on module import
+_load_metahive_state()
 
 print("""
 ═══════════════════════════════════════════════════════════════════════════════
