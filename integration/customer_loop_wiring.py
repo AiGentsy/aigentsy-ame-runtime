@@ -411,23 +411,19 @@ class CustomerLoopWiring:
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        # Build DM message for platform outreach - Professional, value-focused
-        dm_message = f"""Hi {contact_name}!
+        # Build DM message - billionaire-calm, proof-forward voice
+        dm_message = f"""Hey {contact_name}—we're AiGentsy.
 
-Saw your post about {clean_title[:40]} - we can help.
+We can ship a first preview for {clean_title[:35]} in ~30 min.
 
-We're AiGentsy. We deliver quality work in minutes at 50% less than industry rates.
+Our price: ${our_price:,} (market ~${market_rate:,})
+Pay only if you love it.
 
-Your project: ${our_price:,} (vs ${market_rate:,} market rate)
+Want us to spin up a preview link?
 
-How it works:
-• Free preview first
-• Pay only if you're happy
-• Delivered in minutes
+{client_room_url}
 
-See your proposal: {client_room_url}
-
-— The AiGentsy Team"""
+—AiGentsy"""
 
         # ═══════════════════════════════════════════════════════════════════
         # SPAM PREVENTION: Check if we've already contacted this person
@@ -1001,27 +997,22 @@ See your proposal: {client_room_url}
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        return f"""Hi there,
+        return f"""Hi there—AiGentsy here.
 
-We noticed your post about {clean_title[:50]} and wanted to reach out.
+We do {clean_title[:40]} work for teams that need world-class output fast. Typical delivery is minutes to first preview, and we price ~50% under market.
 
-We're AiGentsy - we deliver quality work in minutes at 50% less than industry rates.
+**What you'd get today:**
+• A first preview in ~30 minutes
+• Clear scope + price: ${our_price:,} (market ~${market_rate:,})
+• Only pay if you love it (no risk)
 
-**Your project estimate:**
-- Market rate: ${market_rate:,}
-- Our price: ${our_price:,} (save {discount_pct}%)
+If that helps, reply "GO" and we'll drop a private preview link.
 
-**How we work:**
-1. You get a free preview of our work first
-2. Review it with no obligation
-3. Only pay if you're completely satisfied
+{client_room_url}
 
-We deliver consistent, high-quality results with a satisfaction guarantee.
+—AiGentsy
 
-View your personalized proposal: {client_room_url}
-
-Best,
-The AiGentsy Team"""
+P.S. If timing's tight, we can start the preview while we finalize details."""
 
     def _build_html_email(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
         """Build HTML email with AiGentsy brand colors"""
@@ -1097,34 +1088,34 @@ The AiGentsy Team"""
         <div class="content">
             <p class="greeting">Hey there!</p>
 
-            <p class="intro">Great to meet you! We saw your post about <strong style="color: #00ffcc;">{clean_title[:50]}</strong> and wanted to reach out.</p>
+            <p class="intro">We saw your post about <strong style="color: #00ffcc;">{clean_title[:50]}</strong>.</p>
 
-            <p style="color: #e0e0e0;">We're <strong style="color: #00ffcc;">AiGentsy</strong> - your on-demand development team that delivers quality work fast.</p>
+            <p style="color: #e0e0e0;">We do this work for teams that need <strong style="color: #00ffcc;">world-class output fast</strong>.</p>
 
-            <p style="color: #e0e0e0;">We'll handle everything you need at 50% less than industry rates, delivered in minutes.</p>
+            <p style="color: #e0e0e0;">Typical delivery: minutes to first preview. Price: ~50% under market.</p>
 
             <div class="pricing-box">
-                <p class="price-label">TYPICAL RATE</p>
-                <p class="market-rate">${market_rate:,}</p>
+                <p class="price-label">MARKET RATE</p>
+                <p class="market-rate">~${market_rate:,}</p>
                 <p class="our-price">${our_price:,}</p>
-                <p class="savings">You save {discount_pct}% (${savings:,} less)</p>
+                <p class="savings">You save ~{discount_pct}%</p>
             </div>
 
             <ul class="features">
-                <li><strong>Fast turnaround</strong> - Most projects delivered same day</li>
-                <li><strong>Minutes, not days</strong> - Automated delivery</li>
-                <li><strong>Free preview first</strong> - See our quality before you pay</li>
-                <li><strong>We iterate until perfect</strong> - Not right? We redo it</li>
-                <li><strong>Pay only if it's perfect</strong> - Not satisfied? You don't pay</li>
+                <li><strong>First preview in ~30 min</strong> - See the quality upfront</li>
+                <li><strong>Pay only if you love it</strong> - No risk</li>
+                <li><strong>World-class work</strong> - Premium output, uncomplicated math</li>
             </ul>
 
             <center>
-                <a href="{client_room_url}" class="cta">See Your Free Preview</a>
+                <a href="{client_room_url}" class="cta">Get Your Free Preview</a>
             </center>
+
+            <p style="color: #888; font-size: 13px; margin-top: 20px; text-align: center;">Reply "GO" to start. We'll show you, not sell you.</p>
         </div>
         <div class="footer">
-            <p class="signature">— AiGentsy</p>
-            <p class="tagline">Your autonomous AI</p>
+            <p class="signature">—AiGentsy</p>
+            <p class="tagline">World-class work in minutes</p>
             <p style="margin-top: 16px;"><a href="https://aigentsy.com" class="website">https://aigentsy.com</a></p>
         </div>
     </div>
@@ -1161,13 +1152,10 @@ The AiGentsy Team"""
         else:
             skill = 'dev'
 
-        # Concise public message (visible to everyone)
-        # Focus on value prop: speed, quality, risk-free
-        message = f"""We can help with this {skill} work! AiGentsy delivers in minutes at 50% less than industry rates.
-
-Free preview first - pay only if you love it.
-
-Details: {client_room_url}"""
+        # Public reply - billionaire-calm, proof-forward
+        message = f"""Sharp {skill} help, right now.
+World-class quality, minutes-fast, ~50% under market.
+Free first preview—you pay only if it lands. {client_room_url}"""
 
         return message
 

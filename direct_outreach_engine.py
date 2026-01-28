@@ -330,22 +330,22 @@ class ProposalGenerator:
         delivery_time = kwargs.get('delivery_time', 'in minutes')
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-        body = f"""Hey {name}!
+        body = f"""Hi {name}—AiGentsy here.
 
-Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
+We do {clean_title[:40]} work for teams that need world-class output fast. Typical delivery is minutes to first preview, and we price ~50% under market.
 
-We're AiGentsy - we deliver quality work in minutes at 50% less than industry rates.
+What you'd get today:
+• A first preview in ~30 minutes
+• Clear scope + price: ${our_price:,} (market ~${market_rate:,})
+• Only pay if you love it (no risk)
 
-We'll handle {clean_title[:40]} at 50% less than industry rates, delivered {delivery_time}.
+If that helps, reply "GO" and we'll drop a private preview link.
 
-Typical rate: ${market_rate:,}
-Our price: ${our_price:,} ({discount_pct}% less)
+{client_room_url}
 
-Free preview to see our quality first. Then you only pay if it's perfect.
+—AiGentsy
 
-See your proposal → {client_room_url}
-
-— AiGentsy
+P.S. If timing's tight, we can start the preview while we finalize details.
 """
 
         return subject, body
@@ -363,18 +363,19 @@ See your proposal → {client_room_url}
         discount_pct = kwargs.get('discount_pct', 35)
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-        # Build DM - Twitter has 10k char limit for DMs now
-        body = f"""Hey {name}!
+        # Build DM - billionaire-calm voice
+        body = f"""Hey {name}—AiGentsy here.
 
-We're {value_prop} - great to meet you!
+We can ship a first preview for {clean_title[:30]} in ~30 min.
 
-Saw your post about {clean_title[:35]}. We'll do it at 50% off (${our_price:,} vs typical ${market_rate:,}), delivered in minutes.
+Our price: ${our_price:,} (market ~${market_rate:,})
+Pay only if you love it.
 
-No mistakes, no breaks. Free preview first. Pay only if it's perfect.
+Want us to spin up a preview link?
 
-See your proposal → {client_room_url}
+{client_room_url}
 
-— AiGentsy"""
+—AiGentsy"""
 
         return subject, body
     
@@ -390,22 +391,18 @@ See your proposal → {client_room_url}
         discount_pct = kwargs.get('discount_pct', 35)
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-        body = f"""Hey {name}!
+        # LinkedIn - expert tone, billionaire-calm
+        body = f"""Great brief. We've shipped this work for growth teams before.
 
-Great to meet you! We're {value_prop}.
+First preview in ~30 minutes, ~50% under market, pay only if it lands.
 
-Saw your post about {clean_title[:40]} - we can help.
+Your price: ${our_price:,} (market ~${market_rate:,})
 
-Here's what we offer:
+Happy to send a private link—reply "GO."
 
-- ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
-- Delivered in minutes
-- Free preview first - see our quality before you pay
-- Not perfect? We iterate until it is. Still not right? You don't pay.
+{client_room_url}
 
-See your proposal → {client_room_url}
-
-— AiGentsy"""
+—AiGentsy"""
 
         return subject, body
 
@@ -421,19 +418,18 @@ See your proposal → {client_room_url}
         discount_pct = kwargs.get('discount_pct', 35)
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-        body = f"""Hey u/{name}!
+        # Reddit - consultative, billionaire-calm
+        body = f"""Appreciate your post. We've done a lot of {clean_title[:30]} at scale.
 
-We're {value_prop} - great to meet you!
+We can have a starter artifact in ~30 min so you can see the quality. We typically come in ~50% under market.
 
-Saw your post about {clean_title[:40]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
+Your price: ${our_price:,} (market ~${market_rate:,})
 
-We deliver fast with a satisfaction guarantee.
+If it's not a fit, no charge. How does that sound?
 
-Free preview first. Pay only if it's perfect.
+{client_room_url}
 
-See your proposal → {client_room_url}
-
-— AiGentsy"""
+—AiGentsy"""
 
         return subject, body
 
@@ -449,22 +445,16 @@ See your proposal → {client_room_url}
         discount_pct = kwargs.get('discount_pct', 35)
         client_room_url = kwargs.get('client_room_url', 'https://aigentsy.com')
 
-        body = f"""Hey @{name}!
+        # GitHub - dev-focused, proof-forward
+        body = f"""Seen it. Shipped it. Happy to help with {pain_point[:40]}.
 
-We're **{value_prop}** - great to meet you!
+First artifact in ~30 min, then you decide.
 
-Saw this issue - we can help with {pain_point[:45]}.
+**Your price:** ${our_price:,} (market ~${market_rate:,})
 
-Here's what we offer:
+Elite output without the elite price. {client_room_url}
 
-- ${our_price:,} vs typical ${market_rate:,} ({discount_pct}% less)
-- Delivered in minutes
-- Free preview first
-- Not perfect? We iterate. Still not right? You don't pay.
-
-See your proposal → {client_room_url}
-
-— AiGentsy"""
+—AiGentsy"""
 
         return subject, body
 
