@@ -4609,19 +4609,19 @@ async def fallback_client_room(contract_id: str):
         contract = escrow.get_contract(contract_id)
 
         if not contract:
-            # Friendly error page
+            # Friendly error page with AiGentsy branding
             return HTMLResponse(content=f"""<!DOCTYPE html>
 <html><head><title>Proposal Expired - AiGentsy</title>
 <style>
 body {{ font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #0a0a0a, #1a1a2e); color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }}
 .container {{ text-align: center; padding: 40px; }}
-.logo {{ font-size: 3rem; margin-bottom: 20px; }}
+.logo-img {{ height: 60px; margin-bottom: 20px; filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.5)); }}
 h1 {{ color: #f1f1f1; margin-bottom: 15px; }}
 p {{ color: #a0a0a0; margin-bottom: 30px; }}
-.cta {{ display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; }}
+.cta {{ display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #00bfff, #0080ff); color: white; text-decoration: none; border-radius: 8px; }}
 </style></head>
 <body><div class="container">
-<div class="logo">🤖</div>
+<img src="/static/images/logo.png" alt="AiGentsy" class="logo-img" onerror="this.style.display='none'">
 <h1>Proposal Expired</h1>
 <p>This link has expired. Reply to our DM for a fresh link!</p>
 <a href="https://twitter.com/messages" class="cta">Open Twitter DMs</a>
@@ -4658,43 +4658,47 @@ p {{ color: #a0a0a0; margin-bottom: 30px; }}
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%); color: #fff; min-height: 100vh; }}
-        .modal-overlay {{ position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: {show_modal}; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }}
-        .modal {{ background: #1a1a2e; border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; border: 1px solid #333; }}
-        .modal h2 {{ color: #fff; margin-bottom: 10px; }}
-        .modal p {{ color: #a0a0a0; margin-bottom: 20px; }}
+        .modal-overlay {{ position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: {show_modal}; align-items: center; justify-content: center; z-index: 1000; padding: 20px; overflow-y: auto; }}
+        .modal {{ background: linear-gradient(135deg, #0a0a0a, #1a1a2e); border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; border: 1px solid #333; margin: auto; }}
+        .modal-logo {{ text-align: center; margin-bottom: 20px; }}
+        .modal-logo img {{ height: 50px; filter: drop-shadow(0 0 15px rgba(0, 191, 255, 0.6)); }}
+        .modal h2 {{ color: #fff; margin-bottom: 10px; text-align: center; }}
+        .modal p {{ color: #a0a0a0; margin-bottom: 20px; text-align: center; }}
         .terms-list {{ list-style: none; margin-bottom: 20px; }}
         .term-item {{ padding: 12px 0; border-bottom: 1px solid #333; }}
-        .term-title {{ color: #8b5cf6; font-weight: 600; font-size: 0.85rem; }}
+        .term-title {{ color: #00bfff; font-weight: 600; font-size: 0.85rem; }}
         .term-desc {{ color: #a0a0a0; font-size: 0.9rem; margin-top: 4px; }}
         .checkbox-row {{ display: flex; align-items: center; gap: 10px; margin: 20px 0; }}
-        .checkbox-row input {{ width: 20px; height: 20px; }}
+        .checkbox-row input {{ width: 20px; height: 20px; accent-color: #00bfff; }}
         .checkbox-row label {{ color: #ccc; cursor: pointer; }}
-        .modal-cta {{ width: 100%; padding: 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }}
-        .modal-cta:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .modal-cta {{ width: 100%; padding: 14px; background: linear-gradient(135deg, #00bfff, #0080ff); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; box-shadow: 0 0 20px rgba(0, 191, 255, 0.3); }}
+        .modal-cta:disabled {{ opacity: 0.5; cursor: not-allowed; box-shadow: none; }}
+        .modal-cta:hover:not(:disabled) {{ box-shadow: 0 0 30px rgba(0, 191, 255, 0.5); }}
         .container {{ max-width: 800px; margin: 0 auto; padding: 40px 20px; }}
         .header {{ text-align: center; margin-bottom: 40px; }}
-        .logo {{ font-size: 2rem; margin-bottom: 10px; }}
-        .brand {{ font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .logo-img {{ height: 60px; margin-bottom: 10px; filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.5)); }}
+        .brand {{ font-size: 1.5rem; font-weight: 700; color: #00bfff; text-shadow: 0 0 20px rgba(0, 191, 255, 0.5); }}
         h1 {{ margin: 20px 0 10px; }}
         .subtitle {{ color: #a0a0a0; }}
-        .pricing {{ background: #1a1a2e; border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #333; }}
+        .pricing {{ background: linear-gradient(135deg, #0a0a0a, #1a1a2e); border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #333; }}
         .pricing h3 {{ margin-bottom: 15px; }}
         .price-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #333; }}
         .price-row:last-child {{ border: none; }}
         .old-price {{ color: #666; text-decoration: line-through; }}
         .new-price {{ color: #10b981; font-weight: 600; }}
-        .savings {{ color: #8b5cf6; }}
+        .savings {{ color: #00bfff; }}
         .cta-section {{ text-align: center; margin-top: 30px; }}
-        .main-cta {{ display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 1.1rem; }}
+        .main-cta {{ display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #00bfff, #0080ff); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 1.1rem; box-shadow: 0 0 20px rgba(0, 191, 255, 0.3); }}
     </style>
 </head>
 <body>
     <div class="modal-overlay" id="handshakeModal">
         <div class="modal">
-            <h2>Hey! Let's shake on it 🤝</h2>
-            <p>We're your autonomous {fulfillment_type} AI. Zero risk - see our work before you pay.</p>
+            <div class="modal-logo"><img src="/static/images/logo.png" alt="AiGentsy" onerror="this.parentElement.innerHTML='<div style=\\'color:#00bfff;font-size:1.5rem;font-weight:700;text-shadow:0 0 20px rgba(0,191,255,0.5)\\'>AiGentsy</div>'"></div>
+            <h2>Hey! Let's shake on it</h2>
+            <p>We're your autonomous {fulfillment_type} AiGentsy. Zero risk - see our work before you pay.</p>
             <ul class="terms-list">
-                <li class="term-item"><div class="term-title">1. WE'RE AI</div><div class="term-desc">Think ChatGPT, but we actually do the work. Claude, GPT-4, and Gemini working together.</div></li>
+                <li class="term-item"><div class="term-title">1. WE'RE AI</div><div class="term-desc">We team up all the best AI to build your AiGentsy. From finding the client to closing the deal for you.</div></li>
                 <li class="term-item"><div class="term-title">2. WITHIN THE HOUR</div><div class="term-desc">We don't sleep, don't take breaks, just deliver. Your project completed fast.</div></li>
                 <li class="term-item"><div class="term-title">3. FREE PREVIEW FIRST</div><div class="term-desc">We'll show you 20% of the work so you can see our quality before you pay.</div></li>
                 <li class="term-item"><div class="term-title">4. WE ITERATE UNTIL PERFECT</div><div class="term-desc">Not right? We'll redo it. Still not right? You don't pay. Simple as that.</div></li>
@@ -4711,10 +4715,10 @@ p {{ color: #a0a0a0; margin-bottom: 30px; }}
 
     <div class="container">
         <header class="header">
-            <div class="logo">🤖</div>
+            <img src="/static/images/logo.png" alt="AiGentsy" class="logo-img" onerror="this.style.display='none'">
             <div class="brand">AiGentsy</div>
             <h1>Hey there!</h1>
-            <p class="subtitle">Your autonomous {fulfillment_type} AI</p>
+            <p class="subtitle">Your autonomous {fulfillment_type} AiGentsy</p>
         </header>
 
         <div class="pricing">
