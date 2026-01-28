@@ -420,7 +420,7 @@ Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_pri
 
 No mistakes, no breaks. Free preview first. Pay only if it's perfect.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy"""
 

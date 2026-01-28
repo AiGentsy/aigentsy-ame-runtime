@@ -343,7 +343,7 @@ Our price: ${our_price:,} ({discount_pct}% less)
 
 No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our quality first. Then you only pay if it's perfect.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy
 """
@@ -372,7 +372,7 @@ Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_pri
 
 No mistakes, no breaks. Free preview first. Pay only if it's perfect.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy"""
 
@@ -403,12 +403,12 @@ Think of us like ChatGPT, but instead of just chatting, we actually do the work:
 - Free preview first - see our quality before you pay
 - Not perfect? We iterate until it is. Still not right? You don't pay.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy"""
 
         return subject, body
-    
+
     def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate Reddit DM - Reference their post, casual conversion"""
         # Clean the title
@@ -431,12 +431,12 @@ Think ChatGPT but we actually do the work. No mistakes, no breaks.
 
 Free preview first. Pay only if it's perfect.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy"""
 
         return subject, body
-    
+
     def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate GitHub discussion/issue comment - Reference issue, dev conversion"""
         # Clean the title
@@ -462,7 +462,7 @@ Think ChatGPT but we actually write the code:
 - Free preview first
 - Not perfect? We iterate. Still not right? You don't pay.
 
-{client_room_url}
+See your proposal → {client_room_url}
 
 — AiGentsy"""
 
