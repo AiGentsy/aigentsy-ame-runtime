@@ -411,18 +411,23 @@ class CustomerLoopWiring:
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        # Build DM message for platform outreach - Autonomous AI voice
-        dm_message = f"""Hey {contact_name}!
+        # Build DM message for platform outreach - Professional, value-focused
+        dm_message = f"""Hi {contact_name}!
 
-We're {autonomous_intro} - great to meet you!
+Saw your post about {clean_title[:40]} - we can help.
 
-Saw your post about {clean_title[:35]}. We'll do it for half the cost (${our_price:,} vs typical ${market_rate:,}), delivered within the hour.
+We're AiGentsy, an AI-powered dev team. We deliver in hours (not weeks) at ~50% less than typical rates.
 
-No mistakes, no breaks. Free preview first. Pay only if it's perfect.
+Your project: ${our_price:,} (vs ${market_rate:,} market rate)
 
-See your proposal → {client_room_url}
+How it works:
+• Free preview first
+• Pay only if you're happy
+• Delivered within hours
 
-— AiGentsy"""
+See your proposal: {client_room_url}
+
+— The AiGentsy Team"""
 
         # ═══════════════════════════════════════════════════════════════════
         # SPAM PREVENTION: Check if we've already contacted this person
@@ -671,7 +676,7 @@ See your proposal → {client_room_url}
         # ═══════════════════════════════════════════════════════════════════
         # INSTAGRAM: Public comment (100% delivery - no restrictions)
         # ═══════════════════════════════════════════════════════════════════
-        instagram_post_id = opportunity.get('post_id') or contact_info.get('instagram_post_id')
+        instagram_post_id = opportunity.get('post_id') or contact.get('instagram_post_id')
         if 'instagram' in platform and instagram_post_id:
             # Check spam prevention
             can_send_instagram = True
@@ -688,7 +693,8 @@ See your proposal → {client_room_url}
 
             if can_send_instagram:
                 try:
-                    from integration.instagram_comment_sender import send_instagram_comment
+                    # Use consolidated Instagram pack
+                    from platforms.packs.instagram_business_api import post_instagram_comment as send_instagram_comment
 
                     logger.info(f"📤 Attempting Instagram comment on post {instagram_post_id}...")
                     ig_result = await send_instagram_comment(
@@ -995,22 +1001,27 @@ See your proposal → {client_room_url}
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        return f"""Hey there!
+        return f"""Hi there,
 
-Great to meet you! We saw your post about {clean_title[:50]} and wanted to reach out.
+We noticed your post about {clean_title[:50]} and wanted to reach out.
 
-We're {autonomous_intro} - think of us like ChatGPT, but instead of just chatting, we actually do the work.
+We're AiGentsy - an AI-powered development team that delivers quality work in hours, not weeks.
 
-We'll handle {clean_title[:40]} at half the cost, delivered within the hour.
+**Your project estimate:**
+- Market rate: ${market_rate:,}
+- Our price: ${our_price:,} (save {discount_pct}%)
 
-Typical rate: ${market_rate:,}
-Our price: ${our_price:,} ({discount_pct}% less)
+**How we work:**
+1. You get a free preview of our work first
+2. Review it with no obligation
+3. Only pay if you're completely satisfied
 
-No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our quality first. Then you only pay if it's perfect.
+We combine the best AI models (Claude, GPT-4, Gemini) with human oversight to deliver consistent, high-quality results fast.
 
-{client_room_url}
+View your personalized proposal: {client_room_url}
 
-— AiGentsy"""
+Best,
+The AiGentsy Team"""
 
     def _build_html_email(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
         """Build HTML email with AiGentsy brand colors"""
@@ -1136,24 +1147,27 @@ No mistakes (we're AI, we don't get tired). No breaks. Free preview to see our q
         # Detect project type for personalization
         title_lower = title.lower()
         if 'react' in title_lower or 'frontend' in title_lower:
-            project_type = 'React dev'
+            skill = 'React'
         elif 'backend' in title_lower or 'api' in title_lower or 'node' in title_lower:
-            project_type = 'backend dev'
+            skill = 'backend'
         elif 'fullstack' in title_lower or 'full stack' in title_lower:
-            project_type = 'fullstack dev'
+            skill = 'fullstack'
         elif 'python' in title_lower or 'django' in title_lower:
-            project_type = 'Python dev'
+            skill = 'Python'
         elif 'design' in title_lower or 'ui' in title_lower or 'ux' in title_lower:
-            project_type = 'design'
+            skill = 'design'
         elif 'data' in title_lower or 'ml' in title_lower or 'ai' in title_lower:
-            project_type = 'AI/ML'
+            skill = 'AI/ML'
         else:
-            project_type = 'dev'
+            skill = 'dev'
 
         # Concise public message (visible to everyone)
-        message = f"""We team up all the best AI to build your AiGentsy! Delivered within the hour, free preview first.
+        # Focus on value prop: speed, quality, risk-free
+        message = f"""We can help with this {skill} work! AI-powered team delivers in hours, not weeks.
 
-See your proposal: {client_room_url}"""
+Free preview first - pay only if you love it.
+
+Details: {client_room_url}"""
 
         return message
 

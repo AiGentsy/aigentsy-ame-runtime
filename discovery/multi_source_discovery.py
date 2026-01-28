@@ -119,6 +119,18 @@ class MultiSourceDiscovery:
         }
         logger.info("  [5] Reddit JSON API - Direct posts")
 
+        # INSTAGRAM - Hashtag-based discovery
+        instagram_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+        instagram_business_id = os.getenv('INSTAGRAM_BUSINESS_ID')
+        if instagram_token and instagram_business_id:
+            sources['instagram'] = {
+                'access_token': instagram_token,
+                'business_id': instagram_business_id,
+                'priority': 6,
+                'description': 'Instagram hashtag discovery'
+            }
+            logger.info("  [6] Instagram API - Hashtag discovery")
+
         return sources
 
     async def discover(self, max_opportunities: int = 100) -> List[Dict[str, Any]]:
@@ -162,6 +174,10 @@ class MultiSourceDiscovery:
         if 'reddit' in self.sources:
             tasks.append(self._discover_reddit())
             task_names.append('reddit')
+
+        if 'instagram' in self.sources:
+            tasks.append(self._discover_instagram())
+            task_names.append('instagram')
 
         # Execute ALL sources in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -849,6 +865,54 @@ JSON only:"""
 
         logger.info(f"  [reddit] Found {len(opportunities)} opportunities")
         return opportunities
+
+    async def _discover_instagram(self) -> List[Dict[str, Any]]:
+        """
+        INSTAGRAM - Hashtag-based discovery via consolidated pack.
+
+        Searches hiring-related hashtags for opportunities.
+        Returns posts with post_id for comment-based outreach (100% delivery).
+        """
+        try:
+            from platforms.packs.instagram_business_api import instagram_hashtag_discovery
+
+            logger.info("  [instagram] Running hashtag discovery...")
+
+            opportunities = await instagram_hashtag_discovery(
+                hashtags=['hiring', 'needadeveloper', 'freelancejobs', 'techjobs'],
+                limit_per_hashtag=10
+            )
+
+            # Normalize for multi-source format
+            normalized = []
+            for opp in opportunities:
+                normalized.append({
+                    'id': opp.get('id'),
+                    'title': opp.get('title', 'Instagram Opportunity'),
+                    'url': opp.get('url'),
+                    'platform': 'instagram',
+                    'body': opp.get('description', ''),
+                    'summary': opp.get('description', '')[:300],
+                    'source': opp.get('source', 'instagram_hashtag'),
+                    'contact': {
+                        'instagram_post_id': opp.get('post_id'),
+                        'platform': 'instagram',
+                        'preferred_outreach': 'instagram_comment'
+                    },
+                    'metadata': {
+                        'post_id': opp.get('post_id'),
+                        'media_type': opp.get('media_type'),
+                        'timestamp': opp.get('timestamp'),
+                        'detected_skills': opp.get('detected_skills', [])
+                    }
+                })
+
+            logger.info(f"  [instagram] Found {len(normalized)} opportunities")
+            return normalized
+
+        except Exception as e:
+            logger.warning(f"  [instagram] Discovery error: {e}")
+            return []
 
     async def _ai_contact_enrichment(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
