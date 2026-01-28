@@ -1066,8 +1066,8 @@ except Exception as e:
 app = FastAPI()
 
 # Mount static files for logo, images, etc.
-from pathlib import Path
-static_dir = Path(__file__).parent / "static"
+import pathlib
+static_dir = pathlib.Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
