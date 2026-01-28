@@ -168,6 +168,11 @@ class ConversationManager:
             twitter_replies = await self._check_twitter_dms()
             replies.extend(twitter_replies)
 
+        # Check Twitter mentions (for public reply responses)
+        if self.twitter_bearer and self.twitter_access:
+            mention_replies = await self._check_twitter_mentions()
+            replies.extend(mention_replies)
+
         # Check emails (via webhook queue - Resend sends webhooks)
         # email_replies = await self._check_email_replies()
         # replies.extend(email_replies)
@@ -328,6 +333,147 @@ class ConversationManager:
             logger.error(f"Error checking Twitter DMs: {e}", exc_info=True)
 
         return replies
+
+    async def _check_twitter_mentions(self) -> List[Dict]:
+        """
+        Check for Twitter mentions (public replies to our tweets).
+
+        When we send a public reply to someone's tweet, they may reply back
+        by mentioning us. This catches those responses.
+        """
+        replies = []
+
+        try:
+            from requests_oauthlib import OAuth1
+            import requests
+            import re
+
+            auth = OAuth1(
+                self.twitter_api_key,
+                client_secret=self.twitter_api_secret,
+                resource_owner_key=self.twitter_access,
+                resource_owner_secret=self.twitter_access_secret
+            )
+
+            # First, get our user ID if we don't have it
+            if not self.our_twitter_id:
+                me_resp = requests.get(
+                    "https://api.twitter.com/2/users/me",
+                    auth=auth
+                )
+                if me_resp.status_code == 200:
+                    self.our_twitter_id = me_resp.json().get('data', {}).get('id')
+                    logger.info(f"Got our Twitter ID: {self.our_twitter_id}")
+
+            if not self.our_twitter_id:
+                return replies
+
+            # Get recent mentions
+            mentions_resp = requests.get(
+                f"https://api.twitter.com/2/users/{self.our_twitter_id}/mentions",
+                params={
+                    "tweet.fields": "created_at,author_id,conversation_id,in_reply_to_user_id,text",
+                    "expansions": "author_id",
+                    "user.fields": "username",
+                    "max_results": 20
+                },
+                auth=auth
+            )
+
+            if mentions_resp.status_code != 200:
+                logger.warning(f"Twitter mentions check failed: {mentions_resp.status_code}")
+                return replies
+
+            data = mentions_resp.json()
+            mentions = data.get('data', [])
+            users = {u['id']: u for u in data.get('includes', {}).get('users', [])}
+
+            logger.info(f"Checking {len(mentions)} Twitter mentions")
+
+            for mention in mentions:
+                author_id = mention.get('author_id')
+                tweet_id = mention.get('id')
+                text = mention.get('text', '')
+                conversation_id = mention.get('conversation_id')
+
+                # Skip our own tweets
+                if author_id == self.our_twitter_id:
+                    continue
+
+                # Get username
+                user = users.get(author_id, {})
+                username = user.get('username', f'user_{author_id}')
+
+                # Check if we have a conversation with this user
+                conv = self._find_conversation_by_user('twitter', author_id)
+
+                # Also check by username (public replies may not have user_id registered)
+                if not conv:
+                    conv = self._find_conversation_by_username('twitter', username)
+
+                if conv:
+                    # Check if we already processed this tweet
+                    if any(m.get('message_id') == tweet_id for m in conv.messages):
+                        continue
+
+                    replies.append({
+                        'platform': 'twitter_mention',
+                        'conversation_id': conv.id,
+                        'user_id': author_id,
+                        'username': username,
+                        'message': text,
+                        'message_id': tweet_id,
+                        'contract_id': conv.contract_id,
+                        'opportunity_id': conv.opportunity_id,
+                        'tweet_id': tweet_id,
+                        'conversation_thread_id': conversation_id
+                    })
+                    logger.info(f"Found mention reply from @{username}: {text[:50]}...")
+
+                else:
+                    # Unknown user mentioning us - might be responding to our public reply
+                    # Check if this is a reply in a thread we started
+                    if conversation_id:
+                        # Create orphan conversation for tracking
+                        conv_id = f"twitter_mention_{author_id}_{tweet_id[:8]}"
+                        new_conv = Conversation(
+                            id=conv_id,
+                            platform='twitter',
+                            user_id=author_id,
+                            username=username,
+                            contract_id='unknown',
+                            opportunity_id='mention',
+                            state='in_conversation',
+                            messages=[]
+                        )
+                        self.conversations[conv_id] = new_conv
+                        self._save_conversations()
+
+                        replies.append({
+                            'platform': 'twitter_mention',
+                            'conversation_id': conv_id,
+                            'user_id': author_id,
+                            'username': username,
+                            'message': text,
+                            'message_id': tweet_id,
+                            'contract_id': 'unknown',
+                            'opportunity_id': 'mention',
+                            'tweet_id': tweet_id,
+                            'conversation_thread_id': conversation_id
+                        })
+                        logger.info(f"New mention from @{username}: {text[:50]}...")
+
+        except Exception as e:
+            logger.error(f"Error checking Twitter mentions: {e}", exc_info=True)
+
+        return replies
+
+    def _find_conversation_by_username(self, platform: str, username: str) -> Optional[Conversation]:
+        """Find conversation by platform and username"""
+        for conv in self.conversations.values():
+            if conv.platform == platform and conv.username.lower() == username.lower():
+                return conv
+        return None
 
     async def _find_our_message_in_conversation(self, dm_conv_id: str, auth) -> Optional[str]:
         """Find if we sent a message in this DM conversation (outreach detection)"""
@@ -651,6 +797,8 @@ Generate a natural response. If they seem interested, reference the link in the 
         """Send response via appropriate platform"""
         if platform == 'twitter':
             return await self._send_twitter_dm(reply, response)
+        elif platform == 'twitter_mention':
+            return await self._send_twitter_reply(reply, response)
         elif platform == 'email':
             return await self._send_email_reply(reply, response)
         return False
@@ -694,6 +842,57 @@ Generate a natural response. If they seem interested, reference the link in the 
 
         except Exception as e:
             logger.error(f"Error sending Twitter DM: {e}")
+            return False
+
+    async def _send_twitter_reply(self, reply: Dict, response: str) -> bool:
+        """Send public Twitter reply (to a mention)"""
+        try:
+            from requests_oauthlib import OAuth1
+            import requests
+
+            auth = OAuth1(
+                self.twitter_api_key,
+                client_secret=self.twitter_api_secret,
+                resource_owner_key=self.twitter_access,
+                resource_owner_secret=self.twitter_access_secret
+            )
+
+            # Include @mention in reply
+            username = reply.get('username', '')
+            tweet_id = reply.get('tweet_id')
+
+            if not tweet_id:
+                logger.error("No tweet_id for public reply")
+                return False
+
+            # Format reply with @mention
+            reply_text = f"@{username} {response}"
+
+            # Ensure under 280 chars
+            if len(reply_text) > 280:
+                reply_text = reply_text[:277] + "..."
+
+            # Post reply tweet
+            tweet_resp = requests.post(
+                "https://api.twitter.com/2/tweets",
+                json={
+                    "text": reply_text,
+                    "reply": {
+                        "in_reply_to_tweet_id": str(tweet_id)
+                    }
+                },
+                auth=auth
+            )
+
+            if tweet_resp.status_code in [200, 201]:
+                logger.info(f"Posted public reply to @{username}")
+                return True
+            else:
+                logger.error(f"Failed to post reply: {tweet_resp.status_code} - {tweet_resp.text}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error sending Twitter reply: {e}")
             return False
 
     async def _send_email_reply(self, reply: Dict, response: str) -> bool:
