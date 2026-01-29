@@ -1717,15 +1717,39 @@ try:
             except tweepy.Forbidden as e:
                 result["write_access"] = False
                 result["write_error"] = str(e)
-                result["error"] = (
-                    "403 Forbidden: Your Access Token does not have Write permissions. "
-                    "Go to developer.twitter.com → your App → Settings → App permissions → Read and Write. "
-                    "Then go to Keys and Tokens → Regenerate Access Token and Secret. "
-                    "Update the new tokens in your Render env vars."
-                )
+                # Extract detailed API response
+                api_response = {}
+                if hasattr(e, 'response') and e.response is not None:
+                    try:
+                        api_response = e.response.json()
+                    except Exception:
+                        api_response = {"raw_text": e.response.text[:500]}
+                    api_response["status_code"] = e.response.status_code
+                result["twitter_api_response"] = api_response
+                # Check for specific reasons
+                reason = api_response.get('reason', '')
+                detail = api_response.get('detail', '')
+                if 'client-not-enrolled' in str(reason) or 'not enrolled' in str(detail).lower():
+                    result["error"] = (
+                        "403: Your Twitter Developer app is not enrolled in an API access tier. "
+                        "Go to developer.twitter.com → Dashboard → sign up for Free or Basic access. "
+                        "Free tier allows 1,500 tweets/month."
+                    )
+                elif 'not allowed' in str(detail).lower():
+                    result["error"] = (
+                        f"403: Twitter says: {detail}. "
+                        "This usually means your API tier doesn't include tweet creation."
+                    )
+                else:
+                    result["error"] = f"403 Forbidden. Twitter API detail: {detail or str(e)}"
             except tweepy.TweepyException as e:
                 result["write_access"] = False
                 result["write_error"] = str(e)
+                if hasattr(e, 'response') and e.response is not None:
+                    try:
+                        result["twitter_api_response"] = e.response.json()
+                    except Exception:
+                        result["twitter_api_response"] = {"raw_text": e.response.text[:500]}
 
         except ImportError:
             result["error"] = "tweepy not installed"
