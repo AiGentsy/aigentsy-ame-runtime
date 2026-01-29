@@ -2413,7 +2413,8 @@ AiGentsy Autonomous Fulfillment
                 "by_dimension": {
                     k: len(v) for k, v in discovery.items()
                     if k.startswith("dimension_") and isinstance(v, list)
-                }
+                },
+                "fulfillability": discovery.get("fulfillability", {}),
             }
 
             ranked_opportunities = discovery.get("ranked_opportunities", [])
