@@ -140,7 +140,7 @@ PLATFORM_CONFIGS = {
         'max_per_day': 20,
         'min_spacing_seconds': 1800,  # 30 min
         'code_prefix': 'AIGX-GH',
-        'enabled': True,
+        'enabled': False,  # Disabled - GitHub ToS prohibits autonomous engagement
         'labels': [
             'help wanted',
             'good first issue',
@@ -1053,6 +1053,24 @@ async def run_public_engagement_cycle(platforms: List[str] = None) -> Dict:
 
     results = await orchestrator.discover_and_engage(platform_list)
 
+    # Build detailed per-attempt results
+    attempts = []
+    for r in results:
+        attempt = {
+            'platform': r.target.platform.value,
+            'method': r.method,
+            'success': r.success,
+            'post_id': r.target.post_id,
+            'post_url': r.target.post_url,
+            'author': r.target.author_handle,
+        }
+        if r.success:
+            attempt['referral_code'] = r.referral_code
+            attempt['message_preview'] = r.message_sent[:150] if r.message_sent else ''
+        else:
+            attempt['error'] = r.error
+        attempts.append(attempt)
+
     return {
         'total_attempts': len(results),
         'successes': sum(1 for r in results if r.success),
@@ -1061,5 +1079,6 @@ async def run_public_engagement_cycle(platforms: List[str] = None) -> Dict:
             p.value: sum(1 for r in results if r.target.platform == p and r.success)
             for p in EngagementPlatform
         },
+        'attempts': attempts,
         'stats': orchestrator.get_stats()
     }
