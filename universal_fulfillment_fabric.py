@@ -538,7 +538,13 @@ async def execute_plan(
             if action == "fill":
                 # Try multiple selector strategies
                 element = None
-                for sel_strategy in [selector, f"text={selector}", f"[placeholder*='{selector}']"]:
+                strategies = [selector]
+                # Only add text/placeholder fallbacks if selector is plain text
+                # (not already a CSS selector with brackets, #, or .)
+                if not any(c in selector for c in ['[', ']', '#', '.', '>', ':', '*']):
+                    strategies.append(f"text={selector}")
+                    strategies.append(f"[placeholder*='{selector}']")
+                for sel_strategy in strategies:
                     try:
                         element = page.locator(sel_strategy).first
                         if await element.count() > 0:
@@ -555,7 +561,11 @@ async def execute_plan(
             elif action == "click":
                 # Try multiple selector strategies
                 clicked = False
-                for sel_strategy in [selector, f"text={selector}", f"button:has-text('{selector}')"]:
+                strategies = [selector]
+                if not any(c in selector for c in ['[', ']', '#', '.', '>', ':', '*']):
+                    strategies.append(f"text={selector}")
+                    strategies.append(f"button:has-text('{selector}')")
+                for sel_strategy in strategies:
                     try:
                         element = page.locator(sel_strategy).first
                         if await element.count() > 0:
