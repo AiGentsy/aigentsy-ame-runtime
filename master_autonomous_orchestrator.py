@@ -606,6 +606,7 @@ class MasterAutonomousOrchestrator:
         _log_structured(self._run_id(), "discovery", "start", {})
 
         results = {
+            "perplexity_primary": [],
             "dimension_1_explicit_marketplaces": [],
             "dimension_2_pain_point_detection": [],
             "dimension_3_flow_arbitrage": [],
@@ -618,7 +619,25 @@ class MasterAutonomousOrchestrator:
             "total_ev": 0
         }
 
-        # Run all dimension discoveries in parallel
+        all_opportunities = []
+
+        # ── PRIMARY: Perplexity internet-wide search (lead aggregator) ──
+        try:
+            from discovery.perplexity_first import get_perplexity_first_discovery
+            pf = get_perplexity_first_discovery()
+            perplexity_opps = await pf.discover_all()
+            results["perplexity_primary"] = perplexity_opps
+            all_opportunities.extend(perplexity_opps)
+            _log_structured(self._run_id(), "discovery", "perplexity_primary", {
+                "count": len(perplexity_opps),
+                "stats": pf.get_stats()
+            })
+            logger.info(f"Perplexity primary: {len(perplexity_opps)} opportunities")
+        except Exception as e:
+            self.current_run["errors"].append({"dimension": "perplexity_primary", "error": str(e)})
+            logger.warning(f"Perplexity primary discovery failed: {e}")
+
+        # ── SECONDARY: API-based dimension discoveries (supplement) ──
         discovery_tasks = [
             self._discover_dimension_1_explicit_marketplaces(),
             self._discover_dimension_2_pain_points(),
@@ -641,8 +660,6 @@ class MasterAutonomousOrchestrator:
             "dimension_7_emergent_patterns"
         ]
 
-        all_opportunities = []
-
         for name, result in zip(dimension_names, dimension_results):
             if isinstance(result, Exception):
                 self.current_run["errors"].append({"dimension": name, "error": str(result)})
@@ -664,6 +681,8 @@ class MasterAutonomousOrchestrator:
 
         _log_structured(self._run_id(), "discovery", "complete", {
             "total": len(ranked),
+            "perplexity_count": len(results["perplexity_primary"]),
+            "api_count": len(ranked) - len(results["perplexity_primary"]),
             "total_value": results["total_value"],
             "total_ev": results["total_ev"]
         })
@@ -2394,7 +2413,13 @@ AiGentsy Autonomous Fulfillment
                 "calls_succeeded": 0,
                 "calls_failed": 0,
                 "retries": 0,
-                "circuit_opens": 0
+                "circuit_opens": 0,
+                # Monetization metrics
+                "gross_revenue": 0.0,
+                "platform_fees": 0.0,
+                "referral_payouts": 0.0,
+                "badges_minted": 0,
+                "arbitrage_captured": 0.0
             }
         }
         self._seen_keys = set()  # Reset dedupe for fresh run
@@ -2423,6 +2448,7 @@ AiGentsy Autonomous Fulfillment
                 "total_opportunities": discovery["total_opportunities"],
                 "total_value": discovery["total_value"],
                 "total_ev": discovery.get("total_ev", 0),
+                "perplexity_primary": len(discovery.get("perplexity_primary", [])),
                 "by_dimension": {
                     k: len(v) for k, v in discovery.items()
                     if k.startswith("dimension_") and isinstance(v, list)
