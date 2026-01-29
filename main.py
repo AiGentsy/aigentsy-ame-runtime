@@ -7814,9 +7814,167 @@ async def conversation_monitor_job():
         # Check every 2 minutes
         await asyncio.sleep(120)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTONOMOUS REVENUE ENGINE - Background Tasks
+# These run the full revenue pipeline without manual API triggers.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def autonomous_full_cycle_job():
+    """
+    MASTER AUTONOMOUS CYCLE - Runs every 30 minutes.
+    Discovery → Communication → Contract → Fulfillment → Payment.
+    This is the core revenue engine.
+    """
+    await asyncio.sleep(90)  # Stagger: start 90s after boot
+    while True:
+        try:
+            from master_autonomous_orchestrator import get_master_orchestrator
+            orchestrator = get_master_orchestrator()
+            result = await orchestrator.run_full_autonomous_cycle({})
+            total = result.get("total_opportunities", 0)
+            print(f"[AUTO] Full cycle complete: {total} opportunities processed")
+        except ImportError:
+            print("[AUTO] Master orchestrator not available - skipping full cycle")
+        except Exception as e:
+            print(f"[AUTO] Full cycle error: {e}")
+        await asyncio.sleep(1800)  # 30 minutes
+
+
+async def autonomous_discovery_engagement_job():
+    """
+    UNIFIED ENGAGEMENT - Runs every 20 minutes.
+    Routes ALL discovery results to best channel (email, comment, DM, SMS).
+    """
+    await asyncio.sleep(120)  # Stagger: start 2min after boot
+    while True:
+        try:
+            from outreach.unified_engagement_router import run_unified_engagement
+            result = await run_unified_engagement(max_opportunities=50)
+            engaged = result.get("total_engaged", 0)
+            print(f"[AUTO] Unified engagement: {engaged} engagements sent")
+        except ImportError:
+            print("[AUTO] Unified engagement router not available - skipping")
+        except Exception as e:
+            print(f"[AUTO] Unified engagement error: {e}")
+        await asyncio.sleep(1200)  # 20 minutes
+
+
+async def autonomous_public_engagement_job():
+    """
+    PUBLIC ENGAGEMENT - Runs every 15 minutes.
+    Comments/replies on hiring posts across Twitter, Reddit, LinkedIn, GitHub.
+    """
+    await asyncio.sleep(180)  # Stagger: start 3min after boot
+    while True:
+        try:
+            from outreach import run_public_engagement_cycle
+            result = await run_public_engagement_cycle(platforms=None)
+            posted = result.get("total_posted", 0)
+            print(f"[AUTO] Public engagement: {posted} comments posted")
+        except ImportError:
+            print("[AUTO] Public engagement not available - skipping")
+        except Exception as e:
+            print(f"[AUTO] Public engagement error: {e}")
+        await asyncio.sleep(900)  # 15 minutes
+
+
+async def autonomous_auto_reply_job():
+    """
+    AUTO-REPLY MONITOR - Runs every 5 minutes.
+    Detects replies to our posts/comments and responds with AI.
+    """
+    await asyncio.sleep(60)  # Stagger: start 1min after boot
+    while True:
+        try:
+            from outreach import run_auto_reply_cycle
+            result = await run_auto_reply_cycle(post_ids=None)
+            replied = result.get("total_replied", 0)
+            if replied > 0:
+                print(f"[AUTO] Auto-reply: {replied} replies sent")
+        except ImportError:
+            pass  # Silent - conversation_monitor_job also handles replies
+        except Exception as e:
+            print(f"[AUTO] Auto-reply error: {e}")
+        await asyncio.sleep(300)  # 5 minutes
+
+
+async def autonomous_content_campaign_job():
+    """
+    CONTENT CAMPAIGNS - Runs every 4 hours.
+    Posts success stories and educational content for brand building.
+    """
+    await asyncio.sleep(300)  # Stagger: start 5min after boot
+    while True:
+        try:
+            from outreach import run_content_campaign
+            result = await run_content_campaign(content_type='educational', platforms=None)
+            posted = result.get("total_posted", 0)
+            print(f"[AUTO] Content campaign: {posted} pieces posted")
+        except ImportError:
+            print("[AUTO] Content campaign not available - skipping")
+        except Exception as e:
+            print(f"[AUTO] Content campaign error: {e}")
+        await asyncio.sleep(14400)  # 4 hours
+
+
+async def autonomous_conductor_job():
+    """
+    CONDUCTOR CYCLE - Runs every 45 minutes.
+    Revenue orchestration across all channels.
+    """
+    await asyncio.sleep(240)  # Stagger: start 4min after boot
+    while True:
+        try:
+            from aigentsy_conductor import run_autonomous_cycle
+            result = await run_autonomous_cycle()
+            print(f"[AUTO] Conductor cycle complete: {result.get('summary', {})}")
+        except ImportError:
+            print("[AUTO] Conductor not available - skipping")
+        except Exception as e:
+            print(f"[AUTO] Conductor cycle error: {e}")
+        await asyncio.sleep(2700)  # 45 minutes
+
+
+async def autonomous_token_refresh_job():
+    """
+    TOKEN AUTO-REFRESH - Runs every 24 hours.
+    Refreshes Instagram long-lived tokens before they expire (60-day lifecycle).
+    LinkedIn tokens require manual re-auth (no programmatic refresh for basic scope).
+    """
+    await asyncio.sleep(600)  # Stagger: start 10min after boot
+    while True:
+        try:
+            # Instagram long-lived token refresh (valid for 60 days, refresh before expiry)
+            ig_token = os.getenv("INSTAGRAM_ACCESS_TOKEN")
+            if ig_token:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    r = await client.get(
+                        "https://graph.instagram.com/refresh_access_token",
+                        params={
+                            "grant_type": "ig_refresh_token",
+                            "access_token": ig_token,
+                        }
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        new_token = data.get("access_token")
+                        if new_token:
+                            os.environ["INSTAGRAM_ACCESS_TOKEN"] = new_token
+                            print(f"[AUTO] Instagram token refreshed (expires in {data.get('expires_in', '?')}s)")
+                    else:
+                        print(f"[AUTO] Instagram token refresh failed: {r.status_code} - {r.text[:200]}")
+            else:
+                print("[AUTO] No Instagram token to refresh")
+        except Exception as e:
+            print(f"[AUTO] Token refresh error: {e}")
+        await asyncio.sleep(86400)  # 24 hours
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Start background tasks"""
+    """Start ALL background tasks - both existing and autonomous revenue engine"""
+    # === EXISTING BACKGROUND TASKS ===
     asyncio.create_task(auto_bid_background())
     asyncio.create_task(auto_release_escrows_job())
     # Gap 1 Fix: Load market maker state from JSONBIN and start autosave
@@ -7826,7 +7984,19 @@ async def startup_event():
     # Start conversation monitor for auto-replies
     asyncio.create_task(conversation_monitor_job())
 
-    print("Background tasks started: auto-bid, auto-release, mm-state-autosave, conversation-monitor")
+    # === AUTONOMOUS REVENUE ENGINE ===
+    asyncio.create_task(autonomous_full_cycle_job())
+    asyncio.create_task(autonomous_discovery_engagement_job())
+    asyncio.create_task(autonomous_public_engagement_job())
+    asyncio.create_task(autonomous_auto_reply_job())
+    asyncio.create_task(autonomous_content_campaign_job())
+    asyncio.create_task(autonomous_conductor_job())
+    asyncio.create_task(autonomous_token_refresh_job())
+
+    print("Background tasks started:")
+    print("  [EXISTING] auto-bid, auto-release, mm-state-autosave, conversation-monitor")
+    print("  [NEW] full-cycle(30m), unified-engagement(20m), public-engagement(15m),")
+    print("         auto-reply(5m), content-campaign(4h), conductor(45m), token-refresh(24h)")
 
     # Log API credentials status on startup
     try:

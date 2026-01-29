@@ -211,6 +211,27 @@ def validate_all_apis() -> Dict[str, Any]:
         "revenue_potential": "Enabling - Data persistence"
     }
 
+    # SOCIAL - REDDIT
+    apis["reddit"] = {
+        "name": "Reddit",
+        "configured": all([
+            os.getenv("REDDIT_CLIENT_ID"),
+            os.getenv("REDDIT_CLIENT_SECRET"),
+        ]),
+        "oauth_configured": all([
+            os.getenv("REDDIT_CLIENT_ID"),
+            os.getenv("REDDIT_CLIENT_SECRET"),
+            os.getenv("REDDIT_USERNAME"),
+            os.getenv("REDDIT_PASSWORD"),
+        ]),
+        "env_vars": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD"],
+        "engines": ["v111_uacr", "discovery", "public_engagement"],
+        "capabilities": ["discovery"] if not all([
+            os.getenv("REDDIT_CLIENT_ID"), os.getenv("REDDIT_CLIENT_SECRET")
+        ]) else ["discovery", "commenting", "dm_outreach"],
+        "revenue_potential": "High - r/forhire, r/freelance discovery + engagement"
+    }
+
     # DEV - GITHUB
     apis["github"] = {
         "name": "GitHub",
