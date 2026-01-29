@@ -517,8 +517,18 @@ class MasterAutonomousOrchestrator:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _compute_opportunity_key(self, opp: Dict) -> str:
-        """Generate stable key for deduplication"""
-        raw = f"{opp.get('platform', '')}|{opp.get('url') or opp.get('id', '')}|{opp.get('title', '')}"
+        """Generate stable key for deduplication.
+
+        Normalizes platform prefix so perplexity_reddit and reddit
+        resolve to the same key for the same URL+title.
+        """
+        platform = opp.get('platform', '')
+        # Normalize: perplexity_reddit -> reddit, perplexity_hackernews -> hackernews
+        if platform.startswith('perplexity_'):
+            platform = platform[len('perplexity_'):]
+        url = opp.get('url') or opp.get('canonical_url') or opp.get('id', '')
+        title = opp.get('title', '')[:80]
+        raw = f"{platform}|{url}|{title}"
         return sha1(raw.encode()).hexdigest()[:16]
 
     def _compute_ev(self, opp: Dict) -> float:
@@ -673,6 +683,20 @@ class MasterAutonomousOrchestrator:
 
         # Dedupe and rank all opportunities
         ranked = self._dedupe_and_rank(all_opportunities)
+        pre_filter_count = len(ranked)
+
+        # Fulfillability filter: reject salary jobs, match to SKU catalog, parse urgency
+        try:
+            from discovery.fulfillability_filter import filter_fulfillable, get_filter_stats
+            ranked = filter_fulfillable(ranked)
+            results["fulfillability"] = get_filter_stats(ranked)
+            results["fulfillability"]["total_before_filter"] = pre_filter_count
+            results["fulfillability"]["rejected"] = pre_filter_count - len(ranked)
+        except ImportError:
+            pass
+        except Exception as e:
+            self.current_run["errors"].append({"filter": "fulfillability", "error": str(e)})
+            logger.warning(f"Fulfillability filter failed: {e}")
 
         results["total_opportunities"] = len(ranked)
         results["total_value"] = sum(o.get("value", 0) or o.get("estimated_value", 0) for o in ranked)
@@ -681,8 +705,8 @@ class MasterAutonomousOrchestrator:
 
         _log_structured(self._run_id(), "discovery", "complete", {
             "total": len(ranked),
+            "pre_filter": pre_filter_count,
             "perplexity_count": len(results["perplexity_primary"]),
-            "api_count": len(ranked) - len(results["perplexity_primary"]),
             "total_value": results["total_value"],
             "total_ev": results["total_ev"]
         })
