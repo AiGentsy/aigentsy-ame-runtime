@@ -1637,6 +1637,103 @@ try:
             "stats": orchestrator.get_stats()
         }
 
+    @app.post("/public-engagement/test-twitter")
+    async def api_test_twitter_write():
+        """
+        Test Twitter API write access.
+
+        After changing app permissions to Read+Write in the Twitter Developer Portal,
+        you MUST regenerate the Access Token and Access Token Secret.
+        Old tokens retain their original (Read-only) permission scope.
+        """
+        import os
+        result = {
+            "ok": False,
+            "credentials_present": {},
+            "app_permissions_note": (
+                "If you changed app permissions to Read+Write, you MUST regenerate "
+                "Access Token and Access Token Secret in the Twitter Developer Portal. "
+                "Old tokens keep their original Read-only scope even after the app is updated."
+            ),
+        }
+
+        # Check which credentials are set
+        cred_keys = ['TWITTER_API_KEY', 'TWITTER_API_SECRET', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_SECRET', 'TWITTER_BEARER_TOKEN']
+        for key in cred_keys:
+            val = os.getenv(key)
+            result["credentials_present"][key] = bool(val)
+
+        if not all(os.getenv(k) for k in cred_keys[:4]):
+            result["error"] = "Missing OAuth 1.0a credentials"
+            return result
+
+        try:
+            import tweepy
+
+            client = tweepy.Client(
+                consumer_key=os.getenv('TWITTER_API_KEY'),
+                consumer_secret=os.getenv('TWITTER_API_SECRET'),
+                access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
+                access_token_secret=os.getenv('TWITTER_ACCESS_SECRET')
+            )
+
+            # Try to get authenticated user first (read test)
+            try:
+                me = client.get_me()
+                if me.data:
+                    result["authenticated_user"] = {
+                        "id": me.data.id,
+                        "username": me.data.username,
+                        "name": me.data.name,
+                    }
+                    result["read_access"] = True
+                else:
+                    result["read_access"] = False
+                    result["error"] = "Could not fetch authenticated user"
+                    return result
+            except tweepy.TweepyException as e:
+                result["read_access"] = False
+                result["read_error"] = str(e)
+                return result
+
+            # Try a write operation - post then immediately delete a test tweet
+            try:
+                test_tweet = client.create_tweet(text="AiGentsy API write test - deleting immediately")
+                if test_tweet.data:
+                    tweet_id = test_tweet.data['id']
+                    result["write_access"] = True
+                    result["test_tweet_id"] = tweet_id
+                    # Delete the test tweet
+                    try:
+                        client.delete_tweet(tweet_id)
+                        result["test_tweet_deleted"] = True
+                    except Exception:
+                        result["test_tweet_deleted"] = False
+                    result["ok"] = True
+                    result["message"] = "Twitter API write access confirmed and working"
+                else:
+                    result["write_access"] = False
+                    result["error"] = "No response data from create_tweet"
+            except tweepy.Forbidden as e:
+                result["write_access"] = False
+                result["write_error"] = str(e)
+                result["error"] = (
+                    "403 Forbidden: Your Access Token does not have Write permissions. "
+                    "Go to developer.twitter.com → your App → Settings → App permissions → Read and Write. "
+                    "Then go to Keys and Tokens → Regenerate Access Token and Secret. "
+                    "Update the new tokens in your Render env vars."
+                )
+            except tweepy.TweepyException as e:
+                result["write_access"] = False
+                result["write_error"] = str(e)
+
+        except ImportError:
+            result["error"] = "tweepy not installed"
+        except Exception as e:
+            result["error"] = str(e)
+
+        return result
+
     @app.post("/auto-reply/run-cycle")
     async def api_run_auto_reply(
         twitter_enabled: bool = True,

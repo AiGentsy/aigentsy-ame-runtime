@@ -826,7 +826,9 @@ class PublicEngagementOrchestrator:
             from discovery.multi_source_discovery import MultiSourceDiscovery
 
             discovery = MultiSourceDiscovery()
-            opportunities = await discovery.discover_parallel()
+            opportunities = await discovery.discover()
+
+            logger.info(f"Discovery returned {len(opportunities)} raw opportunities")
 
             for opp in opportunities:
                 platform_str = opp.get('platform', '').lower()
@@ -845,35 +847,101 @@ class PublicEngagementOrchestrator:
                 if not platform or platform not in platforms:
                     continue
 
-                # Extract post ID
-                post_id = opp.get('source_data', {}).get('tweet_id') or \
-                         opp.get('source_data', {}).get('post_id') or \
-                         opp.get('source_data', {}).get('id') or \
-                         opp.get('id', '')
+                metadata = opp.get('metadata', {})
+                contact = opp.get('contact', {})
+                compound_id = opp.get('id', '')
+
+                # Extract raw post ID from compound id (e.g. "twitter_12345" → "12345")
+                post_id = self._extract_raw_post_id(compound_id, platform_str, metadata)
 
                 if not post_id:
+                    logger.debug(f"Skipping {compound_id}: could not extract post_id")
                     continue
+
+                # Extract author handle from contact or metadata
+                author_handle = (
+                    contact.get('twitter_handle', '') or
+                    contact.get('reddit_username', '') or
+                    contact.get('github_username', '') or
+                    contact.get('username', '') or
+                    metadata.get('author_handle', '') or
+                    metadata.get('author', '') or
+                    metadata.get('username', '') or
+                    ''
+                )
 
                 target = PublicEngagementTarget(
                     platform=platform,
                     post_id=str(post_id),
                     post_url=opp.get('url', ''),
-                    author_handle=opp.get('contact', {}).get('twitter_handle', '') or \
-                                 opp.get('contact', {}).get('username', '') or \
-                                 opp.get('source_data', {}).get('user', ''),
+                    author_handle=author_handle,
                     title=opp.get('title', ''),
                     body=opp.get('body', ''),
                     project_type=self._detect_project_type(opp.get('title', ''), opp.get('body', '')),
                     estimated_value=opp.get('estimated_value', 0),
-                    metadata=opp.get('source_data', {})
+                    metadata=metadata
                 )
 
                 targets.append(target)
+                logger.debug(f"Target: {platform.value} post_id={post_id} author={author_handle}")
 
         except Exception as e:
-            logger.error(f"Discovery failed: {e}")
+            logger.error(f"Discovery failed: {e}", exc_info=True)
 
+        logger.info(f"Mapped {len(targets)} engagement targets from discovery")
         return targets
+
+    def _extract_raw_post_id(self, compound_id: str, platform_str: str, metadata: Dict) -> str:
+        """Extract the raw platform post ID from a compound discovery ID.
+
+        Discovery returns IDs like 'twitter_12345', 'reddit_abc123', 'github_owner/repo/42'.
+        The API calls need just the raw ID: '12345', 'abc123', '42'.
+        """
+        # Check metadata for explicit IDs first
+        if platform_str == 'twitter':
+            # Twitter: metadata may have tweet_id directly, or parse from compound
+            raw = metadata.get('tweet_id', '')
+            if raw:
+                return str(raw)
+            # compound_id format: "twitter_1234567890"
+            if compound_id.startswith('twitter_'):
+                return compound_id[len('twitter_'):]
+
+        elif platform_str == 'reddit':
+            raw = metadata.get('post_id', '') or metadata.get('id', '')
+            if raw:
+                return str(raw)
+            if compound_id.startswith('reddit_'):
+                return compound_id[len('reddit_'):]
+
+        elif platform_str == 'github':
+            raw = metadata.get('issue_number', '') or metadata.get('number', '')
+            if raw:
+                return str(raw)
+            if compound_id.startswith('github_'):
+                return compound_id[len('github_'):]
+
+        elif platform_str == 'instagram':
+            raw = metadata.get('post_id', '') or metadata.get('id', '')
+            if raw:
+                return str(raw)
+            if compound_id.startswith('instagram_'):
+                return compound_id[len('instagram_'):]
+
+        elif platform_str == 'linkedin':
+            raw = metadata.get('post_urn', '') or metadata.get('id', '')
+            if raw:
+                return str(raw)
+            if compound_id.startswith('linkedin_'):
+                return compound_id[len('linkedin_'):]
+
+        # Generic fallback: strip platform prefix
+        for prefix in ['twitter_', 'reddit_', 'github_', 'instagram_', 'linkedin_', 'tiktok_']:
+            if compound_id.startswith(prefix):
+                return compound_id[len(prefix):]
+
+        # If no prefix, use as-is
+        return compound_id
 
     async def _engage_target(self, target: PublicEngagementTarget) -> PublicEngagementResult:
         """Engage with a target based on its platform"""
