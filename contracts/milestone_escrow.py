@@ -92,6 +92,9 @@ class EscrowContract:
     # Referral field
     referral_code: Optional[str] = None
 
+    # Proof-to-Promo flywheel
+    auto_promo_enabled: bool = True
+
 
 class MilestoneEscrow:
     """
@@ -386,6 +389,16 @@ class MilestoneEscrow:
                 if contract.released_amount_usd >= contract.total_amount_usd:
                     contract.status = "completed"
 
+                    # Trigger proof-to-promo flywheel (non-blocking)
+                    if contract.auto_promo_enabled:
+                        import asyncio
+                        try:
+                            asyncio.ensure_future(
+                                _trigger_proof_promo_flywheel(contract, self)
+                            )
+                        except Exception as e:
+                            logger.warning(f"Could not schedule proof-promo flywheel: {e}")
+
                 self._save_contracts()
                 logger.info(f"Milestone {milestone_id} released: ${milestone.amount_usd}")
                 return True
@@ -583,7 +596,67 @@ class MilestoneEscrow:
             'preview_expires_at': contract.preview_expires_at,
             # Referral
             'referral_code': contract.referral_code,
+            # Proof-to-Promo
+            'auto_promo_enabled': getattr(contract, 'auto_promo_enabled', True),
         }
+
+
+async def _trigger_proof_promo_flywheel(contract: EscrowContract, escrow: 'MilestoneEscrow') -> None:
+    """
+    Proof-to-Promo Flywheel: on contract completion, mint proof and post success story.
+
+    Steps:
+    1. Mint proof via proof_ledger.create_proof()
+    2. Post success story to social channels
+    3. Log to MetaHive
+    All wrapped in try/except - entirely non-blocking.
+    """
+    contract_id = contract.id
+    opp_id = contract.opportunity_id
+    total = contract.total_amount_usd
+
+    # 1. Mint proof
+    proof_id = None
+    try:
+        from monetization.proof_ledger import get_proof_ledger
+        ledger = get_proof_ledger()
+        proof = await ledger.create_proof(
+            contract_id=contract_id,
+            opportunity_id=opp_id,
+            title=f"Completed contract {contract_id}",
+            description=f"Successfully delivered ${total:,.0f} contract",
+            artifacts=[],
+        )
+        proof_id = getattr(proof, 'id', None)
+        logger.info(f"Proof-to-Promo: minted proof {proof_id} for {contract_id}")
+    except Exception as e:
+        logger.warning(f"Proof-to-Promo: could not mint proof for {contract_id}: {e}")
+
+    # 2. Post success story to social channels
+    try:
+        from growth.growth_loops import post_contract_success_story
+        await post_contract_success_story(
+            contract_id=contract_id,
+            total_value=total,
+            proof_id=proof_id,
+            channels=["twitter", "linkedin", "instagram"],
+        )
+        logger.info(f"Proof-to-Promo: posted success story for {contract_id}")
+    except Exception as e:
+        logger.warning(f"Proof-to-Promo: could not post success story for {contract_id}: {e}")
+
+    # 3. Log to MetaHive
+    try:
+        from metahive import contribute_to_metahive
+        await contribute_to_metahive({
+            'type': 'proof_promo_flywheel',
+            'contract_id': contract_id,
+            'proof_id': proof_id,
+            'total_value': total,
+        })
+        logger.info(f"Proof-to-Promo: logged to MetaHive for {contract_id}")
+    except Exception as e:
+        logger.debug(f"Proof-to-Promo: MetaHive log skipped for {contract_id}: {e}")
 
 
 # Global instance

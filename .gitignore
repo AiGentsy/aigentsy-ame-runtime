@@ -27,6 +27,7 @@ ENV/
 
 # Persistent data (contracts, conversations)
 data/
+!data/sku_catalog_v2.json
 
 # Test output files
 full_cycle_*.json

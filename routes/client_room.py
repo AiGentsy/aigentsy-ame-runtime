@@ -269,7 +269,13 @@ if FASTAPI_AVAILABLE:
         }
 
     @router.get("/{contract_id}", response_class=HTMLResponse)
-    async def view_client_room(request: Request, contract_id: str, token: str = Query(None)):
+    async def view_client_room(
+        request: Request,
+        contract_id: str,
+        token: str = Query(None),
+        go: str = Query(None, description="Pre-scoped project name from ?go= param"),
+        go_price: float = Query(None, description="Override price from ?go_price= param"),
+    ):
         """
         Render full client room HTML page with AiGentsy branding.
 
@@ -341,6 +347,12 @@ if FASTAPI_AVAILABLE:
                 'delivery_time': '1-2 hours'
             }
 
+        # Build scope card (Feature 1)
+        scope_card = _build_scope_card(contract_dict, pricing, go, go_price)
+
+        # Build assurance data (Feature 3)
+        assurance = _build_assurance_data(contract_dict, pricing)
+
         # Render HTML template
         return templates.TemplateResponse("client_room.html", {
             "request": request,
@@ -350,6 +362,8 @@ if FASTAPI_AVAILABLE:
             "proofs": proofs,
             "pricing": pricing,
             "client_room_url": f"/client-room/{contract_id}",
+            "scope_card": scope_card,
+            "assurance": assurance,
         })
 
     # Legacy route - redirect to main view
@@ -642,6 +656,90 @@ if FASTAPI_AVAILABLE:
             }
 
         return None
+
+
+    def _build_scope_card(contract_dict: Dict, pricing: Dict, go: Optional[str], go_price: Optional[float]) -> Dict[str, Any]:
+        """
+        Build scope card data for the client room.
+
+        Args:
+            contract_dict: Serialized contract
+            pricing: Pricing dict
+            go: Pre-scoped project name from ?go= param
+            go_price: Override price from ?go_price= param
+
+        Returns:
+            Dict with title, price, bullets, has_go_param, sla_30_eligible, sla_credit_amount
+        """
+        title = go or contract_dict.get('title', 'Your Project')
+        price = go_price or pricing.get('our_price', 0)
+
+        # Extract scope bullets from contract description or use defaults
+        description = contract_dict.get('description', '') or ''
+        sentences = [s.strip() for s in description.replace('\n', '.').split('.') if s.strip()]
+        if len(sentences) >= 3:
+            bullets = sentences[:3]
+        else:
+            # Sensible defaults based on fulfillment type
+            ft = pricing.get('fulfillment_type', 'development')
+            default_bullets = {
+                'development': ['Full implementation per spec', 'Code review & QA pass', 'Deployment-ready deliverable'],
+                'design': ['High-fidelity mockups', 'Brand-aligned visual assets', 'Source files included'],
+                'content': ['SEO-optimized copy', 'Brand voice consistency', 'Ready-to-publish format'],
+                'frontend': ['Responsive UI components', 'Cross-browser tested', 'Production-ready code'],
+                'backend': ['API endpoints per spec', 'Database schema & migrations', 'Test coverage included'],
+                'automation': ['Workflow configuration', 'Integration testing', 'Documentation & handoff'],
+                'data': ['Data pipeline setup', 'Dashboard visualizations', 'Documentation included'],
+                'marketing': ['Campaign assets', 'A/B test variants', 'Analytics-ready tracking'],
+            }
+            bullets = default_bullets.get(ft, ['End-to-end delivery', 'Quality-assured output', 'Unlimited revisions'])
+
+        # Check 30-min SLA eligibility: handshake accepted but preview not yet delivered
+        handshake_status = contract_dict.get('handshake_status', 'pending')
+        preview_status = contract_dict.get('preview_status', 'not_started')
+        sla_30_eligible = (handshake_status == 'accepted' and preview_status in ('not_started', 'in_progress'))
+        sla_credit_amount = round(price * 0.1, 2) if sla_30_eligible else 0
+
+        return {
+            'title': title,
+            'price': price,
+            'bullets': bullets,
+            'has_go_param': bool(go),
+            'sla_30_eligible': sla_30_eligible,
+            'sla_credit_amount': sla_credit_amount,
+        }
+
+    def _build_assurance_data(contract_dict: Dict, pricing: Dict) -> Dict[str, Any]:
+        """
+        Build Assured Delivery data for the client room.
+
+        Calculates insurance fee and bond amount from insurance_pool and performance_bonds.
+        Graceful fallback if modules not available.
+        """
+        try:
+            from monetization.insurance_pool import calculate_insurance_fee
+            from monetization.performance_bonds import calculate_bond_amount
+
+            price = pricing.get('our_price', 0)
+            insurance_fee = calculate_insurance_fee(price)  # ~0.5%
+            bond_amount = calculate_bond_amount(price)  # $1-$20
+            total_fee = round(insurance_fee + bond_amount, 2)
+            assurance_pct = round((insurance_fee / price) * 100, 1) if price > 0 else 0
+
+            return {
+                'available': True,
+                'insurance_fee': round(insurance_fee, 2),
+                'bond_amount': round(bond_amount, 2),
+                'total_fee': total_fee,
+                'assurance_pct': assurance_pct,
+                'coverage_amount': price,
+                'dispute_rate': '< 2%',
+                'bond_tier': 'Standard' if bond_amount <= 10 else 'Premium',
+            }
+        except ImportError:
+            return {'available': False}
+        except Exception:
+            return {'available': False}
 
 
 def get_client_room_router():

@@ -39,6 +39,41 @@ from enum import Enum
 # CONFIGURATION
 # =============================================================================
 
+def _ifx_quote_strip(channel: str, estimated_value: float, sla_hours: float = 1.0, client_room_url: str = "") -> str:
+    """
+    Generate an IFX (Instant Fixed-price eXperience) quote strip
+    appended to outbound messages.
+
+    Args:
+        channel: 'sms', 'whatsapp', 'email_html', 'email', or 'dm'
+        estimated_value: Quoted price in USD
+        sla_hours: Delivery SLA in hours
+        client_room_url: Link to lock the price
+
+    Returns:
+        Formatted quote strip string for the channel
+    """
+    price_str = f"${estimated_value:,.0f}"
+    sla_str = f"{sla_hours:.0f}h" if sla_hours >= 1 else f"{int(sla_hours * 60)}m"
+    lock_url = client_room_url or "https://aigentsy.com"
+
+    if channel in ("sms", "whatsapp"):
+        return f"\n\nQuoted: {price_str} | SLA: {sla_str} | Lock this price -> {lock_url}"
+
+    if channel == "email_html":
+        return f"""
+<div style="margin-top:24px;padding:16px;border-top:2px solid #00bfff;background:#0e101a;border-radius:8px;text-align:center;font-family:sans-serif;">
+  <span style="color:#00ffcc;font-weight:700;font-size:18px;">{price_str}</span>
+  <span style="color:#888;margin:0 8px;">|</span>
+  <span style="color:#ccc;">SLA: {sla_str}</span>
+  <span style="color:#888;margin:0 8px;">|</span>
+  <a href="{lock_url}" style="color:#00bfff;text-decoration:none;font-weight:600;">Lock this price</a>
+</div>"""
+
+    # email / dm / default: plain text
+    return f"\n---\nQuoted: {price_str} | SLA: {sla_str} | Lock this price -> {lock_url}"
+
+
 class OutreachChannel(Enum):
     EMAIL = "email"
     TWITTER_DM = "twitter_dm"
@@ -352,8 +387,10 @@ Start your own AI agency → aigentsy.com/start
 P.S. If timing's tight, we can start the preview while we finalize details.
 """
 
+        body += _ifx_quote_strip("email", our_price, 1.0, client_room_url)
+
         return subject, body
-    
+
     def _twitter_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
         """Generate Twitter DM - Reference their post, conversational conversion"""
         subject = ""  # No subject for DMs
@@ -381,6 +418,8 @@ Want us to spin up a preview link?
 
 Refer a friend → {kwargs.get('referral_url', client_room_url)}
 Build with us → aigentsy.com/start"""
+
+        body += _ifx_quote_strip("dm", our_price, 0.5, client_room_url)
 
         return subject, body
 
@@ -413,6 +452,8 @@ Start your own AI agency → aigentsy.com/start
 
 —AiGentsy"""
 
+        body += _ifx_quote_strip("email", our_price, 1.0, client_room_url)
+
         return subject, body
 
     def _reddit_dm_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
@@ -444,6 +485,8 @@ Start your own AI agency → aigentsy.com/start
 
 —AiGentsy"""
 
+        body += _ifx_quote_strip("dm", our_price, 1.0, client_room_url)
+
         return subject, body
 
     def _github_template(self, name: str, title: str, pain_point: str, value_prop: str, estimated_value: float, **kwargs) -> tuple:
@@ -472,6 +515,8 @@ Know someone who needs this? Share: {kwargs.get('referral_url', client_room_url)
 Start your own AI agency → aigentsy.com/start
 
 —AiGentsy"""
+
+        body += _ifx_quote_strip("dm", our_price, 1.0, client_room_url)
 
         return subject, body
 

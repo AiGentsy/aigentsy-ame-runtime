@@ -37,6 +37,7 @@ except ImportError:
 
 SKU_DIR = Path(__file__).parent.parent / "skus"
 PDL_DIR = Path(__file__).parent.parent / "pdl_catalog"
+DATA_DIR = Path(__file__).parent.parent / "data"
 
 
 def _now_iso() -> str:
@@ -75,6 +76,18 @@ def _load_skus() -> List[Dict[str, Any]]:
                     skus.append(data)
             except Exception:
                 pass
+
+    # Load v2 SKU catalog
+    v2_file = DATA_DIR / "sku_catalog_v2.json"
+    if v2_file.exists():
+        try:
+            v2_data = json.loads(v2_file.read_text())
+            for item in v2_data.get("skus", []):
+                if isinstance(item, dict):
+                    item["source"] = "sku_catalog_v2"
+                    skus.append(item)
+        except Exception:
+            pass
 
     return skus
 
@@ -247,6 +260,66 @@ async def list_categories() -> Dict[str, Any]:
         "ok": True,
         "categories": categories,
         "total_categories": len(categories)
+    }
+
+
+@router.get("/catalog/store")
+async def get_store(
+    category: str = Query(None, description="Filter by category"),
+    rush: bool = Query(False, description="Show rush pricing (+20%)"),
+) -> Dict[str, Any]:
+    """
+    Get the v2 SKU store with pre-scoped SKUs.
+
+    Returns all v2 SKUs with computed go_url field for instant purchase.
+    Supports filtering by category and rush pricing toggle.
+    """
+    v2_file = DATA_DIR / "sku_catalog_v2.json"
+    if not v2_file.exists():
+        return {"ok": True, "skus": [], "count": 0}
+
+    try:
+        v2_data = json.loads(v2_file.read_text())
+    except Exception:
+        return {"ok": True, "skus": [], "count": 0}
+
+    skus = v2_data.get("skus", [])
+
+    # Filter by category
+    if category:
+        skus = [s for s in skus if s.get("category") == category]
+
+    # Build response with go_url and correct pricing
+    result_skus = []
+    for sku in skus:
+        if not sku.get("active", True):
+            continue
+
+        price = sku.get("rush_price" if rush else "base_price", 0)
+        sku_id = sku.get("sku_id", "")
+        title = sku.get("title", "")
+
+        go_url = f"/client-room/store?go={title}&go_price={price}"
+
+        result_skus.append({
+            "sku_id": sku_id,
+            "title": title,
+            "description": sku.get("description", ""),
+            "category": sku.get("category", ""),
+            "price": price,
+            "base_price": sku.get("base_price", 0),
+            "rush_price": sku.get("rush_price", 0),
+            "sla_minutes": sku.get("sla_minutes", 60),
+            "fulfillment_type": sku.get("fulfillment_type", ""),
+            "scope_bullets": sku.get("scope_bullets", []),
+            "go_url": go_url,
+        })
+
+    return {
+        "ok": True,
+        "skus": result_skus,
+        "count": len(result_skus),
+        "filters": {"category": category, "rush": rush},
     }
 
 

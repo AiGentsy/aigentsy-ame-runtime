@@ -857,6 +857,170 @@
                 padding: 8px 12px;
             }
         }
+
+        /* Scope Card */
+        .scope-card {
+            background: linear-gradient(135deg, #131722 0%, #1a2030 100%);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+            box-shadow: 0 0 30px var(--glow);
+        }
+        .scope-card h2 {
+            color: var(--primary);
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+        .scope-card-price {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 16px;
+            text-shadow: 0 2px 8px rgba(0,255,204,0.3);
+        }
+        .scope-bullets {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 20px 0;
+        }
+        .scope-bullets li {
+            padding: 10px 0;
+            padding-left: 28px;
+            position: relative;
+            color: var(--text-secondary);
+            font-size: 15px;
+        }
+        .scope-bullets li::before {
+            content: "\2713";
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .go-countdown {
+            background: rgba(0,255,204,0.1);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .go-countdown-icon {
+            font-size: 20px;
+        }
+        .go-countdown-text {
+            color: var(--accent);
+            font-size: 14px;
+        }
+        .go-countdown-timer {
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* Trust Badges */
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0,191,255,0.08);
+            border: 1px solid var(--border-light);
+            border-radius: 20px;
+            padding: 8px 14px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .trust-badge-icon {
+            font-size: 14px;
+        }
+
+        /* Assurance Toggle */
+        .assurance-section {
+            background: linear-gradient(135deg, #131722 0%, #1a2030 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .assurance-toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .assurance-label {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 26px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border);
+            border-radius: 26px;
+            transition: 0.3s;
+        }
+        .toggle-slider::before {
+            content: "";
+            position: absolute;
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(22px);
+        }
+        .assurance-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .assurance-stat {
+            text-align: center;
+            padding: 12px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+        .assurance-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .assurance-stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -1003,6 +1167,30 @@
             </div>
         </section>
 
+        <!-- Scope Card -->
+        {% if scope_card %}
+        <section class="scope-card">
+            <h2>{{ scope_card.title }}</h2>
+            <div class="scope-card-price">${{ "{:,.0f}".format(scope_card.price or 0) }}</div>
+            <ul class="scope-bullets">
+                {% for bullet in scope_card.bullets %}
+                <li>{{ bullet }}</li>
+                {% endfor %}
+            </ul>
+            {% if scope_card.sla_30_eligible %}
+            <div style="color: var(--accent); font-size: 13px; margin-bottom: 8px;">
+                30-min Preview SLA active — ${{ "{:,.2f}".format(scope_card.sla_credit_amount) }} credit if late
+            </div>
+            {% endif %}
+            {% if scope_card.has_go_param %}
+            <div class="go-countdown" id="goCountdown">
+                <span class="go-countdown-icon">⏱️</span>
+                <span class="go-countdown-text">Price locked for <span class="go-countdown-timer" id="goTimer">30:00</span></span>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
         <!-- Value Props -->
         <div class="value-props">
             <div class="value-prop">
@@ -1027,6 +1215,33 @@
             </div>
         </div>
 
+        <!-- Assured Delivery Toggle -->
+        {% if assurance and assurance.available %}
+        <section class="assurance-section">
+            <div class="assurance-toggle-row">
+                <span class="assurance-label">Add Assured Delivery (+${{ "{:,.2f}".format(assurance.total_fee or 0) }})</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="assuranceToggle" data-fee="{{ assurance.total_fee or 0 }}" onchange="toggleAssurance()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="assurance-stats">
+                <div class="assurance-stat">
+                    <div class="assurance-stat-value">${{ "{:,.0f}".format(assurance.coverage_amount or 0) }}</div>
+                    <div class="assurance-stat-label">Coverage</div>
+                </div>
+                <div class="assurance-stat">
+                    <div class="assurance-stat-value">{{ assurance.dispute_rate }}</div>
+                    <div class="assurance-stat-label">Dispute Rate</div>
+                </div>
+                <div class="assurance-stat">
+                    <div class="assurance-stat-value">{{ assurance.bond_tier }}</div>
+                    <div class="assurance-stat-label">Bond Tier</div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
         <!-- Deposit CTA -->
         <section class="deposit-cta">
             <h2>Ready to Start?</h2>
@@ -1043,6 +1258,23 @@
             {% endif %}
 
             <p class="secure-note">🔒 Secure payment via Stripe &bull; Full refund if unsatisfied</p>
+
+            <div class="trust-badges">
+                {% if scope_card and scope_card.sla_30_eligible %}
+                <div class="trust-badge">
+                    <span class="trust-badge-icon">⚡</span>
+                    30-min Preview SLA
+                </div>
+                {% endif %}
+                <div class="trust-badge">
+                    <span class="trust-badge-icon">🔒</span>
+                    Escrowed via Stripe
+                </div>
+                <div class="trust-badge">
+                    <span class="trust-badge-icon">✓</span>
+                    Assured Delivery
+                </div>
+            </div>
         </section>
 
         <!-- Green Light Timeline -->
@@ -1286,6 +1518,43 @@
             setInterval(updateCountdown, 1000);
         }
         {% endif %}
+
+        // ?go= countdown timer (30 min from page load)
+        {% if scope_card and scope_card.has_go_param %}
+        (function() {
+            var goSeconds = 30 * 60; // 30 minutes
+            var goEl = document.getElementById('goTimer');
+            if (!goEl) return;
+
+            function updateGoTimer() {
+                if (goSeconds <= 0) {
+                    goEl.textContent = 'EXPIRED';
+                    return;
+                }
+                goSeconds--;
+                var m = Math.floor(goSeconds / 60);
+                var s = goSeconds % 60;
+                goEl.textContent = m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
+            }
+            setInterval(updateGoTimer, 1000);
+        })();
+        {% endif %}
+
+        // Assurance toggle
+        function toggleAssurance() {
+            var cb = document.getElementById('assuranceToggle');
+            var ctaBtn = document.querySelector('.cta-button');
+            if (!ctaBtn) return;
+            var baseFee = parseFloat(cb.getAttribute('data-fee') || '0');
+            if (cb.checked) {
+                ctaBtn.textContent = ctaBtn.textContent.replace('Deposit', 'Deposit + $' + baseFee.toFixed(2) + ' Assurance');
+            } else {
+                ctaBtn.textContent = ctaBtn.textContent.replace(/ \+ \$[\d.]+ Assurance/, '');
+                if (ctaBtn.textContent.indexOf('Deposit') === -1) {
+                    ctaBtn.textContent = 'Pay ${{ "{:,.0f}".format(pricing.deposit_amount or 0) }} Deposit & Start →';
+                }
+            }
+        }
     </script>
 </body>
 </html>

@@ -1078,7 +1078,7 @@ Build with us → aigentsy.com/start"""
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        return f"""Hi there—AiGentsy here.
+        msg = f"""Hi there—AiGentsy here.
 
 We do {clean_title[:40]} work for teams that need world-class output fast. Typical delivery is minutes to first preview, and we price ~50% under market.
 
@@ -1098,6 +1098,14 @@ Start your own AI agency → aigentsy.com/start
 —AiGentsy
 
 P.S. If timing's tight, we can start the preview while we finalize details."""
+
+        try:
+            from direct_outreach_engine import _ifx_quote_strip
+            msg += _ifx_quote_strip("email", our_price, 1.0, client_room_url)
+        except ImportError:
+            pass
+
+        return msg
 
     def _build_html_email(self, title: str, total_value: float, client_room_url: str, pricing: dict = None) -> str:
         """Build HTML email with AiGentsy brand colors"""
@@ -1134,7 +1142,7 @@ P.S. If timing's tight, we can start the preview while we finalize details."""
         type_label = type_labels.get(project_type, '')
         autonomous_intro = f"your autonomous {type_label} AiGentsy" if type_label else "your autonomous AiGentsy"
 
-        return f"""
+        html_msg = f"""
 <!DOCTYPE html>
 <html>
 <head>
@@ -1211,6 +1219,16 @@ P.S. If timing's tight, we can start the preview while we finalize details."""
 </body>
 </html>
 """
+
+        try:
+            from direct_outreach_engine import _ifx_quote_strip
+            # Insert HTML quote strip before closing </div></body>
+            strip = _ifx_quote_strip("email_html", our_price, 1.0, client_room_url)
+            html_msg = html_msg.replace("</div>\n</body>", f"{strip}\n</div>\n</body>", 1)
+        except ImportError:
+            pass
+
+        return html_msg
 
     def _build_sms_message(self, title: str, client_room_url: str) -> str:
         """Build concise SMS message (160 char limit)"""

@@ -298,6 +298,13 @@ Start your own AI agency -> aigentsy.com/start
 
 --AiGentsy"""
 
+            try:
+                from direct_outreach_engine import _ifx_quote_strip
+                estimated_value = opportunity.get('estimated_value', opportunity.get('value', 500))
+                body += _ifx_quote_strip("email", estimated_value, 1.0, referral_url)
+            except ImportError:
+                pass
+
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(
                     "https://api.resend.com/emails",
@@ -360,6 +367,13 @@ Start your own AI agency -> aigentsy.com/start
 
             message = SMS_TEMPLATE.format(title=title, url=referral_url)
 
+            try:
+                from direct_outreach_engine import _ifx_quote_strip
+                estimated_value = opportunity.get('estimated_value', opportunity.get('value', 500))
+                message += _ifx_quote_strip("sms", estimated_value, 1.0, referral_url)
+            except ImportError:
+                pass
+
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(
                     f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
@@ -413,6 +427,13 @@ Start your own AI agency -> aigentsy.com/start
                 whatsapp_from = f"whatsapp:{whatsapp_from}"
 
             message = WHATSAPP_TEMPLATE.format(title=title, url=referral_url)
+
+            try:
+                from direct_outreach_engine import _ifx_quote_strip
+                estimated_value = opportunity.get('estimated_value', opportunity.get('value', 500))
+                message += _ifx_quote_strip("whatsapp", estimated_value, 1.0, referral_url)
+            except ImportError:
+                pass
 
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(
