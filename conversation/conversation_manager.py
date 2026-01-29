@@ -81,7 +81,10 @@ class ConversationManager:
         self.twitter_access_secret = os.getenv('TWITTER_ACCESS_SECRET')
         self.twitter_api_key = os.getenv('TWITTER_API_KEY')
         self.twitter_api_secret = os.getenv('TWITTER_API_SECRET')
+        # AI routing: OpenRouter (preferred) → Anthropic direct (fallback)
+        self.openrouter_key = os.getenv('OPENROUTER_API_KEY')
         self.anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+        self.ai_provider = 'openrouter' if self.openrouter_key else ('anthropic' if self.anthropic_key else None)
         self.our_twitter_id = os.getenv('TWITTER_USER_ID')  # Our account's Twitter ID
         self.last_dm_check = datetime.now(timezone.utc) - timedelta(minutes=5)
 
@@ -642,9 +645,9 @@ class ConversationManager:
         return any(phrase in msg_lower for phrase in accept_phrases)
 
     async def _generate_response(self, conv: Conversation, user_message: str) -> Optional[str]:
-        """Generate AI response using Claude"""
-        if not self.anthropic_key:
-            logger.error("ANTHROPIC_API_KEY not set")
+        """Generate AI response using Claude (via OpenRouter or direct Anthropic)"""
+        if not self.openrouter_key and not self.anthropic_key:
+            logger.error("Neither OPENROUTER_API_KEY nor ANTHROPIC_API_KEY set")
             return None
 
         try:
@@ -720,37 +723,74 @@ USER'S LATEST MESSAGE:
 
 Generate a natural response. If they seem interested, reference the link in the first message. If they have questions, answer them. Be warm and human. Keep it under 280 characters."""
 
-            # Call Claude
+            # Call Claude via OpenRouter (preferred) or direct Anthropic (fallback)
             async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": self.anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
-                    },
-                    json={
-                        "model": "claude-sonnet-4-20250514",
-                        "max_tokens": 300,
-                        "system": system_prompt,
-                        "messages": [
-                            {"role": "user", "content": user_message}
-                        ]
-                    }
-                )
+                if self.openrouter_key:
+                    # OpenRouter: access Claude via gateway ($0 markup)
+                    resp = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.openrouter_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://aigentsy.com",
+                            "X-Title": "AiGentsy Conversation Manager"
+                        },
+                        json={
+                            "model": "anthropic/claude-sonnet-4-20250514",
+                            "max_tokens": 300,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_message}
+                            ]
+                        }
+                    )
 
-                if resp.is_success:
-                    data = resp.json()
-                    response = data['content'][0]['text']
+                    if resp.is_success:
+                        data = resp.json()
+                        response = data['choices'][0]['message']['content']
 
-                    # Ensure under 280 chars for Twitter
-                    if len(response) > 280:
-                        response = response[:277] + "..."
+                        if len(response) > 280:
+                            response = response[:277] + "..."
 
-                    return response
-                else:
-                    logger.error(f"Claude API error: {resp.status_code} - {resp.text}")
-                    return None
+                        return response
+                    else:
+                        logger.error(f"OpenRouter API error: {resp.status_code} - {resp.text[:200]}")
+                        # Fall through to Anthropic direct if available
+                        if not self.anthropic_key:
+                            return None
+
+                if self.anthropic_key:
+                    # Anthropic direct fallback
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": self.anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": "claude-sonnet-4-20250514",
+                            "max_tokens": 300,
+                            "system": system_prompt,
+                            "messages": [
+                                {"role": "user", "content": user_message}
+                            ]
+                        }
+                    )
+
+                    if resp.is_success:
+                        data = resp.json()
+                        response = data['content'][0]['text']
+
+                        if len(response) > 280:
+                            response = response[:277] + "..."
+
+                        return response
+                    else:
+                        logger.error(f"Claude API error: {resp.status_code} - {resp.text[:200]}")
+                        return None
+
+                return None
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")

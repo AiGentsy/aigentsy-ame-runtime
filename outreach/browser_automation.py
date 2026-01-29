@@ -871,6 +871,7 @@ class BrowserAutomation:
             'failures': sum(1 for r in all_results if not r.success),
             'by_platform': {},
             'daily_counts': self.daily_counts.copy(),
+            'errors': [],
         }
 
         for platform in platforms:
@@ -879,7 +880,18 @@ class BrowserAutomation:
                 'attempts': len(platform_results),
                 'successes': sum(1 for r in platform_results if r.success),
                 'failures': sum(1 for r in platform_results if not r.success),
+                'errors': [r.error for r in platform_results if r.error],
+                'successful_posts': [
+                    {'url': r.post_url, 'message': r.message_sent[:100]}
+                    for r in platform_results if r.success
+                ],
             }
+
+        # Collect all errors for top-level visibility
+        summary['errors'] = [
+            {'platform': r.platform, 'action': r.action, 'error': r.error}
+            for r in all_results if r.error
+        ]
 
         self.results = all_results
         return summary

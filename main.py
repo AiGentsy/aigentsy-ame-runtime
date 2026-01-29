@@ -1774,6 +1774,78 @@ try:
             "stats": automation.get_stats()
         }
 
+    @app.get("/browser/diagnose")
+    async def api_browser_diagnose():
+        """Diagnose browser automation - check credentials, Playwright, and Chromium."""
+        import shutil
+        import platform as plat
+
+        diag = {"ok": True, "credentials": {}, "playwright": {}, "system": {}}
+
+        # Check credentials
+        for p, (u, pw) in {
+            'twitter': ('TWITTER_USERNAME', 'TWITTER_PASSWORD'),
+            'instagram': ('INSTAGRAM_USERNAME', 'INSTAGRAM_PASSWORD'),
+            'linkedin': ('LINKEDIN_USERNAME', 'LINKEDIN_PASSWORD'),
+            'reddit': ('REDDIT_USERNAME', 'REDDIT_PASSWORD'),
+        }.items():
+            uv = os.getenv(u, '')
+            pv = os.getenv(pw, '')
+            diag['credentials'][p] = {
+                'username_set': bool(uv),
+                'username_preview': uv[:3] + '***' if uv else '(not set)',
+                'password_set': bool(pv),
+            }
+
+        # Check Playwright
+        try:
+            import playwright
+            diag['playwright']['installed'] = True
+            diag['playwright']['version'] = getattr(playwright, '__version__', 'unknown')
+        except ImportError:
+            diag['playwright']['installed'] = False
+
+        # Check Chromium browser
+        chromium_path = shutil.which('chromium') or shutil.which('chromium-browser')
+        diag['playwright']['chromium_in_path'] = bool(chromium_path)
+
+        try:
+            from playwright.async_api import async_playwright
+            pw_inst = await async_playwright().start()
+            try:
+                browser = await pw_inst.chromium.launch(headless=True, args=['--no-sandbox', '--disable-dev-shm-usage'])
+                diag['playwright']['browser_launch'] = True
+                diag['playwright']['browser_version'] = browser.version
+                await browser.close()
+            except Exception as e:
+                diag['playwright']['browser_launch'] = False
+                diag['playwright']['browser_error'] = str(e)
+            await pw_inst.stop()
+        except Exception as e:
+            diag['playwright']['browser_launch'] = False
+            diag['playwright']['launch_error'] = str(e)
+
+        # Check all API keys
+        diag['api_keys'] = {}
+        for key_name in [
+            'OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY',
+            'PERPLEXITY_API_KEY', 'GEMINI_API_KEY', 'STABILITY_API_KEY',
+            'RUNWAY_API_KEY', 'ELEVENLABS_API_KEY', 'TWITTER_BEARER_TOKEN',
+            'TWITTER_API_KEY', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_SECRET',
+            'TWITTER_API_SECRET', 'TWITTER_USER_ID', 'GITHUB_TOKEN',
+            'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'INSTAGRAM_ACCESS_TOKEN',
+            'LINKEDIN_ACCESS_TOKEN', 'REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET',
+        ]:
+            val = os.getenv(key_name, '')
+            diag['api_keys'][key_name] = {
+                'set': bool(val),
+                'preview': val[:6] + '***' if val else '(not set)',
+            }
+
+        diag['system'] = {'os': plat.system(), 'arch': plat.machine()}
+
+        return diag
+
     print("=" * 80)
     print("BROWSER AUTOMATION LOADED - Zero Cost Engagement")
     print("=" * 80)
@@ -1783,6 +1855,7 @@ try:
     print("  Endpoints:")
     print("    - /browser/run-cycle - Run browser engagement cycle")
     print("    - /browser/stats - Get automation statistics")
+    print("    - /browser/diagnose - Check credentials + Playwright status")
     print("  Voice: billionaire-calm (proof-forward, no hype)")
     print("=" * 80)
 
