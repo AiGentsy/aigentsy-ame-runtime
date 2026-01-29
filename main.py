@@ -1758,6 +1758,123 @@ try:
 
         return result
 
+    @app.get("/public-engagement/diagnose-platforms")
+    async def api_diagnose_platforms():
+        """
+        Diagnose which discovery sources are active and test each API.
+        Shows exactly why Instagram/LinkedIn/Reddit discovery fails.
+        """
+        import os, httpx
+
+        diagnostics = {}
+
+        # Instagram
+        ig_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+        ig_business = os.getenv('INSTAGRAM_BUSINESS_ID')
+        diagnostics['instagram'] = {
+            'INSTAGRAM_ACCESS_TOKEN': bool(ig_token),
+            'INSTAGRAM_BUSINESS_ID': bool(ig_business),
+            'discovery_enabled': bool(ig_token and ig_business),
+        }
+        if ig_token and ig_business:
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.get(
+                        f"https://graph.facebook.com/v18.0/{ig_business}",
+                        params={"fields": "id,name,username", "access_token": ig_token}
+                    )
+                    diagnostics['instagram']['api_status'] = resp.status_code
+                    diagnostics['instagram']['api_response'] = resp.json() if resp.status_code == 200 else resp.text[:300]
+            except Exception as e:
+                diagnostics['instagram']['api_error'] = str(e)
+
+        # LinkedIn
+        li_token = os.getenv('LINKEDIN_ACCESS_TOKEN')
+        li_person_urn = os.getenv('LINKEDIN_PERSON_URN')
+        diagnostics['linkedin'] = {
+            'LINKEDIN_ACCESS_TOKEN': bool(li_token),
+            'LINKEDIN_PERSON_URN': bool(li_person_urn),
+            'LINKEDIN_PERSON_URN_value': li_person_urn or 'NOT SET — needed for posting comments',
+            'discovery_enabled': bool(li_token),
+            'commenting_enabled': bool(li_token and li_person_urn),
+        }
+        if li_token:
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.get(
+                        "https://api.linkedin.com/v2/me",
+                        headers={"Authorization": f"Bearer {li_token}"}
+                    )
+                    diagnostics['linkedin']['api_status'] = resp.status_code
+                    if resp.status_code == 200:
+                        me = resp.json()
+                        person_id = me.get('id', '')
+                        diagnostics['linkedin']['api_response'] = {
+                            'id': person_id,
+                            'firstName': me.get('localizedFirstName', ''),
+                            'lastName': me.get('localizedLastName', ''),
+                        }
+                        diagnostics['linkedin']['person_urn'] = f"urn:li:person:{person_id}"
+                        diagnostics['linkedin']['action_needed'] = (
+                            f"Add LINKEDIN_PERSON_URN=urn:li:person:{person_id} to Render env vars"
+                            if not li_person_urn else "None"
+                        )
+                    else:
+                        diagnostics['linkedin']['api_response'] = resp.text[:300]
+                        diagnostics['linkedin']['api_error'] = f"Token may be expired (status {resp.status_code})"
+            except Exception as e:
+                diagnostics['linkedin']['api_error'] = str(e)
+
+        # Reddit
+        reddit_client_id = os.getenv('REDDIT_CLIENT_ID')
+        reddit_client_secret = os.getenv('REDDIT_CLIENT_SECRET')
+        reddit_username = os.getenv('REDDIT_USERNAME')
+        reddit_password = os.getenv('REDDIT_PASSWORD')
+        diagnostics['reddit'] = {
+            'REDDIT_USERNAME': bool(reddit_username),
+            'REDDIT_PASSWORD': bool(reddit_password),
+            'REDDIT_CLIENT_ID': bool(reddit_client_id),
+            'REDDIT_CLIENT_SECRET': bool(reddit_client_secret),
+            'discovery_enabled': True,  # Uses public JSON API
+            'commenting_enabled': bool(all([reddit_client_id, reddit_client_secret, reddit_username, reddit_password])),
+        }
+        if not reddit_client_id:
+            diagnostics['reddit']['action_needed'] = (
+                "Add REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET. "
+                "Create app at https://www.reddit.com/prefs/apps/ (script type)"
+            )
+        elif all([reddit_client_id, reddit_client_secret, reddit_username, reddit_password]):
+            # Test Reddit OAuth
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    auth = aiohttp.BasicAuth(reddit_client_id, reddit_client_secret)
+                    async with session.post(
+                        'https://www.reddit.com/api/v1/access_token',
+                        data={'grant_type': 'password', 'username': reddit_username, 'password': reddit_password},
+                        auth=auth,
+                        headers={'User-Agent': 'AiGentsy-Bot/1.0'}
+                    ) as resp:
+                        diagnostics['reddit']['oauth_status'] = resp.status
+                        data = await resp.json()
+                        if 'access_token' in data:
+                            diagnostics['reddit']['oauth_success'] = True
+                        else:
+                            diagnostics['reddit']['oauth_error'] = data.get('error', str(data))
+            except Exception as e:
+                diagnostics['reddit']['oauth_error'] = str(e)
+
+        # Twitter (for reference)
+        diagnostics['twitter'] = {
+            'TWITTER_BEARER_TOKEN': bool(os.getenv('TWITTER_BEARER_TOKEN')),
+            'TWITTER_ACCESS_TOKEN': bool(os.getenv('TWITTER_ACCESS_TOKEN')),
+            'discovery_enabled': bool(os.getenv('TWITTER_BEARER_TOKEN')),
+            'commenting_enabled': False,
+            'status': 'Platform-level write block (submit form to Twitter support)',
+        }
+
+        return {"ok": True, "diagnostics": diagnostics}
+
     @app.post("/auto-reply/run-cycle")
     async def api_run_auto_reply(
         twitter_enabled: bool = True,
