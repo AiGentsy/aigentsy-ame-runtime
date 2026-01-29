@@ -12,6 +12,9 @@ Components:
 - OutreachTracker: Spam prevention
 
 Strategy: PUBLIC comments > DMs (DMs are restricted, public works 100%)
+
+Unified Router: Routes ALL discovery (incl. Perplexity internet-wide search)
+to the best channel per opportunity (comment, email, SMS, WhatsApp, DM).
 """
 from .multilingual import get_multilingual_outreach, MultilingualOutreach
 from .outreach_tracker import get_outreach_tracker, OutreachTracker
@@ -44,6 +47,15 @@ from .success_story_engine import (
     get_success_story_engine,
     post_contract_success_story,
     run_content_campaign,
+)
+
+# Unified Engagement Router (ALL discovery → ALL channels)
+from .unified_engagement_router import (
+    UnifiedEngagementRouter,
+    RoutedEngagement,
+    EngagementChannel,
+    get_unified_router,
+    run_unified_engagement,
 )
 
 # Browser Automation (ZERO COST - uses existing accounts)
@@ -83,6 +95,12 @@ __all__ = [
     'get_success_story_engine',
     'post_contract_success_story',
     'run_content_campaign',
+    # Unified Router (ALL channels)
+    'UnifiedEngagementRouter',
+    'RoutedEngagement',
+    'EngagementChannel',
+    'get_unified_router',
+    'run_unified_engagement',
     # Browser Automation (ZERO COST)
     'BrowserAutomation',
     'BrowserTarget',

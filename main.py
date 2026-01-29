@@ -1965,6 +1965,29 @@ try:
         }
 
     # =========================================================================
+    # UNIFIED ENGAGEMENT ROUTER (all discovery → all channels)
+    # =========================================================================
+    from outreach.unified_engagement_router import get_unified_router, run_unified_engagement
+
+    @app.post("/unified-engagement/run-cycle")
+    async def api_unified_engagement(
+        max_opportunities: int = 50
+    ):
+        """
+        UNIFIED engagement cycle — routes ALL discovery results to the best channel.
+
+        Discovery: Perplexity (internet-wide) + Twitter + Reddit + LinkedIn + Instagram + GitHub + OpenRouter
+        Channels: Public comments, Email (Resend), SMS (Twilio), WhatsApp (Twilio), DMs
+        """
+        results = await run_unified_engagement(max_opportunities)
+        return {"ok": True, **results}
+
+    @app.get("/unified-engagement/stats")
+    async def api_unified_stats():
+        """Get unified engagement router statistics."""
+        router = get_unified_router()
+        return {"ok": True, "stats": router.get_stats()}
+
     # BROWSER AUTOMATION (ZERO COST - uses existing @AiGentsy accounts)
     # =========================================================================
     from outreach import get_browser_automation, run_browser_engagement
