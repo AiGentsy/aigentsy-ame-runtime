@@ -691,18 +691,15 @@ class MasterAutonomousOrchestrator:
         return results
 
     async def _discover_dimension_1_explicit_marketplaces(self) -> Dict[str, Any]:
-        """Dimension 1: Explicit Marketplaces"""
+        """Dimension 1: Explicit Marketplaces — real API sources only"""
         opportunities = []
         idem = f"{self._run_id()}|d1"
 
+        # Only sources with real API implementations
         tasks = [
             self._call("POST", "/discovery/github/bounties", {"limit": 50}, idempotency_key=f"{idem}|gh", platform="github"),
-            self._call("POST", "/discovery/upwork/search", {"limit": 30}, idempotency_key=f"{idem}|uw", platform="upwork"),
-            self._call("POST", "/discovery/fiverr/buyer-requests", {"limit": 20}, idempotency_key=f"{idem}|fv", platform="fiverr"),
-            self._call("POST", "/discovery/freelancer/search", {"limit": 30}, idempotency_key=f"{idem}|fl", platform="freelancer"),
             self._call("GET", "/discovery/remoteok/jobs", idempotency_key=f"{idem}|ro", platform="remoteok"),
-            self._call("GET", "/discovery/weworkremotely/jobs", idempotency_key=f"{idem}|wwr", platform="weworkremotely"),
-            self._call("GET", "/discovery/angellist/jobs", idempotency_key=f"{idem}|al", platform="angellist"),
+            # Upwork, Fiverr, Freelancer, WeWorkRemotely, AngelList — stubs, add back when APIs wired
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -713,22 +710,18 @@ class MasterAutonomousOrchestrator:
         return {"ok": True, "opportunities": opportunities, "dimension": "explicit_marketplaces"}
 
     async def _discover_dimension_2_pain_points(self) -> Dict[str, Any]:
-        """Dimension 2: Pain Point Detection"""
+        """Dimension 2: Pain Point Detection — real API sources only"""
         opportunities = []
         idem = f"{self._run_id()}|d2"
 
+        # Only sources with real API implementations
         tasks = [
             self._call("POST", "/discovery/reddit/pain-points", {
                 "subreddits": ["webdev", "startups", "entrepreneur", "SaaS", "freelance"],
                 "limit": 50
             }, idempotency_key=f"{idem}|rd", platform="reddit"),
             self._call("GET", "/discovery/hackernews/who-is-hiring", idempotency_key=f"{idem}|hn", platform="hackernews"),
-            self._call("POST", "/discovery/twitter/pain-signals", {
-                "keywords": ["need developer", "looking for", "anyone know", "help with"],
-                "limit": 30
-            }, idempotency_key=f"{idem}|tw", platform="twitter"),
-            self._call("GET", "/discovery/producthunt/launches", idempotency_key=f"{idem}|ph", platform="producthunt"),
-            self._call("GET", "/discovery/indiehackers/requests", idempotency_key=f"{idem}|ih", platform="indiehackers"),
+            # Twitter, ProductHunt, IndieHackers — stubs, add back when APIs wired
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -739,14 +732,14 @@ class MasterAutonomousOrchestrator:
         return {"ok": True, "opportunities": opportunities, "dimension": "pain_point_detection"}
 
     async def _discover_dimension_3_flow_arbitrage(self) -> Dict[str, Any]:
-        """Dimension 3: Flow Arbitrage"""
+        """Dimension 3: Flow Arbitrage — real detector only"""
         opportunities = []
         idem = f"{self._run_id()}|d3"
 
+        # Only the real arbitrage detector, skip stubs
         tasks = [
             self._call("GET", "/discovery/arbitrage/detect", idempotency_key=f"{idem}|det", platform="internal"),
-            self._call("GET", "/discovery/arbitrage/cross-platform", idempotency_key=f"{idem}|xp", platform="internal"),
-            self._call("GET", "/discovery/arbitrage/underpriced", idempotency_key=f"{idem}|up", platform="internal"),
+            # cross-platform and underpriced are stubs, add back when implemented
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -757,76 +750,20 @@ class MasterAutonomousOrchestrator:
         return {"ok": True, "opportunities": opportunities, "dimension": "flow_arbitrage"}
 
     async def _discover_dimension_4_predictive(self) -> Dict[str, Any]:
-        """Dimension 4: Predictive Intelligence"""
-        opportunities = []
-        idem = f"{self._run_id()}|d4"
-
-        tasks = [
-            self._call("GET", "/discovery/predictive/trends", idempotency_key=f"{idem}|tr", platform="internal"),
-            self._call("GET", "/discovery/predictive/demand-forecast", idempotency_key=f"{idem}|df", platform="internal"),
-            self._call("GET", "/discovery/predictive/seasonal", idempotency_key=f"{idem}|se", platform="internal"),
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, dict) and r.get("ok"):
-                opportunities.extend(r.get("opportunities", []))
-
-        return {"ok": True, "opportunities": opportunities, "dimension": "predictive_intelligence"}
+        """Dimension 4: Predictive Intelligence — all stubs, returns empty until implemented"""
+        return {"ok": True, "opportunities": [], "dimension": "predictive_intelligence"}
 
     async def _discover_dimension_5_network(self) -> Dict[str, Any]:
-        """Dimension 5: Network Amplification"""
-        opportunities = []
-        idem = f"{self._run_id()}|d5"
-
-        tasks = [
-            self._call("GET", "/discovery/network/referrals", idempotency_key=f"{idem}|rf", platform="internal"),
-            self._call("GET", "/discovery/network/viral-loops", idempotency_key=f"{idem}|vl", platform="internal"),
-            self._call("GET", "/discovery/network/partnerships", idempotency_key=f"{idem}|pt", platform="internal"),
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, dict) and r.get("ok"):
-                opportunities.extend(r.get("opportunities", []))
-
-        return {"ok": True, "opportunities": opportunities, "dimension": "network_amplification"}
+        """Dimension 5: Network Amplification — all stubs, returns empty until implemented"""
+        return {"ok": True, "opportunities": [], "dimension": "network_amplification"}
 
     async def _discover_dimension_6_opportunity_creation(self) -> Dict[str, Any]:
-        """Dimension 6: Opportunity Creation"""
-        opportunities = []
-        idem = f"{self._run_id()}|d6"
-
-        tasks = [
-            self._call("POST", "/discovery/outreach/targets", {"limit": 50}, idempotency_key=f"{idem}|tg", platform="internal"),
-            self._call("POST", "/discovery/linkedin/prospects", {"limit": 30}, idempotency_key=f"{idem}|li", platform="linkedin"),
-            self._call("GET", "/discovery/email/opportunities", idempotency_key=f"{idem}|em", platform="internal"),
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, dict) and r.get("ok"):
-                opportunities.extend(r.get("opportunities", []))
-
-        return {"ok": True, "opportunities": opportunities, "dimension": "opportunity_creation"}
+        """Dimension 6: Opportunity Creation — all stubs, returns empty until implemented"""
+        return {"ok": True, "opportunities": [], "dimension": "opportunity_creation"}
 
     async def _discover_dimension_7_emergent(self) -> Dict[str, Any]:
-        """Dimension 7: Emergent Patterns"""
-        opportunities = []
-        idem = f"{self._run_id()}|d7"
-
-        tasks = [
-            self._call("GET", "/discovery/emergent/new-markets", idempotency_key=f"{idem}|nm", platform="internal"),
-            self._call("GET", "/discovery/emergent/trend-surf", idempotency_key=f"{idem}|ts", platform="internal"),
-            self._call("GET", "/discovery/emergent/tech-shifts", idempotency_key=f"{idem}|tc", platform="internal"),
-        ]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, dict) and r.get("ok"):
-                opportunities.extend(r.get("opportunities", []))
-
-        return {"ok": True, "opportunities": opportunities, "dimension": "emergent_patterns"}
+        """Dimension 7: Emergent Patterns — all stubs, returns empty until implemented"""
+        return {"ok": True, "opportunities": [], "dimension": "emergent_patterns"}
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 2: MULTI-CHANNEL COMMUNICATION (with consent + concurrency)

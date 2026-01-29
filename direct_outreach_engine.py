@@ -256,7 +256,7 @@ class ProposalGenerator:
         opp_id = opportunity.get('opportunity_id', 'unknown')
         title = opportunity.get('title', '')
         pain_point = opportunity.get('pain_point', '')
-        estimated_value = opportunity.get('estimated_value', 1000)
+        estimated_value = opportunity.get('estimated_value', 0) or opportunity.get('value', 0)
 
         # Determine value proposition
         category = self._categorize_opportunity(title, pain_point)

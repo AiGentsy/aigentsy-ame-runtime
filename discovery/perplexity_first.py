@@ -335,22 +335,21 @@ class PerplexityFirstDiscovery:
         # Generate stable ID
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
 
-        # Calculate signals
-        payment_proximity = 0.8 if budget else 0.4
-        contactability = 0.9 if contact else 0.6
+        # Calculate signals — conservative, based on real data presence
+        payment_proximity = 0.6 if budget else 0.2
+        contactability = 0.7 if contact else 0.3
 
-        # Urgency affects priority
+        # Urgency only boosts if explicitly stated
         if urgency == 'high':
             payment_proximity = min(1.0, payment_proximity + 0.1)
             contactability = min(1.0, contactability + 0.1)
 
-        # Value estimation
-        value = 1000  # Default
+        # Value estimation — only from real budget data, never inflated defaults
+        value = 0
         if budget:
-            # Try to extract numeric value
             numbers = re.findall(r'\d+', str(budget).replace(',', '').replace('$', ''))
             if numbers:
-                value = max(int(numbers[0]), 100)
+                value = max(int(numbers[0]), 50)
 
         return {
             'id': f"perplexity_{url_hash}",
@@ -363,7 +362,7 @@ class PerplexityFirstDiscovery:
             'value': value,
             'payment_proximity': payment_proximity,
             'contactability': contactability,
-            'poster_reputation': 0.6,
+            'poster_reputation': 0.0,  # Unknown — no data to score
             'type': 'opportunity',
             'source': 'perplexity_api',
             'metadata': {
