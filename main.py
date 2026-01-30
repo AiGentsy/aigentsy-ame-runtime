@@ -2312,6 +2312,23 @@ except Exception as e:
     print(f"Catalog Sitemap routes load error: {e}")
 
 # ============================================================================
+# SKU FLYWHEEL ROUTES (Genome, Demand, Spawns, Library)
+# ============================================================================
+try:
+    from routes.sku_routes import router as sku_flywheel_router
+    app.include_router(sku_flywheel_router)
+    print("=" * 80)
+    print("SKU FLYWHEEL ROUTES LOADED - Autonomous Revenue Engine")
+    print("=" * 80)
+    print("  Endpoints: /sku/genome, /sku/demand, /sku/spawns, /sku/library, /sku/stats")
+    print("  Features: Per-SKU brain, demand aggregation, auto-spawn, graduation")
+    print("=" * 80)
+except ImportError as e:
+    print(f"SKU Flywheel routes not available: {e}")
+except Exception as e:
+    print(f"SKU Flywheel routes load error: {e}")
+
+# ============================================================================
 # SLO DASHBOARD (Internal + External Metrics)
 # ============================================================================
 try:

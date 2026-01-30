@@ -698,6 +698,19 @@ class MasterAutonomousOrchestrator:
             self.current_run["errors"].append({"filter": "fulfillability", "error": str(e)})
             logger.warning(f"Fulfillability filter failed: {e}")
 
+        # ── SKU FLYWHEEL: Record demand + check spawn thresholds ──
+        try:
+            from spawn.spawn_orchestrator import get_spawn_orchestrator
+            _spawn_orch = get_spawn_orchestrator()
+            spawn_result = await _spawn_orch.process_cycle_demand(ranked, self._run_id())
+            results["sku_flywheel"] = spawn_result
+            _log_structured(self._run_id(), "discovery", "sku_flywheel", spawn_result)
+        except ImportError:
+            pass
+        except Exception as e:
+            self.current_run["errors"].append({"module": "sku_flywheel_demand", "error": str(e)})
+            logger.warning(f"SKU Flywheel demand recording failed: {e}")
+
         results["total_opportunities"] = len(ranked)
         results["total_value"] = sum(o.get("value", 0) or o.get("estimated_value", 0) for o in ranked)
         results["total_ev"] = sum(o.get("_ev", 0) for o in ranked)
@@ -2415,6 +2428,7 @@ AiGentsy Autonomous Fulfillment
                     if k.startswith("dimension_") and isinstance(v, list)
                 },
                 "fulfillability": discovery.get("fulfillability", {}),
+                "sku_flywheel": discovery.get("sku_flywheel", {}),
             }
 
             ranked_opportunities = discovery.get("ranked_opportunities", [])
@@ -2462,6 +2476,26 @@ AiGentsy Autonomous Fulfillment
                         "conversations_started": len(communication["conversations_started"])
                     }
 
+                # ── SKU FLYWHEEL: Update genome telemetry from execution outcomes ──
+                try:
+                    from sku.sku_genome import update_telemetry
+                    for opp in ranked_opportunities:
+                        matched_sku = opp.get("_matched_sku")
+                        if matched_sku and opp.get("_execution_result"):
+                            update_telemetry(matched_sku, {
+                                "success": opp.get("_execution_success", False),
+                                "revenue": float(opp.get("_revenue_collected", 0)),
+                                "cost": float(opp.get("_execution_cost", 0)),
+                                "csat": opp.get("_csat_score"),
+                                "time_to_close_minutes": int(opp.get("_time_to_close_minutes", 0)),
+                                "refund": opp.get("_refund", False),
+                                "defect": opp.get("_defect", False),
+                            })
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"SKU genome telemetry update failed: {e}")
+
                 # PHASE 3: CONTRACT (for opportunities that need it)
                 # Note: Immediate execution opportunities (GitHub bounties) skip this
                 interested = [c for c in communication.get("conversations_started", [])
@@ -2504,6 +2538,25 @@ AiGentsy Autonomous Fulfillment
                     "total_pending": payment["total_pending"]
                 }
 
+            # ── SKU FLYWHEEL: Check graduation eligibility ──
+            try:
+                from sku.graduation import check_graduation, graduate_sku, get_incubating_skus
+                incubating = get_incubating_skus()
+                graduated_this_cycle = []
+                for _sku_id in incubating:
+                    grad_check = check_graduation(_sku_id)
+                    if grad_check["eligible"]:
+                        grad = await graduate_sku(_sku_id)
+                        if grad.get("ok"):
+                            graduated_this_cycle.append(grad)
+                            _log_structured(self._run_id(), "graduation", "sku_graduated", grad)
+                if graduated_this_cycle:
+                    final_results["sku_graduations"] = graduated_this_cycle
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"SKU graduation check failed: {e}")
+
             # SUMMARY
             final_results["summary"] = {
                 "opportunities_found": discovery["total_opportunities"],
@@ -2525,6 +2578,11 @@ AiGentsy Autonomous Fulfillment
                     "referral_payouts": self.current_run["metrics"]["referral_payouts"],
                     "badges_minted": self.current_run["metrics"]["badges_minted"],
                     "arbitrage_captured": self.current_run["metrics"]["arbitrage_captured"]
+                },
+                "sku_flywheel": {
+                    "demand_clusters": final_results.get("discovery", {}).get("sku_flywheel", {}).get("clusters_found", 0),
+                    "spawns_triggered": final_results.get("discovery", {}).get("sku_flywheel", {}).get("spawns_triggered", 0),
+                    "graduations": len(final_results.get("sku_graduations", []))
                 }
             }
 
