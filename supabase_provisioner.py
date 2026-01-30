@@ -19,7 +19,7 @@ SUPABASE_ORG_ID = os.getenv("SUPABASE_ORG_ID")
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Database schemas for each template type

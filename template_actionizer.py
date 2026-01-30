@@ -30,7 +30,7 @@ except ImportError:
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Template configurations

@@ -18,7 +18,7 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Email sequences for each template type

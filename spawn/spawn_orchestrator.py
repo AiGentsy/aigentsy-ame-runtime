@@ -101,7 +101,7 @@ def _save_active_spawns(spawns: List[Dict]) -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ─── SKU CATALOG LOADER ─────────────────────────────────────────────────────

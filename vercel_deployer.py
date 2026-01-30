@@ -20,7 +20,7 @@ AIGENTSY_DOMAIN = "aigentsy.com"
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Website templates for each type

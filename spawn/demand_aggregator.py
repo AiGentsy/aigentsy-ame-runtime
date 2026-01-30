@@ -32,7 +32,7 @@ DEMAND_FILE = DATA_DIR / "demand_signals.json"
 
 SPAWN_THRESHOLD_7D_COUNT = 20        # Need 20+ opportunities in 7 days
 SPAWN_THRESHOLD_AVG_VALUE = 100.0    # Average value >= $100
-SPAWN_THRESHOLD_IMMEDIATE_PCT = 0.10  # At least 10% immediate urgency
+SPAWN_THRESHOLD_IMMEDIATE_PCT = 0.05  # At least 5% immediate urgency
 ROLLING_WINDOW_DAYS = 30             # Prune events older than 30d
 
 

@@ -33,7 +33,7 @@ GENOMES_DIR = DATA_DIR / "genomes"
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ─── SKU GENOME DATACLASS ───────────────────────────────────────────────────
